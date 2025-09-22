@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/* NOTE: No enums on SQLite. Use strings + @db.Text instead. */
+
+model User {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  name             String?
+  role             String   @default("MACHINIST") @db.Text
+  active           Boolean  @default(true)
+  // Credentials provider (nullable)
+  passwordHash     String?
+
+  orders           Order[]  @relation("AssignedOrders")
+  notes            Note[]
+  timeLogs         TimeLog[]
+  checklistToggles OrderChecklist[] @relation("ChecklistToggledBy")
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Customer {
+  id      String  @id @default(cuid())
+  name    String
+  contact String?
+  phone   String?
+  email   String?
+  address String?
+
+  orders  Order[]
+
+  @@index([name])
+}
+
+model Material {
+  id    String  @id @default(cuid())
+  name  String  @unique
+  spec  String?
+  notes String?
+
+  parts OrderPart[]
+}
+
+model Vendor {
+  id     String  @id @default(cuid())
+  name   String  @unique
+  url    String?
+  phone  String?
+  notes  String?
+
+  orders Order[]
+}
+
+model ChecklistItem {
+  id     String  @id @default
