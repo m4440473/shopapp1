@@ -5,7 +5,9 @@ import Client from './client';
 export const dynamic = 'force-dynamic';
 
 async function fetchInitial() {
-  const res = await fetch('/api/admin/users?take=20', { cache: 'no-store' });
+  const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
+  const url = `${base.replace(/\/+$/, '')}/api/admin/users?take=20`;
+  const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error('Failed to load');
   return res.json();
 }
