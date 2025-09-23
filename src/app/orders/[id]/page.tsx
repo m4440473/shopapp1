@@ -70,97 +70,108 @@ export default function OrderDetailPage() {
 
   return (
     <div className="p-6 min-h-screen bg-[#0B0F14] text-[#E6EDF3]">
-      <div className="max-w-4xl mx-auto bg-[#121821] p-6 rounded shadow grid grid-cols-2 gap-6">
-        <div>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold mb-1">{item.orderNumber}</h1>
-              <div className="text-sm text-[#9FB1C1]">{item.customer?.name ?? '-'}</div>
-              <div className="text-xs text-[#9FB1C1] mt-1">{item.customer?.contact ?? ''} • {item.customer?.phone ?? ''} • {item.customer?.email ?? ''}</div>
-              <div className="text-xs text-[#9FB1C1] mt-1">{item.customer?.address ?? ''}</div>
-            </div>
-            <div className="text-sm text-[#9FB1C1] text-right">
-              <div>Due: {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : '-'}</div>
-              <div>Received: {item.receivedDate ? new Date(item.receivedDate).toLocaleDateString() : '-'}</div>
-            </div>
-          </div>
-
-          <h2 className="mt-6 font-semibold">Parts</h2>
-          <ul className="list-disc ml-5">
-            {item.parts?.map((p:any) => (
-              <li key={p.id}>{p.partNumber} × {p.quantity} {p.material ? `(${p.material.name})` : ''}</li>
-            ))}
-          </ul>
-
-          <h2 className="mt-4 font-semibold">Checklist</h2>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            {item.checklist?.map((c:any) => (
-              <label key={c.id} className="flex items-center gap-3 bg-[#0F1720] p-2 rounded">
-                <input
-                  type="checkbox"
-                  className="w-5 h-5"
-                  checked={checkedIds.has(c.checklistItem?.id)}
-                  disabled={!!toggling}
-                  onChange={e => toggleChecklist(c.checklistItem.id, e.target.checked)}
-                />
-                <div className="flex-1">
-                  <div className="font-medium text-[#E6EDF3]">{c.checklistItem?.label}</div>
-                  <div className="text-xs text-[#9FB1C1]">{c.toggledById ? `Toggled by ${c.toggledById}` : ''}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-
-          <h2 className="mt-4 font-semibold">Status History</h2>
-          <ul>
-            {item.statusHistory?.map((s:any) => (
-              <li key={s.id}>{new Date(s.createdAt).toLocaleString()} — {s.to} — {s.reason ?? ''}</li>
-            ))}
-          </ul>
-        </div>
-
-        <aside>
+      <div className="max-w-6xl mx-auto bg-[#121821] p-6 rounded shadow" style={{display:'grid', gridTemplateColumns: '320px 1fr', gap: '24px'}}>
+        {/* Left sidebar */}
+        <aside style={{paddingRight:12}}>
           <div className="card">
-            <div className="flex items-center justify-between">
-              <div className="font-semibold">Status</div>
-              <div className="text-sm text-[#9FB1C1]">Current: <span className="font-semibold text-[#E6EDF3]">{item.status}</span></div>
-            </div>
-            <div className="mt-3 space-y-2">
-              {[
-                ['NEW','New'],
-                ['PROGRAMMING','Programming'],
-                ['RUNNING','Running'],
-                ['INSPECTING','Inspecting'],
-                ['READY_FOR_ADDONS','Ready for addons'],
-                ['COMPLETE','Complete'],
-                ['CLOSED','Closed']
-              ].map(([val,label]) => (
-                <button key={val as string} className="btn w-full" onClick={() => changeStatus(val as string)}>{label}</button>
-              ))}
+            <h3 className="font-semibold">Customer Details</h3>
+            <div className="kv mt-2">
+              <div className="kvt">Name</div><div>{item.customer?.name ?? '-'}</div>
+              <div className="kvt">Contact</div><div>{item.customer?.contact ?? '-'}</div>
+              <div className="kvt">Phone</div><div>{item.customer?.phone ?? '-'}</div>
+              <div className="kvt">Email</div><div>{item.customer?.email ?? '-'}</div>
+              <div className="kvt">Address</div><div className="text-sm">{item.customer?.address ?? '-'}</div>
             </div>
           </div>
 
           <div className="card mt-4">
-            <div className="font-semibold">Notes</div>
-            <div className="mt-2 max-h-48 overflow-auto">
-              <ul>
-                {item.notes?.map((n:any) => (
-                  <li key={n.id} className="mb-2">
-                    <div className="text-sm text-[#9FB1C1]">{n.user?.name ?? 'Unknown'} • {new Date(n.createdAt).toLocaleString()}</div>
-                    <div className="text-sm">{n.content}</div>
-                  </li>
-                ))}
-              </ul>
+            <h3 className="font-semibold">Order</h3>
+            <div className="kv mt-2">
+              <div className="kvt">Order #</div><div>{item.orderNumber}</div>
+              <div className="kvt">Due</div><div>{item.dueDate ? new Date(item.dueDate).toLocaleDateString() : '-'}</div>
             </div>
+          </div>
 
-            <div className="mt-3">
-              <textarea className="w-full shp" rows={3} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a note..." />
-              <div className="toolbar">
-                <button className="btn" onClick={addNote}>Add Note</button>
-              </div>
+          <div className="card mt-4">
+            <h3 className="font-semibold">Part</h3>
+            <div className="kv mt-2">
+              <div className="kvt">Part #</div><div>{item.parts?.[0]?.partNumber ?? '-'}</div>
+              <div className="kvt">Quantity</div><div>{item.parts?.[0]?.quantity ?? '-'}</div>
+              <div className="kvt">Material</div><div>{item.parts?.[0]?.material?.name ?? '-'}</div>
+            </div>
+          </div>
+
+          <div className="card mt-4">
+            <h3 className="font-semibold">Processes</h3>
+            <div className="mt-2" style={{display:'grid', gridTemplateColumns:'1fr', gap:6}}>
+              {item.checklist?.map((c:any) => (
+                <label key={c.id} className="flex items-center" style={{gap:8}}>
+                  <input type="checkbox" className="w-4 h-4" checked={checkedIds.has(c.checklistItem?.id)} disabled={!!toggling} onChange={e => toggleChecklist(c.checklistItem.id, e.target.checked)} />
+                  <span className="text-sm">{c.checklistItem?.label}</span>
+                </label>
+              ))}
             </div>
           </div>
         </aside>
+
+        {/* Right area: notes (left) and status (right) */}
+        <div style={{display:'grid', gridTemplateColumns: '2fr 360px', gap: '16px'}}>
+          <div>
+            <div className="card">
+              <div className="font-semibold">Notes</div>
+              <div className="mt-2 max-h-[480px] overflow-auto">
+                <ul>
+                  {item.notes?.map((n:any) => (
+                    <li key={n.id} className="mb-3">
+                      <div className="text-sm text-[#9FB1C1]">{n.user?.name ?? 'Unknown'} • {new Date(n.createdAt).toLocaleString()}</div>
+                      <div className="text-sm whitespace-pre-wrap">{n.content}</div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="mt-3">
+                <textarea className="w-full shp" rows={3} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a note..." />
+                <div className="toolbar">
+                  <button className="btn" onClick={addNote}>Add Note</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="card">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold">Status</div>
+                <div className="text-sm text-[#9FB1C1]">Current: <span className="font-semibold text-[#E6EDF3]">{item.status}</span></div>
+              </div>
+              <div className="mt-3 space-y-2">
+                {[
+                  ['NEW','New'],
+                  ['PROGRAMMING','Programming'],
+                  ['RUNNING','Running'],
+                  ['INSPECTING','Inspecting'],
+                  ['READY_FOR_ADDONS','Ready for addons'],
+                  ['COMPLETE','Complete'],
+                  ['CLOSED','Closed']
+                ].map(([val,label]) => (
+                  <button key={val as string} className="btn w-full" onClick={() => changeStatus(val as string)}>{label}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="card mt-4">
+              <div className="font-semibold">Status History</div>
+              <div className="mt-2 text-sm text-[#9FB1C1]">
+                <ul>
+                  {item.statusHistory?.map((s:any) => (
+                    <li key={s.id} className="mb-2">{new Date(s.createdAt).toLocaleString()} — <strong>{s.to}</strong> {s.reason ? `— ${s.reason}` : ''}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
