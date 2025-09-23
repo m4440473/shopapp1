@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { prisma } from '@/src/lib/prisma';
-import { authOptions } from '@/src/lib/auth';
-import { canAccessAdmin } from '@/src/lib/rbac';
-import { OrderQuery, OrderCreate } from '@/src/lib/zod-orders';
-import { Role, Status } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
+import { authOptions } from '@/lib/auth';
+import { canAccessAdmin } from '@/lib/rbac';
+import { OrderQuery, OrderCreate } from '@/lib/zod-orders';
+// Status enum not used from prisma; statuses are strings in this schema
 
 /** GET /api/orders — list with filters & cursor pagination */
 export async function GET(req: NextRequest) {
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
-  const role = (session.user as any)?.role as Role | undefined;
+  const role = (session.user as any)?.role as string | undefined;
   if (!canAccessAdmin(role)) return new NextResponse('Forbidden', { status: 403 });
 
   const json = await req.json().catch(() => null);
@@ -107,8 +107,8 @@ export async function POST(req: NextRequest) {
         : undefined,
       statusHistory: {
         create: {
-          from: 'RECEIVED' as Status,
-          to: 'RECEIVED' as Status,
+          from: 'RECEIVED',
+          to: 'RECEIVED',
           userId: (session.user as any)?.id,
           reason: 'Order created',
         },
