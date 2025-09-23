@@ -1,19 +1,14 @@
 import NavTabs from '@/components/Admin/NavTabs';
 import { ToastProvider } from '@/components/ui/Toast';
 import Client from './client';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
-async function fetchInitial() {
-  const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
-  const url = `${base.replace(/\/+$/, '')}/api/admin/users?take=20`;
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Failed to load');
-  return res.json();
-}
-
 export default async function Page() {
-  const initial = await fetchInitial();
+  // Load initial data directly on the server using Prisma to avoid SSR fetch issues
+  const items = await prisma.user.findMany({ orderBy: { id: 'asc' }, take: 20 });
+  const initial = { items, nextCursor: null };
   return (
     <div className="p-4 text-neutral-100">
       <NavTabs />
