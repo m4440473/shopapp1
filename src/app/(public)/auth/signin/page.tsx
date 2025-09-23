@@ -2,10 +2,13 @@
 
 import { signIn } from 'next-auth/react';
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 export default function SignInPage() {
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('admin123');
+  const searchParams = useSearchParams();
+  const error = searchParams.get('error');
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -16,6 +19,9 @@ export default function SignInPage() {
     <div className="min-h-screen flex items-center justify-center bg-[#0B0F14] text-[#E6EDF3]">
       <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4 bg-[#121821] p-6 rounded-md shadow">
         <h1 className="text-xl font-semibold">Sign in</h1>
+        {error && (
+          <div className="text-red-400 text-sm mb-2">Invalid email or password.</div>
+        )}
         <label className="block text-sm">
           <span className="text-[#9FB1C1]">Email</span>
           <input
