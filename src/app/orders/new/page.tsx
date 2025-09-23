@@ -45,6 +45,46 @@ export default function NewOrderPage() {
 					.then(res => res.ok ? res.json() : Promise.reject(res))
 					.then(data => setChecklistItems(data.items ?? []))
 					.catch(() => setChecklistItems([]));
+
+				// Ensure standard shop checklist items exist (only admins can create via admin API).
+				// This is a convenience for dev/demo: if the seed hasn't created these labels,
+				// try to create them (the admin guard will reject for non-admin users).
+				const standard = [
+					"Deburr",
+					"Heat Treat",
+					"Grind",
+					"Stamp",
+					"Inspect",
+					"Paint",
+					"Black Oxide",
+					"Plating",
+					"Powder Coating",
+					"Zinc",
+				];
+
+				(async () => {
+					try {
+						const res = await fetch('/api/admin/checklist-items?take=500');
+						if (!res.ok) return; // can't ensure if not admin
+						const data = await res.json();
+						const existing = (data.items ?? []) as {id:string,label:string}[];
+						const existingLabels = new Set(existing.map(i => i.label.toLowerCase()));
+						for (const label of standard) {
+							if (!existingLabels.has(label.toLowerCase())) {
+								// Try to create; admin guard may reject if not admin
+								await fetch('/api/admin/checklist-items', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ label }) });
+							}
+						}
+						// refresh
+						const refreshed = await fetch('/api/admin/checklist-items?take=500');
+						if (refreshed.ok) {
+							const d2 = await refreshed.json();
+							setChecklistItems(d2.items ?? []);
+						}
+					} catch (e) {
+						// ignore
+					}
+				})();
 			}, []);
 
 		async function handleSubmit(e: React.FormEvent) {
@@ -188,24 +228,25 @@ export default function NewOrderPage() {
 						</label>
 						<label className="block text-sm">
 							<span className="text-[#9FB1C1]">Checklist Items</span>
-							<div className="mt-1 space-y-1">
-								{checklistItems.map(item => (
-									<label key={item.id} className="flex items-center gap-2 text-xs">
-										<input
-											type="checkbox"
-											checked={selectedChecklist.includes(item.id)}
-											onChange={e => {
-												setSelectedChecklist(sel =>
-													e.target.checked
-														? [...sel, item.id]
-														: sel.filter(id => id !== item.id)
-												);
-											}}
-										/>
-										{item.label}
-									</label>
-								))}
-							</div>
+								<div className="mt-2 grid grid-cols-2 gap-2">
+									{checklistItems.map(item => (
+										<label key={item.id} className="flex items-center gap-2 text-sm bg-[#0F1720] p-2 rounded">
+											<input
+												type="checkbox"
+												className="w-4 h-4"
+												checked={selectedChecklist.includes(item.id)}
+												onChange={e => {
+													setSelectedChecklist(sel =>
+														e.target.checked
+															? [...sel, item.id]
+															: sel.filter(id => id !== item.id)
+													);
+												}}
+											/>
+											<span className="text-[#E6EDF3]">{item.label}</span>
+										</label>
+									))}
+								</div>
 						</label>
 				<button type="submit" disabled={loading} className="w-full py-2 rounded bg-[#34D399] hover:opacity-90 text-black font-semibold">
 					{loading ? "Submitting..." : "Create Order"}
