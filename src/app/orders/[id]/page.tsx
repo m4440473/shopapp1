@@ -1,6 +1,9 @@
 "use client";
 import React, { useEffect, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Textarea from '@/components/ui/Textarea';
 
 export default function OrderDetailPage() {
   const pathname = usePathname();
@@ -15,7 +18,7 @@ export default function OrderDetailPage() {
     if (!id) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/orders/${id}`);
+      const res = await fetch(`/api/orders/${id}`, { credentials: 'include' });
       if (!res.ok) throw res;
       const data = await res.json();
       setItem(data.item);
@@ -36,7 +39,8 @@ export default function OrderDetailPage() {
   async function toggleChecklist(checklistItemId: string, checked: boolean) {
     setToggling(checklistItemId);
     try {
-      await fetch(`/api/orders/${id}/checklist`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ checklistItemId, checked }) });
+      const res = await fetch(`/api/orders/${id}/checklist`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ checklistItemId, checked }), credentials: 'include' });
+      if (!res.ok) throw res;
       // refresh
       await load();
     } catch (e) {
@@ -55,7 +59,8 @@ export default function OrderDetailPage() {
   async function addNote() {
     if (!noteText.trim()) return;
     try {
-      await fetch(`/api/orders/${id}/notes`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ content: noteText.trim() }) });
+      const res = await fetch(`/api/orders/${id}/notes`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ content: noteText.trim() }), credentials: 'include' });
+      if (!res.ok) throw res;
       setNoteText('');
       await load();
     } catch (e) { console.error(e); }
@@ -63,7 +68,8 @@ export default function OrderDetailPage() {
 
   async function changeStatus(newStatus: string) {
     try {
-      await fetch(`/api/orders/${id}/status`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: newStatus }) });
+      const res = await fetch(`/api/orders/${id}/status`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: newStatus }), credentials: 'include' });
+      if (!res.ok) throw res;
       await load();
     } catch (e) { console.error(e); }
   }
@@ -114,63 +120,59 @@ export default function OrderDetailPage() {
           </div>
         </aside>
 
-        {/* Right area: notes (left) and status (right) */}
-        <div style={{display:'grid', gridTemplateColumns: '2fr 360px', gap: '16px'}}>
-          <div>
-            <div className="card">
-              <div className="font-semibold">Notes</div>
-              <div className="mt-2 max-h-[480px] overflow-auto">
-                <ul>
-                  {item.notes?.map((n:any) => (
-                    <li key={n.id} className="mb-3">
-                      <div className="text-sm text-[#9FB1C1]">{n.user?.name ?? 'Unknown'} • {new Date(n.createdAt).toLocaleString()}</div>
-                      <div className="text-sm whitespace-pre-wrap">{n.content}</div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="mt-3">
-                <textarea className="w-full shp" rows={3} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a note..." />
-                <div className="toolbar">
-                  <button className="btn" onClick={addNote}>Add Note</button>
-                </div>
-              </div>
+        {/* Right area: single column with Status & Notes stacked */}
+        <div>
+          <Card>
+            <div className="flex items-center justify-between">
+              <div className="font-semibold">Status</div>
+              <div className="text-sm text-[#9FB1C1]">Current: <span className="font-semibold text-[#E6EDF3]">{item.status}</span></div>
             </div>
-          </div>
+            <div className="mt-3 space-y-2">
+              {[
+                ['NEW','New'],
+                ['PROGRAMMING','Programming'],
+                ['RUNNING','Running'],
+                ['INSPECTING','Inspecting'],
+                ['READY_FOR_ADDONS','Ready for addons'],
+                ['COMPLETE','Complete'],
+                ['CLOSED','Closed']
+              ].map(([val,label]) => (
+                <Button key={val as string} className="w-full" onClick={() => changeStatus(val as string)}>{label}</Button>
+              ))}
+            </div>
+          </Card>
 
-          <div>
-            <div className="card">
-              <div className="flex items-center justify-between">
-                <div className="font-semibold">Status</div>
-                <div className="text-sm text-[#9FB1C1]">Current: <span className="font-semibold text-[#E6EDF3]">{item.status}</span></div>
-              </div>
-              <div className="mt-3 space-y-2">
-                {[
-                  ['NEW','New'],
-                  ['PROGRAMMING','Programming'],
-                  ['RUNNING','Running'],
-                  ['INSPECTING','Inspecting'],
-                  ['READY_FOR_ADDONS','Ready for addons'],
-                  ['COMPLETE','Complete'],
-                  ['CLOSED','Closed']
-                ].map(([val,label]) => (
-                  <button key={val as string} className="btn w-full" onClick={() => changeStatus(val as string)}>{label}</button>
+          <Card className="mt-4">
+            <div className="font-semibold">Notes</div>
+            <div className="mt-2 max-h-[360px] overflow-auto">
+              <ul>
+                {item.notes?.map((n:any) => (
+                  <li key={n.id} className="mb-3">
+                    <div className="text-sm text-[#9FB1C1]">{n.user?.name ?? 'Unknown'} • {new Date(n.createdAt).toLocaleString()}</div>
+                    <div className="text-sm whitespace-pre-wrap">{n.content}</div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
 
-            <div className="card mt-4">
-              <div className="font-semibold">Status History</div>
-              <div className="mt-2 text-sm text-[#9FB1C1]">
-                <ul>
-                  {item.statusHistory?.map((s:any) => (
-                    <li key={s.id} className="mb-2">{new Date(s.createdAt).toLocaleString()} — <strong>{s.to}</strong> {s.reason ? `— ${s.reason}` : ''}</li>
-                  ))}
-                </ul>
+            <div className="mt-3">
+              <Textarea rows={3} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a note..." />
+              <div className="toolbar">
+                <Button onClick={addNote}>Add Note</Button>
               </div>
             </div>
-          </div>
+          </Card>
+
+          <Card className="mt-4">
+            <div className="font-semibold">Status History</div>
+            <div className="mt-2 text-sm text-[#9FB1C1]">
+              <ul>
+                {item.statusHistory?.map((s:any) => (
+                  <li key={s.id} className="mb-2">{new Date(s.createdAt).toLocaleString()} — <strong>{s.to}</strong> {s.reason ? `— ${s.reason}` : ''}</li>
+                ))}
+              </ul>
+            </div>
+          </Card>
         </div>
       </div>
     </div>
