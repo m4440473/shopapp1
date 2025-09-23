@@ -9,6 +9,7 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState('');
 
   async function load() {
     if (!id) return;
@@ -50,8 +51,6 @@ export default function OrderDetailPage() {
   if (!item) return <div className="p-6">Order not found</div>;
 
   const checkedIds = new Set(item.checklist?.map((c:any) => c.checklistItem?.id));
-
-  const [noteText, setNoteText] = useState('');
 
   async function addNote() {
     if (!noteText.trim()) return;
