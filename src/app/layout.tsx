@@ -9,15 +9,24 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-[#0B0F14] text-[#E6EDF3] min-h-screen">
-        <header className="app-header">
-          <div className="container px-4 py-4">
+      <body>
+        <header>
+          <div className="container">
+            <div style={{display:'flex',alignItems:'baseline',gap:12}}>
+              <h1>ShopApp</h1>
+              <div className="sub">Machine shop order tracking • Demo</div>
+            </div>
             <Nav />
           </div>
         </header>
-        <main className="app-main container px-4">
-          {children}
+        <main>
+          <div className="container app-main">
+            {children}
+          </div>
         </main>
+        <footer className="container">
+          <div style={{padding:'16px 0',textAlign:'center',color:'var(--muted)'}}>Demo • built with ❤️</div>
+        </footer>
       </body>
     </html>
   );
