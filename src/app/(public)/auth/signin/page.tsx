@@ -1,14 +1,19 @@
-'use client';
+"use client";
 
 import { signIn } from 'next-auth/react';
-import { useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 export default function SignInPage() {
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('admin123');
-  const searchParams = useSearchParams();
-  const error = searchParams.get('error');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Read ?error= from the URL on the client to avoid using `useSearchParams` which
+    // can trigger prerender/suspense boundary errors when the page is statically generated.
+    const params = new URLSearchParams(window.location.search);
+    setError(params.get('error'));
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

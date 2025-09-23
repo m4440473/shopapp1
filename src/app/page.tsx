@@ -9,7 +9,7 @@ export default async function Home() {
       {session?.user ? (
         <div>
           <p>Hello, {session.user.name || session.user.email}!</p>
-          <p>Your role: {session.user.role}</p>
+          <p>Your role: {(session.user as any).role}</p>
         </div>
       ) : (
         <p>Please <a href="/auth/signin" className="underline text-[#34D399]">sign in</a> to continue.</p>

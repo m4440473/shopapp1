@@ -2,7 +2,6 @@ import type { NextAuthOptions } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { prisma } from './prisma';
 import { compare } from 'bcryptjs';
-import { Role } from '@prisma/client';
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt' },
@@ -46,7 +45,8 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        (token as any).role = (user as any).role ?? Role.MACHINIST;
+        // user.role comes from the Prisma DB as a string; default to 'MACHINIST' for legacy/seeding cases
+        (token as any).role = (user as any).role ?? 'MACHINIST';
       }
       return token;
     },

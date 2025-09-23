@@ -21,3 +21,32 @@ a { color: inherit; }
 
 /* small responsive container helper */
 .container { max-width: 1024px; margin: 0 auto; }
+
+/* Layout helpers */
+.app-header {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.app-main { padding: 24px; }
+
+/* Card */
+.card {
+  background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.01));
+  border: 1px solid rgba(255,255,255,0.03);
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.6);
+}
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+.btn-primary { background: var(--accent); color: black; }
+.btn-ghost { background: transparent; border: 1px solid rgba(255,255,255,0.03); color: var(--subtext); }
+
+/* Forms */
+.input { background: var(--muted); border: 1px solid rgba(255,255,255,0.03); padding: 8px 10px; border-radius: 6px; color: var(--text); }
+.label { color: var(--subtext); font-size: 0.9rem; }
+
+/* Utility */
+.muted { color: var(--subtext); }
+.small { font-size: 0.85rem; }
