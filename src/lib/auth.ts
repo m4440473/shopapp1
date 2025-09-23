@@ -15,11 +15,30 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        if (!credentials?.email || !credentials?.password) {
+          console.log('Missing credentials');
+          return null;
+        }
         const user = await prisma.user.findUnique({ where: { email: credentials.email } });
-        if (!user || !user.active || !user.passwordHash) return null;
+        if (!user) {
+          console.log('User not found:', credentials.email);
+          return null;
+        }
+        if (!user.active) {
+          console.log('User not active:', credentials.email);
+          return null;
+        }
+        if (!user.passwordHash) {
+          console.log('No passwordHash for user:', credentials.email);
+          return null;
+        }
         const ok = await compare(credentials.password, user.passwordHash);
-        if (!ok) return null;
+        console.log('Password compare:', credentials.password, user.passwordHash, ok);
+        if (!ok) {
+          console.log('Password incorrect for user:', credentials.email);
+          return null;
+        }
+        console.log('Sign-in success for user:', credentials.email);
         return { id: user.id, email: user.email, name: user.name ?? '', role: user.role };
       },
     }),
