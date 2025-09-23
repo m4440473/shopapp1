@@ -6,11 +6,23 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || !canAccessAdmin(session.user)) {
+  if (!session || !canAccessAdmin(session.user as any)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const { searchParams } = new URL(req.url);
   const take = parseInt(searchParams.get('take') || '100', 10);
   const customers = await prisma.customer.findMany({ take });
-  return NextResponse.json(customers);
+  return NextResponse.json({ items: customers });
+}
+
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session || !canAccessAdmin(session.user as any)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const body = await req.json();
+  const name = body?.name?.trim();
+  if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+  const customer = await prisma.customer.create({ data: { name, contact: body.contact || null, phone: body.phone || null, email: body.email || null, address: body.address || null } });
+  return NextResponse.json({ ok: true, item: customer });
 }

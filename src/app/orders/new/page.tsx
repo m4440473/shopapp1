@@ -7,6 +7,8 @@ export default function NewOrderPage() {
 	const [orderNumber, setOrderNumber] = useState("");
 		const [customerId, setCustomerId] = useState("");
 			const [customers, setCustomers] = useState<{id:string, name:string}[]>([]);
+			const [showCreateCustomer, setShowCreateCustomer] = useState(false);
+			const [newCustomerName, setNewCustomerName] = useState('');
 			const [vendors, setVendors] = useState<{id:string, name:string}[]>([]);
 			const [materials, setMaterials] = useState<{id:string, name:string}[]>([]);
 			const [checklistItems, setChecklistItems] = useState<{id:string, label:string}[]>([]);
@@ -23,10 +25,10 @@ export default function NewOrderPage() {
 
 		// Fetch customers on mount
 			React.useEffect(() => {
-				fetch("/api/admin/customers?take=100")
-					.then(res => res.ok ? res.json() : Promise.reject(res))
-					.then(data => setCustomers(data.items ?? []))
-					.catch(() => setCustomers([]));
+					fetch("/api/admin/customers?take=100")
+						.then(res => res.ok ? res.json() : Promise.reject(res))
+						.then(data => setCustomers(data.items ?? data ?? []))
+						.catch(() => setCustomers([]));
 				fetch("/api/admin/vendors?take=100")
 					.then(res => res.ok ? res.json() : Promise.reject(res))
 					.then(data => setVendors(data.items ?? []))
@@ -102,6 +104,30 @@ export default function NewOrderPage() {
 									<option key={c.id} value={c.id}>{c.name}</option>
 								))}
 							</select>
+								<div className="mt-2">
+									<button type="button" onClick={() => setShowCreateCustomer(s => !s)} className="text-sm text-[#34D399] underline">+ Add customer</button>
+									{showCreateCustomer && (
+										<div className="mt-2 p-2 bg-[#0F1720] rounded">
+											<input className="w-full mb-2 p-2 rounded bg-[#1B2430]" placeholder="Customer name" value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)} />
+											<div className="flex gap-2">
+												<button type="button" onClick={async () => {
+													if (!newCustomerName.trim()) return;
+													const res = await fetch('/api/admin/customers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name: newCustomerName }) });
+													if (res.ok) {
+														const data = await res.json();
+														setCustomers(s => [data.item, ...s]);
+														setCustomerId(data.item.id);
+														setShowCreateCustomer(false);
+														setNewCustomerName('');
+													} else {
+														console.error('Failed to create customer');
+													}
+												}}>Create</button>
+												<button type="button" onClick={() => setShowCreateCustomer(false)}>Cancel</button>
+											</div>
+										</div>
+									)}
+								</div>
 						</label>
 				<label className="block text-sm">
 					<span className="text-[#9FB1C1]">Due Date</span>
