@@ -143,9 +143,8 @@ export default function OrderDetailPage() {
           <div className="card mt-4">
             <div className="font-semibold">Notes</div>
             <div className="mt-2 max-h-48 overflow-auto">
-              {(item.statusHistory || []).concat(item.notes?[]:[])}
               <ul>
-                {item.notesList?.map((n:any) => (
+                {item.notes?.map((n:any) => (
                   <li key={n.id} className="mb-2">
                     <div className="text-sm text-[#9FB1C1]">{n.user?.name ?? 'Unknown'} • {new Date(n.createdAt).toLocaleString()}</div>
                     <div className="text-sm">{n.content}</div>
