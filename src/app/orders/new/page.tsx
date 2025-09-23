@@ -230,7 +230,7 @@ export default function NewOrderPage() {
 							<span className="text-[#9FB1C1]">Checklist Items</span>
 								<div className="mt-2 grid grid-cols-2 gap-2">
 									{checklistItems.map(item => (
-										<label key={item.id} className="flex items-center gap-2 text-sm bg-[#0F1720] p-2 rounded">
+										<label key={item.id} className="proc-row bg-[#0F1720] p-2 shp">
 											<input
 												type="checkbox"
 												className="w-4 h-4"
@@ -243,7 +243,7 @@ export default function NewOrderPage() {
 													);
 												}}
 											/>
-											<span className="text-[#E6EDF3]">{item.label}</span>
+											<span className="text-[#E6EDF3] text-sm">{item.label}</span>
 										</label>
 									))}
 								</div>
