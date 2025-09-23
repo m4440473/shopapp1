@@ -7,13 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/* NOTE: No enums on SQLite. Use strings + @db.Text instead. */
+// NOTE: No enums on SQLite. Use strings + @db.Text instead.
 
 model User {
   id               String   @id @default(cuid())
   email            String   @unique
   name             String?
-  role             String   @default("MACHINIST") @db.Text
+  role             String   @default("MACHINIST")
   active           Boolean  @default(true)
   // Credentials provider (nullable)
   passwordHash     String?
@@ -22,6 +22,8 @@ model User {
   notes            Note[]
   timeLogs         TimeLog[]
   checklistToggles OrderChecklist[] @relation("ChecklistToggledBy")
+  uploadedAttachments Attachment[] @relation("UserAttachments")
+  statusHistories StatusHistory[] @relation("UserStatusHistory")
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -38,6 +40,7 @@ model Customer {
   orders  Order[]
 
   @@index([name])
+  @@unique([name])
 }
 
 model Material {
@@ -60,4 +63,100 @@ model Vendor {
 }
 
 model ChecklistItem {
-  id     String  @id @default
+  id     String  @id @default(cuid())
+  label  String
+  active Boolean @default(true)
+  orderChecklist OrderChecklist[]
+  @@unique([label])
+}
+
+model Order {
+  id               String   @id @default(cuid())
+  orderNumber      String
+  customerId       String
+  customer         Customer @relation(fields: [customerId], references: [id])
+  status           String
+  priority         String
+  dueDate          DateTime
+  receivedDate     DateTime
+  modelIncluded    Boolean @default(false)
+  materialNeeded   Boolean @default(false)
+  materialOrdered  Boolean @default(false)
+  vendorId         String?
+  vendor           Vendor? @relation(fields: [vendorId], references: [id])
+  poNumber         String?
+  assignedMachinistId String?
+  assignedMachinist   User? @relation("AssignedOrders", fields: [assignedMachinistId], references: [id])
+  parts            OrderPart[]
+  checklist        OrderChecklist[]
+  attachments      Attachment[]
+  notes            Note[]
+  timeLogs         TimeLog[]
+  statusHistory    StatusHistory[]
+}
+
+model OrderPart {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  partNumber String
+  quantity   Int
+  materialId String?
+  material   Material? @relation(fields: [materialId], references: [id])
+  notes      String?
+}
+
+model OrderChecklist {
+  id              String   @id @default(cuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id])
+  checklistItemId String
+  checklistItem   ChecklistItem @relation(fields: [checklistItemId], references: [id])
+  toggledById     String?
+  toggledBy       User?    @relation("ChecklistToggledBy", fields: [toggledById], references: [id])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+}
+
+model TimeLog {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  phase     String
+  minutes   Int
+  createdAt DateTime @default(now())
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  url       String
+  label     String?
+  mimeType  String?
+  uploadedById String?
+  uploadedBy   User? @relation("UserAttachments", fields: [uploadedById], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model StatusHistory {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  from      String
+  to        String
+  userId    String?
+  user      User?    @relation("UserStatusHistory", fields: [userId], references: [id])
+  reason    String?
+  createdAt DateTime @default(now())
+}

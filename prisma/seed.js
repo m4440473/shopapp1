@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
@@ -76,7 +76,7 @@ async function main() {
   const mats = await prisma.material.findMany();
   const checklist = await prisma.checklistItem.findMany();
 
-  async function seedOrder(idx: number, customerId: string, assigned?: string | null) {
+  async function seedOrder(idx, customerId, assigned) {
     const ord = await prisma.order.create({
       data: {
         orderNumber: `SO-${1000 + idx}`,
@@ -84,8 +84,8 @@ async function main() {
         modelIncluded: idx % 2 === 0,
         receivedDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * (7 - idx)),
         dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * (idx + 2)),
-  priority: ["NORMAL", "RUSH", "HOT"][idx % 3],
-  status: "RECEIVED",
+        priority: ["NORMAL", "RUSH", "HOT"][idx % 3],
+        status: "RECEIVED",
         assignedMachinistId: assigned ?? null,
         materialNeeded: idx % 2 === 1,
         materialOrdered: idx % 3 === 0,
@@ -103,7 +103,7 @@ async function main() {
         checklist: {
           create: checklist.slice(0, 3).map(c => ({ checklistItemId: c.id })),
         },
-  statusHistory: { create: { from: "RECEIVED", to: "RECEIVED", userId: admin.id, reason: 'Seed' } },
+        statusHistory: { create: { from: "RECEIVED", to: "RECEIVED", userId: admin.id, reason: 'Seed' } },
       },
     });
 
