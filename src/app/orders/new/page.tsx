@@ -4,7 +4,6 @@ import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PlusCircle, Upload, Printer } from 'lucide-react';
-
 import { Button } from '@/components/ui/Button';
 import {
   Card,
@@ -47,6 +46,7 @@ const emptyPart = (): PartInput => ({ partNumber: '', quantity: 1, materialId: '
 const emptyAttachment = (): AttachmentInput => ({ url: '', label: '', mimeType: '' });
 
 export default function NewOrderPage() {
+  const router = useRouter();
   const [customerId, setCustomerId] = React.useState('');
   const [customers, setCustomers] = React.useState<Option[]>([]);
   const [customerDialogOpen, setCustomerDialogOpen] = React.useState(false);
@@ -74,14 +74,11 @@ export default function NewOrderPage() {
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState('');
   const [createdOrderId, setCreatedOrderId] = React.useState<string | null>(null);
-
   const router = useRouter();
-
   const handlePrintNewOrder = React.useCallback(() => {
     if (!createdOrderId) return;
     window.open(`/orders/${createdOrderId}/print`, '_blank', 'noopener,noreferrer');
   }, [createdOrderId]);
-
   React.useEffect(() => {
     fetch('/api/admin/customers?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
