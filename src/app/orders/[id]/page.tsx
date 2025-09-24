@@ -12,6 +12,9 @@ import {
   Printer,
   StickyNote,
   ChevronDown,
+  PlusCircle,
+  Paperclip,
+  Upload,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -72,6 +75,19 @@ type EditFormState = {
   assignedMachinistId: string;
 };
 
+type PartFormState = {
+  partNumber: string;
+  quantity: string;
+  materialId: string;
+  notes: string;
+};
+
+type AttachmentFormState = {
+  label: string;
+  url: string;
+  mimeType: string;
+};
+
 const statusColor = (status: string) =>
   ({
     NEW: 'bg-sky-500/20 text-sky-200',
@@ -94,6 +110,24 @@ export default function OrderDetailPage() {
   const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({});
   const [vendors, setVendors] = useState<Option[]>([]);
   const [machinists, setMachinists] = useState<Option[]>([]);
+  const [materials, setMaterials] = useState<Option[]>([]);
+  const [partForm, setPartForm] = useState<PartFormState>({
+    partNumber: '',
+    quantity: '1',
+    materialId: '',
+    notes: '',
+  });
+  const [partSaving, setPartSaving] = useState(false);
+  const [partError, setPartError] = useState<string | null>(null);
+  const [attachmentForm, setAttachmentForm] = useState<AttachmentFormState>({
+    label: '',
+    url: '',
+    mimeType: '',
+  });
+  const [attachmentSaving, setAttachmentSaving] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [attachmentFileKey, setAttachmentFileKey] = useState(0);
+  const [attachmentFileName, setAttachmentFileName] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -114,13 +148,15 @@ export default function OrderDetailPage() {
   }, [id]);
 
   async function load() {
-    if (!id) return;
+    if (!id) return null;
     setLoading(true);
+    let nextItem: any | null = null;
     try {
       const res = await fetch(`/api/orders/${id}`, { credentials: 'include' });
       if (!res.ok) throw res;
       const data = await res.json();
       setItem(data.item);
+      nextItem = data.item;
       setError(null);
     } catch (err: any) {
       try {
@@ -132,6 +168,7 @@ export default function OrderDetailPage() {
     } finally {
       setLoading(false);
     }
+    return nextItem;
   }
 
   useEffect(() => {
@@ -150,6 +187,14 @@ export default function OrderDetailPage() {
         setVendors(list.map((vendor: any) => ({ id: vendor.id, name: vendor.name })));
       })
       .catch(() => setVendors([]));
+
+    fetch('/api/admin/materials?take=100', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        const list = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        setMaterials(list.map((material: any) => ({ id: material.id, name: material.name })));
+      })
+      .catch(() => setMaterials([]));
 
     fetch('/api/admin/users?role=MACHINIST&take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
@@ -203,6 +248,146 @@ export default function OrderDetailPage() {
       console.error(e);
     } finally {
       setToggling(null);
+    }
+  }
+
+  async function handleAddPart(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!id) return;
+    const trimmedPartNumber = partForm.partNumber.trim();
+    if (!trimmedPartNumber) {
+      setPartError('Part number is required');
+      return;
+    }
+    const quantityValue = Number.parseInt(partForm.quantity, 10);
+    if (!Number.isFinite(quantityValue) || quantityValue < 1) {
+      setPartError('Quantity must be at least 1');
+      return;
+    }
+    setPartSaving(true);
+    setPartError(null);
+    try {
+      const payload: Record<string, unknown> = {
+        partNumber: trimmedPartNumber,
+        quantity: quantityValue,
+      };
+      if (partForm.materialId) payload.materialId = partForm.materialId;
+      if (partForm.notes.trim()) payload.notes = partForm.notes.trim();
+
+      const res = await fetch(`/api/orders/${id}/parts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+      const raw = await res.text();
+      if (!res.ok) {
+        let message = 'Failed to add part';
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            message =
+              typeof parsed?.error === 'string'
+                ? parsed.error
+                : parsed?.message || JSON.stringify(parsed?.error ?? parsed);
+          } catch {
+            message = raw;
+          }
+        }
+        throw new Error(message || 'Failed to add part');
+      }
+
+      let createdPartId: string | undefined;
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          createdPartId = parsed?.part?.id as string | undefined;
+        } catch {
+          createdPartId = undefined;
+        }
+      }
+
+      setPartForm({ partNumber: '', quantity: '1', materialId: '', notes: '' });
+      const updated = await load();
+      if (createdPartId) {
+        setExpandedParts((prev) => ({ ...prev, [createdPartId]: true }));
+      } else if (Array.isArray(updated?.parts) && updated.parts.length) {
+        const latest = updated.parts[updated.parts.length - 1];
+        if (latest?.id) {
+          setExpandedParts((prev) => ({ ...prev, [latest.id]: true }));
+        }
+      }
+    } catch (err: any) {
+      setPartError(err.message || 'Failed to add part');
+    } finally {
+      setPartSaving(false);
+    }
+  }
+
+  function handleAttachmentFile(fileList: FileList | null) {
+    const file = fileList?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      setAttachmentForm((prev) => ({
+        ...prev,
+        url: result,
+        label: prev.label || file.name,
+        mimeType: file.type || prev.mimeType,
+      }));
+      setAttachmentFileName(file.name);
+      setAttachmentError(null);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleAddAttachment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!id) return;
+    const url = attachmentForm.url.trim();
+    if (!url) {
+      setAttachmentError('Add a link or upload a file to attach.');
+      return;
+    }
+    setAttachmentSaving(true);
+    setAttachmentError(null);
+    try {
+      const payload: Record<string, unknown> = { url };
+      if (attachmentForm.label.trim()) payload.label = attachmentForm.label.trim();
+      if (attachmentForm.mimeType.trim()) payload.mimeType = attachmentForm.mimeType.trim();
+
+      const res = await fetch(`/api/orders/${id}/attachments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+      const raw = await res.text();
+      if (!res.ok) {
+        let message = 'Failed to add attachment';
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            message =
+              typeof parsed?.error === 'string'
+                ? parsed.error
+                : parsed?.message || JSON.stringify(parsed?.error ?? parsed);
+          } catch {
+            message = raw;
+          }
+        }
+        throw new Error(message || 'Failed to add attachment');
+      }
+
+      setAttachmentForm({ label: '', url: '', mimeType: '' });
+      setAttachmentFileName(null);
+      setAttachmentFileKey((prev) => prev + 1);
+      await load();
+    } catch (err: any) {
+      setAttachmentError(err.message || 'Failed to add attachment');
+    } finally {
+      setAttachmentSaving(false);
     }
   }
 
@@ -294,6 +479,7 @@ export default function OrderDetailPage() {
   const parts: any[] = Array.isArray(item.parts) ? item.parts : [];
   const primaryPart = parts[0];
   const additionalParts = parts.slice(1);
+  const attachments: any[] = Array.isArray(item.attachments) ? item.attachments : [];
 
   return (
     <div className="space-y-6">
@@ -630,6 +816,91 @@ export default function OrderDetailPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
+                <PlusCircle className="h-4 w-4 text-muted-foreground" /> Add another part
+              </CardTitle>
+              <CardDescription>Extend this order with additional line items.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="space-y-4" onSubmit={handleAddPart}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="new-part-number">Part number</Label>
+                    <Input
+                      id="new-part-number"
+                      value={partForm.partNumber}
+                      onChange={(e) => {
+                        setPartForm((prev) => ({ ...prev, partNumber: e.target.value }));
+                        setPartError(null);
+                      }}
+                      placeholder="e.g. SP-1024"
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="new-part-quantity">Quantity</Label>
+                    <Input
+                      id="new-part-quantity"
+                      type="number"
+                      min={1}
+                      value={partForm.quantity}
+                      onChange={(e) => {
+                        setPartForm((prev) => ({ ...prev, quantity: e.target.value }));
+                        setPartError(null);
+                      }}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="new-part-material">Material</Label>
+                    <Select
+                      value={partForm.materialId || NONE_VALUE}
+                      onValueChange={(value) => {
+                        setPartForm((prev) => ({ ...prev, materialId: value === NONE_VALUE ? '' : value }));
+                      }}
+                    >
+                      <SelectTrigger id="new-part-material" className="border-border/60 bg-background/80 text-left">
+                        <SelectValue placeholder="Optional" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE_VALUE}>TBD</SelectItem>
+                        {materials.map((material) => (
+                          <SelectItem key={material.id} value={material.id}>
+                            {material.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2 sm:col-span-2">
+                    <Label htmlFor="new-part-notes">Notes</Label>
+                    <Textarea
+                      id="new-part-notes"
+                      value={partForm.notes}
+                      onChange={(e) => {
+                        setPartForm((prev) => ({ ...prev, notes: e.target.value }));
+                        setPartError(null);
+                      }}
+                      placeholder="Surface finish, tolerances, tooling, etc."
+                      className="min-h-[100px]"
+                    />
+                  </div>
+                </div>
+                {partError && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {partError}
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={partSaving} className="rounded-full">
+                    {partSaving ? 'Adding…' : 'Add part'}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
                 <ClipboardList className="h-4 w-4 text-muted-foreground" /> Checklist
               </CardTitle>
               <CardDescription>Track downstream processes and finishing services.</CardDescription>
@@ -686,6 +957,121 @@ export default function OrderDetailPage() {
                   <ArrowRight className="h-4 w-4 opacity-70" />
                 </Button>
               ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Paperclip className="h-4 w-4 text-muted-foreground" /> Attachments
+              </CardTitle>
+              <CardDescription>Link drawings or upload reference files shared with the team.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                {attachments.length ? (
+                  attachments.map((att: any, index: number) => {
+                    const key = att.id ?? `attachment-${index + 1}`;
+                    const uploadedLabel = att.uploadedBy?.name || att.uploadedBy?.email || '';
+                    return (
+                      <div
+                        key={key}
+                        className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
+                      >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <div className="font-medium text-foreground">{att.label || 'Attachment'}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {att.mimeType || 'Unknown type'}
+                            </div>
+                          </div>
+                          <a
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium text-primary hover:underline"
+                          >
+                            Open
+                          </a>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Uploaded {att.createdAt ? new Date(att.createdAt).toLocaleString() : 'recently'}
+                          {uploadedLabel ? ` by ${uploadedLabel}` : ''}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm text-muted-foreground">No attachments yet. Add links or upload files below.</p>
+                )}
+              </div>
+              <form className="space-y-3" onSubmit={handleAddAttachment}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="attachment-label">Label</Label>
+                    <Input
+                      id="attachment-label"
+                      value={attachmentForm.label}
+                      onChange={(e) => {
+                        setAttachmentForm((prev) => ({ ...prev, label: e.target.value }));
+                        setAttachmentError(null);
+                      }}
+                      placeholder="e.g. REV B STEP"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="attachment-mime">Mime type</Label>
+                    <Input
+                      id="attachment-mime"
+                      value={attachmentForm.mimeType}
+                      onChange={(e) => {
+                        setAttachmentForm((prev) => ({ ...prev, mimeType: e.target.value }));
+                        setAttachmentError(null);
+                      }}
+                      placeholder="application/step"
+                    />
+                  </div>
+                  <div className="grid gap-2 sm:col-span-2">
+                    <Label htmlFor="attachment-url">Link or data URL</Label>
+                    <Input
+                      id="attachment-url"
+                      value={attachmentForm.url}
+                      onChange={(e) => {
+                        setAttachmentForm((prev) => ({ ...prev, url: e.target.value }));
+                        setAttachmentError(null);
+                      }}
+                      placeholder="Paste a shared link or upload a file to populate this field"
+                    />
+                  </div>
+                  <div className="grid gap-2 sm:col-span-2">
+                    <Label htmlFor="attachment-file">Upload file</Label>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <Input
+                        key={attachmentFileKey}
+                        id="attachment-file"
+                        type="file"
+                        className="bg-background/80"
+                        onChange={(e) => handleAttachmentFile(e.target.files)}
+                      />
+                      <Upload className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Uploading converts the file to a base64 data URL if you do not provide a hosted link.
+                      {attachmentFileName ? ` Selected: ${attachmentFileName}` : ''}
+                    </p>
+                  </div>
+                </div>
+                {attachmentError && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {attachmentError}
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={attachmentSaving} className="rounded-full">
+                    {attachmentSaving ? 'Attaching…' : 'Add attachment'}
+                  </Button>
+                </div>
+              </form>
             </CardContent>
           </Card>
 
