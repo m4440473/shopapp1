@@ -158,29 +158,6 @@ export default function OrdersPage() {
   const awaitingMaterial = sorted.filter((order) => order.materialNeeded && !order.materialOrdered).length;
   const unassignedCount = sorted.filter((order) => !order.assignedMachinistId).length;
 
-  async function assign(orderId: string, machinistId: string | null) {
-    const res = await fetch(`/api/orders/${orderId}/assign`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ machinistId }),
-      credentials: 'include',
-    });
-    if (res.ok) {
-      const j = await res.json();
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === j.item.id
-            ? {
-                ...it,
-                assignedMachinist: j.item.assignedMachinist,
-                assignedMachinistId: j.item.assignedMachinistId,
-              }
-            : it
-        )
-      );
-    }
-  }
-
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -380,22 +357,7 @@ export default function OrdersPage() {
                       {order.priority}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      <Select
-                        value={order.assignedMachinistId ?? UNASSIGNED_VALUE}
-                        onValueChange={(value) => assign(order.id, value === UNASSIGNED_VALUE ? null : value)}
-                      >
-                        <SelectTrigger className="w-[180px] border-border/60 bg-background/80 text-left">
-                          <SelectValue placeholder="Assign machinist" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={UNASSIGNED_VALUE}>Unassigned</SelectItem>
-                          {machinists.map((m: any) => (
-                            <SelectItem key={m.id} value={m.id}>
-                              {m.name || m.email}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button asChild size="sm" variant="ghost" className="text-primary hover:text-primary">

@@ -34,15 +34,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </Link>
             <Nav />
-            <div className="relative ml-auto hidden w-full max-w-sm md:block">
+            <form action="/search" className="relative ml-auto hidden w-full max-w-sm md:block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 type="search"
+                name="q"
                 placeholder="Search orders..."
                 className="h-10 rounded-full border-border/60 bg-secondary/40 pl-10 text-sm placeholder:text-muted-foreground/80"
                 aria-label="Search orders"
               />
-            </div>
+            </form>
             <Button asChild variant="secondary" className="rounded-full border border-primary/40 bg-primary/10 text-sm text-primary hover:bg-primary/20">
               <Link href="/auth/signin">Sign in</Link>
             </Button>
