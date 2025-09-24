@@ -3,8 +3,12 @@
  * Usage:
  *   pnpm ts-node scripts/set-demo-passwords.ts
  */
-import { prisma } from '../src/lib/prisma';
+import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
+
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+});
 
 async function main() {
   const users = [
