@@ -9,6 +9,7 @@ import {
   Building2,
   ClipboardList,
   Package2,
+  Printer,
   StickyNote,
 } from 'lucide-react';
 
@@ -54,6 +55,10 @@ export default function OrderDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
+  const openPrint = React.useCallback(() => {
+    if (!id) return;
+    window.open(`/orders/${id}/print`, '_blank', 'noopener,noreferrer');
+  }, [id]);
 
   async function load() {
     if (!id) return;
@@ -157,7 +162,16 @@ export default function OrderDetailPage() {
             Customer-facing details, shop routing, and production notes for this work order.
           </p>
         </div>
-        <Badge className={statusColor(item.status)}>{item.status.replace(/_/g, ' ')}</Badge>
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            onClick={openPrint}
+            className="rounded-full bg-primary/90 text-primary-foreground shadow-md shadow-primary/30 hover:bg-primary"
+          >
+            <Printer className="mr-2 h-4 w-4" /> Pring
+          </Button>
+          <Badge className={statusColor(item.status)}>{item.status.replace(/_/g, ' ')}</Badge>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">

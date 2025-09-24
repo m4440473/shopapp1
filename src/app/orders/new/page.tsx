@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { PlusCircle, Upload } from 'lucide-react';
 
 import { Button } from '@/components/ui/Button';
@@ -46,6 +47,7 @@ const emptyPart = (): PartInput => ({ partNumber: '', quantity: 1, materialId: '
 const emptyAttachment = (): AttachmentInput => ({ url: '', label: '', mimeType: '' });
 
 export default function NewOrderPage() {
+  const router = useRouter();
   const [customerId, setCustomerId] = React.useState('');
   const [customers, setCustomers] = React.useState<Option[]>([]);
   const [customerDialogOpen, setCustomerDialogOpen] = React.useState(false);
@@ -56,9 +58,11 @@ export default function NewOrderPage() {
   const [newCustomerAddress, setNewCustomerAddress] = React.useState('');
   const [vendors, setVendors] = React.useState<Option[]>([]);
   const [materials, setMaterials] = React.useState<Option[]>([]);
+  const [machinists, setMachinists] = React.useState<Option[]>([]);
   const [checklistItems, setChecklistItems] = React.useState<ChecklistOption[]>([]);
   const [vendorId, setVendorId] = React.useState('');
   const [poNumber, setPoNumber] = React.useState('');
+  const [assignedMachinistId, setAssignedMachinistId] = React.useState('');
   const [selectedChecklist, setSelectedChecklist] = React.useState<string[]>([]);
   const [dueDate, setDueDate] = React.useState('');
   const [priority, setPriority] = React.useState('NORMAL');
@@ -70,6 +74,7 @@ export default function NewOrderPage() {
   const [notes, setNotes] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState('');
+  const [createdOrderId, setCreatedOrderId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     fetch('/api/admin/customers?take=100', { credentials: 'include' })
@@ -86,6 +91,23 @@ export default function NewOrderPage() {
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => setMaterials(data.items ?? []))
       .catch(() => setMaterials([]));
+
+    fetch('/api/admin/users?role=MACHINIST&take=100', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        const raw = Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data)
+            ? data
+            : [];
+        setMachinists(
+          raw.map((m: any) => ({
+            id: m.id,
+            name: m.name || m.email || 'Unnamed machinist',
+          }))
+        );
+      })
+      .catch(() => setMachinists([]));
 
     fetch('/api/admin/checklist-items?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
@@ -180,6 +202,7 @@ export default function NewOrderPage() {
     e.preventDefault();
     setLoading(true);
     setMessage('');
+    setCreatedOrderId(null);
 
     const cleanedParts = parts
       .map((part) => ({
@@ -226,6 +249,7 @@ export default function NewOrderPage() {
       materialOrdered,
       vendorId: vendorId || undefined,
       poNumber: poNumber || undefined,
+      assignedMachinistId: assignedMachinistId || undefined,
       parts: cleanedParts,
       checklistItemIds: selectedChecklist,
       attachments: cleanAttachments,
@@ -239,12 +263,19 @@ export default function NewOrderPage() {
       credentials: 'include',
     });
     if (res.ok) {
-      setMessage('Order created! A new number was assigned automatically.');
+      const data = await res.json().catch(() => null);
+      const newId = typeof data?.id === 'string' ? data.id : null;
+      setMessage('Order created! Choose what to do next.');
+      setCreatedOrderId(newId);
+      if (!newId) {
+        router.push('/orders');
+      }
       setCustomerId('');
       setVendorId('');
       setPoNumber('');
       setDueDate('');
       setPriority('NORMAL');
+      setAssignedMachinistId('');
       setParts([emptyPart()]);
       setAttachments([emptyAttachment()]);
       setSelectedChecklist([]);
@@ -253,8 +284,15 @@ export default function NewOrderPage() {
       setModelIncluded(false);
       setNotes('');
     } else {
-      const error = await res.json().catch(() => null);
-      setMessage(error?.error ? JSON.stringify(error.error) : 'Error creating order');
+      let errorMessage = 'Error creating order';
+      try {
+        const error = await res.json();
+        errorMessage = error?.error ? JSON.stringify(error.error) : errorMessage;
+      } catch {
+        // ignore JSON parsing failures
+      }
+      setMessage(errorMessage);
+      setCreatedOrderId(null);
     }
     setLoading(false);
   }
@@ -409,6 +447,27 @@ export default function NewOrderPage() {
                   {priorities.map((p) => (
                     <SelectItem key={p} value={p}>
                       {p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="machinist">Assign machinist</Label>
+              <Select
+                value={assignedMachinistId || OPTIONAL_VALUE}
+                onValueChange={(value) =>
+                  setAssignedMachinistId(value === OPTIONAL_VALUE ? '' : value)
+                }
+              >
+                <SelectTrigger id="machinist" className="border-border/60 bg-background/80">
+                  <SelectValue placeholder="Optional" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={OPTIONAL_VALUE}>Unassigned</SelectItem>
+                  {machinists.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -676,8 +735,29 @@ export default function NewOrderPage() {
               </Button>
             </div>
           </CardFooter>
-          {message && (
-            <div className="px-6 pb-6 text-sm text-primary">{message}</div>
+          {(message || createdOrderId) && (
+            <div className="px-6 pb-6">
+              {message && <p className="text-sm text-primary">{message}</p>}
+              {createdOrderId && (
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    onClick={() => router.push(`/orders/${createdOrderId}`)}
+                    className="rounded-full px-6"
+                  >
+                    View order
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => router.push('/orders')}
+                    className="rounded-full border-border/60 bg-background/80"
+                  >
+                    Back to orders
+                  </Button>
+                </div>
+              )}
+            </div>
           )}
         </Card>
       </form>
