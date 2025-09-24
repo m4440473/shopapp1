@@ -1,17 +1,39 @@
 "use client";
+
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
+import { cn } from '@/lib/utils';
+
+const links = [
+  { href: '/orders', label: 'Orders' },
+  { href: '/orders/new', label: 'New Order' },
+  { href: '/admin/users', label: 'Admin' },
+];
+
 export default function Nav() {
-  const path = usePathname() || '/';
+  const pathname = usePathname() || '/';
+
   return (
-    <div className="nav-row">
-      <nav className="nav-links" aria-label="Primary">
-        <Link href="/orders" className={path.startsWith('/orders') ? 'ok nav-link' : 'muted nav-link'}>Orders</Link>
-        <Link href="/orders/new" className={path === '/orders/new' ? 'ok nav-link' : 'muted nav-link'}>New Order</Link>
-        <Link href="/admin/users" className={path.startsWith('/admin') ? 'ok nav-link' : 'muted nav-link'}>Admin</Link>
-      </nav>
-      <div className="nav-actions"> <Link href="/auth/signin" className="muted">Sign in</Link></div>
-    </div>
+    <nav className="hidden items-center gap-2 rounded-lg bg-muted p-1 text-muted-foreground md:flex">
+      {links.map((link) => {
+        const active =
+          link.href === '/admin/users'
+            ? pathname.startsWith('/admin')
+            : pathname === link.href || pathname.startsWith(`${link.href}/`);
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            className={cn(
+              "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all hover:text-foreground",
+              active && 'bg-background text-foreground shadow'
+            )}
+          >
+            {link.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

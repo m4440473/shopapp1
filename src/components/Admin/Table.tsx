@@ -1,24 +1,74 @@
 import React from 'react';
 
-export default function Table({ columns = [], rows = [], onEdit = () => {} }: any) {
+import {
+  Table as UITable,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/Button';
+import ConfirmButton from './ConfirmButton';
+
+interface Column {
+  key: string;
+  header: string;
+  render?: (value: any, row: any) => React.ReactNode;
+}
+
+interface TableProps {
+  columns: Column[];
+  rows: any[];
+  onEdit?: (row: any) => void;
+  onDelete?: (row: any) => void;
+}
+
+export default function Table({ columns = [], rows = [], onEdit, onDelete }: TableProps) {
   return (
-    <table className="w-full text-sm">
-      <thead className="text-left text-[#9FB1C1]">
-        <tr>
-          {columns.map((c:any) => <th key={c.key} className="py-2">{c.header}</th>)}
-          <th className="py-2">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r:any) => (
-          <tr key={r.id} className="border-t border-[#16202A]">
-            {columns.map((c:any) => <td key={c.key} className="py-2">{String(r[c.key] ?? '')}</td>)}
-            <td className="py-2">
-              <button className="px-2 py-1 mr-2 rounded border" onClick={() => onEdit(r)}>Edit</button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="rounded-lg border border-border/60 bg-card/60">
+      <UITable>
+        <TableHeader>
+          <TableRow>
+            {columns.map((column) => (
+              <TableHead key={column.key}>{column.header}</TableHead>
+            ))}
+            {(onEdit || onDelete) && <TableHead className="text-right">Actions</TableHead>}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id} className="bg-card/60">
+              {columns.map((column) => (
+                <TableCell key={column.key} className="align-middle">
+                  {column.render ? column.render(row[column.key], row) : String(row[column.key] ?? '')}
+                </TableCell>
+              ))}
+              {(onEdit || onDelete) && (
+                <TableCell className="flex items-center justify-end gap-2">
+                  {onEdit && (
+                    <Button variant="ghost" size="sm" onClick={() => onEdit(row)}>
+                      Edit
+                    </Button>
+                  )}
+                  {onDelete && (
+                    <ConfirmButton onConfirm={() => onDelete(row)}>
+                      Delete
+                    </ConfirmButton>
+                  )}
+                </TableCell>
+              )}
+            </TableRow>
+          ))}
+          {rows.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={columns.length + 1} className="text-center text-sm text-muted-foreground">
+                No records found.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </UITable>
+    </div>
   );
 }

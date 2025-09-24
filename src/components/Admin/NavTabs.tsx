@@ -3,15 +3,35 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
+import { cn } from '@/lib/utils';
+
+const tabs = [
+  { href: '/admin/users', label: 'Users' },
+  { href: '/admin/materials', label: 'Materials' },
+  { href: '/admin/vendors', label: 'Vendors' },
+  { href: '/admin/checklist', label: 'Checklist' },
+];
+
 export default function NavTabs() {
   const path = usePathname() || '';
   return (
-    <div className="mb-4">
-      <nav className="flex gap-3 text-sm text-[#9FB1C1]">
-        <Link href="/admin/users" className={path.startsWith('/admin/users') ? 'text-[#34D399] underline' : ''}>Users</Link>
-        <Link href="/admin/materials" className={path.startsWith('/admin/materials') ? 'text-[#34D399] underline' : ''}>Materials</Link>
-        <Link href="/admin/vendors" className={path.startsWith('/admin/vendors') ? 'text-[#34D399] underline' : ''}>Vendors</Link>
-        <Link href="/admin/checklist" className={path.startsWith('/admin/checklist') ? 'text-[#34D399] underline' : ''}>Checklist</Link>
+    <div className="mb-6">
+      <nav className="flex w-full items-center gap-2 rounded-lg bg-muted p-1 text-muted-foreground">
+        {tabs.map((tab) => {
+          const active = path.startsWith(tab.href);
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className={cn(
+                'inline-flex flex-1 items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all hover:text-foreground',
+                active && 'bg-background text-foreground shadow'
+              )}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
       </nav>
     </div>
   );

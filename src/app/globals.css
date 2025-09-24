@@ -2,52 +2,116 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { --bg:#0b0f12; --panel:#12171b; --ink:#e9eef3; --muted:#9fb0bf; --accent:#34c6ff; --line:#1f2933; --ok:#39d98a; --warn:#ffd166; --bad:#ff6b6b }
-html,body,#__next{height:100%}
-html,body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;padding:0}
-*{box-sizing:border-box}
+@layer base {
+  :root {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 85.7% 97.3%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --radius: 0.5rem;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 240 4.9% 83.9%;
+  }
 
-.container{max-width:1200px;margin:0 auto}
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 72.22% 50.59%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5% 64.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 240 5% 64.9%;
+  }
+}
 
-.nav-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:8px}
-.nav-links{display:flex;gap:18px;align-items:center}
-.nav-link{padding:6px 8px;border-radius:6px}
-.nav-link.ok{background:rgba(52,198,255,0.06);color:var(--ok);border:1px solid rgba(52,198,255,0.08)}
-.nav-actions{color:var(--muted)}
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply scroll-smooth;
+  }
+  body {
+    @apply bg-background text-foreground min-h-screen antialiased;
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+  }
 
-header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#0c1115 0%,#0b0f12 100%);padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:12px}
-h1{margin:0;font-size:22px;letter-spacing:0.4px}
-.sub{color:var(--muted);font-size:13px}
+  @supports (font: -apple-system-body) and (-webkit-appearance: none) {
+    [data-wrapper] {
+      @apply min-[1800px]:border-t;
+    }
+  }
 
-main{max-width:1200px;margin:0 auto;padding:20px;display:grid;grid-template-columns:1.1fr 0.9fr;gap:20px}
+  ::-webkit-scrollbar {
+    width: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 5px;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+}
 
-section{background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:16px;box-shadow:0 6px 12px rgba(0,0,0,0.25)}
-h2{margin:0 0 10px 0;font-size:16px;color:var(--accent);letter-spacing:0.3px}
-.shp{border-radius:2px}
-label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
-input,select,textarea{width:100%;padding:10px 12px;border-radius:2px;border:1px solid var(--line);background:#0f1418;color:var(--ink);font-size:15px}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px}
-.switch{display:flex;align-items:center;gap:10px}
-.pill{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid var(--line);font-size:12px;color:var(--muted)}
-.kv{display:grid;grid-template-columns:140px 1fr;gap:0 8px}
-.kv div{padding:8px 0;border-bottom:1px dashed var(--line)}
-.proc-row{display:flex;align-items:center;gap:8px}
-.proc-row input{margin:0}
-.kvt{font-weight:700;color:var(--muted);padding-top:0;border:none}
-.hint{color:var(--muted);font-size:12px;margin-top:8px}
-.out{font-variant-numeric:tabular-nums}
-.small{font-size:12px;color:var(--muted)}
-.ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
-details{border:1px solid var(--line);border-radius:8px;padding:10px;background:#0f1418}
-summary{cursor:pointer;font-weight:600;color:var(--accent);font-size:14px}
-.rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.toolbar{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:10px}
-.btn{appearance:none;border:1px solid var(--line);background:#0f1418;color:var(--ink);padding:10px 12px;border-radius:2px;font-size:15px;cursor:pointer;transition:transform .03s ease}
-.btn:hover{transform:translateY(-1px)}
-footer{color:var(--muted);font-size:12px;text-align:center;padding:16px;border-top:1px solid var(--line)}
-
-/* helpers for existing components */
-.muted{color:var(--muted)}
-.card{background:var(--panel);border:1px solid var(--line);padding:14px;border-radius:6px}
-.app-main{padding:20px}
+@layer utilities {
+  .container {
+    @apply mx-auto w-full max-w-screen-2xl px-4 lg:px-8;
+  }
+}
