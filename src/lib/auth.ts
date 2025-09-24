@@ -47,12 +47,14 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         // user.role comes from the Prisma DB as a string; default to 'MACHINIST' for legacy/seeding cases
         (token as any).role = (user as any).role ?? 'MACHINIST';
+        (token as any).id = (user as any).id ?? token.sub;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).role = (token as any).role;
+        (session.user as any).id = (token as any).id ?? token.sub ?? (session.user as any).id;
       }
       return session;
     },
