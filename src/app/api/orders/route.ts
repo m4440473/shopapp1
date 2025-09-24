@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
       priority: true,
       status: true,
       customer: { select: { id: true, name: true } },
-      assignedMachinist: { select: { id: true, name: true } },
+      assignedMachinist: { select: { id: true, name: true, email: true } },
       materialNeeded: true,
       materialOrdered: true,
     },

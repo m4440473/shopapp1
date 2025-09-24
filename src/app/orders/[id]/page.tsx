@@ -26,6 +26,24 @@ import {
 } from '@/components/ui/Card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/Textarea';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const STATUS_OPTIONS: Array<[string, string]> = [
   ['NEW', 'New'],
@@ -36,6 +54,23 @@ const STATUS_OPTIONS: Array<[string, string]> = [
   ['COMPLETE', 'Complete'],
   ['CLOSED', 'Closed'],
 ];
+
+const PRIORITY_OPTIONS = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
+const NONE_VALUE = '__none__';
+
+type Option = { id: string; name: string };
+
+type EditFormState = {
+  receivedDate: string;
+  dueDate: string;
+  priority: string;
+  vendorId: string;
+  poNumber: string;
+  materialNeeded: boolean;
+  materialOrdered: boolean;
+  modelIncluded: boolean;
+  assignedMachinistId: string;
+};
 
 const statusColor = (status: string) =>
   ({
@@ -57,6 +92,22 @@ export default function OrderDetailPage() {
   const [toggling, setToggling] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({});
+  const [vendors, setVendors] = useState<Option[]>([]);
+  const [machinists, setMachinists] = useState<Option[]>([]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<EditFormState>({
+    receivedDate: '',
+    dueDate: '',
+    priority: 'NORMAL',
+    vendorId: '',
+    poNumber: '',
+    materialNeeded: false,
+    materialOrdered: false,
+    modelIncluded: false,
+    assignedMachinistId: '',
+  });
   const openPrint = React.useCallback(() => {
     if (!id) return;
     window.open(`/orders/${id}/print`, '_blank', 'noopener,noreferrer');
@@ -91,6 +142,52 @@ export default function OrderDetailPage() {
     setExpandedParts({});
   }, [item?.id]);
 
+  useEffect(() => {
+    fetch('/api/admin/vendors?take=100', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        const list = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        setVendors(list.map((vendor: any) => ({ id: vendor.id, name: vendor.name })));
+      })
+      .catch(() => setVendors([]));
+
+    fetch('/api/admin/users?role=MACHINIST&take=100', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        const raw = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        setMachinists(
+          raw.map((m: any) => ({
+            id: m.id,
+            name: m.name || m.email || 'Unnamed machinist',
+          }))
+        );
+      })
+      .catch(() => setMachinists([]));
+  }, []);
+
+  useEffect(() => {
+    if (!item) return;
+    const received = item.receivedDate ? new Date(item.receivedDate) : null;
+    const due = item.dueDate ? new Date(item.dueDate) : null;
+    setEditForm({
+      receivedDate: received && !Number.isNaN(received.getTime()) ? received.toISOString().slice(0, 10) : '',
+      dueDate: due && !Number.isNaN(due.getTime()) ? due.toISOString().slice(0, 10) : '',
+      priority: item.priority ?? 'NORMAL',
+      vendorId: item.vendorId ?? '',
+      poNumber: item.poNumber ?? '',
+      materialNeeded: !!item.materialNeeded,
+      materialOrdered: !!item.materialOrdered,
+      modelIncluded: !!item.modelIncluded,
+      assignedMachinistId: item.assignedMachinistId ?? '',
+    });
+  }, [item]);
+
+  useEffect(() => {
+    if (!editOpen) {
+      setEditError(null);
+    }
+  }, [editOpen]);
+
   async function toggleChecklist(checklistItemId: string, checked: boolean) {
     setToggling(checklistItemId);
     try {
@@ -123,6 +220,42 @@ export default function OrderDetailPage() {
       await load();
     } catch (e) {
       console.error(e);
+    }
+  }
+
+  async function handleEditSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!id) return;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const payload = {
+        receivedDate: editForm.receivedDate,
+        dueDate: editForm.dueDate,
+        priority: editForm.priority,
+        vendorId: editForm.vendorId,
+        poNumber: editForm.poNumber,
+        materialNeeded: editForm.materialNeeded,
+        materialOrdered: editForm.materialOrdered,
+        modelIncluded: editForm.modelIncluded,
+        assignedMachinistId: editForm.assignedMachinistId,
+      };
+      const res = await fetch(`/api/orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || 'Failed to update order');
+      }
+      setEditOpen(false);
+      await load();
+    } catch (err: any) {
+      setEditError(err.message || 'Failed to update order');
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -171,7 +304,178 @@ export default function OrderDetailPage() {
             Customer-facing details, shop routing, and production notes for this work order.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Dialog open={editOpen} onOpenChange={setEditOpen}>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                variant="secondary"
+                className="rounded-full border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+              >
+                Edit order
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Edit order details</DialogTitle>
+                <DialogDescription>Update scheduling, assignments, and material status.</DialogDescription>
+              </DialogHeader>
+              <form className="space-y-4" onSubmit={handleEditSubmit}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-received">Received date</Label>
+                    <Input
+                      id="edit-received"
+                      type="date"
+                      value={editForm.receivedDate}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, receivedDate: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-due">Due date</Label>
+                    <Input
+                      id="edit-due"
+                      type="date"
+                      value={editForm.dueDate}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, dueDate: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-priority">Priority</Label>
+                    <Select
+                      value={editForm.priority}
+                      onValueChange={(value) => setEditForm((prev) => ({ ...prev, priority: value }))}
+                    >
+                      <SelectTrigger id="edit-priority" className="border-border/60 bg-background/80">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PRIORITY_OPTIONS.map((priority) => (
+                          <SelectItem key={priority} value={priority}>
+                            {priority}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-machinist">Machinist</Label>
+                    <Select
+                      value={editForm.assignedMachinistId || NONE_VALUE}
+                      onValueChange={(value) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          assignedMachinistId: value === NONE_VALUE ? '' : value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger id="edit-machinist" className="border-border/60 bg-background/80 text-left">
+                        <SelectValue placeholder="Unassigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE_VALUE}>Unassigned</SelectItem>
+                        {machinists.map((machinist) => (
+                          <SelectItem key={machinist.id} value={machinist.id}>
+                            {machinist.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-vendor">Vendor</Label>
+                    <Select
+                      value={editForm.vendorId || NONE_VALUE}
+                      onValueChange={(value) =>
+                        setEditForm((prev) => ({ ...prev, vendorId: value === NONE_VALUE ? '' : value }))
+                      }
+                    >
+                      <SelectTrigger id="edit-vendor" className="border-border/60 bg-background/80 text-left">
+                        <SelectValue placeholder="No vendor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE_VALUE}>No vendor</SelectItem>
+                        {vendors.map((vendor) => (
+                          <SelectItem key={vendor.id} value={vendor.id}>
+                            {vendor.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-po">PO number</Label>
+                    <Input
+                      id="edit-po"
+                      value={editForm.poNumber}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, poNumber: e.target.value }))}
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Material &amp; model
+                  </Label>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm text-foreground">
+                      <Checkbox
+                        id="edit-material-needed"
+                        checked={editForm.materialNeeded}
+                        onCheckedChange={(checked) =>
+                          setEditForm((prev) => ({
+                            ...prev,
+                            materialNeeded: checked === true,
+                            materialOrdered: checked === true ? prev.materialOrdered : false,
+                          }))
+                        }
+                      />
+                      <span>Material needed</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-foreground">
+                      <Checkbox
+                        id="edit-material-ordered"
+                        checked={editForm.materialOrdered}
+                        disabled={!editForm.materialNeeded}
+                        onCheckedChange={(checked) =>
+                          setEditForm((prev) => ({
+                            ...prev,
+                            materialOrdered: checked === true,
+                          }))
+                        }
+                      />
+                      <span>Material ordered / on hand</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-foreground">
+                      <Checkbox
+                        id="edit-model"
+                        checked={editForm.modelIncluded}
+                        onCheckedChange={(checked) =>
+                          setEditForm((prev) => ({ ...prev, modelIncluded: checked === true }))
+                        }
+                      />
+                      <span>Model provided by customer</span>
+                    </label>
+                  </div>
+                </div>
+                {editError && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {editError}
+                  </div>
+                )}
+                <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                  <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={editSaving} className="rounded-full">
+                    {editSaving ? 'Saving…' : 'Save changes'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
           <Button
             type="button"
             onClick={openPrint}
@@ -242,6 +546,12 @@ export default function OrderDetailPage() {
                 <span className="font-medium text-foreground">Due</span>
                 <span className="text-muted-foreground">
                   {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : '-'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-foreground">Machinist</span>
+                <span className="text-muted-foreground">
+                  {item.assignedMachinist?.name ?? item.assignedMachinist?.email ?? 'Unassigned'}
                 </span>
               </div>
             </CardContent>

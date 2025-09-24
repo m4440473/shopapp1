@@ -65,3 +65,17 @@ export const OrderCreate = z.object({
 });
 
 export type OrderCreateInput = z.infer<typeof OrderCreate>;
+
+export const OrderUpdate = z.object({
+  receivedDate: z.string().trim().min(1).optional(),
+  dueDate: z.string().trim().min(1).optional(),
+  priority: PriorityEnum.optional(),
+  vendorId: z.string().trim().optional(),
+  poNumber: z.string().trim().optional(),
+  materialNeeded: z.boolean().optional(),
+  materialOrdered: z.boolean().optional(),
+  modelIncluded: z.boolean().optional(),
+  assignedMachinistId: z.string().trim().optional(),
+});
+
+export type OrderUpdateInput = z.infer<typeof OrderUpdate>;
