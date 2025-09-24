@@ -10,7 +10,6 @@ import {
   ClipboardList,
   Package2,
   Printer,
-  ChevronDown,
   StickyNote,
 } from 'lucide-react';
 
@@ -56,7 +55,6 @@ export default function OrderDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
-  const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({});
   const openPrint = React.useCallback(() => {
     if (!id) return;
     window.open(`/orders/${id}/print`, '_blank', 'noopener,noreferrer');
@@ -177,7 +175,6 @@ export default function OrderDetailPage() {
             onClick={openPrint}
             className="rounded-full bg-primary/90 text-primary-foreground shadow-md shadow-primary/30 hover:bg-primary"
           >
-            <Printer className="mr-2 h-4 w-4" /> Print
           </Button>
           <Badge className={statusColor(item.status)}>{item.status.replace(/_/g, ' ')}</Badge>
         </div>
