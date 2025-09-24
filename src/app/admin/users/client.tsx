@@ -1,5 +1,6 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import Table from '@/components/Admin/Table';
 import { useToast } from '@/components/ui/Toast';
 import { fetchJson } from '@/lib/fetchJson';
@@ -106,6 +107,18 @@ export default function Client({ initial }: { initial: any }) {
       { key: 'name', header: 'Name' },
       { key: 'email', header: 'Email' },
       { key: 'role', header: 'Role' },
+      {
+        key: 'profile',
+        header: 'Profile',
+        render: (_value, row: Item) =>
+          row.role === 'MACHINIST' ? (
+            <Button asChild variant="link" size="sm" className="px-0">
+              <Link href={`/machinists/${row.id}`}>View profile</Link>
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground">N/A</span>
+          ),
+      },
       {
         key: 'active',
         header: 'Active',
