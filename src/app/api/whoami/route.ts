@@ -7,6 +7,9 @@ export async function GET(_req: NextRequest) {
   if (!session?.user?.email) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
-  const role = (session.user as any).role as string | undefined;
-  return NextResponse.json({ email: session.user.email, role });
+  const user = session.user as any;
+  const role = user?.role as string | undefined;
+  const id = user?.id as string | undefined;
+  const name = user?.name as string | undefined;
+  return NextResponse.json({ email: session.user.email, role, id, name });
 }

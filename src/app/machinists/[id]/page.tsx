@@ -31,6 +31,8 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/Button';
 
+const TRACKED_STATUS_SET = new Set(['PROGRAMMING', 'RUNNING', 'READY_FOR_ADDONS']);
+
 function formatDuration(ms: number) {
   if (!Number.isFinite(ms) || ms <= 0) return 'Not enough data';
   const minutes = ms / 60000;
@@ -120,19 +122,24 @@ export default async function MachinistProfilePage({ params }: { params: { id: s
     if (entry.orderId) ordersWorkedOn.add(entry.orderId);
   });
 
-  const updateCount = machinist.statusHistories.length;
+  const trackedStatusHistories = machinist.statusHistories.filter((entry) => {
+    const nextStatus = entry.to ? String(entry.to).toUpperCase() : '';
+    return TRACKED_STATUS_SET.has(nextStatus);
+  });
+
+  const trackedUpdateCount = trackedStatusHistories.length;
   let averageUpdateMs = 0;
-  if (updateCount > 1) {
-    for (let i = 1; i < machinist.statusHistories.length; i += 1) {
-      const prev = machinist.statusHistories[i - 1];
-      const curr = machinist.statusHistories[i];
+  if (trackedUpdateCount > 1) {
+    for (let i = 1; i < trackedStatusHistories.length; i += 1) {
+      const prev = trackedStatusHistories[i - 1];
+      const curr = trackedStatusHistories[i];
       averageUpdateMs += curr.createdAt.getTime() - prev.createdAt.getTime();
     }
-    averageUpdateMs /= updateCount - 1;
+    averageUpdateMs /= trackedUpdateCount - 1;
   }
 
-  const averageUpdateText = updateCount > 1 ? formatDuration(averageUpdateMs) : 'Not enough data';
-  const lastUpdate = machinist.statusHistories.at(-1)?.createdAt ?? null;
+  const averageUpdateText = trackedUpdateCount > 1 ? formatDuration(averageUpdateMs) : 'Not enough data';
+  const lastUpdate = trackedStatusHistories.at(-1)?.createdAt ?? null;
 
   const statusBreakdown: Record<string, number> = {};
   machinist.orders.forEach((order) => {
@@ -416,7 +423,7 @@ export default async function MachinistProfilePage({ params }: { params: { id: s
               <ClipboardList className="h-4 w-4 text-muted-foreground" />
               <div>
                 <p className="text-sm font-semibold text-foreground">Updates logged</p>
-                <p className="text-xs text-muted-foreground">{updateCount} total entries</p>
+                <p className="text-xs text-muted-foreground">{trackedUpdateCount} total entries</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-lg border border-border/50 bg-muted/5 px-3 py-2">

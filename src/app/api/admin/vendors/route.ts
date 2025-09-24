@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { canAccessAdmin } from '@/lib/rbac';
+import { canAccessAdmin, canAccessViewer, isMachinist } from '@/lib/rbac';
 
 const prisma = new PrismaClient();
 
@@ -14,10 +14,21 @@ async function requireAdmin(): Promise<NextResponse | null> {
   return null;
 }
 
+async function requireTeamAccess(): Promise<NextResponse | null> {
+  const session = await getServerSession(authOptions);
+  if (!session) return new NextResponse('Unauthorized', { status: 401 });
+  const role = (session.user as any)?.role || 'VIEWER';
+  if (!canAccessAdmin(role) && !isMachinist(role) && !canAccessViewer(role)) {
+    return new NextResponse('Forbidden', { status: 403 });
+  }
+  return null;
+}
+
 import { VendorUpsert } from '@/lib/zod';
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAdmin(); if (guard) return guard;
+  const guard = await requireTeamAccess();
+  if (guard) return guard;
   const { searchParams } = new URL(req.url);
   const q = searchParams.get('q') || undefined;
   const cursor = searchParams.get('cursor');
