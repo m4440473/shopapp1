@@ -3,38 +3,45 @@
  * Usage:
  *   pnpm ts-node scripts/set-demo-passwords.ts
  */
-import { prisma } from '../src/lib/prisma';
+import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
 
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+});
+
+type DemoUser = {
+  email: string;
+  password: string;
+  role: 'ADMIN' | 'MACHINIST' | 'VIEWER';
+  name: string;
+};
+
 async function main() {
-  const users = [
-    { email: 'admin@example.com', password: 'admin123' },
-    { email: 'mach1@example.com', password: 'mach123' },
-    { email: 'mach2@example.com', password: 'mach123' },
-    { email: 'viewer@example.com', password: 'viewer123' },
+  const users: DemoUser[] = [
+    { email: 'admin@example.com', password: 'admin123', role: 'ADMIN', name: 'Admin' },
+    { email: 'mach1@example.com', password: 'mach123', role: 'MACHINIST', name: 'Machinist One' },
+    { email: 'mach2@example.com', password: 'mach123', role: 'MACHINIST', name: 'Machinist Two' },
+    { email: 'viewer@example.com', password: 'viewer123', role: 'VIEWER', name: 'Viewer' },
   ];
 
-  for (const u of users) {
-    const passwordHash = await hash(u.password, 10);
-    try {
-      await prisma.user.update({
-        where: { email: u.email },
-        data: { passwordHash },
-      });
-      console.log(`Updated password for ${u.email}`);
-    } catch (err) {
-      // If update fails (user doesn't exist), create the user
-      await prisma.user.create({
-        data: {
-          email: u.email,
-          name: u.email.split('@')[0],
+  for (const user of users) {
+    const passwordHash = await hash(user.password, 10);
+    await prisma.user
+      .upsert({
+        where: { email: user.email },
+        update: { passwordHash, role: user.role, active: true },
+        create: {
+          email: user.email,
+          name: user.name,
           passwordHash,
-          role: 'MACHINIST',
+          role: user.role,
           active: true,
         },
+      })
+      .then(() => {
+        console.log(`Password hash synced for ${user.email}`);
       });
-      console.log(`Created user and set password for ${u.email}`);
-    }
   }
 }
 

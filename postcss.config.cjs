@@ -7,7 +7,7 @@ try {
   // so the build system can resolve and shape them correctly.
   module.exports = {
     plugins: {
-      '@tailwindcss/postcss': {},
+      tailwindcss: {},
       autoprefixer: {},
     },
   };
@@ -16,7 +16,7 @@ try {
   // continuing with a broken build.
   // eslint-disable-next-line no-console
   console.error('\nMissing Tailwind/PostCSS modules required to build styles.');
-  console.error('Install devDependencies: `pnpm install --save-dev tailwindcss @tailwindcss/postcss postcss autoprefixer`');
+  console.error('Install devDependencies: `pnpm install --save-dev tailwindcss postcss autoprefixer`');
   console.error('Then re-run your build or dev server.');
   throw err;
 }

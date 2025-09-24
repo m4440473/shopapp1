@@ -24,4 +24,4 @@ Pagination
 - `take` default 20; cursor by `id` with `{ items, nextCursor }` response.
 
 UI
-- Dark theme, `NavTabs`, `Table` with actions, `DialogForm` modals, `ConfirmButton`, `Toast` notifications.
+- Dark theme, `NavTabs`, `Table` with actions, shadcn-styled dialog modals, confirmation prompts, and toast notifications.
