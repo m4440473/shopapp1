@@ -9,6 +9,8 @@ import {
   Building2,
   ClipboardList,
   Package2,
+  Printer,
+  ChevronDown,
   StickyNote,
 } from 'lucide-react';
 
@@ -54,6 +56,11 @@ export default function OrderDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
+  const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({});
+  const openPrint = React.useCallback(() => {
+    if (!id) return;
+    window.open(`/orders/${id}/print`, '_blank', 'noopener,noreferrer');
+  }, [id]);
 
   async function load() {
     if (!id) return;
@@ -79,6 +86,10 @@ export default function OrderDetailPage() {
   useEffect(() => {
     load();
   }, [id]);
+
+  useEffect(() => {
+    setExpandedParts({});
+  }, [item?.id]);
 
   async function toggleChecklist(checklistItemId: string, checked: boolean) {
     setToggling(checklistItemId);
@@ -147,6 +158,9 @@ export default function OrderDetailPage() {
   }
 
   const checkedIds = new Set(item.checklist?.map((c: any) => c.checklistItem?.id));
+  const parts: any[] = Array.isArray(item.parts) ? item.parts : [];
+  const primaryPart = parts[0];
+  const additionalParts = parts.slice(1);
 
   return (
     <div className="space-y-6">
@@ -157,7 +171,16 @@ export default function OrderDetailPage() {
             Customer-facing details, shop routing, and production notes for this work order.
           </p>
         </div>
-        <Badge className={statusColor(item.status)}>{item.status.replace(/_/g, ' ')}</Badge>
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            onClick={openPrint}
+            className="rounded-full bg-primary/90 text-primary-foreground shadow-md shadow-primary/30 hover:bg-primary"
+          >
+            <Printer className="mr-2 h-4 w-4" /> Print
+          </Button>
+          <Badge className={statusColor(item.status)}>{item.status.replace(/_/g, ' ')}</Badge>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
@@ -205,15 +228,15 @@ export default function OrderDetailPage() {
             <CardContent className="grid gap-3 text-sm">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-foreground">Part #</span>
-                <span className="text-muted-foreground">{item.parts?.[0]?.partNumber ?? '-'}</span>
+                <span className="text-muted-foreground">{primaryPart?.partNumber ?? '-'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-medium text-foreground">Quantity</span>
-                <span className="text-muted-foreground">{item.parts?.[0]?.quantity ?? '-'}</span>
+                <span className="text-muted-foreground">{primaryPart?.quantity ?? '-'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-medium text-foreground">Material</span>
-                <span className="text-muted-foreground">{item.parts?.[0]?.material?.name ?? '-'}</span>
+                <span className="text-muted-foreground">{primaryPart?.material?.name ?? '-'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-medium text-foreground">Due</span>
@@ -223,6 +246,75 @@ export default function OrderDetailPage() {
               </div>
             </CardContent>
           </Card>
+          {additionalParts.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <ClipboardList className="h-4 w-4 text-muted-foreground" /> Additional parts
+                </CardTitle>
+                <CardDescription>Expand each part number to view its full details.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {additionalParts.map((part, index) => {
+                  const key = part.id ?? `part-${index + 1}`;
+                  const isOpen = expandedParts[key] ?? false;
+                  const contentId = `part-details-${key}`;
+                  const togglePart = () =>
+                    setExpandedParts((prev) => ({ ...prev, [key]: !isOpen }));
+                  return (
+                    <div
+                      key={key}
+                      className="overflow-hidden rounded-lg border border-border/60 bg-muted/10"
+                    >
+                      <button
+                        type="button"
+                        onClick={togglePart}
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium text-foreground transition hover:bg-muted/20"
+                        aria-expanded={isOpen}
+                        aria-controls={contentId}
+                      >
+                        <span>{part.partNumber || `Part ${index + 2}`}</span>
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${isOpen ? '-rotate-180' : 'rotate-0'}`}
+                        />
+                      </button>
+                      {isOpen && (
+                        <div
+                          id={contentId}
+                          className="grid gap-3 border-t border-border/60 bg-background/70 px-3 py-3 text-sm"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-foreground">Part #</span>
+                            <span className="text-muted-foreground">{part.partNumber ?? '-'}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-foreground">Quantity</span>
+                            <span className="text-muted-foreground">{part.quantity ?? '-'}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-foreground">Material</span>
+                            <span className="text-muted-foreground">{part.material?.name ?? '-'}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-foreground">Due</span>
+                            <span className="text-muted-foreground">
+                              {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : '-'}
+                            </span>
+                          </div>
+                          {part.notes && (
+                            <div>
+                              <span className="font-medium text-foreground">Notes</span>
+                              <p className="mt-1 whitespace-pre-line text-muted-foreground">{part.notes}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader className="pb-3">
