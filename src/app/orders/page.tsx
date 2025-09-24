@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
-const SORT_KEYS = ['receivedDate', 'dueDate', 'priority', 'status'] as const;
+const SORT_KEYS = ['dueDate', 'priority', 'status'] as const;
 
 function statusColor(status: string) {
   const map: Record<string,string> = {
@@ -16,10 +16,9 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<string>('receivedDate');
-  const [sortDir, setSortDir] = useState<'asc'|'desc'>('desc');
+  const [sortKey, setSortKey] = useState<string>('dueDate');
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc');
   const [machinists, setMachinists] = useState<any[]>([]);
-  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
 
   async function load(cursor?: string, append = false) {
     try {
@@ -53,9 +52,7 @@ export default function OrdersPage() {
     arr.sort((a,b) => {
       const A = a[sortKey]; const B = b[sortKey];
       if (!A && !B) return 0; if (!A) return 1; if (!B) return -1;
-      if (sortKey === 'dueDate' || sortKey === 'receivedDate') {
-        return (new Date(A).getTime() - new Date(B).getTime()) * (sortDir==='asc'?1:-1);
-      }
+      if (sortKey === 'dueDate') return (new Date(A).getTime() - new Date(B).getTime()) * (sortDir==='asc'?1:-1);
       return String(A).localeCompare(String(B)) * (sortDir==='asc'?1:-1);
     });
     return arr;
@@ -72,107 +69,48 @@ export default function OrdersPage() {
   return (
     <div className="p-6 min-h-screen">
       <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+        <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-semibold">Orders</h1>
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-[#9FB1C1]">Sort</label>
-              <select value={sortKey} onChange={e => setSortKey(e.target.value)} className="bg-[#121821] p-2 rounded">
-                <option value="receivedDate">Received Date</option>
-                <option value="dueDate">Due Date</option>
-                <option value="priority">Priority</option>
-                <option value="status">Status</option>
-              </select>
-              <button onClick={() => setSortDir(d => d==='asc'?'desc':'asc')} className="px-2 py-1 rounded border">{sortDir==='asc'?'↑':'↓'}</button>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-[#9FB1C1]">View</span>
-              <button
-                onClick={() => setViewMode('table')}
-                className={`px-3 py-1 rounded border text-sm ${viewMode === 'table' ? 'bg-[#1F2937] text-white border-[#1F2937]' : 'border-[#1F2937] text-[#9FB1C1]'}`}
-              >
-                Table
-              </button>
-              <button
-                onClick={() => setViewMode('card')}
-                className={`px-3 py-1 rounded border text-sm ${viewMode === 'card' ? 'bg-[#1F2937] text-white border-[#1F2937]' : 'border-[#1F2937] text-[#9FB1C1]'}`}
-              >
-                Cards
-              </button>
-            </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-[#9FB1C1]">Sort</label>
+            <select value={sortKey} onChange={e => setSortKey(e.target.value)} className="bg-[#121821] p-2 rounded">
+              <option value="dueDate">Due Date</option>
+              <option value="priority">Priority</option>
+              <option value="status">Status</option>
+            </select>
+            <button onClick={() => setSortDir(d => d==='asc'?'desc':'asc')} className="px-2 py-1 rounded border">{sortDir==='asc'?'↑':'↓'}</button>
           </div>
         </div>
 
         {loading && <div>Loading...</div>}
         {error && <div className="text-red-400">{error}</div>}
 
-        {viewMode === 'card' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {sorted.map(o => (
-              <div key={o.id} className="bg-[rgba(18,24,33,0.6)] p-4 rounded border border-[rgba(255,255,255,0.03)] shadow-sm">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <Link href={`/orders/${o.id}`} className="text-[#34D399] text-lg font-medium">{o.orderNumber}</Link>
-                    <div className="text-sm text-[#9FB1C1]">{o.customer?.name ?? '-'}</div>
-                    <div className="text-xs text-[#9FB1C1] mt-1">Received: {o.receivedDate ? new Date(o.receivedDate).toLocaleDateString() : '-'}</div>
-                  </div>
-                  <div className="text-right">
-                    <div style={{background: statusColor(o.status)}} className="text-black px-2 py-1 rounded text-xs font-semibold">{o.status}</div>
-                    <div className="text-xs text-[#9FB1C1]">Due: {o.dueDate ? new Date(o.dueDate).toLocaleDateString() : '-'}</div>
-                  </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {sorted.map(o => (
+            <div key={o.id} className="bg-[rgba(18,24,33,0.6)] p-4 rounded border border-[rgba(255,255,255,0.03)] shadow-sm">
+              <div className="flex items-start justify-between">
+                <div>
+                  <Link href={`/orders/${o.id}`} className="text-[#34D399] text-lg font-medium">{o.orderNumber}</Link>
+                  <div className="text-sm text-[#9FB1C1]">{o.customer?.name ?? '-'}</div>
                 </div>
-
-                <div className="mt-3 flex items-center justify-between">
-                  <div className="text-sm">Priority: <span className="font-semibold">{o.priority}</span></div>
-                  <div className="flex items-center gap-2">
-                    <select value={o.assignedMachinist?.id ?? ''} onChange={e => assign(o.id, e.target.value)} className="bg-[#0F1720] p-1 rounded text-sm">
-                      <option value="">Assign machinist</option>
-                      {machinists.map(m => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
-                    </select>
-                  </div>
+                <div className="text-right">
+                  <div style={{background: statusColor(o.status)}} className="text-black px-2 py-1 rounded text-xs font-semibold">{o.status}</div>
+                  <div className="text-xs text-[#9FB1C1]">Due: {o.dueDate ? new Date(o.dueDate).toLocaleDateString() : '-'}</div>
                 </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="text-left text-[#9FB1C1] border-b border-[rgba(255,255,255,0.06)]">
-                  <th className="py-2 pr-3">Order #</th>
-                  <th className="py-2 pr-3">Customer</th>
-                  <th className="py-2 pr-3">Received</th>
-                  <th className="py-2 pr-3">Due</th>
-                  <th className="py-2 pr-3">Priority</th>
-                  <th className="py-2 pr-3">Status</th>
-                  <th className="py-2 pr-3">Machinist</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map(o => (
-                  <tr key={o.id} className="border-b border-[rgba(255,255,255,0.04)]">
-                    <td className="py-3 pr-3">
-                      <Link href={`/orders/${o.id}`} className="text-[#34D399] font-medium">{o.orderNumber}</Link>
-                    </td>
-                    <td className="py-3 pr-3">{o.customer?.name ?? '-'}</td>
-                    <td className="py-3 pr-3">{o.receivedDate ? new Date(o.receivedDate).toLocaleDateString() : '-'}</td>
-                    <td className="py-3 pr-3">{o.dueDate ? new Date(o.dueDate).toLocaleDateString() : '-'}</td>
-                    <td className="py-3 pr-3">{o.priority}</td>
-                    <td className="py-3 pr-3">
-                      <span style={{ background: statusColor(o.status) }} className="text-black px-2 py-1 rounded text-xs font-semibold inline-block">{o.status}</span>
-                    </td>
-                    <td className="py-3 pr-3">
-                      <select value={o.assignedMachinist?.id ?? ''} onChange={e => assign(o.id, e.target.value)} className="bg-[#0F1720] p-1 rounded text-sm">
-                        <option value="">Assign machinist</option>
-                        {machinists.map(m => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+
+              <div className="mt-3 flex items-center justify-between">
+                <div className="text-sm">Priority: <span className="font-semibold">{o.priority}</span></div>
+                <div className="flex items-center gap-2">
+                  <select defaultValue={o.assignedMachinist?.id ?? ''} onChange={e => assign(o.id, e.target.value)} className="bg-[#0F1720] p-1 rounded text-sm">
+                    <option value="">Assign machinist</option>
+                    {machinists.map(m => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
 
         {nextCursor && (
           <div className="flex justify-center mt-6">
