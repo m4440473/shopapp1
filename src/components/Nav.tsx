@@ -1,20 +1,56 @@
 "use client";
 
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { cn } from '@/lib/utils';
 
-const links = [
+type NavLink = { href: string; label: string };
+
+const baseLinks: NavLink[] = [
   { href: '/', label: 'Shop Floor Intelligence' },
   { href: '/orders', label: 'Orders' },
   { href: '/customers', label: 'Customers' },
   { href: '/orders/new', label: 'New Order' },
-  { href: '/admin/users', label: 'Admin' },
 ];
 
 export default function Nav() {
   const pathname = usePathname() || '/';
+  const [user, setUser] = React.useState<{ id?: string; role?: string } | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch('/api/whoami', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        if (data) {
+          setUser({ id: data.id, role: data.role });
+        } else {
+          setUser(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setUser(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const links = React.useMemo<NavLink[]>(() => {
+    const items = [...baseLinks];
+    if (user?.role === 'MACHINIST' || user?.role === 'ADMIN') {
+      if (user?.id) {
+        items.push({ href: `/machinists/${user.id}`, label: 'Machinist Profile' });
+      }
+    }
+    if (user?.role === 'ADMIN') {
+      items.push({ href: '/admin/users', label: 'Admin' });
+    }
+    return items;
+  }, [user]);
 
   return (
     <nav className="hidden items-center gap-3 text-sm font-medium text-muted-foreground md:flex">
