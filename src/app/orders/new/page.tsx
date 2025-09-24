@@ -16,13 +16,15 @@ export default function NewOrderPage() {
 	const [newCustomerEmail, setNewCustomerEmail] = useState("");
 	const [newCustomerAddress, setNewCustomerAddress] = useState("");
 	const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
-	const [materials, setMaterials] = useState<{ id: string; name: string }[]>([]);
-	const [checklistItems, setChecklistItems] = useState<{ id: string; label: string }[]>([]);
-	const [vendorId, setVendorId] = useState("");
-	const [materialId, setMaterialId] = useState("");
-	const [selectedChecklist, setSelectedChecklist] = useState<string[]>([]);
-	const [dueDate, setDueDate] = useState("");
-	const [priority, setPriority] = useState("NORMAL");
+        const [materials, setMaterials] = useState<{ id: string; name: string }[]>([]);
+        const [machinists, setMachinists] = useState<{ id: string; name?: string | null; email?: string | null }[]>([]);
+        const [checklistItems, setChecklistItems] = useState<{ id: string; label: string }[]>([]);
+        const [vendorId, setVendorId] = useState("");
+        const [materialId, setMaterialId] = useState("");
+        const [selectedChecklist, setSelectedChecklist] = useState<string[]>([]);
+        const [dueDate, setDueDate] = useState("");
+        const [priority, setPriority] = useState("NORMAL");
+        const [assignedMachinistId, setAssignedMachinistId] = useState("");
 	const [partNumber, setPartNumber] = useState("");
 	const [quantity, setQuantity] = useState(1);
 	const [notes, setNotes] = useState("");
@@ -41,10 +43,15 @@ export default function NewOrderPage() {
 			.then((data) => setVendors(data.items ?? []))
 			.catch(() => setVendors([]));
 
-		fetch("/api/admin/materials?take=100")
-			.then((res) => (res.ok ? res.json() : Promise.reject(res)))
-			.then((data) => setMaterials(data.items ?? []))
-			.catch(() => setMaterials([]));
+                fetch("/api/admin/materials?take=100")
+                        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+                        .then((data) => setMaterials(data.items ?? []))
+                        .catch(() => setMaterials([]));
+
+                fetch("/api/admin/users?role=MACHINIST&take=100")
+                        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+                        .then((data) => setMachinists(data.items ?? []))
+                        .catch(() => setMachinists([]));
 
 		fetch("/api/admin/checklist-items?take=100")
 			.then((res) => (res.ok ? res.json() : Promise.reject(res)))
@@ -108,9 +115,10 @@ export default function NewOrderPage() {
 			dueDate,
 			priority,
 			materialNeeded: false,
-			materialOrdered: false,
-			vendorId: vendorId || undefined,
-			parts: [{ partNumber, quantity, materialId: materialId || undefined }],
+                        materialOrdered: false,
+                        vendorId: vendorId || undefined,
+                        assignedMachinistId: assignedMachinistId || undefined,
+                        parts: [{ partNumber, quantity, materialId: materialId || undefined }],
 			checklistItemIds: selectedChecklist,
 			attachments: [],
 			notes,
@@ -121,12 +129,13 @@ export default function NewOrderPage() {
 			body: JSON.stringify(body),
 			credentials: 'include'
 		});
-		if (res.ok) {
-			setMessage("Order created!");
-			setOrderNumber("");
-			setCustomerId("");
-			setDueDate("");
-			setPriority("NORMAL");
+                if (res.ok) {
+                        setMessage("Order created!");
+                        setOrderNumber("");
+                        setAssignedMachinistId("");
+                        setCustomerId("");
+                        setDueDate("");
+                        setPriority("NORMAL");
 			setPartNumber("");
 			setQuantity(1);
 			setNotes("");
@@ -137,10 +146,10 @@ export default function NewOrderPage() {
 		setLoading(false);
 	}
 
-	return (
-		<div className="min-h-screen flex items-center justify-center bg-[#0B0F14] text-[#E6EDF3]">
-			<form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 bg-[#121821] p-6 rounded-md shadow">
-				<h1 className="text-xl font-semibold mb-2">New Order Intake</h1>
+        return (
+                <div className="min-h-screen flex items-center justify-center bg-[#0B0F14] text-[#E6EDF3]">
+                        <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 bg-[#121821] p-6 rounded-md shadow">
+                                <h1 className="text-xl font-semibold mb-2">New Order</h1>
 
 				<label className="block text-sm">
 					<span className="text-[#9FB1C1]">Order Number</span>
@@ -150,9 +159,9 @@ export default function NewOrderPage() {
 						onChange={(e) => setOrderNumber(e.target.value)}
 						required
 					/>
-				</label>
+                                </label>
 
-				<label className="block text-sm">
+                                <label className="block text-sm">
 					<span className="text-[#9FB1C1]">Customer</span>
 					<select
 						className="mt-1 w-full rounded bg-[#1B2430] p-2 outline-none"
@@ -237,8 +246,24 @@ export default function NewOrderPage() {
 					</div>
 				</label>
 
-				<label className="block text-sm">
-					<span className="text-[#9FB1C1]">Due Date</span>
+                                <label className="block text-sm">
+                                        <span className="text-[#9FB1C1]">Assign Machinist</span>
+                                        <select
+                                                className="mt-1 w-full rounded bg-[#1B2430] p-2 outline-none"
+                                                value={assignedMachinistId}
+                                                onChange={(e) => setAssignedMachinistId(e.target.value)}
+                                        >
+                                                <option value="">Unassigned</option>
+                                                {machinists.map((m) => (
+                                                        <option key={m.id} value={m.id}>
+                                                                {m.name || m.email}
+                                                        </option>
+                                                ))}
+                                        </select>
+                                </label>
+
+                                <label className="block text-sm">
+                                        <span className="text-[#9FB1C1]">Due Date</span>
 					<input type="date" className="mt-1 w-full rounded bg-[#1B2430] p-2 outline-none" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
 				</label>
 
