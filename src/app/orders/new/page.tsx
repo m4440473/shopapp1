@@ -3,8 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { PlusCircle, Upload } from 'lucide-react';
-
+import { PlusCircle, Upload, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import {
   Card,
@@ -75,7 +74,11 @@ export default function NewOrderPage() {
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState('');
   const [createdOrderId, setCreatedOrderId] = React.useState<string | null>(null);
-
+  const router = useRouter();
+  const handlePrintNewOrder = React.useCallback(() => {
+    if (!createdOrderId) return;
+    window.open(`/orders/${createdOrderId}/print`, '_blank', 'noopener,noreferrer');
+  }, [createdOrderId]);
   React.useEffect(() => {
     fetch('/api/admin/customers?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
@@ -98,8 +101,8 @@ export default function NewOrderPage() {
         const raw = Array.isArray(data?.items)
           ? data.items
           : Array.isArray(data)
-            ? data
-            : [];
+          ? data
+          : [];
         setMachinists(
           raw.map((m: any) => ({
             id: m.id,
@@ -746,6 +749,14 @@ export default function NewOrderPage() {
                     className="rounded-full px-6"
                   >
                     View order
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handlePrintNewOrder}
+                    className="rounded-full border-border/60 bg-background/80"
+                  >
+                    <Printer className="mr-2 h-4 w-4" /> Print order
                   </Button>
                   <Button
                     type="button"
