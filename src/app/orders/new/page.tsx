@@ -3,6 +3,8 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { PlusCircle, Upload } from 'lucide-react';
+
 import { Button } from '@/components/ui/Button';
 import {
   Card,
@@ -73,6 +75,7 @@ export default function NewOrderPage() {
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState('');
   const [createdOrderId, setCreatedOrderId] = React.useState<string | null>(null);
+
   React.useEffect(() => {
     fetch('/api/admin/customers?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
