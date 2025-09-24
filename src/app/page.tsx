@@ -105,8 +105,17 @@ export default async function Home() {
     .slice(0, 5);
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="relative isolate">
+      <div
+        className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
+        aria-hidden="true"
+      >
+        <div className="absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/25 blur-3xl" />
+        <div className="absolute top-[35%] -left-32 h-64 w-64 rounded-full bg-sky-500/20 blur-[120px]" />
+        <div className="absolute bottom-0 right-0 h-80 w-80 translate-x-[32%] translate-y-[32%] rounded-full bg-emerald-500/15 blur-[140px]" />
+      </div>
+      <div className="relative flex flex-col gap-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.4em] text-primary/70">Overview</p>
           <h1 className="text-4xl font-semibold text-foreground">Shop floor intelligence</h1>
@@ -298,6 +307,7 @@ export default async function Home() {
           </CardContent>
         </Card>
       </div>
+    </div>
     </div>
   );
 }
