@@ -66,6 +66,14 @@ export const OrderCreate = z.object({
 
 export type OrderCreateInput = z.infer<typeof OrderCreate>;
 
+export const OrderAttachmentCreate = z.object({
+  url: z.string().trim().min(1),
+  label: z.string().trim().max(200).optional(),
+  mimeType: z.string().trim().max(200).optional(),
+});
+
+export type OrderAttachmentCreateInput = z.infer<typeof OrderAttachmentCreate>;
+
 export const OrderUpdate = z.object({
   receivedDate: z.string().trim().min(1).optional(),
   dueDate: z.string().trim().min(1).optional(),

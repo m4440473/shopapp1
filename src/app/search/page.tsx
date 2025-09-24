@@ -28,6 +28,20 @@ function formatDate(input?: Date | string | null) {
   return date.toLocaleDateString();
 }
 
+function buildQueryVariants(input: string): string[] {
+  const trimmed = input.trim();
+  if (!trimmed) return [];
+  const lower = trimmed.toLowerCase();
+  const upper = trimmed.toUpperCase();
+  const title = trimmed
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+  const variants = new Set([trimmed, lower, upper, title]);
+  return Array.from(variants).filter(Boolean);
+}
+
 type SearchPageProps = {
   searchParams?: { q?: string };
 };
@@ -45,11 +59,23 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const results = hasQuery
     ? await prisma.order.findMany({
         where: {
-          OR: [
-            { orderNumber: { contains: query, mode: 'insensitive' } },
-            { customer: { name: { contains: query, mode: 'insensitive' } } },
-            { parts: { some: { partNumber: { contains: query, mode: 'insensitive' } } } },
-          ],
+          OR: (() => {
+            const variants = buildQueryVariants(query);
+            if (variants.length === 0) {
+              return [
+                { orderNumber: { contains: query } },
+                { customer: { name: { contains: query } } },
+                { parts: { some: { partNumber: { contains: query } } } },
+              ];
+            }
+            const clauses: any[] = [];
+            for (const value of variants) {
+              clauses.push({ orderNumber: { contains: value } });
+              clauses.push({ customer: { name: { contains: value } } });
+              clauses.push({ parts: { some: { partNumber: { contains: value } } } });
+            }
+            return clauses;
+          })(),
         },
         include: {
           customer: { select: { id: true, name: true } },

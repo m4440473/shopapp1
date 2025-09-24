@@ -19,9 +19,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       customer: true,
       parts: { include: { material: true } },
       checklist: { include: { checklistItem: true } },
-  statusHistory: { orderBy: { createdAt: 'asc' } },
-  notes: { orderBy: { createdAt: 'asc' }, include: { user: true } },
-      attachments: true,
+      statusHistory: { orderBy: { createdAt: 'asc' } },
+      notes: { orderBy: { createdAt: 'asc' }, include: { user: true } },
+      attachments: { include: { uploadedBy: true }, orderBy: { createdAt: 'desc' } },
       assignedMachinist: true,
     },
   });
