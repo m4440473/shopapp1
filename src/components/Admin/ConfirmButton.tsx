@@ -1,10 +1,46 @@
 "use client";
+
 import React from 'react';
 
-export default function ConfirmButton({ onConfirm, children }: any) {
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/Button';
+
+interface ConfirmButtonProps {
+  onConfirm: () => void | Promise<void>;
+  children: React.ReactNode;
+  description?: string;
+}
+
+export default function ConfirmButton({ onConfirm, children, description }: ConfirmButtonProps) {
   return (
-    <button onClick={() => { if (confirm('Are you sure?')) onConfirm(); }} className="px-2 py-1 rounded border text-sm">
-      {children}
-    </button>
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="ghost" size="sm">
+          {children}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {description || 'This action cannot be undone.'}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>Continue</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
