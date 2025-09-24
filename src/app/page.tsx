@@ -91,10 +91,10 @@ export default async function Home() {
   }, {} as Record<string, number>);
 
   const machinistWorkload = activeOrders.reduce((acc, order) => {
-    if (!order.assignedMachinist) return acc;
-    const id = order.assignedMachinist.id;
+    const id = order.assignedMachinistId;
+    if (!id) return acc;
     if (!acc[id]) {
-      acc[id] = { name: order.assignedMachinist.name ?? 'Unassigned', count: 0 };
+      acc[id] = { name: order.assignedMachinist?.name ?? 'Unassigned', count: 0 };
     }
     acc[id].count += 1;
     return acc;
