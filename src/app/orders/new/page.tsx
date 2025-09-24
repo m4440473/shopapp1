@@ -46,7 +46,6 @@ const emptyPart = (): PartInput => ({ partNumber: '', quantity: 1, materialId: '
 const emptyAttachment = (): AttachmentInput => ({ url: '', label: '', mimeType: '' });
 
 export default function NewOrderPage() {
-  const router = useRouter();
   const [customerId, setCustomerId] = React.useState('');
   const [customers, setCustomers] = React.useState<Option[]>([]);
   const [customerDialogOpen, setCustomerDialogOpen] = React.useState(false);
