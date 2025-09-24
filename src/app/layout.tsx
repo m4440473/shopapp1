@@ -15,7 +15,7 @@ const roboto = Roboto({
 
 export const metadata = {
   title: 'ShopApp',
-  description: 'Sterling Tool and Die order tracking',
+  description: 'Machine shop order tracking',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -29,7 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 SA
               </div>
               <div className="hidden sm:block">
-                <p className="text-[0.65rem] uppercase tracking-[0.35em] text-muted-foreground">Sterling Tool and Die</p>
+                <p className="text-[0.65rem] uppercase tracking-[0.35em] text-muted-foreground">Machine Shop</p>
                 <h1 className="text-xl font-semibold text-foreground">ShopApp</h1>
               </div>
             </Link>
@@ -51,7 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="container py-10">{children}</div>
           </main>
           <footer className="border-t border-border/60 bg-background/80 py-6 text-center text-xs uppercase tracking-[0.3em] text-muted-foreground">
-            Sterling Tool and Die • built with ❤️
+            Demo • built with ❤️
           </footer>
         </div>
       </body>

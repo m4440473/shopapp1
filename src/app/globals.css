@@ -113,21 +113,6 @@
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--border)) transparent;
   }
-
-  @media print {
-    body {
-      background: #ffffff !important;
-      color: #000000 !important;
-      background-image: none !important;
-    }
-    header,
-    footer {
-      display: none !important;
-    }
-    main {
-      padding: 0 !important;
-    }
-  }
 }
 
 @layer utilities {

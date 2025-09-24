@@ -9,9 +9,8 @@ import {
   Building2,
   ClipboardList,
   Package2,
-  Printer,
-  ChevronDown,
   StickyNote,
+  ChevronDown,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -57,10 +56,6 @@ export default function OrderDetailPage() {
   const [toggling, setToggling] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({});
-  const openPrint = React.useCallback(() => {
-    if (!id) return;
-    window.open(`/orders/${id}/print`, '_blank', 'noopener,noreferrer');
-  }, [id]);
 
   async function load() {
     if (!id) return;
@@ -163,33 +158,15 @@ export default function OrderDetailPage() {
   const additionalParts = parts.slice(1);
 
   return (
-    <div className="relative isolate">
-      <div
-        className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
-        aria-hidden="true"
-      >
-        <div className="absolute -top-24 right-1/3 h-72 w-72 rounded-full bg-primary/25 blur-3xl" />
-        <div className="absolute top-[45%] -left-32 h-64 w-64 rounded-full bg-blue-500/20 blur-[120px]" />
-        <div className="absolute bottom-0 right-0 h-80 w-80 translate-x-[28%] translate-y-[35%] rounded-full bg-emerald-500/15 blur-[140px]" />
-      </div>
-      <div className="relative space-y-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Order {item.orderNumber}</h1>
           <p className="text-muted-foreground">
             Customer-facing details, shop routing, and production notes for this work order.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            onClick={openPrint}
-            className="rounded-full bg-primary/90 text-primary-foreground shadow-md shadow-primary/30 hover:bg-primary"
-          >
-            <Printer className="mr-2 h-4 w-4" /> Print
-          </Button>
-          <Badge className={statusColor(item.status)}>{item.status.replace(/_/g, ' ')}</Badge>
-        </div>
+        <Badge className={statusColor(item.status)}>{item.status.replace(/_/g, ' ')}</Badge>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
@@ -255,6 +232,7 @@ export default function OrderDetailPage() {
               </div>
             </CardContent>
           </Card>
+
           {additionalParts.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
@@ -451,7 +429,6 @@ export default function OrderDetailPage() {
             </CardFooter>
           </Card>
         </div>
-      </div>
       </div>
     </div>
   );

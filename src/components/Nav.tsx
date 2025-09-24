@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 const links = [
-  { href: '/', label: 'Shop Floor Intelligence' },
   { href: '/orders', label: 'Orders' },
   { href: '/orders/new', label: 'New Order' },
   { href: '/admin/users', label: 'Admin' },
