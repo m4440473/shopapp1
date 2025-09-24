@@ -55,6 +55,7 @@ export default function OrderDetailPage() {
   if (!item) return <div className="p-6">Order not found</div>;
 
   const checkedIds = new Set(item.checklist?.map((c:any) => c.checklistItem?.id));
+  const parts = item.parts ?? [];
 
   async function addNote() {
     if (!noteText.trim()) return;
@@ -99,12 +100,31 @@ export default function OrderDetailPage() {
           </div>
 
           <div className="card mt-4">
-            <h3 className="font-semibold">Part</h3>
-            <div className="kv mt-2">
-              <div className="kvt">Part #</div><div>{item.parts?.[0]?.partNumber ?? '-'}</div>
-              <div className="kvt">Quantity</div><div>{item.parts?.[0]?.quantity ?? '-'}</div>
-              <div className="kvt">Material</div><div>{item.parts?.[0]?.material?.name ?? '-'}</div>
-            </div>
+            <h3 className="font-semibold">Parts</h3>
+            {parts.length === 0 ? (
+              <div className="text-sm text-[#9FB1C1] mt-2">No parts recorded.</div>
+            ) : parts.length === 1 ? (
+              <div className="kv mt-2">
+                <div className="kvt">Part #</div><div>{parts[0]?.partNumber ?? '-'}</div>
+                <div className="kvt">Quantity</div><div>{parts[0]?.quantity ?? '-'}</div>
+                <div className="kvt">Material</div><div>{parts[0]?.material?.name ?? '-'}</div>
+                {parts[0]?.notes && <><div className="kvt">Notes</div><div className="text-sm">{parts[0].notes}</div></>}
+              </div>
+            ) : (
+              <div className="mt-2 space-y-2">
+                {parts.map((part:any, idx:number) => (
+                  <details key={part.id ?? idx}>
+                    <summary>{`Part ${idx + 1}: ${part.partNumber || 'N/A'} • Qty: ${part.quantity ?? '-'}`}</summary>
+                    <div className="kv mt-3">
+                      <div className="kvt">Part #</div><div>{part.partNumber ?? '-'}</div>
+                      <div className="kvt">Quantity</div><div>{part.quantity ?? '-'}</div>
+                      <div className="kvt">Material</div><div>{part.material?.name ?? '-'}</div>
+                      {part.notes && <><div className="kvt">Notes</div><div className="text-sm">{part.notes}</div></>}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="card mt-4">
