@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/select';
 
 const SORT_KEYS = ['dueDate', 'priority', 'status'] as const;
+const UNASSIGNED_VALUE = '__unassigned__';
 
 const statusColors: Record<string, string> = {
   RECEIVED: 'hsl(215 90% 65%)',
@@ -64,7 +65,9 @@ export default function OrdersPage() {
       const qs = new URLSearchParams();
       qs.set('take', '20');
       if (cursor) qs.set('cursor', cursor);
-      const res = await fetch('/api/orders?' + qs.toString());
+      const res = await fetch('/api/orders?' + qs.toString(), {
+        credentials: 'include',
+      });
       if (!res.ok) throw res;
       const data = await res.json();
       setItems((prev) => (append ? [...prev, ...(data.items ?? [])] : data.items ?? []));
@@ -72,8 +75,15 @@ export default function OrdersPage() {
       setError(null);
     } catch (err: any) {
       try {
-        const j = await err.json();
-        setError(typeof j === 'string' ? j : JSON.stringify(j));
+        if (typeof err.json === 'function') {
+          const j = await err.json();
+          setError(typeof j === 'string' ? j : JSON.stringify(j));
+        } else if (typeof err.text === 'function') {
+          const txt = await err.text();
+          setError(txt || 'Failed to load orders');
+        } else {
+          setError('Failed to load orders');
+        }
       } catch {
         setError('Failed to load orders');
       }
@@ -87,7 +97,7 @@ export default function OrdersPage() {
   }, []);
 
   useEffect(() => {
-    fetch('/api/admin/users?role=MACHINIST&take=100')
+    fetch('/api/admin/users?role=MACHINIST&take=100', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : Promise.resolve({ items: [] })))
       .then((d) => setMachinists(d.items ?? []))
       .catch(() => setMachinists([]));
@@ -121,15 +131,26 @@ export default function OrdersPage() {
     return due - now < sevenDays && due >= now;
   });
 
-  async function assign(orderId: string, machinistId: string) {
+  async function assign(orderId: string, machinistId: string | null) {
     const res = await fetch(`/api/orders/${orderId}/assign`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ machinistId }),
+      credentials: 'include',
     });
     if (res.ok) {
       const j = await res.json();
-      setItems((prev) => prev.map((it) => (it.id === j.item.id ? j.item : it)));
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === j.item.id
+            ? {
+                ...it,
+                assignedMachinist: j.item.assignedMachinist,
+                assignedMachinistId: j.item.assignedMachinistId,
+              }
+            : it
+        )
+      );
     }
   }
 
@@ -271,14 +292,16 @@ export default function OrdersPage() {
                 </CardContent>
                 <CardFooter className="flex flex-col gap-3 border-t border-border/60 bg-muted/10 p-4">
                   <Select
-                    value={order.assignedMachinist?.id ?? ''}
-                    onValueChange={(value) => assign(order.id, value)}
+                    value={order.assignedMachinist?.id ?? UNASSIGNED_VALUE}
+                    onValueChange={(value) =>
+                      assign(order.id, value === UNASSIGNED_VALUE ? null : value)
+                    }
                   >
                     <SelectTrigger className="w-full text-left text-sm">
                       <SelectValue placeholder="Assign machinist" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Unassigned</SelectItem>
+                      <SelectItem value={UNASSIGNED_VALUE}>Unassigned</SelectItem>
                       {machinists.map((m: any) => (
                         <SelectItem key={m.id} value={m.id}>
                           {m.name || m.email}

@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dialog';
 
 const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
+const OPTIONAL_VALUE = '__none__';
 
 type Option = { id: string; name: string };
 type ChecklistOption = { id: string; label: string };
@@ -63,22 +64,22 @@ export default function NewOrderPage() {
   const [message, setMessage] = useState('');
 
   React.useEffect(() => {
-    fetch('/api/admin/customers?take=100')
+    fetch('/api/admin/customers?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => setCustomers(data.items ?? data ?? []))
       .catch(() => setCustomers([]));
 
-    fetch('/api/admin/vendors?take=100')
+    fetch('/api/admin/vendors?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => setVendors(data.items ?? []))
       .catch(() => setVendors([]));
 
-    fetch('/api/admin/materials?take=100')
+    fetch('/api/admin/materials?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => setMaterials(data.items ?? []))
       .catch(() => setMaterials([]));
 
-    fetch('/api/admin/checklist-items?take=100')
+    fetch('/api/admin/checklist-items?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => setChecklistItems(data.items ?? []))
       .catch(() => setChecklistItems([]));
@@ -98,7 +99,9 @@ export default function NewOrderPage() {
 
     (async () => {
       try {
-        const res = await fetch('/api/admin/checklist-items?take=500');
+        const res = await fetch('/api/admin/checklist-items?take=500', {
+          credentials: 'include',
+        });
         if (!res.ok) return;
         const data = await res.json();
         const existing = (data.items ?? []) as ChecklistOption[];
@@ -109,10 +112,13 @@ export default function NewOrderPage() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ label }),
+              credentials: 'include',
             });
           }
         }
-        const refreshed = await fetch('/api/admin/checklist-items?take=500');
+        const refreshed = await fetch('/api/admin/checklist-items?take=500', {
+          credentials: 'include',
+        });
         if (refreshed.ok) {
           const d2 = await refreshed.json();
           setChecklistItems(d2.items ?? []);
@@ -341,12 +347,15 @@ export default function NewOrderPage() {
             <div className="grid gap-6 md:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="vendor">Vendor</Label>
-                <Select value={vendorId} onValueChange={setVendorId}>
+                <Select
+                  value={vendorId || OPTIONAL_VALUE}
+                  onValueChange={(value) => setVendorId(value === OPTIONAL_VALUE ? '' : value)}
+                >
                   <SelectTrigger id="vendor">
                     <SelectValue placeholder="Optional" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No vendor</SelectItem>
+                    <SelectItem value={OPTIONAL_VALUE}>No vendor</SelectItem>
                     {vendors.map((v) => (
                       <SelectItem key={v.id} value={v.id}>
                         {v.name}
@@ -357,12 +366,15 @@ export default function NewOrderPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="material">Material</Label>
-                <Select value={materialId} onValueChange={setMaterialId}>
+                <Select
+                  value={materialId || OPTIONAL_VALUE}
+                  onValueChange={(value) => setMaterialId(value === OPTIONAL_VALUE ? '' : value)}
+                >
                   <SelectTrigger id="material">
                     <SelectValue placeholder="Optional" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No material</SelectItem>
+                    <SelectItem value={OPTIONAL_VALUE}>No material</SelectItem>
                     {materials.map((m) => (
                       <SelectItem key={m.id} value={m.id}>
                         {m.name}

@@ -12,9 +12,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const { id } = params;
   const json = await req.json().catch(() => null);
-  const machinistId = json?.machinistId;
-  if (!machinistId) return NextResponse.json({ error: 'machinistId required' }, { status: 400 });
+  const rawMachinistId =
+    typeof json?.machinistId === 'string' ? json.machinistId.trim() : undefined;
+  const machinistId = rawMachinistId ? rawMachinistId : null;
 
-  const order = await prisma.order.update({ where: { id }, data: { assignedMachinistId: machinistId } });
+  const order = await prisma.order.update({
+    where: { id },
+    data: { assignedMachinistId: machinistId },
+    select: {
+      id: true,
+      assignedMachinistId: true,
+      assignedMachinist: { select: { id: true, name: true, email: true } },
+    },
+  });
   return NextResponse.json({ ok: true, item: order });
 }
