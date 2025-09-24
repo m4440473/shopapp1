@@ -79,7 +79,7 @@ async function main() {
   async function seedOrder(idx: number, customerId: string, assigned?: string | null) {
     const ord = await prisma.order.create({
       data: {
-        orderNumber: `SO-${1000 + idx}`,
+        orderNumber: String(1000 + idx),
         customerId,
         modelIncluded: idx % 2 === 0,
         receivedDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * (7 - idx)),

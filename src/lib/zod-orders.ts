@@ -39,7 +39,7 @@ export const OrderPartCreate = z.object({
 });
 
 export const OrderCreate = z.object({
-  orderNumber: z.string().trim().min(1),
+  orderNumber: z.string().trim().optional(),
   customerId: z.string().trim().min(1),
   modelIncluded: z.boolean().default(false),
   receivedDate: z.string().min(1),
@@ -52,11 +52,16 @@ export const OrderCreate = z.object({
   assignedMachinistId: z.string().trim().optional(),
   parts: z.array(OrderPartCreate).min(1),
   checklistItemIds: z.array(z.string().trim()).default([]),
-  attachments: z.array(z.object({
-    url: z.string().url(),
-    label: z.string().trim().optional(),
-    mimeType: z.string().trim().optional(),
-  })).default([]),
+  attachments: z
+    .array(
+      z.object({
+        url: z.string().min(1),
+        label: z.string().trim().optional(),
+        mimeType: z.string().trim().optional(),
+      })
+    )
+    .default([]),
+  notes: z.string().trim().max(1000).optional(),
 });
 
 export type OrderCreateInput = z.infer<typeof OrderCreate>;

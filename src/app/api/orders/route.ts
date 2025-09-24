@@ -70,9 +70,28 @@ export async function POST(req: NextRequest) {
   }
   const body = parsed.data;
 
+  async function generateNextOrderNumber() {
+    const recent = await prisma.order.findMany({
+      select: { orderNumber: true },
+      orderBy: { orderNumber: 'desc' },
+      take: 200,
+    });
+    let maxValue = 1000;
+    for (const candidate of recent) {
+      const numeric = parseInt(candidate.orderNumber.replace(/[^0-9]/g, ''), 10);
+      if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
+        maxValue = Math.max(maxValue, numeric);
+      }
+    }
+    return String(maxValue + 1);
+  }
+
+  const orderNumber = body.orderNumber?.trim() || (await generateNextOrderNumber());
+  const userId = (session.user as any)?.id as string | undefined;
+
   const order = await prisma.order.create({
     data: {
-      orderNumber: body.orderNumber,
+      orderNumber,
       customerId: body.customerId,
       modelIncluded: body.modelIncluded,
       receivedDate: new Date(body.receivedDate),
@@ -105,11 +124,20 @@ export async function POST(req: NextRequest) {
             })),
           }
         : undefined,
+      notes:
+        body.notes && userId
+          ? {
+              create: {
+                content: body.notes,
+                userId,
+              },
+            }
+          : undefined,
       statusHistory: {
         create: {
           from: 'RECEIVED',
           to: 'RECEIVED',
-          userId: (session.user as any)?.id,
+          userId,
           reason: 'Order created',
         },
       },

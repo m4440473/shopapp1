@@ -15,23 +15,26 @@ export default function Nav() {
   const pathname = usePathname() || '/';
 
   return (
-    <nav className="hidden items-center gap-2 rounded-lg bg-muted p-1 text-muted-foreground md:flex">
-      {links.map((link) => {
+    <nav className="hidden items-center gap-3 text-sm font-medium text-muted-foreground md:flex">
+      {links.map((link, index) => {
         const active =
           link.href === '/admin/users'
             ? pathname.startsWith('/admin')
             : pathname === link.href || pathname.startsWith(`${link.href}/`);
+
         return (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={cn(
-              "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all hover:text-foreground",
-              active && 'bg-background text-foreground shadow'
-            )}
-          >
-            {link.label}
-          </Link>
+          <div key={link.href} className="flex items-center gap-3">
+            <Link
+              href={link.href}
+              className={cn(
+                'transition-colors hover:text-primary',
+                active ? 'text-foreground' : 'text-muted-foreground'
+              )}
+            >
+              {link.label}
+            </Link>
+            {index < links.length - 1 && <span className="text-muted-foreground/60">|</span>}
+          </div>
         );
       })}
     </nav>

@@ -3,7 +3,7 @@
  * Usage:
  *   pnpm ts-node scripts/set-demo-passwords.ts
  */
-import { PrismaClient, Role } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
 
 const prisma = new PrismaClient({
@@ -13,7 +13,7 @@ const prisma = new PrismaClient({
 type DemoUser = {
   email: string;
   password: string;
-  role: Role;
+  role: 'ADMIN' | 'MACHINIST' | 'VIEWER';
   name: string;
 };
 
