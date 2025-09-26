@@ -46,4 +46,4 @@ Hand-off to Agent 2+
 - `pnpm prisma migrate dev --name init` creates a valid SQLite DB.
 - `pnpm ts-node prisma/seed.ts` runs without error and creates at least 3 orders with child rows.
 - All relations enforce sensible `onDelete` behaviors (Orders cascade parts, notes, timelogs, attachments, checklist; Users set-null on history/notes/attachments; Materials/Vendors set-null on parts/orders).
-- Models and enums exactly cover: User, Customer, Material, Vendor, ChecklistItem, Order, OrderPart, OrderChecklist, TimeLog, StatusHistory, Attachment, Note; Role, Priority, Status, TimePhase.
+- Models and enums exactly cover: User, Customer, Material, Vendor, Addon, Order, OrderPart, OrderChecklist, TimeLog, StatusHistory, Attachment, Note; Role, Priority, Status, TimePhase.

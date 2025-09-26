@@ -17,19 +17,24 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!canAccessMachinist(role)) return new NextResponse('Forbidden', { status: 403 });
 
   const json = await req.json().catch(() => null);
-  const { checklistItemId, checked } = json ?? {};
-  if (!checklistItemId) return NextResponse.json({ error: 'Missing checklistItemId' }, { status: 400 });
+  const { addonId, checked } = json ?? {};
+  if (!addonId) return NextResponse.json({ error: 'Missing addonId' }, { status: 400 });
 
   const orderId = params.id;
   if (checked) {
     // create if not exists
-    const exists = await prisma.orderChecklist.findFirst({ where: { orderId, checklistItemId } });
+    const exists = await prisma.orderChecklist.findFirst({ where: { orderId, addonId } });
     if (!exists) {
-      await prisma.orderChecklist.create({ data: { orderId, checklistItemId, toggledById: (session.user as any)?.id } });
+      await prisma.orderChecklist.create({ data: { orderId, addonId, toggledById: (session.user as any)?.id ?? null } });
+    } else {
+      await prisma.orderChecklist.update({
+        where: { id: exists.id },
+        data: { toggledById: (session.user as any)?.id ?? null },
+      });
     }
     return NextResponse.json({ ok: true });
   } else {
-    await prisma.orderChecklist.deleteMany({ where: { orderId, checklistItemId } });
+    await prisma.orderChecklist.deleteMany({ where: { orderId, addonId } });
     return NextResponse.json({ ok: true });
   }
 }
@@ -37,6 +42,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await requireAuth();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
-  const items = await prisma.orderChecklist.findMany({ where: { orderId: params.id }, include: { checklistItem: true } });
+  const items = await prisma.orderChecklist.findMany({ where: { orderId: params.id }, include: { addon: true } });
   return NextResponse.json({ items });
 }
