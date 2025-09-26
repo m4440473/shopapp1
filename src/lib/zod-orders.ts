@@ -51,7 +51,7 @@ export const OrderCreate = z.object({
   poNumber: z.string().trim().optional(),
   assignedMachinistId: z.string().trim().optional(),
   parts: z.array(OrderPartCreate).min(1),
-  checklistItemIds: z.array(z.string().trim()).default([]),
+  addonIds: z.array(z.string().trim()).default([]),
   attachments: z
     .array(
       z.object({

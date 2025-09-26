@@ -65,14 +65,6 @@ model Vendor {
   quoteVendorItems QuoteVendorItem[]
 }
 
-model ChecklistItem {
-  id     String  @id @default(cuid())
-  label  String
-  active Boolean @default(true)
-  orderChecklist OrderChecklist[]
-  @@unique([label])
-}
-
 model Order {
   id               String   @id @default(cuid())
   orderNumber      String
@@ -110,13 +102,17 @@ model OrderPart {
 }
 
 model OrderChecklist {
-  id              String   @id @default(cuid())
-  orderId         String
-  order           Order    @relation(fields: [orderId], references: [id])
-  checklistItemId String
-  checklistItem   ChecklistItem @relation(fields: [checklistItemId], references: [id])
-  toggledById     String?
-  toggledBy       User?    @relation("ChecklistToggledBy", fields: [toggledById], references: [id])
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  addonId     String
+  addon       Addon    @relation(fields: [addonId], references: [id])
+  toggledById String?
+  toggledBy   User?    @relation("ChecklistToggledBy", fields: [toggledById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([orderId, addonId])
 }
 
 model Note {
@@ -173,6 +169,7 @@ model Addon {
   active      Boolean  @default(true)
 
   quoteSelections QuoteAddonSelection[]
+  orderChecklist  OrderChecklist[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
