@@ -33,6 +33,24 @@ Open http://localhost:3000/auth/signin and sign in with:
 - mach2@example.com / mach123 (MACHINIST)
 - viewer@example.com / viewer123 (VIEWER)
 
+### Sharing on your local network
+
+If teammates need to hit the app from another machine, update the three base URL
+values in `.env` (and `.env.example` if you check that in):
+
+```
+APP_BASE_URL="http://<your-machine-ip>:3000"
+NEXTAUTH_URL="http://<your-machine-ip>:3000"
+NEXT_PUBLIC_BASE_URL="http://<your-machine-ip>:3000"
+```
+
+Replace `<your-machine-ip>` with the IP address or hostname other devices use
+to reach your computer (for example, `192.168.1.25`). Restart the dev server
+after updating the `.env` file so Next.js and NextAuth pick up the new settings.
+
+With these values set, the sign-in redirect and sign-out endpoint will stay on
+the shared host instead of jumping back to `localhost`.
+
 ## Protected Routes
 
 `/middleware.ts` guards everything except `/api/auth/*` and the signin page.
