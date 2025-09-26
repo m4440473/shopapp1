@@ -111,8 +111,8 @@ export async function POST(req: NextRequest) {
           notes: p.notes ?? null,
         })),
       },
-      checklist: body.checklistItemIds.length
-        ? { create: body.checklistItemIds.map(id => ({ checklistItemId: id })) }
+      checklist: body.addonIds.length
+        ? { create: body.addonIds.map(id => ({ addonId: id })) }
         : undefined,
       attachments: body.attachments.length
         ? {

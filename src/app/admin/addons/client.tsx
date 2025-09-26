@@ -190,7 +190,9 @@ export default function Client({ initial }: ClientProps) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{dialog?.mode === 'edit' ? 'Edit add-on' : 'New add-on'}</DialogTitle>
-            <DialogDescription>Hourly or fixed-rate services are available to admins while quoting.</DialogDescription>
+            <DialogDescription>
+              Hourly or fixed-rate services are available to admins while quoting and appear on order checklists.
+            </DialogDescription>
           </DialogHeader>
           <form
             className="space-y-4"

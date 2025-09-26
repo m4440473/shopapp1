@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { z } from 'zod';
 
 import { authOptions } from '@/lib/auth';
+import { DEFAULT_QUOTE_METADATA, parseQuoteMetadata, stringifyQuoteMetadata } from '@/lib/quote-metadata';
 import { canAccessAdmin } from '@/lib/rbac';
 import { prisma } from '@/lib/prisma';
 import { ListQuery } from '@/lib/zod';
@@ -69,7 +70,12 @@ export async function GET(req: NextRequest) {
   const nextCursor = items.length > take ? items[take]?.id ?? null : null;
   if (nextCursor) items.pop();
 
-  return NextResponse.json({ items, nextCursor });
+  const normalized = items.map((item) => ({
+    ...item,
+    metadata: parseQuoteMetadata(item.metadata) ?? null,
+  }));
+
+  return NextResponse.json({ items: normalized, nextCursor });
 }
 
 export async function POST(req: NextRequest) {
@@ -115,9 +121,7 @@ export async function POST(req: NextRequest) {
       addonsTotalCents: prepared.addonsTotalCents,
       vendorTotalCents: prepared.vendorTotalCents,
       totalCents: prepared.totalCents,
-      metadata: {
-        markupSuggestions: [0.1, 0.15, 0.2],
-      },
+      metadata: stringifyQuoteMetadata(DEFAULT_QUOTE_METADATA),
       createdById: userId,
       parts: {
         create: prepared.parts,
@@ -146,5 +150,10 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ ok: true, item: created });
+  const normalized = {
+    ...created,
+    metadata: parseQuoteMetadata(created.metadata) ?? null,
+  };
+
+  return NextResponse.json({ ok: true, item: normalized });
 }
