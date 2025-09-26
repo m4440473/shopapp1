@@ -7,7 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// NOTE: No enums on SQLite. Use strings + @db.Text instead.
+// NOTE: No enums on SQLite. Use strings instead.
 
 model User {
   id               String   @id @default(cuid())
@@ -167,7 +167,7 @@ model StatusHistory {
 model Addon {
   id          String   @id @default(cuid())
   name        String
-  description String? @db.Text
+  description String?
   rateType    String
   rateCents   Int
   active      Boolean  @default(true)
@@ -191,16 +191,16 @@ model Quote {
   customerId       String?
   customer         Customer? @relation(fields: [customerId], references: [id])
   status           String    @default("DRAFT")
-  materialSummary  String?   @db.Text
-  purchaseItems    String?   @db.Text
-  requirements     String?   @db.Text
-  notes            String?   @db.Text
+  materialSummary  String?
+  purchaseItems    String?
+  requirements     String?
+  notes            String?
   multiPiece       Boolean   @default(false)
   basePriceCents   Int       @default(0)
   addonsTotalCents Int       @default(0)
   vendorTotalCents Int       @default(0)
   totalCents       Int       @default(0)
-  metadata         Json?
+  metadata         String?
 
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
@@ -223,10 +223,10 @@ model QuotePart {
   quoteId    String
   quote      Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   name       String
-  description String? @db.Text
+  description String?
   quantity   Int    @default(1)
   pieceCount Int    @default(1)
-  notes      String? @db.Text
+  notes      String?
 }
 
 model QuoteVendorItem {
@@ -241,7 +241,7 @@ model QuoteVendorItem {
   basePriceCents  Int     @default(0)
   markupPercent   Float   @default(0)
   finalPriceCents Int     @default(0)
-  notes           String? @db.Text
+  notes           String?
 }
 
 model QuoteAddonSelection {
@@ -254,7 +254,7 @@ model QuoteAddonSelection {
   rateTypeSnapshot String
   rateCents        Int
   totalCents       Int
-  notes            String? @db.Text
+  notes            String?
 }
 
 model QuoteAttachment {

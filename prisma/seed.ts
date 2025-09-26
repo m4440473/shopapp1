@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 
+import { DEFAULT_QUOTE_METADATA, stringifyQuoteMetadata } from '../src/lib/quote-metadata';
+
 const prisma = new PrismaClient();
 
 async function main() {
@@ -192,9 +194,10 @@ async function main() {
         multiPiece: true,
         notes: 'Initial quote prepared from legacy spreadsheet.',
         createdById: admin.id,
-        metadata: {
+        metadata: stringifyQuoteMetadata({
+          ...DEFAULT_QUOTE_METADATA,
           markupNotes: 'Vendor markup applied at 20%. Labor captured via addons.',
-        },
+        }),
         parts: {
           create: [
             {
