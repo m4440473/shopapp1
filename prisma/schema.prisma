@@ -19,6 +19,7 @@ model User {
   passwordHash     String?
 
   orders           Order[]  @relation("AssignedOrders")
+  quotes           Quote[]
   notes            Note[]
   timeLogs         TimeLog[]
   checklistToggles OrderChecklist[] @relation("ChecklistToggledBy")
@@ -38,6 +39,7 @@ model Customer {
   address String?
 
   orders  Order[]
+  quotes  Quote[]
 
   @@index([name])
   @@unique([name])
@@ -60,6 +62,7 @@ model Vendor {
   notes  String?
 
   orders Order[]
+  quoteVendorItems QuoteVendorItem[]
 }
 
 model ChecklistItem {
@@ -158,5 +161,108 @@ model StatusHistory {
   userId    String?
   user      User?    @relation("UserStatusHistory", fields: [userId], references: [id])
   reason    String?
+  createdAt DateTime @default(now())
+}
+
+model Addon {
+  id          String   @id @default(cuid())
+  name        String
+  description String? @db.Text
+  rateType    String
+  rateCents   Int
+  active      Boolean  @default(true)
+
+  quoteSelections QuoteAddonSelection[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+  @@unique([name])
+}
+
+model Quote {
+  id               String   @id @default(cuid())
+  quoteNumber      String
+  companyName      String
+  contactName      String?
+  contactEmail     String?
+  contactPhone     String?
+  customerId       String?
+  customer         Customer? @relation(fields: [customerId], references: [id])
+  status           String    @default("DRAFT")
+  materialSummary  String?   @db.Text
+  purchaseItems    String?   @db.Text
+  requirements     String?   @db.Text
+  notes            String?   @db.Text
+  multiPiece       Boolean   @default(false)
+  basePriceCents   Int       @default(0)
+  addonsTotalCents Int       @default(0)
+  vendorTotalCents Int       @default(0)
+  totalCents       Int       @default(0)
+  metadata         Json?
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+
+  parts           QuotePart[]
+  vendorItems     QuoteVendorItem[]
+  addonSelections QuoteAddonSelection[]
+  attachments     QuoteAttachment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([companyName])
+  @@unique([quoteNumber])
+}
+
+model QuotePart {
+  id         String @id @default(cuid())
+  quoteId    String
+  quote      Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  name       String
+  description String? @db.Text
+  quantity   Int    @default(1)
+  pieceCount Int    @default(1)
+  notes      String? @db.Text
+}
+
+model QuoteVendorItem {
+  id              String  @id @default(cuid())
+  quoteId         String
+  quote           Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  vendorId        String?
+  vendor          Vendor? @relation(fields: [vendorId], references: [id])
+  vendorName      String?
+  partNumber      String?
+  partUrl         String?
+  basePriceCents  Int     @default(0)
+  markupPercent   Float   @default(0)
+  finalPriceCents Int     @default(0)
+  notes           String? @db.Text
+}
+
+model QuoteAddonSelection {
+  id               String @id @default(cuid())
+  quoteId          String
+  quote            Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  addonId          String
+  addon            Addon  @relation(fields: [addonId], references: [id])
+  units            Float  @default(0)
+  rateTypeSnapshot String
+  rateCents        Int
+  totalCents       Int
+  notes            String? @db.Text
+}
+
+model QuoteAttachment {
+  id        String   @id @default(cuid())
+  quoteId   String
+  quote     Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  url       String
+  label     String?
+  mimeType  String?
   createdAt DateTime @default(now())
 }
