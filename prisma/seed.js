@@ -26,15 +26,34 @@ async function main() {
     await prisma.vendor.upsert({ where: { name: v.name }, update: {}, create: v });
   }
 
-  // Checklist items
-  for (const c of [
-    { label: 'Print on file' },
-    { label: 'Model on file' },
-    { label: 'Material verified' },
-    { label: 'Special process required' },
-    { label: 'QC plan attached' },
-  ]) {
-    await prisma.checklistItem.upsert({ where: { label: c.label }, update: {}, create: c });
+  const addonSeeds = [
+    { name: 'Saw', rateType: 'HOURLY', rateCents: 7500, description: 'Saw cutting time per hour.' },
+    { name: 'Weld', rateType: 'HOURLY', rateCents: 9000, description: 'Welding labor per hour.' },
+    { name: 'Program Time', rateType: 'HOURLY', rateCents: 8500, description: 'CAM and CNC programming time.' },
+    { name: 'Setup Time', rateType: 'HOURLY', rateCents: 7000, description: 'Machine setup labor per hour.' },
+    { name: 'Mill Time', rateType: 'HOURLY', rateCents: 8200, description: 'Mill runtime per hour.' },
+    { name: 'Lathe Time', rateType: 'HOURLY', rateCents: 7800, description: 'Lathe runtime per hour.' },
+    { name: 'Flat Rate Handling', rateType: 'FLAT', rateCents: 2500, description: 'Fixed charge for handling or packaging.' },
+    { name: 'Deburr', rateType: 'FLAT', rateCents: 0, description: 'Standard deburring process.' },
+    { name: 'Heat Treat', rateType: 'FLAT', rateCents: 0, description: 'External heat treat service required.' },
+    { name: 'Grind', rateType: 'FLAT', rateCents: 0, description: 'Grinding or surface finishing required.' },
+    { name: 'Inspect', rateType: 'FLAT', rateCents: 0, description: 'Special inspection prior to shipment.' },
+    { name: 'Paint', rateType: 'FLAT', rateCents: 0, description: 'Painting or coating service.' },
+  ];
+
+  const addonRecords = [];
+  for (const addon of addonSeeds) {
+    const record = await prisma.addon.upsert({
+      where: { name: addon.name },
+      update: {
+        description: addon.description,
+        rateType: addon.rateType,
+        rateCents: addon.rateCents,
+        active: true,
+      },
+      create: addon,
+    });
+    addonRecords.push(record);
   }
 
   // Customers
@@ -74,7 +93,7 @@ async function main() {
   ]);
 
   const mats = await prisma.material.findMany();
-  const checklist = await prisma.checklistItem.findMany();
+  const checklistAddons = addonRecords.slice(0, 5);
 
   async function seedOrder(idx, customerId, assigned) {
     const ord = await prisma.order.create({
@@ -101,7 +120,7 @@ async function main() {
           ],
         },
         checklist: {
-          create: checklist.slice(0, 3).map(c => ({ checklistItemId: c.id })),
+          create: checklistAddons.slice(0, 3).map((addon) => ({ addonId: addon.id })),
         },
         statusHistory: { create: { from: "RECEIVED", to: "RECEIVED", userId: admin.id, reason: 'Seed' } },
       },

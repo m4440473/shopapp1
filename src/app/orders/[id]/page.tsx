@@ -233,13 +233,13 @@ export default function OrderDetailPage() {
     }
   }, [editOpen]);
 
-  async function toggleChecklist(checklistItemId: string, checked: boolean) {
-    setToggling(checklistItemId);
+  async function toggleChecklist(addonId: string, checked: boolean) {
+    setToggling(addonId);
     try {
       const res = await fetch(`/api/orders/${id}/checklist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ checklistItemId, checked }),
+        body: JSON.stringify({ addonId, checked }),
         credentials: 'include',
       });
       if (!res.ok) throw res;
@@ -475,7 +475,7 @@ export default function OrderDetailPage() {
     return <div className="text-muted-foreground">Order not found.</div>;
   }
 
-  const checkedIds = new Set(item.checklist?.map((c: any) => c.checklistItem?.id));
+  const checkedIds = new Set(item.checklist?.map((c: any) => c.addon?.id));
   const parts: any[] = Array.isArray(item.parts) ? item.parts : [];
   const primaryPart = parts[0];
   const additionalParts = parts.slice(1);
@@ -909,28 +909,43 @@ export default function OrderDetailPage() {
               {item.checklist?.map((c: any) => (
                 <label
                   key={c.id}
-                  className="flex items-start gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
+                  className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
                 >
-                  <Checkbox
-                    checked={checkedIds.has(c.checklistItem?.id)}
-                    disabled={!!toggling}
-                    onCheckedChange={(value) =>
-                      toggleChecklist(c.checklistItem.id, value === true)
-                    }
-                  />
-                  <div>
-                    <div className="font-medium text-foreground">
-                      {c.checklistItem?.label}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Updated {new Date(c.updatedAt).toLocaleString()}
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      checked={checkedIds.has(c.addon?.id)}
+                      disabled={!!toggling || !c.addon?.id}
+                      onCheckedChange={(value) => {
+                        if (!c.addon?.id) return;
+                        toggleChecklist(c.addon.id, value === true);
+                      }}
+                    />
+                    <div>
+                      <div className="font-medium text-foreground">
+                        {c.addon?.name ?? 'Add-on removed'}
+                      </div>
+                      {c.addon?.description && (
+                        <div className="text-xs text-muted-foreground">{c.addon.description}</div>
+                      )}
+                      <div className="text-xs text-muted-foreground">
+                        Updated {new Date(c.updatedAt).toLocaleString()}
+                      </div>
                     </div>
                   </div>
+                  <span className="text-xs text-muted-foreground">
+                    {(() => {
+                      const rate = ((c.addon?.rateCents ?? 0) / 100).toLocaleString('en-US', {
+                        style: 'currency',
+                        currency: 'USD',
+                      });
+                      return c.addon?.rateType === 'HOURLY' ? `${rate} / hr` : rate;
+                    })()}
+                  </span>
                 </label>
               ))}
               {(!item.checklist || item.checklist.length === 0) && (
                 <p className="text-sm text-muted-foreground">
-                  No processes assigned. Use the checklist admin to seed standard routing steps.
+                  No services assigned. Manage add-ons from the admin dashboard.
                 </p>
               )}
             </CardContent>

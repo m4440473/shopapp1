@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth';
+import { DEFAULT_QUOTE_METADATA, parseQuoteMetadata, stringifyQuoteMetadata } from '@/lib/quote-metadata';
 import { canAccessAdmin } from '@/lib/rbac';
 import { prisma } from '@/lib/prisma';
 import { QuoteCreate } from '@/lib/zod-quotes';
@@ -43,7 +44,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return new NextResponse('Not found', { status: 404 });
   }
 
-  return NextResponse.json({ item });
+  const normalized = {
+    ...item,
+    metadata: parseQuoteMetadata(item.metadata) ?? null,
+  };
+
+  return NextResponse.json({ item: normalized });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
@@ -96,9 +102,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       vendorTotalCents: prepared.vendorTotalCents,
       addonsTotalCents: prepared.addonsTotalCents,
       totalCents: prepared.totalCents,
-      metadata: {
-        markupSuggestions: [0.1, 0.15, 0.2],
-      },
+      metadata: stringifyQuoteMetadata(DEFAULT_QUOTE_METADATA),
       parts: {
         deleteMany: {},
         create: prepared.parts,
@@ -128,5 +132,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     },
   });
 
-  return NextResponse.json({ ok: true, item: updated });
+  const normalized = {
+    ...updated,
+    metadata: parseQuoteMetadata(updated.metadata) ?? null,
+  };
+
+  return NextResponse.json({ ok: true, item: normalized });
 }

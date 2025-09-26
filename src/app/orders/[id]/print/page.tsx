@@ -25,7 +25,7 @@ export default async function OrderPrintPage({ params }: { params: { id: string 
       assignedMachinist: true,
       vendor: true,
       parts: { include: { material: true } },
-      checklist: { include: { checklistItem: true } },
+      checklist: { include: { addon: true } },
       attachments: true,
       notes: { include: { user: true }, orderBy: { createdAt: 'asc' } },
     },
@@ -144,17 +144,30 @@ export default async function OrderPrintPage({ params }: { params: { id: string 
         <h2 className="text-lg font-semibold">Checklist</h2>
         {order.checklist.length ? (
           <ul className="space-y-2">
-            {order.checklist.map((item) => (
-              <li key={item.id} className="flex items-center justify-between border border-gray-200 px-3 py-2">
-                <span className="font-medium">{item.checklistItem?.label ?? 'Checklist item'}</span>
-                <span className="text-xs uppercase text-gray-500">
-                  Updated {formatDate(item.updatedAt, true)}
-                </span>
-              </li>
-            ))}
+            {order.checklist.map((item) => {
+              const addon = item.addon;
+              const rate = ((addon?.rateCents ?? 0) / 100).toLocaleString('en-US', {
+                style: 'currency',
+                currency: 'USD',
+              });
+              return (
+                <li key={item.id} className="flex items-start justify-between gap-3 border border-gray-200 px-3 py-2">
+                  <div>
+                    <span className="font-medium">{addon?.name ?? 'Add-on removed'}</span>
+                    {addon?.description && (
+                      <span className="block text-xs text-gray-600">{addon.description}</span>
+                    )}
+                  </div>
+                  <div className="text-right text-xs uppercase text-gray-500">
+                    <div>{addon?.rateType === 'HOURLY' ? `${rate} / hr` : rate}</div>
+                    <div>Updated {formatDate(item.updatedAt, true)}</div>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         ) : (
-          <p className="text-sm text-gray-600">No checklist items recorded for this order.</p>
+          <p className="text-sm text-gray-600">No add-ons recorded for this order.</p>
         )}
       </section>
 

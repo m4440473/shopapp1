@@ -38,7 +38,14 @@ const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 const OPTIONAL_VALUE = '__none__';
 
 type Option = { id: string; name: string };
-type ChecklistOption = { id: string; label: string };
+type AddonOption = {
+  id: string;
+  name: string;
+  description?: string | null;
+  rateType: 'HOURLY' | 'FLAT';
+  rateCents: number;
+  active: boolean;
+};
 type PartInput = { partNumber: string; quantity: number; materialId?: string; notes?: string };
 type AttachmentInput = { url: string; label: string; mimeType?: string };
 
@@ -57,11 +64,11 @@ export default function NewOrderPage() {
   const [vendors, setVendors] = React.useState<Option[]>([]);
   const [materials, setMaterials] = React.useState<Option[]>([]);
   const [machinists, setMachinists] = React.useState<Option[]>([]);
-  const [checklistItems, setChecklistItems] = React.useState<ChecklistOption[]>([]);
+  const [addons, setAddons] = React.useState<AddonOption[]>([]);
   const [vendorId, setVendorId] = React.useState('');
   const [poNumber, setPoNumber] = React.useState('');
   const [assignedMachinistId, setAssignedMachinistId] = React.useState('');
-  const [selectedChecklist, setSelectedChecklist] = React.useState<string[]>([]);
+  const [selectedAddonIds, setSelectedAddonIds] = React.useState<string[]>([]);
   const [dueDate, setDueDate] = React.useState('');
   const [priority, setPriority] = React.useState('NORMAL');
   const [parts, setParts] = React.useState<PartInput[]>([emptyPart()]);
@@ -111,10 +118,10 @@ export default function NewOrderPage() {
       })
       .catch(() => setMachinists([]));
 
-    fetch('/api/admin/checklist-items?take=100', { credentials: 'include' })
+    fetch('/api/admin/addons?active=true&take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => setChecklistItems(data.items ?? []))
-      .catch(() => setChecklistItems([]));
+      .then((data) => setAddons((data.items ?? []).filter((item: AddonOption) => item.active)))
+      .catch(() => setAddons([]));
 
     const standard = [
       'Deburr',
@@ -131,29 +138,29 @@ export default function NewOrderPage() {
 
     (async () => {
       try {
-        const res = await fetch('/api/admin/checklist-items?take=500', {
+        const res = await fetch('/api/admin/addons?take=500', {
           credentials: 'include',
         });
         if (!res.ok) return;
         const data = await res.json();
-        const existing = (data.items ?? []) as ChecklistOption[];
-        const existingLabels = new Set(existing.map((i) => i.label.toLowerCase()));
-        for (const label of standard) {
-          if (!existingLabels.has(label.toLowerCase())) {
-            await fetch('/api/admin/checklist-items', {
+        const existing = (data.items ?? []) as AddonOption[];
+        const existingNames = new Set(existing.map((i) => i.name.toLowerCase()));
+        for (const name of standard) {
+          if (!existingNames.has(name.toLowerCase())) {
+            await fetch('/api/admin/addons', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ label }),
+              body: JSON.stringify({ name, rateType: 'FLAT', rateCents: 0, active: true }),
               credentials: 'include',
             });
           }
         }
-        const refreshed = await fetch('/api/admin/checklist-items?take=500', {
+        const refreshed = await fetch('/api/admin/addons?active=true&take=500', {
           credentials: 'include',
         });
         if (refreshed.ok) {
           const d2 = await refreshed.json();
-          setChecklistItems(d2.items ?? []);
+          setAddons((d2.items ?? []).filter((item: AddonOption) => item.active));
         }
       } catch (e) {
         // ignore background seeding errors
@@ -253,7 +260,7 @@ export default function NewOrderPage() {
       poNumber: poNumber || undefined,
       assignedMachinistId: assignedMachinistId || undefined,
       parts: cleanedParts,
-      checklistItemIds: selectedChecklist,
+      addonIds: selectedAddonIds,
       attachments: cleanAttachments,
       notes: notes.trim() ? notes.trim() : undefined,
     } as any;
@@ -333,7 +340,7 @@ export default function NewOrderPage() {
         <p className="text-xs uppercase tracking-[0.4em] text-primary/70">Intake</p>
         <h1 className="text-4xl font-semibold text-foreground">Create a production order</h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Order numbers are generated for you, starting at 1001. Gather every part, attachment, and checklist item before the job hits the floor.
+          Order numbers are generated for you, starting at 1001. Gather every part, attachment, and add-on service before the job hits the floor.
         </p>
       </div>
 
@@ -679,33 +686,51 @@ export default function NewOrderPage() {
 
         <Card className="border-border/60 bg-card/70 backdrop-blur">
           <CardHeader>
-            <CardTitle>Checklist & notes</CardTitle>
-            <CardDescription>Toggle the finishing steps and include launch notes.</CardDescription>
+            <CardTitle>Add-ons & notes</CardTitle>
+            <CardDescription>Select value-added services and include launch notes.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-6">
             <div className="grid gap-2">
-              <Label>Checklist items</Label>
+              <Label>Add-on services</Label>
               <div className="grid gap-3 rounded-lg border border-border/60 bg-background/60 p-4 sm:grid-cols-2">
-                {checklistItems.map((item) => {
-                  const checked = selectedChecklist.includes(item.id);
+                {addons.map((item) => {
+                  const checked = selectedAddonIds.includes(item.id);
                   return (
-                    <label key={item.id} className="flex items-start gap-3 text-sm">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(value) => {
-                          const isChecked = value === true;
-                          setSelectedChecklist((sel) =>
-                            isChecked ? [...sel, item.id] : sel.filter((id) => id !== item.id)
-                          );
-                        }}
-                      />
-                      <span className="leading-snug text-foreground">{item.label}</span>
+                    <label key={item.id} className="flex items-start justify-between gap-3 rounded-md border border-border/40 bg-muted/10 p-3 text-sm">
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) => {
+                            const isChecked = value === true;
+                            setSelectedAddonIds((sel) =>
+                              isChecked ? [...sel, item.id] : sel.filter((id) => id !== item.id)
+                            );
+                          }}
+                        />
+                        <div className="space-y-1">
+                          <span className="font-medium text-foreground">{item.name}</span>
+                          {item.description && (
+                            <span className="block text-xs text-muted-foreground">{item.description}</span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {item.rateType === 'HOURLY'
+                          ? `${(item.rateCents / 100).toLocaleString('en-US', {
+                              style: 'currency',
+                              currency: 'USD',
+                            })} / hr`
+                          : (item.rateCents / 100).toLocaleString('en-US', {
+                              style: 'currency',
+                              currency: 'USD',
+                            })}
+                      </span>
                     </label>
                   );
                 })}
-                {checklistItems.length === 0 && (
+                {addons.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    No checklist templates yet. Add items from the admin dashboard.
+                    No add-ons available yet. Create them from the admin dashboard.
                   </p>
                 )}
               </div>

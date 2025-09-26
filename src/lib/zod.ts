@@ -41,13 +41,6 @@ export const VendorUpsert = z.object({
 });
 export const VendorPatch = VendorUpsert.partial();
 
-/** CHECKLIST ITEMS */
-export const ChecklistItemUpsert = z.object({
-  label: z.string().trim().min(2).max(120),
-  active: z.boolean().default(true),
-});
-export const ChecklistItemPatch = ChecklistItemUpsert.partial();
-
 /** ADDONS */
 export const AddonRateType = z.enum(['HOURLY', 'FLAT']);
 export const AddonUpsert = z.object({
@@ -73,8 +66,6 @@ export type TMaterialUpsert = z.infer<typeof MaterialUpsert>;
 export type TMaterialPatch = z.infer<typeof MaterialPatch>;
 export type TVendorUpsert = z.infer<typeof VendorUpsert>;
 export type TVendorPatch = z.infer<typeof VendorPatch>;
-export type TChecklistItemUpsert = z.infer<typeof ChecklistItemUpsert>;
-export type TChecklistItemPatch = z.infer<typeof ChecklistItemPatch>;
 export type TListQuery = z.infer<typeof ListQuery>;
 export type TAddonUpsert = z.infer<typeof AddonUpsert>;
 export type TAddonPatch = z.infer<typeof AddonPatch>;
