@@ -48,6 +48,17 @@ export const ChecklistItemUpsert = z.object({
 });
 export const ChecklistItemPatch = ChecklistItemUpsert.partial();
 
+/** ADDONS */
+export const AddonRateType = z.enum(['HOURLY', 'FLAT']);
+export const AddonUpsert = z.object({
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(1000).optional(),
+  rateType: AddonRateType.default('HOURLY'),
+  rateCents: z.coerce.number().int().min(0).max(10_000_000),
+  active: z.boolean().default(true),
+});
+export const AddonPatch = AddonUpsert.partial();
+
 /** Common query schema for list endpoints: ?q=&cursor=&take= */
 export const ListQuery = z.object({
   q: Q,
@@ -65,3 +76,5 @@ export type TVendorPatch = z.infer<typeof VendorPatch>;
 export type TChecklistItemUpsert = z.infer<typeof ChecklistItemUpsert>;
 export type TChecklistItemPatch = z.infer<typeof ChecklistItemPatch>;
 export type TListQuery = z.infer<typeof ListQuery>;
+export type TAddonUpsert = z.infer<typeof AddonUpsert>;
+export type TAddonPatch = z.infer<typeof AddonPatch>;

@@ -10,6 +10,8 @@ const tabs = [
   { href: '/admin/materials', label: 'Materials' },
   { href: '/admin/vendors', label: 'Vendors' },
   { href: '/admin/checklist', label: 'Checklist' },
+  { href: '/admin/addons', label: 'Add-ons' },
+  { href: '/admin/quotes', label: 'Quotes' },
 ];
 
 export default function NavTabs() {
