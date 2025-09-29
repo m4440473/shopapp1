@@ -26,6 +26,22 @@ What you get
 	•	Customers: Corning, Toyota, Acme Fab
 	•	Orders: 3 sample POs with parts, checklist rows, history, notes, timelogs, attachments
 
+## Attachment storage
+
+- Attachments are stored on disk underneath the directory defined by the
+  `ATTACHMENTS_DIR` environment variable. If it is not set, the application
+  defaults to a local `storage/` folder in the project root.
+- `npm install` / `pnpm install` automatically run `scripts/init-storage.ts` to
+  create the attachment root and top-level folders for each business (Sterling
+  Tool and Die, C and R Machining, Powder Coating).
+- Attachments are saved using slugified directory names in the format
+  `<business>/<customer>/<reference>/`. For example, an order for "Acme Co" with
+  reference `PO-1234` under Sterling Tool and Die will live at
+  `storage/sterling-tool-and-die/acme-co/po-1234/` by default.
+- Override `ATTACHMENTS_DIR` at runtime or during installation to point to a
+  different root location, and rerun `pnpm ts-node --esm scripts/init-storage.ts`
+  if you need to recreate the initial structure manually.
+
 Switch to MySQL (optional)
 	1.	In datasource db set provider = "mysql" and set DATABASE_URL in .env.
 	2.	Run:
