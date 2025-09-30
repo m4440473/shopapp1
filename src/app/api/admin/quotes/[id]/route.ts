@@ -117,7 +117,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       },
       attachments: {
         deleteMany: {},
-        create: prepared.attachments,
+        create: prepared.attachments.map((attachment) => ({
+          url: attachment.url,
+          storagePath: attachment.storagePath,
+          label: attachment.label,
+          mimeType: attachment.mimeType,
+        })),
       },
     },
     include: {

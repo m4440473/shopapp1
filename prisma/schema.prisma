@@ -255,11 +255,14 @@ model QuoteAddonSelection {
 }
 
 model QuoteAttachment {
-  id        String   @id @default(cuid())
-  quoteId   String
-  quote     Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  url       String
-  label     String?
-  mimeType  String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  quoteId     String
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  url         String?
+  storagePath String?
+  label       String?
+  mimeType    String?
+  createdAt   DateTime @default(now())
+
+  @@index([storagePath])
 }
