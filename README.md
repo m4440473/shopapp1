@@ -12,6 +12,11 @@ pnpm prisma generate
 pnpm prisma migrate dev --name init
 pnpm ts-node ./prisma/seed.ts
 
+> **Using npm instead of pnpm?** Run the equivalent scripts with `npm run`, or
+> call the Prisma CLI directly: `npx prisma generate` and `npx prisma migrate
+> dev`. Note the space between `prisma` and the command (for example,
+> `prisma generate`) when using `npx`.
+
 If ts-node isn’t available:
 
 pnpm add -D ts-node typescript
@@ -31,7 +36,7 @@ What you get
 - Attachments are stored on disk underneath the directory defined by the
   `ATTACHMENTS_DIR` environment variable. If it is not set, the application
   defaults to a local `storage/` folder in the project root.
-- `npm install` / `pnpm install` automatically run `scripts/init-storage.ts` to
+- `npm install` / `pnpm install` automatically run `scripts/init-storage.cjs` to
   create the attachment root and top-level folders for each business (Sterling
   Tool and Die, C and R Machining, Powder Coating).
 - Attachments are saved using slugified directory names in the format
@@ -39,7 +44,7 @@ What you get
   reference `PO-1234` under Sterling Tool and Die will live at
   `storage/sterling-tool-and-die/acme-co/po-1234/` by default.
 - Override `ATTACHMENTS_DIR` at runtime or during installation to point to a
-  different root location, and rerun `pnpm ts-node --esm scripts/init-storage.ts`
+  different root location, and rerun `node scripts/init-storage.cjs`
   if you need to recreate the initial structure manually.
 
 Switch to MySQL (optional)

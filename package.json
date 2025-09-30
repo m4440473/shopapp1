@@ -14,7 +14,7 @@
     "set-demo-passwords": "node scripts/set-demo-passwords.js",
     "demo:setup": "npm run seed && npm run set-demo-passwords",
     "auto-commit": "node scripts/auto-commit.js",
-    "postinstall": "node scripts/check-path-casing.js && ts-node --esm scripts/init-storage.ts"
+    "postinstall": "node scripts/check-path-casing.js && node scripts/init-storage.cjs"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",
