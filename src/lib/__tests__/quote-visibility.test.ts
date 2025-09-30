@@ -108,9 +108,11 @@ describe('quote visibility sanitizers', () => {
     expect(result.vendorItems[0].finalPriceCents).toBe(0);
     expect(result.addonSelections[0].rateCents).toBe(0);
     expect(result.addonSelections[0].totalCents).toBe(0);
+    expect(result.addonSelections[0].addon.rateCents).toBe(0);
 
     // Ensure the original object is not mutated
     expect(detailBase.vendorItems[0].finalPriceCents).toBe(3680);
+    expect(detailBase.addonSelections[0].addon.rateCents).toBe(500);
   });
 
   it('returns the original summary payload for admins', () => {

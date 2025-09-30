@@ -43,6 +43,12 @@ export function sanitizeQuoteDetailPricing(
       ...selection,
       rateCents: 0,
       totalCents: 0,
+      addon: selection.addon
+        ? {
+            ...selection.addon,
+            rateCents: 0,
+          }
+        : selection.addon,
     })),
   };
 }
