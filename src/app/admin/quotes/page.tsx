@@ -5,17 +5,25 @@ import NavTabs from '@/components/Admin/NavTabs';
 import { ToastProvider } from '@/components/ui/Toast';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
-import { canAccessAdmin } from '@/lib/rbac';
+import { canAccessAdmin, canViewQuotes } from '@/lib/rbac';
 import Client from './client';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
+import { sanitizeQuoteSummaryPricing } from '@/lib/quote-visibility';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
   const session = await getServerSession(authOptions);
-  if (!session || !canAccessAdmin((session.user as any)?.role)) {
+  if (!session) {
     redirect('/');
   }
+
+  const role = (session.user as any)?.role ?? null;
+  if (!canViewQuotes(role)) {
+    redirect('/');
+  }
+
+  const isAdmin = canAccessAdmin(role);
 
   const rawItems = await prisma.quote.findMany({
     orderBy: { createdAt: 'desc' },
@@ -26,10 +34,13 @@ export default async function Page() {
     },
   });
 
-  const items = rawItems.map((item) => ({
-    ...item,
-    metadata: mergeQuoteMetadata(parseQuoteMetadata(item.metadata)),
-  }));
+  const items = rawItems.map((item) => {
+    const enriched = {
+      ...item,
+      metadata: mergeQuoteMetadata(parseQuoteMetadata(item.metadata)),
+    };
+    return sanitizeQuoteSummaryPricing(enriched, isAdmin);
+  });
 
   const initial = { items, nextCursor: null };
 
@@ -43,7 +54,7 @@ export default async function Page() {
         </p>
       </div>
       <ToastProvider>
-        <Client initial={initial} />
+        <Client initial={initial} initialRole={role} />
       </ToastProvider>
     </div>
   );

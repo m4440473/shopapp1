@@ -14,10 +14,12 @@ import {
 } from '@/components/ui/Card';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
-import { canAccessAdmin } from '@/lib/rbac';
+import AdminPricingGate from '@/components/Admin/AdminPricingGate';
 import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
 import QuoteWorkflowControls from '../QuoteWorkflowControls';
+import { canAccessAdmin, canViewQuotes } from '@/lib/rbac';
+import { sanitizeQuoteDetailPricing } from '@/lib/quote-visibility';
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Draft',
@@ -33,16 +35,24 @@ export const dynamic = 'force-dynamic';
 
 export default async function QuoteDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
-  if (!session || !canAccessAdmin((session.user as any)?.role)) {
+  if (!session) {
     redirect('/');
   }
+
+  const role = (session.user as any)?.role ?? null;
+  if (!canViewQuotes(role)) {
+    redirect('/');
+  }
+
+  const isAdmin = canAccessAdmin(role);
+  const initialRole = role;
 
   const headerStore = headers();
   const fallbackHost = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
   const fallbackProtocol = headerStore.get('x-forwarded-proto') ?? 'https';
   const runtimeBase = fallbackHost ? `${fallbackProtocol}://${fallbackHost}` : '';
 
-  const quote = await prisma.quote.findUnique({
+  const quoteRecord = await prisma.quote.findUnique({
     where: { id: params.id },
     include: {
       customer: { select: { id: true, name: true } },
@@ -56,9 +66,11 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
     },
   });
 
-  if (!quote) {
+  if (!quoteRecord) {
     notFound();
   }
+
+  const quote = sanitizeQuoteDetailPricing(quoteRecord, isAdmin);
 
   const businessOption = BUSINESS_OPTIONS.find((option) => option.code === quote.business);
   const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata));
@@ -82,15 +94,25 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
     .filter((href): href is string => href.length > 0);
 
   const subject = `Quote ${quote.quoteNumber} from ${businessOption?.name ?? 'our shop'}`;
-  const bodyLines = [
+  const baseBodyLines = [
     `Hello ${quote.contactName ?? quote.companyName ?? 'there'},`,
     '',
     `Please review quote ${quote.quoteNumber} from ${businessOption?.name ?? 'our team'}.`,
     '',
-    `Total estimate: ${formatCurrency(quote.totalCents)}`,
-    `Base fabrication: ${formatCurrency(quote.basePriceCents + vendorTotal)}`,
-    `Add-ons and labor: ${formatCurrency(addonTotal)}`,
   ];
+
+  const pricingLines = isAdmin
+    ? [
+        `Total estimate: ${formatCurrency(quote.totalCents)}`,
+        `Base fabrication: ${formatCurrency(quote.basePriceCents + vendorTotal)}`,
+        `Add-ons and labor: ${formatCurrency(addonTotal)}`,
+      ]
+    : [
+        'Pricing details are restricted to administrators.',
+        'Please coordinate with an administrator for a full cost breakdown.',
+      ];
+
+  const bodyLines = [...baseBodyLines, ...pricingLines];
 
   if (attachmentLinks.length > 0) {
     bodyLines.push('', 'Attachments:', ...attachmentLinks.map((link) => `- ${link}`));
@@ -207,30 +229,63 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Totals</CardTitle>
-            <CardDescription>Only administrators can see internal pricing.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Base fabrication</span>
-              <span className="font-medium">{formatCurrency(quote.basePriceCents)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Vendor purchases</span>
-              <span className="font-medium">{formatCurrency(vendorTotal)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Add-ons and labor</span>
-              <span className="font-medium">{formatCurrency(addonTotal)}</span>
-            </div>
-            <div className="border-t border-border/60 pt-2 flex justify-between text-base font-semibold">
-              <span>Total estimate</span>
-              <span className="text-primary">{formatCurrency(quote.totalCents)}</span>
-            </div>
-          </CardContent>
-        </Card>
+        <AdminPricingGate
+          initialRole={initialRole}
+          admin={
+            isAdmin ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Totals</CardTitle>
+                  <CardDescription>Only administrators can see internal pricing.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Base fabrication</span>
+                    <span className="font-medium">{formatCurrency(quote.basePriceCents)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Vendor purchases</span>
+                    <span className="font-medium">{formatCurrency(vendorTotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Add-ons and labor</span>
+                    <span className="font-medium">{formatCurrency(addonTotal)}</span>
+                  </div>
+                  <div className="border-t border-border/60 pt-2 flex justify-between text-base font-semibold">
+                    <span>Total estimate</span>
+                    <span className="text-primary">{formatCurrency(quote.totalCents)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null
+          }
+          fallback={
+            <Card>
+              <CardHeader>
+                <CardTitle>Totals</CardTitle>
+                <CardDescription>Pricing is hidden for your role.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Base fabrication</span>
+                  <span className="font-medium text-muted-foreground">Restricted</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Vendor purchases</span>
+                  <span className="font-medium text-muted-foreground">Restricted</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Add-ons and labor</span>
+                  <span className="font-medium text-muted-foreground">Restricted</span>
+                </div>
+                <div className="border-t border-border/60 pt-2 flex justify-between text-base font-semibold">
+                  <span>Total estimate</span>
+                  <span className="text-muted-foreground">Restricted</span>
+                </div>
+              </CardContent>
+            </Card>
+          }
+        />
       </div>
 
       <Card>
@@ -319,12 +374,25 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
                     </Link>
                   )}
                 </div>
-                <div className="text-right">
-                  <p>{formatCurrency(item.finalPriceCents)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Base {formatCurrency(item.basePriceCents)} • Markup {item.markupPercent}%
-                  </p>
-                </div>
+                <AdminPricingGate
+                  initialRole={initialRole}
+                  admin={
+                    isAdmin ? (
+                      <div className="text-right">
+                        <p>{formatCurrency(item.finalPriceCents)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Base {formatCurrency(item.basePriceCents)} • Markup {item.markupPercent}%
+                        </p>
+                      </div>
+                    ) : null
+                  }
+                  fallback={
+                    <div className="text-right text-muted-foreground">
+                      <p className="font-medium">Pricing hidden</p>
+                      <p className="text-xs">Markup {item.markupPercent}% • Admin only</p>
+                    </div>
+                  }
+                />
               </div>
               {item.notes && <p className="mt-2 text-xs text-muted-foreground">{item.notes}</p>}
             </div>
@@ -345,11 +413,29 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
                 <div>
                   <p className="font-medium">{selection.addon?.name ?? 'Add-on removed'}</p>
                   <p className="text-xs text-muted-foreground">
-                    {selection.units} {selection.rateTypeSnapshot === 'FLAT' ? 'qty' : 'hrs'} • Rate{' '}
-                    {formatCurrency(selection.rateCents)}
+                    {selection.units} {selection.rateTypeSnapshot === 'FLAT' ? 'qty' : 'hrs'} •{' '}
+                    <AdminPricingGate
+                      initialRole={initialRole}
+                      admin={
+                        isAdmin ? (
+                          <span>Rate {formatCurrency(selection.rateCents)}</span>
+                        ) : null
+                      }
+                      fallback={<span>Rate hidden</span>}
+                    />
                   </p>
                 </div>
-                <div className="text-right font-medium">{formatCurrency(selection.totalCents)}</div>
+                <AdminPricingGate
+                  initialRole={initialRole}
+                  admin={
+                    isAdmin ? (
+                      <div className="text-right font-medium">{formatCurrency(selection.totalCents)}</div>
+                    ) : null
+                  }
+                  fallback={
+                    <div className="text-right text-muted-foreground">Subtotal hidden</div>
+                  }
+                />
               </div>
               {selection.notes && <p className="mt-2 text-xs text-muted-foreground">{selection.notes}</p>}
             </div>

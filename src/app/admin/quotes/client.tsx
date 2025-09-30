@@ -13,6 +13,8 @@ import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
 import { fetchJson } from '@/lib/fetchJson';
 import QuoteWorkflowControls from './QuoteWorkflowControls';
 import { mergeQuoteMetadata, type QuoteMetadata } from '@/lib/quote-metadata';
+import AdminPricingGate from '@/components/Admin/AdminPricingGate';
+import { canAccessAdmin } from '@/lib/rbac';
 
 interface QuoteItem {
   id: string;
@@ -31,6 +33,7 @@ interface QuoteItem {
 
 interface ClientProps {
   initial: { items: QuoteItem[]; nextCursor: string | null };
+  initialRole?: string | null;
 }
 
 const formatCurrency = (cents: number) =>
@@ -43,13 +46,14 @@ const STATUS_LABELS: Record<string, string> = {
   EXPIRED: 'Expired',
 };
 
-export default function Client({ initial }: ClientProps) {
+export default function Client({ initial, initialRole }: ClientProps) {
   const [items, setItems] = useState<QuoteItem[]>(initial.items ?? []);
   const [nextCursor, setNextCursor] = useState<string | null>(initial.nextCursor ?? null);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const toast = useToast();
   const router = useRouter();
+  const initialIsAdmin = canAccessAdmin(initialRole);
 
   const updateRowMetadata = useCallback(
     (id: string, metadata: QuoteMetadata) => {
@@ -118,7 +122,17 @@ export default function Client({ initial }: ClientProps) {
       {
         key: 'totalCents',
         header: 'Total',
-        render: (value: number) => formatCurrency(value),
+        render: (value: number) => (
+          <AdminPricingGate
+            initialRole={initialRole}
+            admin={
+              initialIsAdmin ? (
+                <span className="font-medium">{formatCurrency(value)}</span>
+              ) : null
+            }
+            fallback={<span className="text-muted-foreground">Restricted</span>}
+          />
+        ),
       },
       {
         key: 'updatedAt',
@@ -152,7 +166,7 @@ export default function Client({ initial }: ClientProps) {
         },
       },
     ],
-    [toast, updateRowMetadata]
+    [initialIsAdmin, initialRole, toast, updateRowMetadata]
   );
 
   async function refresh(cursor?: string) {

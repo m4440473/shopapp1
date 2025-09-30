@@ -35,6 +35,12 @@ export function isViewer(roleOrUser?: { role?: string } | string): boolean {
   return role === 'VIEWER' || role === 'ADMIN';
 }
 
+export function canViewQuotes(roleOrUser?: { role?: string } | string): boolean {
+  const role = extractRole(roleOrUser);
+  if (!role) return false;
+  return role === 'ADMIN' || role === 'MACHINIST' || role === 'VIEWER';
+}
+
 export function requireRole(roleOrUser: { role?: string } | string | undefined, predicate: (r?: string) => boolean): void {
   const role = extractRole(roleOrUser as any);
   if (!predicate(role)) {
