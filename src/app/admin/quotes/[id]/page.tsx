@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import Link from 'next/link';
@@ -34,6 +35,11 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
     redirect('/');
   }
 
+  const headerStore = headers();
+  const fallbackHost = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
+  const fallbackProtocol = headerStore.get('x-forwarded-proto') ?? 'https';
+  const runtimeBase = fallbackHost ? `${fallbackProtocol}://${fallbackHost}` : '';
+
   const quote = await prisma.quote.findUnique({
     where: { id: params.id },
     include: {
@@ -57,6 +63,39 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
   const statusLabel = STATUS_LABELS[quote.status] ?? quote.status;
   const addonTotal = quote.addonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const vendorTotal = quote.vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
+  const downloadBase = (process.env.NEXT_PUBLIC_BASE_URL ?? runtimeBase).replace(/\/$/, '');
+  const attachmentLinks = quote.attachments
+    .map((attachment) => {
+      if (attachment.url) {
+        return attachment.url;
+      }
+
+      if (attachment.storagePath) {
+        return `${downloadBase}/attachments/${attachment.storagePath}`;
+      }
+
+      return '';
+    })
+    .filter((href): href is string => href.length > 0);
+
+  const subject = `Quote ${quote.quoteNumber} from ${businessOption?.name ?? 'our shop'}`;
+  const bodyLines = [
+    `Hello ${quote.contactName ?? quote.companyName ?? 'there'},`,
+    '',
+    `Please review quote ${quote.quoteNumber} from ${businessOption?.name ?? 'our team'}.`,
+    '',
+    `Total estimate: ${formatCurrency(quote.totalCents)}`,
+    `Base fabrication: ${formatCurrency(quote.basePriceCents + vendorTotal)}`,
+    `Add-ons and labor: ${formatCurrency(addonTotal)}`,
+  ];
+
+  if (attachmentLinks.length > 0) {
+    bodyLines.push('', 'Attachments:', ...attachmentLinks.map((link) => `- ${link}`));
+  }
+
+  bodyLines.push('', 'Let us know if you have any questions.', '', 'Thank you,', businessOption?.name ?? 'Fabrication team');
+
+  const mailtoHref = `mailto:${quote.contactEmail ?? ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join('\n'))}`;
 
   return (
     <div className="p-4 text-neutral-100 space-y-6">
@@ -85,7 +124,15 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
             <Link href={`/admin/quotes/${quote.id}/edit`}>Edit quote</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href={`/admin/quotes/${quote.id}/print`} target="_blank" rel="noopener noreferrer">
+            <a href={mailtoHref}>Email</a>
+          </Button>
+          <Button asChild variant="outline">
+            <Link
+              href={`/admin/quotes/${quote.id}/print`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Customer print view hides vendor purchases and markup details."
+            >
               Print
             </Link>
           </Button>

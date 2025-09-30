@@ -25,3 +25,4 @@ Pagination
 
 UI
 - Dark theme, `NavTabs`, `Table` with actions, shadcn-styled dialog modals, confirmation prompts, and toast notifications.
+- Quote detail actions now include **Email** (pre-populated `mailto:` with totals and attachment links) and **Print**. The print view hides vendor purchases/markup so only customer-facing pricing is shared.
