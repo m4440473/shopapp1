@@ -3,7 +3,8 @@ import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
-import { BUSINESS_PREFIX_BY_CODE } from '@/lib/businesses';
+import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
+import { generateNextOrderNumber } from '@/lib/orders.server';
 import { OrderQuery, OrderCreate } from '@/lib/zod-orders';
 // Status enum not used from prisma; statuses are strings in this schema
 
@@ -72,24 +73,6 @@ export async function POST(req: NextRequest) {
   }
   const body = parsed.data;
 
-  async function generateNextOrderNumber(business: string) {
-    const recent = await prisma.order.findMany({
-      select: { orderNumber: true },
-      where: { business },
-      orderBy: { orderNumber: 'desc' },
-      take: 200,
-    });
-    let maxValue = 1000;
-    for (const candidate of recent) {
-      const numeric = parseInt(candidate.orderNumber.replace(/[^0-9]/g, ''), 10);
-      if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
-        maxValue = Math.max(maxValue, numeric);
-      }
-    }
-    const prefix = BUSINESS_PREFIX_BY_CODE[business as keyof typeof BUSINESS_PREFIX_BY_CODE] ?? business;
-    return `${prefix}-${maxValue + 1}`;
-  }
-
   const prefix = BUSINESS_PREFIX_BY_CODE[body.business as keyof typeof BUSINESS_PREFIX_BY_CODE] ?? body.business;
   const providedOrderNumber = body.orderNumber?.trim();
   let orderNumber: string;
@@ -102,7 +85,7 @@ export async function POST(req: NextRequest) {
     }
     orderNumber = providedOrderNumber;
   } else {
-    orderNumber = await generateNextOrderNumber(body.business);
+    orderNumber = await generateNextOrderNumber(body.business as BusinessCode);
   }
   const userId = (session.user as any)?.id as string | undefined;
 

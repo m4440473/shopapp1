@@ -15,7 +15,9 @@ import {
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
-import { BUSINESS_OPTIONS } from '@/lib/businesses';
+import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
+import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
+import QuoteWorkflowControls from '../QuoteWorkflowControls';
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Draft',
@@ -59,6 +61,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
   }
 
   const businessOption = BUSINESS_OPTIONS.find((option) => option.code === quote.business);
+  const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata));
 
   const statusLabel = STATUS_LABELS[quote.status] ?? quote.status;
   const addonTotal = quote.addonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
@@ -136,9 +139,18 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
               Print
             </Link>
           </Button>
-          <Button variant="ghost" disabled title="Conversion to orders coming soon">
-            Convert to order
-          </Button>
+          <div className="min-w-[240px]">
+            <QuoteWorkflowControls
+              quoteId={quote.id}
+              quoteNumber={quote.quoteNumber}
+              businessName={businessOption?.name ?? businessNameFromCode(quote.business)}
+              companyName={quote.companyName}
+              customerName={quote.customer?.name ?? quote.companyName}
+              customerId={quote.customer?.id ?? null}
+              approval={metadata.approval!}
+              conversion={metadata.conversion!}
+            />
+          </div>
         </div>
       </div>
 
@@ -153,6 +165,23 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
               <span className="text-muted-foreground">Status</span>
               <span className="font-medium">{statusLabel}</span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Approval</span>
+              <span className="font-medium">
+                {metadata.approval?.received ? 'Received' : 'Pending'}
+              </span>
+            </div>
+            {metadata.conversion?.orderId && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Converted</span>
+                <Link
+                  href={`/orders/${metadata.conversion.orderId}`}
+                  className="font-medium text-primary underline"
+                >
+                  {metadata.conversion.orderNumber ?? 'View order'}
+                </Link>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Business</span>
               <span className="font-medium">{businessOption?.name ?? quote.business}</span>

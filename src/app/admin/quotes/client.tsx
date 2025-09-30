@@ -2,15 +2,17 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 
 import Table from '@/components/Admin/Table';
 import { useToast } from '@/components/ui/Toast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { BUSINESS_OPTIONS } from '@/lib/businesses';
+import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
 import { fetchJson } from '@/lib/fetchJson';
+import QuoteWorkflowControls from './QuoteWorkflowControls';
+import { mergeQuoteMetadata, type QuoteMetadata } from '@/lib/quote-metadata';
 
 interface QuoteItem {
   id: string;
@@ -24,6 +26,7 @@ interface QuoteItem {
   createdAt: string;
   customer?: { id: string; name: string } | null;
   createdBy?: { id: string; name: string | null; email: string | null } | null;
+  metadata?: QuoteMetadata | null;
 }
 
 interface ClientProps {
@@ -47,6 +50,22 @@ export default function Client({ initial }: ClientProps) {
   const [status, setStatus] = useState('');
   const toast = useToast();
   const router = useRouter();
+
+  const updateRowMetadata = useCallback(
+    (id: string, metadata: QuoteMetadata) => {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                metadata,
+              }
+            : item,
+        ),
+      );
+    },
+    [],
+  );
 
   const columns = useMemo(
     () => [
@@ -106,8 +125,34 @@ export default function Client({ initial }: ClientProps) {
         header: 'Updated',
         render: (value: string) => new Date(value).toLocaleDateString(),
       },
+      {
+        key: 'workflow',
+        header: 'Workflow',
+        render: (_: any, row: QuoteItem) => {
+          const metadata = mergeQuoteMetadata(row.metadata);
+          const businessName = businessNameFromCode(row.business);
+          return (
+            <QuoteWorkflowControls
+              layout="table"
+              quoteId={row.id}
+              quoteNumber={row.quoteNumber}
+              businessName={businessName}
+              companyName={row.companyName}
+              customerName={row.customer?.name ?? row.companyName}
+              customerId={row.customer?.id ?? null}
+              approval={metadata.approval!}
+              conversion={metadata.conversion!}
+              onMetadataUpdate={(next) => updateRowMetadata(row.id, next)}
+              onConverted={(result) => {
+                updateRowMetadata(row.id, result.metadata);
+                toast.push(`Order ${result.orderNumber} created`, 'success');
+              }}
+            />
+          );
+        },
+      },
     ],
-    []
+    [toast, updateRowMetadata]
   );
 
   async function refresh(cursor?: string) {
