@@ -4,22 +4,40 @@ import { z } from 'zod';
 
 import { authOptions } from '@/lib/auth';
 import { DEFAULT_QUOTE_METADATA, parseQuoteMetadata, stringifyQuoteMetadata } from '@/lib/quote-metadata';
-import { canAccessAdmin } from '@/lib/rbac';
+import { canAccessAdmin, canViewQuotes } from '@/lib/rbac';
 import { prisma } from '@/lib/prisma';
 import { ListQuery } from '@/lib/zod';
 import { QuoteCreate } from '@/lib/zod-quotes';
 import { prepareQuoteComponents } from '@/lib/quotes.server';
+import { sanitizeQuoteSummaryPricing } from '@/lib/quote-visibility';
 
-async function requireAdmin() {
+async function getSessionWithRole() {
   const session = await getServerSession(authOptions);
   if (!session) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
-  const role = (session.user as any)?.role || 'VIEWER';
+  const role = (session.user as any)?.role ?? null;
+  return { session, role };
+}
+
+async function requireAdmin() {
+  const result = await getSessionWithRole();
+  if (result instanceof NextResponse) return result;
+  const { role, session } = result;
   if (!canAccessAdmin(role)) {
     return new NextResponse('Forbidden', { status: 403 });
   }
-  return { session };
+  return { session, role };
+}
+
+async function requireQuoteReadAccess() {
+  const result = await getSessionWithRole();
+  if (result instanceof NextResponse) return result;
+  const { role, session } = result;
+  if (!canViewQuotes(role)) {
+    return new NextResponse('Forbidden', { status: 403 });
+  }
+  return { session, role, isAdmin: canAccessAdmin(role) };
 }
 
 const QuerySchema = ListQuery.extend({
@@ -28,8 +46,9 @@ const QuerySchema = ListQuery.extend({
 });
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAdmin();
+  const guard = await requireQuoteReadAccess();
   if (guard instanceof NextResponse) return guard;
+  const { isAdmin } = guard;
 
   const { searchParams } = new URL(req.url);
   const parsed = QuerySchema.safeParse({
@@ -70,10 +89,13 @@ export async function GET(req: NextRequest) {
   const nextCursor = items.length > take ? items[take]?.id ?? null : null;
   if (nextCursor) items.pop();
 
-  const normalized = items.map((item) => ({
-    ...item,
-    metadata: parseQuoteMetadata(item.metadata) ?? null,
-  }));
+  const normalized = items.map((item) => {
+    const enriched = {
+      ...item,
+      metadata: parseQuoteMetadata(item.metadata) ?? null,
+    };
+    return sanitizeQuoteSummaryPricing(enriched, isAdmin);
+  });
 
   return NextResponse.json({ items: normalized, nextCursor });
 }
