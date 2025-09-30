@@ -95,10 +95,11 @@ async function main() {
   const mats = await prisma.material.findMany();
   const checklistAddons = addonRecords.slice(0, 5);
 
-  async function seedOrder(idx, customerId, assigned) {
+  async function seedOrder(idx, customerId, assigned, business) {
     const ord = await prisma.order.create({
       data: {
-        orderNumber: `SO-${1000 + idx}`,
+        orderNumber: `${business}-${1000 + idx}`,
+        business,
         customerId,
         modelIncluded: idx % 2 === 0,
         receivedDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * (7 - idx)),
@@ -140,14 +141,14 @@ async function main() {
     });
   }
 
-  await seedOrder(1, acme.id, mach1.id);
-  await seedOrder(2, acme.id, mach2.id);
-  await seedOrder(3, wayne.id, mach1.id);
-  await seedOrder(4, wayne.id, mach2.id);
-  await seedOrder(5, acme.id, null);
-  await seedOrder(6, acme.id, null);
-  await seedOrder(7, wayne.id, mach1.id);
-  await seedOrder(8, wayne.id, mach2.id);
+  await seedOrder(1, acme.id, mach1.id, 'STD');
+  await seedOrder(2, acme.id, mach2.id, 'STD');
+  await seedOrder(3, wayne.id, mach1.id, 'CRM');
+  await seedOrder(4, wayne.id, mach2.id, 'CRM');
+  await seedOrder(5, acme.id, null, 'STD');
+  await seedOrder(6, acme.id, null, 'STD');
+  await seedOrder(7, wayne.id, mach1.id, 'PC');
+  await seedOrder(8, wayne.id, mach2.id, 'PC');
 }
 
 main().catch(e => {

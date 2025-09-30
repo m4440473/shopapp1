@@ -4,8 +4,17 @@ import { mkdir, writeFile } from 'node:fs/promises';
 
 import { slugifyName, type BusinessName } from './businesses';
 
-export { BUSINESS_NAMES, BUSINESS_OPTIONS, slugifyName } from './businesses';
-export type { BusinessName, BusinessOption } from './businesses';
+export {
+  BUSINESS_NAMES,
+  BUSINESS_OPTIONS,
+  BUSINESS_CODES,
+  BUSINESS_PREFIX_BY_CODE,
+  businessCodeFromName,
+  businessNameFromCode,
+  businessPrefixFromCode,
+  slugifyName,
+} from './businesses';
+export type { BusinessName, BusinessOption, BusinessCode } from './businesses';
 
 export const ATTACHMENTS_ROOT = process.env.ATTACHMENTS_DIR ?? 'storage';
 

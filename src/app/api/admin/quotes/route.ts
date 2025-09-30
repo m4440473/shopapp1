@@ -106,6 +106,7 @@ export async function POST(req: NextRequest) {
   const created = await prisma.quote.create({
     data: {
       quoteNumber: prepared.quoteNumber,
+      business: data.business,
       companyName: data.companyName,
       contactName: data.contactName ?? null,
       contactEmail: data.contactEmail ?? null,

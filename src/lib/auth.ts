@@ -3,7 +3,7 @@ import Credentials from 'next-auth/providers/credentials';
 import { prisma } from './prisma';
 import { compare } from 'bcryptjs';
 
-export const authOptions: NextAuthOptions = {
+export const authOptions: NextAuthOptions & { trustHost?: boolean } = {
   trustHost: true,
   session: { strategy: 'jwt' },
   pages: { signIn: '/auth/signin' },
