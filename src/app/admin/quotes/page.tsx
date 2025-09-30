@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import Client from './client';
+import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,7 @@ export default async function Page() {
     redirect('/');
   }
 
-  const items = await prisma.quote.findMany({
+  const rawItems = await prisma.quote.findMany({
     orderBy: { createdAt: 'desc' },
     take: 20,
     include: {
@@ -24,6 +25,11 @@ export default async function Page() {
       createdBy: { select: { id: true, name: true, email: true } },
     },
   });
+
+  const items = rawItems.map((item) => ({
+    ...item,
+    metadata: mergeQuoteMetadata(parseQuoteMetadata(item.metadata)),
+  }));
 
   const initial = { items, nextCursor: null };
 

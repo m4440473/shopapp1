@@ -70,7 +70,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const existing = await prisma.quote.findUnique({ where: { id: params.id }, select: { quoteNumber: true } });
+  const existing = await prisma.quote.findUnique({
+    where: { id: params.id },
+    select: { quoteNumber: true, metadata: true },
+  });
   if (!existing) {
     return new NextResponse('Not found', { status: 404 });
   }
@@ -103,7 +106,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       vendorTotalCents: prepared.vendorTotalCents,
       addonsTotalCents: prepared.addonsTotalCents,
       totalCents: prepared.totalCents,
-      metadata: stringifyQuoteMetadata(DEFAULT_QUOTE_METADATA),
+      metadata: stringifyQuoteMetadata(parseQuoteMetadata(existing.metadata) ?? DEFAULT_QUOTE_METADATA),
       parts: {
         deleteMany: {},
         create: prepared.parts,
