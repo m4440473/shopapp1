@@ -3,26 +3,45 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth';
 import { DEFAULT_QUOTE_METADATA, parseQuoteMetadata, stringifyQuoteMetadata } from '@/lib/quote-metadata';
-import { canAccessAdmin } from '@/lib/rbac';
+import { canAccessAdmin, canViewQuotes } from '@/lib/rbac';
 import { prisma } from '@/lib/prisma';
 import { QuoteCreate } from '@/lib/zod-quotes';
 import { prepareQuoteComponents } from '@/lib/quotes.server';
+import { sanitizeQuoteDetailPricing } from '@/lib/quote-visibility';
 
-async function requireAdmin() {
+async function getSessionWithRole() {
   const session = await getServerSession(authOptions);
   if (!session) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
-  const role = (session.user as any)?.role || 'VIEWER';
+  const role = (session.user as any)?.role ?? null;
+  return { session, role };
+}
+
+async function requireAdmin() {
+  const result = await getSessionWithRole();
+  if (result instanceof NextResponse) return result;
+  const { role, session } = result;
   if (!canAccessAdmin(role)) {
     return new NextResponse('Forbidden', { status: 403 });
   }
-  return { session };
+  return { session, role };
+}
+
+async function requireQuoteReadAccess() {
+  const result = await getSessionWithRole();
+  if (result instanceof NextResponse) return result;
+  const { role, session } = result;
+  if (!canViewQuotes(role)) {
+    return new NextResponse('Forbidden', { status: 403 });
+  }
+  return { session, role, isAdmin: canAccessAdmin(role) };
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const guard = await requireAdmin();
+  const guard = await requireQuoteReadAccess();
   if (guard instanceof NextResponse) return guard;
+  const { isAdmin } = guard;
 
   const item = await prisma.quote.findUnique({
     where: { id: params.id },
@@ -49,7 +68,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     metadata: parseQuoteMetadata(item.metadata) ?? null,
   };
 
-  return NextResponse.json({ item: normalized });
+  const sanitized = sanitizeQuoteDetailPricing(normalized, isAdmin);
+
+  return NextResponse.json({ item: sanitized });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
