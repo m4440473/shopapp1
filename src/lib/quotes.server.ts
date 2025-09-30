@@ -1,11 +1,17 @@
 import { prisma } from '@/lib/prisma';
+import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from './businesses';
 import { QuoteCreateInput } from './zod-quotes';
 
-export async function generateQuoteNumber() {
+function prefixForBusiness(business: BusinessCode): string {
+  return BUSINESS_PREFIX_BY_CODE[business] ?? business;
+}
+
+export async function generateQuoteNumber(business: BusinessCode) {
+  const prefix = prefixForBusiness(business);
   const now = new Date();
   const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const candidate = `Q-${stamp}-${Math.floor(Math.random() * 10000)
+    const candidate = `${prefix}-${stamp}-${Math.floor(Math.random() * 10000)
       .toString()
       .padStart(4, '0')}`;
     const existing = await prisma.quote.findUnique({ where: { quoteNumber: candidate } });
@@ -13,7 +19,7 @@ export async function generateQuoteNumber() {
       return candidate;
     }
   }
-  return `Q-${stamp}-${Date.now()}`;
+  return `${prefix}-${stamp}-${Date.now()}`;
 }
 
 export interface PreparedQuoteComponents {
@@ -49,7 +55,8 @@ export interface PreparedQuoteComponents {
     notes: string | null;
   }>;
   attachments: Array<{
-    url: string;
+    url: string | null;
+    storagePath: string | null;
     label: string | null;
     mimeType: string | null;
   }>;
@@ -59,6 +66,8 @@ export async function prepareQuoteComponents(
   input: QuoteCreateInput,
   options?: { existingQuoteNumber?: string }
 ): Promise<PreparedQuoteComponents> {
+  const business = input.business as BusinessCode;
+  const prefix = prefixForBusiness(business);
   const parts = input.parts ?? [];
   const vendorItemsInput = input.vendorItems ?? [];
   const addonSelectionsInput = input.addonSelections ?? [];
@@ -124,9 +133,22 @@ export async function prepareQuoteComponents(
   const basePriceCents = input.basePriceCents ?? 0;
   const totalCents = basePriceCents + vendorTotalCents + addonsTotalCents;
 
-  const quoteNumber = input.quoteNumber && input.quoteNumber.trim().length > 0
-    ? input.quoteNumber.trim()
-    : options?.existingQuoteNumber ?? (await generateQuoteNumber());
+  const providedQuoteNumber = input.quoteNumber?.trim();
+  let quoteNumber: string;
+  if (providedQuoteNumber && providedQuoteNumber.length > 0) {
+    if (!providedQuoteNumber.startsWith(`${prefix}-`)) {
+      throw new Error(`Quote numbers for ${prefix} must start with ${prefix}-`);
+    }
+    quoteNumber = providedQuoteNumber;
+  } else if (options?.existingQuoteNumber && options.existingQuoteNumber.length > 0) {
+    if (options.existingQuoteNumber.startsWith(`${prefix}-`)) {
+      quoteNumber = options.existingQuoteNumber;
+    } else {
+      quoteNumber = await generateQuoteNumber(business);
+    }
+  } else {
+    quoteNumber = await generateQuoteNumber(business);
+  }
 
   const multiPiece =
     typeof input.multiPiece === 'boolean'
@@ -141,11 +163,14 @@ export async function prepareQuoteComponents(
     notes: part.notes ?? null,
   }));
 
-  const attachments = attachmentsInput.map((attachment) => ({
-    url: attachment.url,
-    label: attachment.label ?? null,
-    mimeType: attachment.mimeType ?? null,
-  }));
+  const attachments = attachmentsInput
+    .map((attachment) => ({
+      url: attachment.url?.trim() ? attachment.url.trim() : null,
+      storagePath: attachment.storagePath?.trim() ? attachment.storagePath.trim() : null,
+      label: attachment.label?.trim() ? attachment.label.trim() : null,
+      mimeType: attachment.mimeType?.trim() ? attachment.mimeType.trim() : null,
+    }))
+    .filter((attachment) => attachment.url || attachment.storagePath);
 
   return {
     quoteNumber,

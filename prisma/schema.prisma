@@ -7,7 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// NOTE: No enums on SQLite. Use strings instead.
+enum Business {
+  STD
+  CRM
+  PC
+}
 
 model User {
   id               String   @id @default(cuid())
@@ -68,6 +72,7 @@ model Vendor {
 model Order {
   id               String   @id @default(cuid())
   orderNumber      String
+  business         Business @default(STD)
   customerId       String
   customer         Customer @relation(fields: [customerId], references: [id])
   status           String
@@ -140,12 +145,15 @@ model Attachment {
   id        String   @id @default(cuid())
   orderId   String
   order     Order    @relation(fields: [orderId], references: [id])
-  url       String
+  url       String?
+  storagePath String?
   label     String?
   mimeType  String?
   uploadedById String?
   uploadedBy   User? @relation("UserAttachments", fields: [uploadedById], references: [id])
   createdAt DateTime @default(now())
+
+  @@index([storagePath])
 }
 
 model StatusHistory {
@@ -181,6 +189,7 @@ model Addon {
 model Quote {
   id               String   @id @default(cuid())
   quoteNumber      String
+  business         Business @default(STD)
   companyName      String
   contactName      String?
   contactEmail     String?
@@ -255,11 +264,14 @@ model QuoteAddonSelection {
 }
 
 model QuoteAttachment {
-  id        String   @id @default(cuid())
-  quoteId   String
-  quote     Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  url       String
-  label     String?
-  mimeType  String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  quoteId     String
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  url         String?
+  storagePath String?
+  label       String?
+  mimeType    String?
+  createdAt   DateTime @default(now())
+
+  @@index([storagePath])
 }

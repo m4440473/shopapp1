@@ -106,6 +106,7 @@ export async function POST(req: NextRequest) {
   const created = await prisma.quote.create({
     data: {
       quoteNumber: prepared.quoteNumber,
+      business: data.business,
       companyName: data.companyName,
       contactName: data.contactName ?? null,
       contactEmail: data.contactEmail ?? null,
@@ -133,7 +134,12 @@ export async function POST(req: NextRequest) {
         create: prepared.addonSelections,
       },
       attachments: {
-        create: prepared.attachments,
+        create: prepared.attachments.map((attachment) => ({
+          url: attachment.url,
+          storagePath: attachment.storagePath,
+          label: attachment.label,
+          mimeType: attachment.mimeType,
+        })),
       },
     },
     include: {

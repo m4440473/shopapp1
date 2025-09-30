@@ -87,6 +87,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     where: { id: params.id },
     data: {
       quoteNumber: prepared.quoteNumber,
+      business: parsed.data.business,
       companyName: parsed.data.companyName,
       contactName: parsed.data.contactName ?? null,
       contactEmail: parsed.data.contactEmail ?? null,
@@ -117,7 +118,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       },
       attachments: {
         deleteMany: {},
-        create: prepared.attachments,
+        create: prepared.attachments.map((attachment) => ({
+          url: attachment.url,
+          storagePath: attachment.storagePath,
+          label: attachment.label,
+          mimeType: attachment.mimeType,
+        })),
       },
     },
     include: {

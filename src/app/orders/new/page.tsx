@@ -33,9 +33,25 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  BUSINESS_OPTIONS,
+  getBusinessOptionByCode,
+  slugifyName,
+  type BusinessCode,
+  type BusinessName,
+} from '@/lib/businesses';
 
 const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 const OPTIONAL_VALUE = '__none__';
+
+const createKey = () =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+
+const DEFAULT_BUSINESS_OPTION = BUSINESS_OPTIONS[0];
+const DEFAULT_BUSINESS_NAME = (DEFAULT_BUSINESS_OPTION?.name ?? 'Sterling Tool and Die') as BusinessName;
+const DEFAULT_BUSINESS_CODE = (DEFAULT_BUSINESS_OPTION?.code ?? 'STD') as BusinessCode;
 
 type Option = { id: string; name: string };
 type AddonOption = {
@@ -47,10 +63,10 @@ type AddonOption = {
   active: boolean;
 };
 type PartInput = { partNumber: string; quantity: number; materialId?: string; notes?: string };
-type AttachmentInput = { url: string; label: string; mimeType?: string };
+type AttachmentInput = { url: string; storagePath: string; label: string; mimeType: string; uploading?: boolean };
 
 const emptyPart = (): PartInput => ({ partNumber: '', quantity: 1, materialId: '', notes: '' });
-const emptyAttachment = (): AttachmentInput => ({ url: '', label: '', mimeType: '' });
+const emptyAttachment = (): AttachmentInput => ({ url: '', storagePath: '', label: '', mimeType: '', uploading: false });
 
 export default function NewOrderPage() {
   const [customerId, setCustomerId] = React.useState('');
@@ -71,8 +87,11 @@ export default function NewOrderPage() {
   const [selectedAddonIds, setSelectedAddonIds] = React.useState<string[]>([]);
   const [dueDate, setDueDate] = React.useState('');
   const [priority, setPriority] = React.useState('NORMAL');
+  const [business, setBusiness] = React.useState<BusinessCode>(DEFAULT_BUSINESS_CODE);
   const [parts, setParts] = React.useState<PartInput[]>([emptyPart()]);
   const [attachments, setAttachments] = React.useState<AttachmentInput[]>([emptyAttachment()]);
+  const [attachmentBusiness, setAttachmentBusiness] = React.useState<BusinessName>(DEFAULT_BUSINESS_NAME);
+  const [draftAttachmentReference] = React.useState(() => createKey());
   const [materialNeeded, setMaterialNeeded] = React.useState(false);
   const [materialOrdered, setMaterialOrdered] = React.useState(false);
   const [modelIncluded, setModelIncluded] = React.useState(false);
@@ -168,6 +187,27 @@ export default function NewOrderPage() {
     })();
   }, []);
 
+  React.useEffect(() => {
+    const option = getBusinessOptionByCode(business);
+    if (option) {
+      setAttachmentBusiness(option.name as BusinessName);
+    }
+  }, [business]);
+
+  const selectedBusinessOption = React.useMemo(
+    () => BUSINESS_OPTIONS.find((option) => option.name === attachmentBusiness) ?? BUSINESS_OPTIONS[0],
+    [attachmentBusiness],
+  );
+
+  const attachmentPathPreview = React.useMemo(() => {
+    const businessSlug = selectedBusinessOption?.slug ?? 'business';
+    const customerName = customers.find((c) => c.id === customerId)?.name ?? '';
+    const customerSlug = slugifyName(customerName, 'customer') || 'customer';
+    const referenceValue = (poNumber || '').trim() || draftAttachmentReference;
+    const referenceSlug = slugifyName(referenceValue, 'order');
+    return `${businessSlug}/${customerSlug || 'customer'}/${referenceSlug}`;
+  }, [customerId, customers, draftAttachmentReference, poNumber, selectedBusinessOption]);
+
   function updatePart(index: number, patch: Partial<PartInput>) {
     setParts((prev) => prev.map((part, i) => (i === index ? { ...part, ...patch } : part)));
   }
@@ -184,6 +224,20 @@ export default function NewOrderPage() {
     setAttachments((prev) => prev.map((att, i) => (i === index ? { ...att, ...patch } : att)));
   }
 
+  function handleAttachmentUrlChange(index: number, value: string) {
+    setAttachments((prev) =>
+      prev.map((att, i) =>
+        i === index
+          ? {
+              ...att,
+              url: value,
+              storagePath: value.trim().length ? '' : att.storagePath,
+            }
+          : att,
+      ),
+    );
+  }
+
   function addAttachmentRow() {
     setAttachments((prev) => [...prev, emptyAttachment()]);
   }
@@ -192,19 +246,78 @@ export default function NewOrderPage() {
     setAttachments((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
   }
 
-  function handleAttachmentFile(index: number, fileList: FileList | null) {
+  async function handleAttachmentFile(index: number, fileList: FileList | null) {
     const file = fileList?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      updateAttachment(index, {
-        url: result,
-        label: attachments[index]?.label || file.name,
-        mimeType: file.type || attachments[index]?.mimeType,
+
+    const customerName = customers.find((customer) => customer.id === customerId)?.name?.trim() ?? '';
+    if (!customerName) {
+      setMessage('Select a customer before uploading attachments.');
+      return;
+    }
+
+    const orderReference = (poNumber || '').trim() || draftAttachmentReference;
+
+    setAttachments((prev) =>
+      prev.map((att, i) => (i === index ? { ...att, uploading: true } : att)),
+    );
+    setMessage('');
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('business', attachmentBusiness);
+    formData.append('customerName', customerName);
+    formData.append('orderReference', orderReference);
+
+    try {
+      const res = await fetch('/api/orders/attachments/upload', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
       });
-    };
-    reader.readAsDataURL(file);
+
+      if (!res.ok) {
+        let errorMessage = 'Failed to upload attachment';
+        try {
+          const payload = await res.json();
+          if (payload?.error) errorMessage = payload.error;
+        } catch {
+          // ignore JSON parse errors
+        }
+        throw new Error(errorMessage);
+      }
+
+      const result = await res.json().catch(() => ({}));
+
+      setAttachments((prev) =>
+        prev.map((att, i) => {
+          if (i !== index) return att;
+          const storagePath = typeof result?.storagePath === 'string' ? result.storagePath : '';
+          const url = storagePath ? `/attachments/${storagePath}` : att.url;
+          const label = att.label || (typeof result?.label === 'string' && result.label) || file.name;
+          const mimeType =
+            att.mimeType ||
+            (typeof result?.mimeType === 'string' && result.mimeType) ||
+            file.type ||
+            '';
+
+          return {
+            ...att,
+            storagePath,
+            url,
+            label,
+            mimeType,
+            uploading: false,
+          };
+        }),
+      );
+    } catch (error: any) {
+      const message = typeof error?.message === 'string' ? error.message : 'Failed to upload attachment';
+      setMessage(message);
+      setAttachments((prev) =>
+        prev.map((att, i) => (i === index ? { ...att, uploading: false } : att)),
+      );
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -240,13 +353,26 @@ export default function NewOrderPage() {
       return;
     }
 
+    if (attachments.some((att) => att.uploading)) {
+      setMessage('Please wait for attachment uploads to finish.');
+      setLoading(false);
+      return;
+    }
+
     const cleanAttachments = attachments
-      .map((att) => ({
-        url: att.url.trim(),
-        label: att.label?.trim() || undefined,
-        mimeType: att.mimeType?.trim() || undefined,
-      }))
-      .filter((att) => att.url.length > 0);
+      .map((att) => {
+        const storagePath = att.storagePath.trim();
+        const url = att.url.trim();
+        const label = att.label.trim();
+        const mimeType = att.mimeType.trim();
+        return {
+          url: storagePath ? undefined : url || undefined,
+          storagePath: storagePath || undefined,
+          label: label || undefined,
+          mimeType: mimeType || undefined,
+        };
+      })
+      .filter((att) => Boolean(att.url?.length || att.storagePath?.length));
 
     const body = {
       customerId,
@@ -254,6 +380,7 @@ export default function NewOrderPage() {
       receivedDate: new Date().toISOString().slice(0, 10),
       dueDate,
       priority,
+      business,
       materialNeeded,
       materialOrdered,
       vendorId: vendorId || undefined,
@@ -284,10 +411,12 @@ export default function NewOrderPage() {
       setPoNumber('');
       setDueDate('');
       setPriority('NORMAL');
+      setBusiness(DEFAULT_BUSINESS_CODE);
       setAssignedMachinistId('');
       setParts([emptyPart()]);
       setAttachments([emptyAttachment()]);
-      setSelectedChecklist([]);
+      setAttachmentBusiness(DEFAULT_BUSINESS_NAME);
+      setSelectedAddonIds([]);
       setMaterialNeeded(false);
       setMaterialOrdered(false);
       setModelIncluded(false);
@@ -346,14 +475,29 @@ export default function NewOrderPage() {
 
       <form className="flex flex-col gap-8" onSubmit={handleSubmit}>
         <Card className="border-border/60 bg-card/70 backdrop-blur">
-          <CardHeader>
-            <CardTitle>Customer & schedule</CardTitle>
-            <CardDescription>Who is the work for and when do they need it?</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-6 md:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="customer">Customer</Label>
-              <Select value={customerId} onValueChange={setCustomerId}>
+        <CardHeader>
+          <CardTitle>Customer & schedule</CardTitle>
+          <CardDescription>Who is the work for and when do they need it?</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="business">Business</Label>
+            <Select value={business} onValueChange={(value) => setBusiness(value as BusinessCode)}>
+              <SelectTrigger id="business" className="border-border/60 bg-background/80">
+                <SelectValue placeholder="Select a business" />
+              </SelectTrigger>
+              <SelectContent>
+                {BUSINESS_OPTIONS.map((option) => (
+                  <SelectItem key={option.code} value={option.code}>
+                    {option.prefix} — {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="customer">Customer</Label>
+            <Select value={customerId} onValueChange={setCustomerId}>
                 <SelectTrigger id="customer" className="border-border/60 bg-background/80">
                   <SelectValue placeholder="Select a customer" />
                 </SelectTrigger>
@@ -617,14 +761,42 @@ export default function NewOrderPage() {
         </Card>
 
         <Card className="border-border/60 bg-card/70 backdrop-blur">
-          <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <CardTitle>Attachments</CardTitle>
               <CardDescription>Link drawings, STEP files, or upload lightweight references.</CardDescription>
             </div>
-            <Button type="button" variant="secondary" className="rounded-full border border-primary/40 bg-primary/10 text-primary" onClick={addAttachmentRow}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Add attachment
-            </Button>
+            <div className="flex flex-col gap-3 md:items-end">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+                <Label className="text-xs uppercase tracking-[0.3em] text-muted-foreground md:text-right">
+                  Storage business
+                </Label>
+                <Select value={attachmentBusiness} onValueChange={(value) => setAttachmentBusiness(value as BusinessName)}>
+                  <SelectTrigger className="w-[220px] border-border/60 bg-background/80">
+                    <SelectValue placeholder="Select a business" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BUSINESS_OPTIONS.map((option) => (
+                      <SelectItem key={option.slug} value={option.name}>
+                        {option.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground md:text-right">
+                Files upload to{' '}
+                <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{attachmentPathPreview}</code>
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                className="rounded-full border border-primary/40 bg-primary/10 text-primary"
+                onClick={addAttachmentRow}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" /> Add attachment
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="grid gap-4">
             {attachments.map((att, index) => (
@@ -649,14 +821,6 @@ export default function NewOrderPage() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label>Link or data URL</Label>
-                    <Input
-                      value={att.url}
-                      onChange={(e) => updateAttachment(index, { url: e.target.value })}
-                      placeholder="Paste Google Drive or SharePoint link"
-                    />
-                  </div>
-                  <div className="grid gap-2">
                     <Label>Mime type</Label>
                     <Input
                       value={att.mimeType}
@@ -664,19 +828,48 @@ export default function NewOrderPage() {
                       placeholder="application/step"
                     />
                   </div>
-                  <div className="grid gap-2">
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label>External link</Label>
+                    <Input
+                      value={att.url}
+                      onChange={(e) => handleAttachmentUrlChange(index, e.target.value)}
+                      placeholder="Paste Google Drive or SharePoint link"
+                      disabled={att.uploading}
+                    />
+                  </div>
+                  <div className="grid gap-2 md:col-span-2">
                     <Label>Upload file</Label>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                       <Input
                         type="file"
                         className="bg-background/80"
-                        onChange={(e) => handleAttachmentFile(index, e.target.files)}
+                        onChange={(e) => void handleAttachmentFile(index, e.target.files)}
+                        disabled={att.uploading}
                       />
-                      <Upload className="h-4 w-4 text-muted-foreground" />
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Upload className="h-4 w-4 text-muted-foreground" />
+                        {att.uploading ? 'Uploading…' : 'Drop a file to upload'}
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Uploading will embed a base64 data URL if you don&apos;t have a hosted link handy.
-                    </p>
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <p>Uploads are written to the shared storage above for easy access on the shop floor.</p>
+                      {att.storagePath ? (
+                        <p className="flex flex-wrap items-center gap-1">
+                          Stored file:
+                          <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{att.storagePath}</code>
+                          <a
+                            href={`/attachments/${att.storagePath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-primary hover:underline"
+                          >
+                            Open stored copy
+                          </a>
+                        </p>
+                      ) : (
+                        <p>Add a file to copy it into shared storage.</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
