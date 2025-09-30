@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
+import { BUSINESS_PREFIX_BY_CODE } from '@/lib/businesses';
 import { OrderQuery, OrderCreate } from '@/lib/zod-orders';
 // Status enum not used from prisma; statuses are strings in this schema
 
@@ -41,6 +42,7 @@ export async function GET(req: NextRequest) {
     select: {
       id: true,
       orderNumber: true,
+      business: true,
       dueDate: true,
       receivedDate: true,
       priority: true,
@@ -70,9 +72,10 @@ export async function POST(req: NextRequest) {
   }
   const body = parsed.data;
 
-  async function generateNextOrderNumber() {
+  async function generateNextOrderNumber(business: string) {
     const recent = await prisma.order.findMany({
       select: { orderNumber: true },
+      where: { business },
       orderBy: { orderNumber: 'desc' },
       take: 200,
     });
@@ -83,15 +86,30 @@ export async function POST(req: NextRequest) {
         maxValue = Math.max(maxValue, numeric);
       }
     }
-    return String(maxValue + 1);
+    const prefix = BUSINESS_PREFIX_BY_CODE[business as keyof typeof BUSINESS_PREFIX_BY_CODE] ?? business;
+    return `${prefix}-${maxValue + 1}`;
   }
 
-  const orderNumber = body.orderNumber?.trim() || (await generateNextOrderNumber());
+  const prefix = BUSINESS_PREFIX_BY_CODE[body.business as keyof typeof BUSINESS_PREFIX_BY_CODE] ?? body.business;
+  const providedOrderNumber = body.orderNumber?.trim();
+  let orderNumber: string;
+  if (providedOrderNumber && providedOrderNumber.length > 0) {
+    if (!providedOrderNumber.startsWith(`${prefix}-`)) {
+      return NextResponse.json(
+        { error: `Order numbers for ${prefix} must start with ${prefix}-` },
+        { status: 400 },
+      );
+    }
+    orderNumber = providedOrderNumber;
+  } else {
+    orderNumber = await generateNextOrderNumber(body.business);
+  }
   const userId = (session.user as any)?.id as string | undefined;
 
   const order = await prisma.order.create({
     data: {
       orderNumber,
+      business: body.business,
       customerId: body.customerId,
       modelIncluded: body.modelIncluded,
       receivedDate: new Date(body.receivedDate),

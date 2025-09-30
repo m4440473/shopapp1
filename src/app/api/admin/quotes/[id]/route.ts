@@ -87,6 +87,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     where: { id: params.id },
     data: {
       quoteNumber: prepared.quoteNumber,
+      business: parsed.data.business,
       companyName: parsed.data.companyName,
       contactName: parsed.data.contactName ?? null,
       contactEmail: parsed.data.contactEmail ?? null,

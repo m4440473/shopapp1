@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { BUSINESS_CODES } from '@/lib/businesses';
+
 /** Enums mirrored from Prisma */
 export const StatusEnum = z.enum([
   'RECEIVED',
@@ -52,6 +54,7 @@ const OrderAttachmentMetadata = z
 
 export const OrderCreate = z.object({
   orderNumber: z.string().trim().optional(),
+  business: z.enum(BUSINESS_CODES),
   customerId: z.string().trim().min(1),
   modelIncluded: z.boolean().default(false),
   receivedDate: z.string().min(1),

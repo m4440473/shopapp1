@@ -47,7 +47,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { BUSINESS_OPTIONS, slugifyName, type BusinessName } from '@/lib/businesses';
+import { BUSINESS_OPTIONS, getBusinessOptionByCode, slugifyName, type BusinessName } from '@/lib/businesses';
 
 const STATUS_OPTIONS: Array<[string, string]> = [
   ['NEW', 'New'],
@@ -197,16 +197,24 @@ export default function OrderDetailPage() {
   }, [item?.id]);
 
   useEffect(() => {
-    if (!item?.attachments?.length) return;
-    const stored = item.attachments.find((attachment: any) => attachment.storagePath);
-    if (stored?.storagePath) {
-      const [businessSlug] = stored.storagePath.split('/');
-      const match = BUSINESS_OPTIONS.find((option) => option.slug === businessSlug);
-      if (match) {
-        setAttachmentBusiness(match.name as BusinessName);
+    if (item?.attachments?.length) {
+      const stored = item.attachments.find((attachment: any) => attachment.storagePath);
+      if (stored?.storagePath) {
+        const [businessSlug] = stored.storagePath.split('/');
+        const match = BUSINESS_OPTIONS.find((option) => option.slug === businessSlug);
+        if (match) {
+          setAttachmentBusiness(match.name as BusinessName);
+          return;
+        }
       }
     }
-  }, [item?.attachments]);
+    if (item?.business) {
+      const option = getBusinessOptionByCode(item.business);
+      if (option) {
+        setAttachmentBusiness(option.name as BusinessName);
+      }
+    }
+  }, [item?.attachments, item?.business]);
 
   useEffect(() => {
     fetch('/api/admin/vendors?take=100', { credentials: 'include' })
@@ -569,12 +577,21 @@ export default function OrderDetailPage() {
   const primaryPart = parts[0];
   const additionalParts = parts.slice(1);
   const attachments: any[] = Array.isArray(item.attachments) ? item.attachments : [];
+  const businessOption = BUSINESS_OPTIONS.find((option) => option.code === item.business);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Order {item.orderNumber}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-3xl font-semibold tracking-tight">Order {item.orderNumber}</h1>
+            <Badge variant="outline" className="font-mono text-xs uppercase">
+              {businessOption?.prefix ?? item.business}
+            </Badge>
+            <span className="text-sm text-muted-foreground">
+              {businessOption?.name ?? 'Unknown business'}
+            </span>
+          </div>
           <p className="text-muted-foreground">
             Customer-facing details, shop routing, and production notes for this work order.
           </p>

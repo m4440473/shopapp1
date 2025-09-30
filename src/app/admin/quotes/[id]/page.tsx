@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import Link from 'next/link';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import {
   Card,
@@ -13,6 +14,7 @@ import {
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
+import { BUSINESS_OPTIONS } from '@/lib/businesses';
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Draft',
@@ -50,6 +52,8 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
     notFound();
   }
 
+  const businessOption = BUSINESS_OPTIONS.find((option) => option.code === quote.business);
+
   const statusLabel = STATUS_LABELS[quote.status] ?? quote.status;
   const addonTotal = quote.addonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const vendorTotal = quote.vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
@@ -58,7 +62,15 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
     <div className="p-4 text-neutral-100 space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Quote {quote.quoteNumber}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-semibold">Quote {quote.quoteNumber}</h1>
+            <Badge variant="outline" className="font-mono text-xs uppercase">
+              {businessOption?.prefix ?? quote.business}
+            </Badge>
+            <span className="text-sm text-muted-foreground">
+              {businessOption?.name ?? 'Unknown business'}
+            </span>
+          </div>
           <p className="text-sm text-muted-foreground">
             Prepared for {quote.companyName}
             {quote.contactName ? ` — attention: ${quote.contactName}` : ''}
@@ -93,6 +105,10 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
             <div className="flex justify-between">
               <span className="text-muted-foreground">Status</span>
               <span className="font-medium">{statusLabel}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Business</span>
+              <span className="font-medium">{businessOption?.name ?? quote.business}</span>
             </div>
             {quote.customer?.name && (
               <div className="flex justify-between">

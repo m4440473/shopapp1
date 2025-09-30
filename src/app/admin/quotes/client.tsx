@@ -6,13 +6,16 @@ import React, { useMemo, useState } from 'react';
 
 import Table from '@/components/Admin/Table';
 import { useToast } from '@/components/ui/Toast';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { BUSINESS_OPTIONS } from '@/lib/businesses';
 import { fetchJson } from '@/lib/fetchJson';
 
 interface QuoteItem {
   id: string;
   quoteNumber: string;
+  business: string;
   companyName: string;
   contactName?: string | null;
   status: string;
@@ -55,6 +58,24 @@ export default function Client({ initial }: ClientProps) {
             {row.quoteNumber}
           </Link>
         ),
+      },
+      {
+        key: 'business',
+        header: 'Business',
+        render: (value: string) => {
+          const option = BUSINESS_OPTIONS.find((item) => item.code === value);
+          if (!option) {
+            return <Badge variant="outline">{value}</Badge>;
+          }
+          return (
+            <div className="flex flex-col gap-1">
+              <Badge variant="outline" className="w-fit font-mono text-xs">
+                {option.prefix}
+              </Badge>
+              <span className="text-xs text-muted-foreground">{option.name}</span>
+            </div>
+          );
+        },
       },
       {
         key: 'companyName',

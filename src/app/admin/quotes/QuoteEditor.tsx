@@ -19,7 +19,13 @@ import {
   CardTitle,
 } from '@/components/ui/Card';
 import { fetchJson } from '@/lib/fetchJson';
-import { BUSINESS_OPTIONS, slugifyName, type BusinessName } from '@/lib/businesses';
+import {
+  BUSINESS_OPTIONS,
+  getBusinessOptionByCode,
+  slugifyName,
+  type BusinessCode,
+  type BusinessName,
+} from '@/lib/businesses';
 
 import type { QuoteCreateInput } from '@/lib/zod-quotes';
 
@@ -73,6 +79,7 @@ type AttachmentState = {
 type QuoteDetail = {
   id: string;
   quoteNumber: string;
+  business: BusinessCode;
   companyName: string;
   contactName?: string | null;
   contactEmail?: string | null;
@@ -169,7 +176,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [vendors, setVendors] = useState<Option[]>([]);
   const [customers, setCustomers] = useState<Option[]>([]);
 
+  const initialBusinessCode = (initialQuote?.business ?? BUSINESS_OPTIONS[0]?.code ?? 'STD') as BusinessCode;
+
   const [form, setForm] = useState({
+    business: initialBusinessCode,
     quoteNumber: initialQuote?.quoteNumber ?? '',
     companyName: initialQuote?.companyName ?? '',
     contactName: initialQuote?.contactName ?? '',
@@ -227,6 +237,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         return match.name;
       }
     }
+    if (initialQuote?.business) {
+      const match = getBusinessOptionByCode(initialQuote.business);
+      if (match) {
+        return match.name;
+      }
+    }
     return (BUSINESS_OPTIONS[0]?.name as BusinessName) ?? ('Sterling Tool and Die' as BusinessName);
   }, [initialQuote]);
 
@@ -246,6 +262,15 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   useEffect(() => {
     setAttachmentBusiness(initialAttachmentBusiness);
   }, [initialAttachmentBusiness]);
+
+  useEffect(() => {
+    const shouldSync = mode === 'create' || !(initialQuote?.attachments?.length ?? 0);
+    if (!shouldSync) return;
+    const option = getBusinessOptionByCode(form.business);
+    if (option) {
+      setAttachmentBusiness(option.name as BusinessName);
+    }
+  }, [form.business, initialQuote?.attachments?.length, mode]);
 
   const [draftReference] = useState(() => createKey());
 
@@ -441,6 +466,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     setError(null);
 
     const payload: QuoteCreateInput = {
+      business: form.business,
       quoteNumber: form.quoteNumber || undefined,
       companyName: form.companyName,
       contactName: form.contactName || undefined,
@@ -529,6 +555,23 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           <CardDescription>Who is requesting the work and how we can reach them.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="quoteBusiness">Business *</Label>
+            <select
+              id="quoteBusiness"
+              value={form.business}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, business: event.target.value as BusinessCode }))
+              }
+              className="rounded border border-border bg-background px-3 py-2 text-sm"
+            >
+              {BUSINESS_OPTIONS.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.prefix} — {option.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="grid gap-2">
             <Label htmlFor="quoteCompany">Company *</Label>
             <Input

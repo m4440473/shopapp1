@@ -33,7 +33,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { BUSINESS_OPTIONS, slugifyName, type BusinessName } from '@/lib/businesses';
+import {
+  BUSINESS_OPTIONS,
+  getBusinessOptionByCode,
+  slugifyName,
+  type BusinessCode,
+  type BusinessName,
+} from '@/lib/businesses';
 
 const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 const OPTIONAL_VALUE = '__none__';
@@ -43,7 +49,9 @@ const createKey = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
 
-const DEFAULT_BUSINESS = (BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die') as BusinessName;
+const DEFAULT_BUSINESS_OPTION = BUSINESS_OPTIONS[0];
+const DEFAULT_BUSINESS_NAME = (DEFAULT_BUSINESS_OPTION?.name ?? 'Sterling Tool and Die') as BusinessName;
+const DEFAULT_BUSINESS_CODE = (DEFAULT_BUSINESS_OPTION?.code ?? 'STD') as BusinessCode;
 
 type Option = { id: string; name: string };
 type AddonOption = {
@@ -79,9 +87,10 @@ export default function NewOrderPage() {
   const [selectedAddonIds, setSelectedAddonIds] = React.useState<string[]>([]);
   const [dueDate, setDueDate] = React.useState('');
   const [priority, setPriority] = React.useState('NORMAL');
+  const [business, setBusiness] = React.useState<BusinessCode>(DEFAULT_BUSINESS_CODE);
   const [parts, setParts] = React.useState<PartInput[]>([emptyPart()]);
   const [attachments, setAttachments] = React.useState<AttachmentInput[]>([emptyAttachment()]);
-  const [attachmentBusiness, setAttachmentBusiness] = React.useState<BusinessName>(DEFAULT_BUSINESS);
+  const [attachmentBusiness, setAttachmentBusiness] = React.useState<BusinessName>(DEFAULT_BUSINESS_NAME);
   const [draftAttachmentReference] = React.useState(() => createKey());
   const [materialNeeded, setMaterialNeeded] = React.useState(false);
   const [materialOrdered, setMaterialOrdered] = React.useState(false);
@@ -177,6 +186,13 @@ export default function NewOrderPage() {
       }
     })();
   }, []);
+
+  React.useEffect(() => {
+    const option = getBusinessOptionByCode(business);
+    if (option) {
+      setAttachmentBusiness(option.name as BusinessName);
+    }
+  }, [business]);
 
   const selectedBusinessOption = React.useMemo(
     () => BUSINESS_OPTIONS.find((option) => option.name === attachmentBusiness) ?? BUSINESS_OPTIONS[0],
@@ -364,6 +380,7 @@ export default function NewOrderPage() {
       receivedDate: new Date().toISOString().slice(0, 10),
       dueDate,
       priority,
+      business,
       materialNeeded,
       materialOrdered,
       vendorId: vendorId || undefined,
@@ -394,10 +411,12 @@ export default function NewOrderPage() {
       setPoNumber('');
       setDueDate('');
       setPriority('NORMAL');
+      setBusiness(DEFAULT_BUSINESS_CODE);
       setAssignedMachinistId('');
       setParts([emptyPart()]);
       setAttachments([emptyAttachment()]);
-      setSelectedChecklist([]);
+      setAttachmentBusiness(DEFAULT_BUSINESS_NAME);
+      setSelectedAddonIds([]);
       setMaterialNeeded(false);
       setMaterialOrdered(false);
       setModelIncluded(false);
@@ -456,14 +475,29 @@ export default function NewOrderPage() {
 
       <form className="flex flex-col gap-8" onSubmit={handleSubmit}>
         <Card className="border-border/60 bg-card/70 backdrop-blur">
-          <CardHeader>
-            <CardTitle>Customer & schedule</CardTitle>
-            <CardDescription>Who is the work for and when do they need it?</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-6 md:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="customer">Customer</Label>
-              <Select value={customerId} onValueChange={setCustomerId}>
+        <CardHeader>
+          <CardTitle>Customer & schedule</CardTitle>
+          <CardDescription>Who is the work for and when do they need it?</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="business">Business</Label>
+            <Select value={business} onValueChange={(value) => setBusiness(value as BusinessCode)}>
+              <SelectTrigger id="business" className="border-border/60 bg-background/80">
+                <SelectValue placeholder="Select a business" />
+              </SelectTrigger>
+              <SelectContent>
+                {BUSINESS_OPTIONS.map((option) => (
+                  <SelectItem key={option.code} value={option.code}>
+                    {option.prefix} — {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="customer">Customer</Label>
+            <Select value={customerId} onValueChange={setCustomerId}>
                 <SelectTrigger id="customer" className="border-border/60 bg-background/80">
                   <SelectValue placeholder="Select a customer" />
                 </SelectTrigger>

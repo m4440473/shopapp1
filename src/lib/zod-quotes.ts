@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { BUSINESS_CODES } from '@/lib/businesses';
+
 export const QuotePartInput = z.object({
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2000).optional(),
@@ -38,6 +40,7 @@ export const QuoteAttachmentInput = z
   });
 
 export const QuoteCreate = z.object({
+  business: z.enum(BUSINESS_CODES),
   quoteNumber: z.string().trim().max(50).optional(),
   companyName: z.string().trim().min(1).max(200),
   contactName: z.string().trim().max(200).optional(),
@@ -57,7 +60,7 @@ export const QuoteCreate = z.object({
   attachments: z.array(QuoteAttachmentInput).default([]),
 });
 
-export const QuoteUpdate = QuoteCreate.partial();
+export const QuoteUpdate = QuoteCreate;
 
 export type QuoteCreateInput = z.infer<typeof QuoteCreate>;
 export type QuoteUpdateInput = z.infer<typeof QuoteUpdate>;

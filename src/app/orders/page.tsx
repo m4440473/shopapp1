@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { BUSINESS_OPTIONS } from '@/lib/businesses';
 
 const SORT_KEYS = ['dueDate', 'priority', 'status'] as const;
 const PRIORITY_FILTERS = ['all', 'HOT', 'RUSH', 'NORMAL', 'LOW'] as const;
@@ -323,6 +324,7 @@ export default function OrdersPage() {
               <TableHeader>
                 <TableRow className="border-border/60">
                   <TableHead className="w-[140px]">Order</TableHead>
+                  <TableHead>Business</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Due</TableHead>
@@ -338,6 +340,22 @@ export default function OrdersPage() {
                       <Link href={`/orders/${order.id}`} className="hover:underline">
                         #{order.orderNumber}
                       </Link>
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const option = BUSINESS_OPTIONS.find((item) => item.code === order.business);
+                        if (!option) {
+                          return <Badge variant="outline">{order.business ?? 'N/A'}</Badge>;
+                        }
+                        return (
+                          <div className="flex flex-col gap-1">
+                            <Badge variant="outline" className="w-fit font-mono text-xs uppercase">
+                              {option.prefix}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">{option.name}</span>
+                          </div>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {order.customer?.name ?? 'Unknown customer'}
