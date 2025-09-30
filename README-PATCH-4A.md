@@ -9,3 +9,9 @@ Usage:
 - `POST /api/orders` — Admin only; JSON body includes order meta, parts, optional checklist seeding, and attachments.
 
 This patch doesn't touch existing files; safe to merge into Phase 1–3 baseline.
+
+## Attachments storage
+
+Orders now store uploaded files on the shared filesystem. Refer to
+[`docs/order-attachments-migration.md`](docs/order-attachments-migration.md) for guidance on migrating
+legacy base64 attachments into the new directory structure.

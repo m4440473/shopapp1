@@ -47,6 +47,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { BUSINESS_OPTIONS, slugifyName, type BusinessName } from '@/lib/businesses';
 
 const STATUS_OPTIONS: Array<[string, string]> = [
   ['NEW', 'New'],
@@ -60,6 +61,7 @@ const STATUS_OPTIONS: Array<[string, string]> = [
 
 const PRIORITY_OPTIONS = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 const NONE_VALUE = '__none__';
+const DEFAULT_BUSINESS = (BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die') as BusinessName;
 
 type Option = { id: string; name: string };
 
@@ -86,6 +88,8 @@ type AttachmentFormState = {
   label: string;
   url: string;
   mimeType: string;
+  storagePath: string;
+  uploading: boolean;
 };
 
 const statusColor = (status: string) =>
@@ -123,11 +127,14 @@ export default function OrderDetailPage() {
     label: '',
     url: '',
     mimeType: '',
+    storagePath: '',
+    uploading: false,
   });
   const [attachmentSaving, setAttachmentSaving] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [attachmentFileKey, setAttachmentFileKey] = useState(0);
   const [attachmentFileName, setAttachmentFileName] = useState<string | null>(null);
+  const [attachmentBusiness, setAttachmentBusiness] = useState<BusinessName>(DEFAULT_BUSINESS);
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -146,6 +153,16 @@ export default function OrderDetailPage() {
     if (!id) return;
     window.open(`/orders/${id}/print`, '_blank', 'noopener,noreferrer');
   }, [id]);
+
+  const attachmentPathPreview = React.useMemo(() => {
+    const selectedBusiness = BUSINESS_OPTIONS.find((option) => option.name === attachmentBusiness);
+    const businessSlug = selectedBusiness?.slug ?? (BUSINESS_OPTIONS[0]?.slug ?? 'business');
+    const customerName = item?.customer?.name ?? '';
+    const customerSlug = slugifyName(customerName, 'customer') || 'customer';
+    const referenceValue = item?.orderNumber ?? id;
+    const referenceSlug = slugifyName(referenceValue, 'order');
+    return `${businessSlug}/${customerSlug || 'customer'}/${referenceSlug}`;
+  }, [attachmentBusiness, id, item?.customer?.name, item?.orderNumber]);
 
   async function load() {
     if (!id) return null;
@@ -178,6 +195,18 @@ export default function OrderDetailPage() {
   useEffect(() => {
     setExpandedParts({});
   }, [item?.id]);
+
+  useEffect(() => {
+    if (!item?.attachments?.length) return;
+    const stored = item.attachments.find((attachment: any) => attachment.storagePath);
+    if (stored?.storagePath) {
+      const [businessSlug] = stored.storagePath.split('/');
+      const match = BUSINESS_OPTIONS.find((option) => option.slug === businessSlug);
+      if (match) {
+        setAttachmentBusiness(match.name as BusinessName);
+      }
+    }
+  }, [item?.attachments]);
 
   useEffect(() => {
     fetch('/api/admin/vendors?take=100', { credentials: 'include' })
@@ -324,36 +353,96 @@ export default function OrderDetailPage() {
     }
   }
 
-  function handleAttachmentFile(fileList: FileList | null) {
+  async function handleAttachmentFile(fileList: FileList | null) {
     const file = fileList?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      setAttachmentForm((prev) => ({
-        ...prev,
-        url: result,
-        label: prev.label || file.name,
-        mimeType: file.type || prev.mimeType,
-      }));
+    if (!file || !item) return;
+
+    const customerName = item.customer?.name?.trim() ?? '';
+    if (!customerName) {
+      setAttachmentError('Customer information is required before uploading attachments.');
+      return;
+    }
+
+    const orderReference = (item.orderNumber || '').trim() || id;
+
+    setAttachmentForm((prev) => ({ ...prev, uploading: true }));
+    setAttachmentError(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('business', attachmentBusiness);
+    formData.append('customerName', customerName);
+    formData.append('orderReference', orderReference);
+
+    try {
+      const res = await fetch('/api/orders/attachments/upload', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        let message = 'Failed to upload attachment';
+        try {
+          const payload = await res.json();
+          if (payload?.error) message = payload.error;
+        } catch {
+          // ignore JSON parse errors
+        }
+        throw new Error(message);
+      }
+
+      const result = await res.json().catch(() => ({}));
+
+      setAttachmentForm((prev) => {
+        const storagePath = typeof result?.storagePath === 'string' ? result.storagePath : '';
+        const url = storagePath ? `/attachments/${storagePath}` : prev.url;
+        const label = prev.label || (typeof result?.label === 'string' && result.label) || file.name;
+        const mimeType =
+          prev.mimeType ||
+          (typeof result?.mimeType === 'string' && result.mimeType) ||
+          file.type ||
+          '';
+
+        return {
+          ...prev,
+          storagePath,
+          url,
+          label,
+          mimeType,
+          uploading: false,
+        };
+      });
       setAttachmentFileName(file.name);
-      setAttachmentError(null);
-    };
-    reader.readAsDataURL(file);
+    } catch (error: any) {
+      const message = typeof error?.message === 'string' ? error.message : 'Failed to upload attachment';
+      setAttachmentError(message);
+      setAttachmentForm((prev) => ({ ...prev, uploading: false }));
+    }
   }
 
   async function handleAddAttachment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!id) return;
+    if (attachmentForm.uploading) {
+      setAttachmentError('Wait for the file upload to finish.');
+      return;
+    }
     const url = attachmentForm.url.trim();
-    if (!url) {
+    const storagePath = attachmentForm.storagePath.trim();
+    if (!url && !storagePath) {
       setAttachmentError('Add a link or upload a file to attach.');
       return;
     }
     setAttachmentSaving(true);
     setAttachmentError(null);
     try {
-      const payload: Record<string, unknown> = { url };
+      const payload: Record<string, unknown> = {};
+      if (storagePath) {
+        payload.storagePath = storagePath;
+      } else if (url) {
+        payload.url = url;
+      }
       if (attachmentForm.label.trim()) payload.label = attachmentForm.label.trim();
       if (attachmentForm.mimeType.trim()) payload.mimeType = attachmentForm.mimeType.trim();
 
@@ -380,7 +469,7 @@ export default function OrderDetailPage() {
         throw new Error(message || 'Failed to add attachment');
       }
 
-      setAttachmentForm({ label: '', url: '', mimeType: '' });
+      setAttachmentForm({ label: '', url: '', mimeType: '', storagePath: '', uploading: false });
       setAttachmentFileName(null);
       setAttachmentFileKey((prev) => prev + 1);
       await load();
@@ -988,6 +1077,8 @@ export default function OrderDetailPage() {
                   attachments.map((att: any, index: number) => {
                     const key = att.id ?? `attachment-${index + 1}`;
                     const uploadedLabel = att.uploadedBy?.name || att.uploadedBy?.email || '';
+                    const openHref = att.storagePath ? `/attachments/${att.storagePath}` : att.url;
+                    const hasLink = typeof openHref === 'string' && openHref.length > 0;
                     return (
                       <div
                         key={key}
@@ -998,16 +1089,31 @@ export default function OrderDetailPage() {
                             <div className="font-medium text-foreground">{att.label || 'Attachment'}</div>
                             <div className="text-xs text-muted-foreground">
                               {att.mimeType || 'Unknown type'}
+                              {att.storagePath ? (
+                                <span className="ml-2 inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-[11px] text-foreground">
+                                  Stored
+                                </span>
+                              ) : null}
                             </div>
+                            {att.storagePath ? (
+                              <div className="text-xs text-muted-foreground">
+                                Path:{' '}
+                                <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{att.storagePath}</code>
+                              </div>
+                            ) : null}
                           </div>
-                          <a
-                            href={att.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm font-medium text-primary hover:underline"
-                          >
-                            Open
-                          </a>
+                          {hasLink ? (
+                            <a
+                              href={openHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm font-medium text-primary hover:underline"
+                            >
+                              Open
+                            </a>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">No link</span>
+                          )}
                         </div>
                         <div className="mt-2 text-xs text-muted-foreground">
                           Uploaded {att.createdAt ? new Date(att.createdAt).toLocaleString() : 'recently'}
@@ -1021,6 +1127,25 @@ export default function OrderDetailPage() {
                 )}
               </div>
               <form className="space-y-3" onSubmit={handleAddAttachment}>
+                <div className="grid gap-2 sm:max-w-md">
+                  <Label>Storage business</Label>
+                  <Select value={attachmentBusiness} onValueChange={(value) => setAttachmentBusiness(value as BusinessName)}>
+                    <SelectTrigger className="border-border/60 bg-background/80">
+                      <SelectValue placeholder="Select a business" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BUSINESS_OPTIONS.map((option) => (
+                        <SelectItem key={option.slug} value={option.name}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Files upload to{' '}
+                    <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{attachmentPathPreview}</code>
+                  </p>
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="grid gap-2">
                     <Label htmlFor="attachment-label">Label</Label>
@@ -1047,15 +1172,21 @@ export default function OrderDetailPage() {
                     />
                   </div>
                   <div className="grid gap-2 sm:col-span-2">
-                    <Label htmlFor="attachment-url">Link or data URL</Label>
+                    <Label htmlFor="attachment-url">External link</Label>
                     <Input
                       id="attachment-url"
                       value={attachmentForm.url}
                       onChange={(e) => {
-                        setAttachmentForm((prev) => ({ ...prev, url: e.target.value }));
+                        const value = e.target.value;
+                        setAttachmentForm((prev) => ({
+                          ...prev,
+                          url: value,
+                          storagePath: value.trim().length ? '' : prev.storagePath,
+                        }));
                         setAttachmentError(null);
                       }}
                       placeholder="Paste a shared link or upload a file to populate this field"
+                      disabled={attachmentForm.uploading}
                     />
                   </div>
                   <div className="grid gap-2 sm:col-span-2">
@@ -1066,14 +1197,34 @@ export default function OrderDetailPage() {
                         id="attachment-file"
                         type="file"
                         className="bg-background/80"
-                        onChange={(e) => handleAttachmentFile(e.target.files)}
+                        onChange={(e) => void handleAttachmentFile(e.target.files)}
+                        disabled={attachmentForm.uploading}
                       />
-                      <Upload className="h-4 w-4 text-muted-foreground" />
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Upload className="h-4 w-4 text-muted-foreground" />
+                        {attachmentForm.uploading ? 'Uploading…' : 'Drop a file to upload'}
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Uploading converts the file to a base64 data URL if you do not provide a hosted link.
-                      {attachmentFileName ? ` Selected: ${attachmentFileName}` : ''}
-                    </p>
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <p>Uploads are written to the shared storage above for easy access.</p>
+                      {attachmentForm.storagePath ? (
+                        <p className="flex flex-wrap items-center gap-1">
+                          Stored file:
+                          <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{attachmentForm.storagePath}</code>
+                          <a
+                            href={`/attachments/${attachmentForm.storagePath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-primary hover:underline"
+                          >
+                            Open stored copy
+                          </a>
+                        </p>
+                      ) : (
+                        <p>{attachmentForm.uploading ? 'Uploading…' : 'Add a file to copy it into shared storage.'}</p>
+                      )}
+                      {attachmentFileName ? <p>Selected: {attachmentFileName}</p> : null}
+                    </div>
                   </div>
                 </div>
                 {attachmentError && (
@@ -1082,7 +1233,11 @@ export default function OrderDetailPage() {
                   </div>
                 )}
                 <div className="flex justify-end">
-                  <Button type="submit" disabled={attachmentSaving} className="rounded-full">
+                  <Button
+                    type="submit"
+                    disabled={attachmentSaving || attachmentForm.uploading}
+                    className="rounded-full"
+                  >
                     {attachmentSaving ? 'Attaching…' : 'Add attachment'}
                   </Button>
                 </div>
