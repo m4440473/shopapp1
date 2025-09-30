@@ -7,12 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Business {
-  STD
-  CRM
-  PC
-}
-
 model User {
   id               String   @id @default(cuid())
   email            String   @unique
@@ -72,7 +66,7 @@ model Vendor {
 model Order {
   id               String   @id @default(cuid())
   orderNumber      String
-  business         Business @default(STD)
+  business         String   @default("STD")
   customerId       String
   customer         Customer @relation(fields: [customerId], references: [id])
   status           String
@@ -189,7 +183,7 @@ model Addon {
 model Quote {
   id               String   @id @default(cuid())
   quoteNumber      String
-  business         Business @default(STD)
+  business         String   @default("STD")
   companyName      String
   contactName      String?
   contactEmail     String?
