@@ -19,6 +19,7 @@ import {
   CardTitle,
 } from '@/components/ui/Card';
 import { fetchJson } from '@/lib/fetchJson';
+import { BUSINESS_OPTIONS, slugifyName, type BusinessName } from '@/lib/businesses';
 
 import type { QuoteCreateInput } from '@/lib/zod-quotes';
 
@@ -63,8 +64,10 @@ type QuoteAddonState = {
 type AttachmentState = {
   key: string;
   url: string;
+  storagePath: string;
   label: string;
   mimeType: string;
+  uploading?: boolean;
 };
 
 type QuoteDetail = {
@@ -116,7 +119,8 @@ type QuoteDetail = {
   }>;
   attachments: Array<{
     id: string;
-    url: string;
+    url?: string | null;
+    storagePath?: string | null;
     label?: string | null;
     mimeType?: string | null;
   }>;
@@ -214,14 +218,48 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     }))
   );
 
+  const initialAttachmentBusiness = useMemo<BusinessName>(() => {
+    const stored = initialQuote?.attachments?.find((attachment) => attachment.storagePath);
+    if (stored?.storagePath) {
+      const [businessSlug] = stored.storagePath.split('/');
+      const match = BUSINESS_OPTIONS.find((option) => option.slug === businessSlug);
+      if (match) {
+        return match.name;
+      }
+    }
+    return (BUSINESS_OPTIONS[0]?.name as BusinessName) ?? ('Sterling Tool and Die' as BusinessName);
+  }, [initialQuote]);
+
+  const [attachmentBusiness, setAttachmentBusiness] = useState<BusinessName>(initialAttachmentBusiness);
+
   const [attachments, setAttachments] = useState<AttachmentState[]>(
     (initialQuote?.attachments ?? []).map((attachment) => ({
       key: attachment.id,
-      url: attachment.url,
+      url: attachment.url ?? (attachment.storagePath ? `/attachments/${attachment.storagePath}` : ''),
+      storagePath: attachment.storagePath ?? '',
       label: attachment.label ?? '',
       mimeType: attachment.mimeType ?? '',
+      uploading: false,
     }))
   );
+
+  useEffect(() => {
+    setAttachmentBusiness(initialAttachmentBusiness);
+  }, [initialAttachmentBusiness]);
+
+  const [draftReference] = useState(() => createKey());
+
+  const selectedBusinessOption = useMemo(() => {
+    return BUSINESS_OPTIONS.find((option) => option.name === attachmentBusiness) ?? BUSINESS_OPTIONS[0];
+  }, [attachmentBusiness]);
+
+  const attachmentPathPreview = useMemo(() => {
+    const businessSlug = selectedBusinessOption?.slug ?? 'business';
+    const customerSlug = slugifyName(form.companyName, 'customer') || 'customer';
+    const referenceValue = (form.quoteNumber || '').trim() || (initialQuote?.quoteNumber || '').trim() || draftReference;
+    const referenceSlug = slugifyName(referenceValue, 'quote');
+    return `${businessSlug}/${customerSlug}/${referenceSlug}`;
+  }, [draftReference, form.companyName, form.quoteNumber, initialQuote?.quoteNumber, selectedBusinessOption]);
 
   useEffect(() => {
     fetch('/api/admin/addons?active=true&take=100', { credentials: 'include' })
@@ -291,8 +329,91 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   function addAttachment() {
     setAttachments((prev) => [
       ...prev,
-      { key: createKey(), url: '', label: '', mimeType: '' },
+      { key: createKey(), url: '', storagePath: '', label: '', mimeType: '', uploading: false },
     ]);
+  }
+
+  async function handleAttachmentUpload(attachmentKey: string, fileList: FileList | null) {
+    const file = fileList?.[0];
+    if (!file) return;
+
+    const customerName = form.companyName.trim();
+    if (!customerName) {
+      toast.push('Enter the company name before uploading attachments.', 'error');
+      return;
+    }
+
+    const referenceValue =
+      (form.quoteNumber || '').trim() || (initialQuote?.quoteNumber || '').trim() || draftReference;
+
+    setAttachments((prev) =>
+      prev.map((attachment) =>
+        attachment.key === attachmentKey ? { ...attachment, uploading: true } : attachment
+      )
+    );
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('business', attachmentBusiness);
+    formData.append('customerName', customerName);
+    formData.append('quoteNumber', referenceValue);
+
+    try {
+      const response = await fetch('/api/admin/quotes/upload', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        let message = 'Failed to upload attachment';
+        try {
+          const body = await response.json();
+          if (body?.error) message = body.error;
+        } catch {}
+        throw new Error(message);
+      }
+
+      const result = await response.json();
+
+      setAttachments((prev) =>
+        prev.map((attachment) => {
+          if (attachment.key !== attachmentKey) return attachment;
+
+          const storagePath = typeof result?.storagePath === 'string' ? result.storagePath : '';
+          const updatedUrl = storagePath ? `/attachments/${storagePath}` : attachment.url;
+          const mimeType =
+            (typeof result?.mimeType === 'string' && result.mimeType) ||
+            attachment.mimeType ||
+            file.type ||
+            '';
+          const label =
+            attachment.label ||
+            (typeof result?.label === 'string' && result.label) ||
+            file.name;
+
+          return {
+            ...attachment,
+            storagePath,
+            url: updatedUrl,
+            mimeType,
+            label,
+            uploading: false,
+          };
+        })
+      );
+
+      toast.push('Attachment uploaded', 'success');
+    } catch (error: any) {
+      const message = typeof error?.message === 'string' ? error.message : 'Failed to upload attachment';
+      toast.push(message, 'error');
+    } finally {
+      setAttachments((prev) =>
+        prev.map((attachment) =>
+          attachment.key === attachmentKey ? { ...attachment, uploading: false } : attachment
+        )
+      );
+    }
   }
 
   const addonMap = useMemo(() => new Map(addons.map((addon) => [addon.id, addon])), [addons]);
@@ -362,9 +483,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           notes: selection.notes || undefined,
         })),
       attachments: attachments
-        .filter((attachment) => attachment.url.trim().length > 0)
+        .filter((attachment) => attachment.url.trim().length > 0 || attachment.storagePath.trim().length > 0)
         .map((attachment) => ({
-          url: attachment.url,
+          url: attachment.url.trim() ? attachment.url.trim() : undefined,
+          storagePath: attachment.storagePath.trim() ? attachment.storagePath.trim() : undefined,
           label: attachment.label || undefined,
           mimeType: attachment.mimeType || undefined,
         })),
@@ -899,56 +1021,117 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           <CardDescription>Link drawings, spreadsheets, or other supporting documents.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {attachments.map((attachment) => (
-            <div key={attachment.key} className="grid gap-4 md:grid-cols-3 rounded border border-border/50 bg-card/40 p-4">
-              <div className="grid gap-2">
-                <Label>Label</Label>
-                <Input
-                  value={attachment.label}
-                  onChange={(event) =>
-                    setAttachments((prev) =>
-                      prev.map((row) => (row.key === attachment.key ? { ...row, label: event.target.value } : row))
-                    )
-                  }
-                  placeholder="Customer print"
-                />
+          <div className="grid gap-2 md:w-1/2">
+            <Label htmlFor="quoteAttachmentBusiness">Business folder</Label>
+            <select
+              id="quoteAttachmentBusiness"
+              value={attachmentBusiness}
+              onChange={(event) => setAttachmentBusiness(event.target.value as BusinessName)}
+              className="rounded border border-border bg-background px-3 py-2 text-sm"
+            >
+              {BUSINESS_OPTIONS.map((option) => (
+                <option key={option.slug} value={option.name}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Files upload under <code className="font-mono text-xs">{attachmentPathPreview}</code> inside the storage root.
+            </p>
+          </div>
+          {attachments.map((attachment) => {
+            const storedUrl = attachment.storagePath ? `/attachments/${attachment.storagePath}` : '';
+            return (
+              <div
+                key={attachment.key}
+                className="grid gap-4 rounded border border-border/50 bg-card/40 p-4 md:grid-cols-2"
+              >
+                <div className="grid gap-2">
+                  <Label>Label</Label>
+                  <Input
+                    value={attachment.label}
+                    onChange={(event) =>
+                      setAttachments((prev) =>
+                        prev.map((row) =>
+                          row.key === attachment.key ? { ...row, label: event.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder="Customer print"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>MIME type</Label>
+                  <Input
+                    value={attachment.mimeType}
+                    onChange={(event) =>
+                      setAttachments((prev) =>
+                        prev.map((row) =>
+                          row.key === attachment.key ? { ...row, mimeType: event.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder="application/pdf"
+                  />
+                </div>
+                <div className="grid gap-2 md:col-span-2">
+                  <Label>Link URL</Label>
+                  <Input
+                    value={attachment.url}
+                    onChange={(event) =>
+                      setAttachments((prev) =>
+                        prev.map((row) =>
+                          row.key === attachment.key ? { ...row, url: event.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder="https://"
+                  />
+                  {attachment.storagePath ? (
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Stored file ready to open.</span>
+                      <Link
+                        href={storedUrl}
+                        className="underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Open stored file
+                      </Link>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Provide an external link or upload a file below.
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-2 md:col-span-2">
+                  <Label>Upload file</Label>
+                  <input
+                    type="file"
+                    onChange={async (event) => {
+                      await handleAttachmentUpload(attachment.key, event.target.files);
+                      event.target.value = '';
+                    }}
+                    disabled={attachment.uploading}
+                    className="block w-full text-sm text-foreground"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {attachment.uploading ? 'Uploading…' : 'Uploads replace the link above with a secure download URL.'}
+                  </p>
+                </div>
+                <div className="flex items-end justify-end md:col-span-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setAttachments((prev) => prev.filter((row) => row.key !== attachment.key))}
+                  >
+                    Remove
+                  </Button>
+                </div>
               </div>
-              <div className="grid gap-2 md:col-span-2">
-                <Label>URL</Label>
-                <Input
-                  value={attachment.url}
-                  onChange={(event) =>
-                    setAttachments((prev) =>
-                      prev.map((row) => (row.key === attachment.key ? { ...row, url: event.target.value } : row))
-                    )
-                  }
-                  placeholder="https://"
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>MIME type</Label>
-                <Input
-                  value={attachment.mimeType}
-                  onChange={(event) =>
-                    setAttachments((prev) =>
-                      prev.map((row) => (row.key === attachment.key ? { ...row, mimeType: event.target.value } : row))
-                    )
-                  }
-                  placeholder="application/pdf"
-                />
-              </div>
-              <div className="flex items-end justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setAttachments((prev) => prev.filter((row) => row.key !== attachment.key))}
-                >
-                  Remove
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           <Button type="button" variant="outline" onClick={addAttachment}>
             Add attachment
           </Button>

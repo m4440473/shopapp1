@@ -275,14 +275,26 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
           {quote.attachments.map((attachment) => (
             <div key={attachment.id} className="flex items-center justify-between gap-4 rounded border border-border/40 bg-card/30 p-3">
               <div>
-                <p className="font-medium">{attachment.label || attachment.url}</p>
+                <p className="font-medium">
+                  {attachment.label || attachment.url || attachment.storagePath || 'Attachment'}
+                </p>
                 {attachment.mimeType && <p className="text-xs text-muted-foreground">{attachment.mimeType}</p>}
               </div>
-              <Button asChild variant="outline" size="sm">
-                <Link href={attachment.url} target="_blank" rel="noopener noreferrer">
-                  View
-                </Link>
-              </Button>
+              {attachment.url || attachment.storagePath ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link
+                    href={attachment.url ?? `/attachments/${attachment.storagePath}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" disabled>
+                  Unavailable
+                </Button>
+              )}
             </div>
           ))}
         </CardContent>

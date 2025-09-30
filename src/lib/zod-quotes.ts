@@ -25,11 +25,17 @@ export const QuoteAddonSelectionInput = z.object({
   notes: z.string().trim().max(2000).optional(),
 });
 
-export const QuoteAttachmentInput = z.object({
-  url: z.string().trim().min(1).max(500),
-  label: z.string().trim().max(200).optional(),
-  mimeType: z.string().trim().max(200).optional(),
-});
+export const QuoteAttachmentInput = z
+  .object({
+    url: z.string().trim().min(1).max(500).optional(),
+    storagePath: z.string().trim().min(1).max(500).optional(),
+    label: z.string().trim().max(200).optional(),
+    mimeType: z.string().trim().max(200).optional(),
+  })
+  .refine((value) => Boolean(value.url?.length || value.storagePath?.length), {
+    message: 'Attachment requires a URL or uploaded file',
+    path: ['url'],
+  });
 
 export const QuoteCreate = z.object({
   quoteNumber: z.string().trim().max(50).optional(),

@@ -49,7 +49,8 @@ export interface PreparedQuoteComponents {
     notes: string | null;
   }>;
   attachments: Array<{
-    url: string;
+    url: string | null;
+    storagePath: string | null;
     label: string | null;
     mimeType: string | null;
   }>;
@@ -141,11 +142,14 @@ export async function prepareQuoteComponents(
     notes: part.notes ?? null,
   }));
 
-  const attachments = attachmentsInput.map((attachment) => ({
-    url: attachment.url,
-    label: attachment.label ?? null,
-    mimeType: attachment.mimeType ?? null,
-  }));
+  const attachments = attachmentsInput
+    .map((attachment) => ({
+      url: attachment.url?.trim() ? attachment.url.trim() : null,
+      storagePath: attachment.storagePath?.trim() ? attachment.storagePath.trim() : null,
+      label: attachment.label?.trim() ? attachment.label.trim() : null,
+      mimeType: attachment.mimeType?.trim() ? attachment.mimeType.trim() : null,
+    }))
+    .filter((attachment) => attachment.url || attachment.storagePath);
 
   return {
     quoteNumber,
