@@ -14,10 +14,19 @@ export async function GET(_req: NextRequest, { params }: { params: { path: strin
   }
 
   const relativePath = segments.join('/');
-  const attachment = await prisma.quoteAttachment.findFirst({
+  const quoteAttachment = await prisma.quoteAttachment.findFirst({
     where: { storagePath: relativePath },
     select: { mimeType: true, label: true },
   });
+
+  const orderAttachment = quoteAttachment
+    ? null
+    : await prisma.attachment.findFirst({
+        where: { storagePath: relativePath },
+        select: { mimeType: true, label: true },
+      });
+
+  const attachment = quoteAttachment ?? orderAttachment;
 
   if (!attachment) {
     return new NextResponse('Not found', { status: 404 });

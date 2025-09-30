@@ -117,7 +117,8 @@ export async function POST(req: NextRequest) {
       attachments: body.attachments.length
         ? {
             create: body.attachments.map(a => ({
-              url: a.url,
+              url: a.url ?? null,
+              storagePath: a.storagePath ?? null,
               label: a.label ?? null,
               mimeType: a.mimeType ?? null,
               uploadedById: (session.user as any)?.id ?? null,

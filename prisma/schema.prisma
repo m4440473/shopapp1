@@ -140,12 +140,15 @@ model Attachment {
   id        String   @id @default(cuid())
   orderId   String
   order     Order    @relation(fields: [orderId], references: [id])
-  url       String
+  url       String?
+  storagePath String?
   label     String?
   mimeType  String?
   uploadedById String?
   uploadedBy   User? @relation("UserAttachments", fields: [uploadedById], references: [id])
   createdAt DateTime @default(now())
+
+  @@index([storagePath])
 }
 
 model StatusHistory {

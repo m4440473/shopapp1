@@ -32,7 +32,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const attachment = await prisma.attachment.create({
     data: {
       orderId: id,
-      url: payload.url,
+      url: payload.url ?? null,
+      storagePath: payload.storagePath ?? null,
       label: payload.label?.length ? payload.label : null,
       mimeType: payload.mimeType?.length ? payload.mimeType : null,
       uploadedById: userId ?? null,

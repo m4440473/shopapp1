@@ -38,6 +38,18 @@ export const OrderPartCreate = z.object({
   notes: z.string().trim().max(500).optional(),
 });
 
+const OrderAttachmentMetadata = z
+  .object({
+    url: z.string().trim().min(1).max(1000).optional(),
+    storagePath: z.string().trim().min(1).max(500).optional(),
+    label: z.string().trim().max(200).optional(),
+    mimeType: z.string().trim().max(200).optional(),
+  })
+  .refine((value) => Boolean(value.url?.length || value.storagePath?.length), {
+    message: 'Provide an attachment URL or uploaded file path',
+    path: ['url'],
+  });
+
 export const OrderCreate = z.object({
   orderNumber: z.string().trim().optional(),
   customerId: z.string().trim().min(1),
@@ -52,25 +64,13 @@ export const OrderCreate = z.object({
   assignedMachinistId: z.string().trim().optional(),
   parts: z.array(OrderPartCreate).min(1),
   addonIds: z.array(z.string().trim()).default([]),
-  attachments: z
-    .array(
-      z.object({
-        url: z.string().min(1),
-        label: z.string().trim().optional(),
-        mimeType: z.string().trim().optional(),
-      })
-    )
-    .default([]),
+  attachments: z.array(OrderAttachmentMetadata).default([]),
   notes: z.string().trim().max(1000).optional(),
 });
 
 export type OrderCreateInput = z.infer<typeof OrderCreate>;
 
-export const OrderAttachmentCreate = z.object({
-  url: z.string().trim().min(1),
-  label: z.string().trim().max(200).optional(),
-  mimeType: z.string().trim().max(200).optional(),
-});
+export const OrderAttachmentCreate = OrderAttachmentMetadata;
 
 export type OrderAttachmentCreateInput = z.infer<typeof OrderAttachmentCreate>;
 
