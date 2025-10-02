@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Table from '@/components/Admin/Table';
 import { useToast } from '@/components/ui/Toast';
 import { fetchJson } from '@/lib/fetchJson';
-import { UserUpsert } from '@/lib/zod';
+import { UserPatch, UserUpsert } from '@/lib/zod';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
@@ -39,7 +39,14 @@ export default function Client({ initial }: { initial: any }) {
   const [nextCursor, setNextCursor] = useState<string | null>(initial.nextCursor ?? null);
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<DialogState>(null);
-  const [form, setForm] = useState({ name: '', email: '', role: 'MACHINIST', active: 'true' });
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    role: 'MACHINIST',
+    active: 'true',
+    password: '',
+    confirmPassword: '',
+  });
   const toast = useToast();
 
   useEffect(() => {
@@ -49,9 +56,11 @@ export default function Client({ initial }: { initial: any }) {
         email: dialog.data.email ?? '',
         role: dialog.data.role ?? 'MACHINIST',
         active: dialog.data.active ? 'true' : 'false',
+        password: '',
+        confirmPassword: '',
       });
     } else if (dialog?.mode === 'create') {
-      setForm({ name: '', email: '', role: 'MACHINIST', active: 'true' });
+      setForm({ name: '', email: '', role: 'MACHINIST', active: 'true', password: '', confirmPassword: '' });
     }
   }, [dialog]);
 
@@ -66,14 +75,21 @@ export default function Client({ initial }: { initial: any }) {
 
   async function save() {
     try {
-      const payload = UserUpsert.parse({
+      if (form.password !== form.confirmPassword) {
+        toast.push('Passwords do not match', 'error');
+        return;
+      }
+
+      const base = {
         name: form.name || undefined,
         email: form.email,
         role: form.role,
         active: form.active === 'true',
-      });
+        ...(form.password ? { password: form.password } : {}),
+      };
 
       if (dialog?.mode === 'edit' && dialog.data) {
+        const payload = UserPatch.parse(base);
         const res = await fetchJson<any>('/api/admin/users/' + dialog.data.id, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -82,6 +98,7 @@ export default function Client({ initial }: { initial: any }) {
         setItems(items.map((i) => (i.id === dialog.data?.id ? res.item : i)));
         toast.push('User updated', 'success');
       } else {
+        const payload = UserUpsert.parse(base);
         const res = await fetchJson<any>('/api/admin/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -222,6 +239,31 @@ export default function Client({ initial }: { initial: any }) {
                     <SelectItem value="false">false</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="userPassword">{dialog?.mode === 'edit' ? 'New password' : 'Password'}</Label>
+                <Input
+                  id="userPassword"
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+                  placeholder={dialog?.mode === 'edit' ? 'Leave blank to keep current' : 'Optional'}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Passwords must be at least 8 characters.
+                </p>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="userPasswordConfirm">Confirm password</Label>
+                <Input
+                  id="userPasswordConfirm"
+                  type="password"
+                  value={form.confirmPassword}
+                  onChange={(e) => setForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                  placeholder={dialog?.mode === 'edit' ? 'Leave blank if not changing' : 'Optional'}
+                />
               </div>
             </div>
             <DialogFooter>

@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function Page() {
   // Load initial data directly on the server using Prisma to avoid SSR fetch issues
-  const items = await prisma.user.findMany({ orderBy: { id: 'asc' }, take: 20 });
+  const itemsRaw = await prisma.user.findMany({ orderBy: { id: 'asc' }, take: 20 });
+  const items = itemsRaw.map(({ passwordHash, ...rest }) => rest);
   const initial = { items, nextCursor: null };
   return (
     <div className="p-4 text-neutral-100">

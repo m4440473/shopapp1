@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
+import { hash } from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -14,19 +15,23 @@ async function requireAdmin(): Promise<NextResponse | null> {
   return null;
 }
 
-import { UserUpsert } from '@/lib/zod';
-import { z } from 'zod';
-const UserUpdate = z.object({ name: z.string().max(100).optional(), role: z.enum(['ADMIN','MACHINIST','VIEWER']).optional(), active: z.boolean().optional() });
-
+import { UserPatch } from '@/lib/zod';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const guard = await requireAdmin(); if (guard) return guard;
   const body = await req.json();
-  const parsed = UserUpdate.safeParse(body);
+  const parsed = UserPatch.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-  const data = parsed.data as any;
-  const item = await prisma.user.update({ where: { id: params.id }, data });
-  return NextResponse.json({ ok: true, item });
+  const { password, ...data } = parsed.data as any;
+  const item = await prisma.user.update({
+    where: { id: params.id },
+    data: {
+      ...data,
+      ...(password ? { passwordHash: await hash(password, 10) } : {}),
+    },
+  });
+  const { passwordHash, ...rest } = item as any;
+  return NextResponse.json({ ok: true, item: rest });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {

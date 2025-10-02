@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin, canAccessViewer, isMachinist } from '@/lib/rbac';
+import { hash } from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -53,7 +54,8 @@ export async function GET(req: NextRequest) {
   });
   const nextCursor = items.length > take ? (items[take] as any).id : null;
   if (nextCursor) items.pop();
-  return NextResponse.json({ items, nextCursor });
+  const sanitized = items.map(({ passwordHash, ...rest }) => rest);
+  return NextResponse.json({ items: sanitized, nextCursor });
 }
 
 export async function POST(req: NextRequest) {
@@ -61,7 +63,13 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = UserUpsert.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-  const data = parsed.data as any;
-  const item = await prisma.user.create({ data });
-  return NextResponse.json({ ok: true, item });
+  const { password, ...data } = parsed.data as any;
+  const item = await prisma.user.create({
+    data: {
+      ...data,
+      ...(password ? { passwordHash: await hash(password, 10) } : {}),
+    },
+  });
+  const { passwordHash, ...rest } = item as any;
+  return NextResponse.json({ ok: true, item: rest });
 }
