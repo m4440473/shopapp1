@@ -34,7 +34,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BUSINESS_OPTIONS } from '@/lib/businesses';
 
-const SORT_KEYS = ['dueDate', 'priority', 'status'] as const;
+const SORT_KEYS = ['dueDate', 'receivedDate', 'priority', 'status'] as const;
 const PRIORITY_FILTERS = ['all', 'HOT', 'RUSH', 'NORMAL', 'LOW'] as const;
 const STATUS_FILTERS = ['all', 'active', 'closed'] as const;
 const UNASSIGNED_VALUE = '__unassigned__';
@@ -123,8 +123,14 @@ export default function OrdersPage() {
       if (!A && !B) return 0;
       if (!A) return 1;
       if (!B) return -1;
-      if (sortKey === 'dueDate')
-        return (new Date(A).getTime() - new Date(B).getTime()) * (sortDir === 'asc' ? 1 : -1);
+      if (sortKey === 'dueDate' || sortKey === 'receivedDate') {
+        const timeA = new Date(A as any).getTime();
+        const timeB = new Date(B as any).getTime();
+        if (Number.isNaN(timeA) && Number.isNaN(timeB)) return 0;
+        if (Number.isNaN(timeA)) return 1;
+        if (Number.isNaN(timeB)) return -1;
+        return (timeA - timeB) * (sortDir === 'asc' ? 1 : -1);
+      }
       return String(A).localeCompare(String(B)) * (sortDir === 'asc' ? 1 : -1);
     });
     return arr;
@@ -279,6 +285,7 @@ export default function OrdersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="dueDate">Due date</SelectItem>
+                    <SelectItem value="receivedDate">Creation date</SelectItem>
                     <SelectItem value="priority">Priority</SelectItem>
                     <SelectItem value="status">Status</SelectItem>
                   </SelectContent>
