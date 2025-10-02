@@ -10,16 +10,21 @@ export const Q = z.string().min(1).max(200).optional();
 export const RoleEnum = z.enum(['ADMIN', 'MACHINIST', 'VIEWER']);
 
 /** USERS */
+const Password = z.string().min(8).max(100);
+
 export const UserCreate = z.object({
   email: z.string().email(),
   name: z.string().trim().max(100).optional(),
   role: RoleEnum.default('MACHINIST'),
   active: z.boolean().default(true),
+  password: Password.optional(),
 });
 export const UserUpdate = z.object({
+  email: z.string().email().optional(),
   name: z.string().trim().max(100).optional(),
   role: RoleEnum.optional(),
   active: z.boolean().optional(),
+  password: Password.optional(),
 });
 export const UserUpsert = UserCreate;           // for POST
 export const UserPatch = UserUpdate.partial();  // for PATCH

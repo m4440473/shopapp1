@@ -46,6 +46,9 @@ export default function Nav() {
         items.push({ href: `/machinists/${user.id}`, label: 'Machinist Profile' });
       }
     }
+    if (user) {
+      items.push({ href: '/account/password', label: 'Account' });
+    }
     if (user?.role === 'ADMIN') {
       items.push({ href: '/admin/users', label: 'Admin' });
     }
