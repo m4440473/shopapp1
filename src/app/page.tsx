@@ -1,51 +1,18 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { format } from 'date-fns';
-import {
-  Activity,
-  ArrowUpRight,
-  CalendarDays,
-  CircleCheck,
-  Users,
-} from 'lucide-react';
+import { Activity, ArrowUpRight, CalendarDays, CircleCheck, Users } from 'lucide-react';
 import { getServerSession } from 'next-auth';
 
-import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
-import { cn } from '@/lib/utils';
+import { RecentOrdersTable } from '@/components/RecentOrdersTable';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/Card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-
-const STATUS_LABELS: Record<string, string> = {
-  RECEIVED: 'Received',
-  PROGRAMMING: 'Programming',
-  SETUP: 'Setup',
-  RUNNING: 'Running',
-  FINISHING: 'Finishing',
-  DONE_MACHINING: 'Machining Done',
-  INSPECTION: 'Inspection',
-  SHIPPING: 'Shipping',
-  CLOSED: 'Closed',
-};
-
-function getInitials(value?: string | null) {
-  if (!value) return 'SA';
-  const parts = value.split(' ').filter(Boolean);
-  if (!parts.length) return value.slice(0, 2).toUpperCase();
-  return parts
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? '')
-    .join('');
-}
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+import { authOptions } from '@/lib/auth';
+import { getInitials } from '@/lib/get-initials';
+import { prisma } from '@/lib/prisma';
+import { ORDER_STATUS_LABELS } from '@/lib/order-status-labels';
+import { cn } from '@/lib/utils';
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
@@ -182,58 +149,7 @@ export default async function Home() {
             </Button>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Order</TableHead>
-                  <TableHead className="hidden lg:table-cell">Customer</TableHead>
-                  <TableHead className="hidden xl:table-cell">Status</TableHead>
-                  <TableHead className="hidden xl:table-cell">Machinist</TableHead>
-                  <TableHead className="text-right">Due</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentOrders.map((order) => (
-                  <TableRow key={order.id} className="border-border/60">
-                    <TableCell className="font-medium">
-                      <div className="flex flex-col">
-                        <Link href={`/orders/${order.id}`} className="text-sm font-semibold text-primary hover:underline">
-                          #{order.orderNumber}
-                        </Link>
-                        <span className="text-xs text-muted-foreground">{format(order.receivedDate, 'MMM d, yyyy')}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
-                      {order.customer?.name ?? '—'}
-                    </TableCell>
-                    <TableCell className="hidden xl:table-cell">
-                      <Badge variant="outline" className="border-primary/40 bg-primary/10 text-[0.7rem] uppercase tracking-wide">
-                        {STATUS_LABELS[order.status] ?? order.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden xl:table-cell">
-                      <div className="flex items-center gap-2">
-                        {order.assignedMachinist ? (
-                          <Avatar className="h-8 w-8 border border-primary/40 bg-secondary/40">
-                            <AvatarFallback>{getInitials(order.assignedMachinist.name)}</AvatarFallback>
-                          </Avatar>
-                        ) : (
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/30 bg-secondary/30 text-xs uppercase text-muted-foreground">
-                            NA
-                          </div>
-                        )}
-                        <span className="text-sm text-muted-foreground">
-                          {order.assignedMachinist?.name ?? 'Unassigned'}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right text-sm text-muted-foreground">
-                      {format(order.dueDate, 'MMM d')}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <RecentOrdersTable orders={recentOrders} />
           </CardContent>
         </Card>
 
@@ -279,7 +195,7 @@ export default async function Home() {
                 return (
                   <div key={status} className="space-y-2">
                     <div className="flex items-center justify-between text-xs uppercase tracking-wide text-muted-foreground">
-                      <span>{STATUS_LABELS[status] ?? status}</span>
+                      <span>{ORDER_STATUS_LABELS[status] ?? status}</span>
                       <span>{count}</span>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-secondary/50">
