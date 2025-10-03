@@ -33,8 +33,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions as any);
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
-  const role = (session as any).user?.role as string | undefined;
-  if (!canAccessAdmin(role)) return new NextResponse('Forbidden', { status: 403 });
+  const user = (session as any).user;
+  if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });
 
   const { id } = params;
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });

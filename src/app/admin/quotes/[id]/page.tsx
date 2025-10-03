@@ -39,12 +39,13 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
     redirect('/');
   }
 
-  const role = (session.user as any)?.role ?? null;
-  if (!canViewQuotes(role)) {
+  const user = session.user as any;
+  const role = user?.role ?? null;
+  if (!canViewQuotes(user ?? role)) {
     redirect('/');
   }
 
-  const isAdmin = canAccessAdmin(role);
+  const isAdmin = canAccessAdmin(user ?? role);
   const initialRole = role;
 
   const headerStore = headers();
@@ -231,6 +232,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
 
         <AdminPricingGate
           initialRole={initialRole}
+          initialAdmin={isAdmin}
           admin={
             isAdmin ? (
               <Card>
@@ -376,6 +378,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
                 </div>
                 <AdminPricingGate
                   initialRole={initialRole}
+                  initialAdmin={isAdmin}
                   admin={
                     isAdmin ? (
                       <div className="text-right">
@@ -416,6 +419,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
                     {selection.units} {selection.rateTypeSnapshot === 'FLAT' ? 'qty' : 'hrs'} •{' '}
                     <AdminPricingGate
                       initialRole={initialRole}
+                      initialAdmin={isAdmin}
                       admin={
                         isAdmin ? (
                           <span>Rate {formatCurrency(selection.rateCents)}</span>
@@ -427,6 +431,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
                 </div>
                 <AdminPricingGate
                   initialRole={initialRole}
+                  initialAdmin={isAdmin}
                   admin={
                     isAdmin ? (
                       <div className="text-right font-medium">{formatCurrency(selection.totalCents)}</div>

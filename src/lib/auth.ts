@@ -38,8 +38,9 @@ export const authOptions: NextAuthOptions & { trustHost?: boolean } = {
           console.log('Password incorrect for user:', credentials.email);
           return null;
         }
+        const adminFlag = (user as any).admin === true;
         console.log('Sign-in success for user:', credentials.email);
-        return { id: user.id, email: user.email, name: user.name ?? '', role: user.role };
+        return { id: user.id, email: user.email, name: user.name ?? '', role: user.role, admin: adminFlag };
       },
     }),
   ],
@@ -48,6 +49,7 @@ export const authOptions: NextAuthOptions & { trustHost?: boolean } = {
       if (user) {
         // user.role comes from the Prisma DB as a string; default to 'MACHINIST' for legacy/seeding cases
         (token as any).role = (user as any).role ?? 'MACHINIST';
+        (token as any).admin = (user as any).admin === true || (token as any).role === 'ADMIN';
         (token as any).id = (user as any).id ?? token.sub;
       }
       return token;
@@ -55,6 +57,7 @@ export const authOptions: NextAuthOptions & { trustHost?: boolean } = {
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).role = (token as any).role;
+        (session.user as any).admin = (token as any).admin ?? ((token as any).role === 'ADMIN');
         (session.user as any).id = (token as any).id ?? token.sub ?? (session.user as any).id;
       }
       return session;

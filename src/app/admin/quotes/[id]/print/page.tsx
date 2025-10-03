@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function QuotePrintPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
-  if (!session || !canAccessAdmin((session.user as any)?.role)) {
+  if (!session || !canAccessAdmin(session.user as any)) {
     redirect('/');
   }
 

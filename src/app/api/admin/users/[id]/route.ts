@@ -10,8 +10,8 @@ const prisma = new PrismaClient();
 async function requireAdmin(): Promise<NextResponse | null> {
   const session = await getServerSession(authOptions);
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
-  const role = (session.user as any)?.role || 'VIEWER';
-  if (!canAccessAdmin(role)) return new NextResponse('Forbidden', { status: 403 });
+  const user = session.user as any;
+  if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });
   return null;
 }
 

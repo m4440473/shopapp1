@@ -14,28 +14,29 @@ async function getSessionWithRole() {
   if (!session) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
-  const role = (session.user as any)?.role ?? null;
-  return { session, role };
+  const user = session.user as any;
+  const role = user?.role ?? null;
+  return { session, role, user };
 }
 
 async function requireAdmin() {
   const result = await getSessionWithRole();
   if (result instanceof NextResponse) return result;
-  const { role, session } = result;
-  if (!canAccessAdmin(role)) {
+  const { role, session, user } = result;
+  if (!canAccessAdmin(user ?? role)) {
     return new NextResponse('Forbidden', { status: 403 });
   }
-  return { session, role };
+  return { session, role, user };
 }
 
 async function requireQuoteReadAccess() {
   const result = await getSessionWithRole();
   if (result instanceof NextResponse) return result;
-  const { role, session } = result;
-  if (!canViewQuotes(role)) {
+  const { role, session, user } = result;
+  if (!canViewQuotes(user ?? role)) {
     return new NextResponse('Forbidden', { status: 403 });
   }
-  return { session, role, isAdmin: canAccessAdmin(role) };
+  return { session, role, user, isAdmin: canAccessAdmin(user ?? role) };
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {

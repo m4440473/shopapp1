@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { cn } from '@/lib/utils';
+import { canAccessAdmin } from '@/lib/rbac';
 
 type NavLink = { href: string; label: string };
 
@@ -17,7 +18,7 @@ const baseLinks: NavLink[] = [
 
 export default function Nav() {
   const pathname = usePathname() || '/';
-  const [user, setUser] = React.useState<{ id?: string; role?: string } | null>(null);
+  const [user, setUser] = React.useState<{ id?: string; role?: string; admin?: boolean } | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -26,7 +27,7 @@ export default function Nav() {
       .then((data) => {
         if (cancelled) return;
         if (data) {
-          setUser({ id: data.id, role: data.role });
+          setUser({ id: data.id, role: data.role, admin: data.admin });
         } else {
           setUser(null);
         }
@@ -49,7 +50,7 @@ export default function Nav() {
     if (user) {
       items.push({ href: '/account/password', label: 'Account' });
     }
-    if (user?.role === 'ADMIN') {
+    if (user && canAccessAdmin(user)) {
       items.push({ href: '/admin/users', label: 'Admin' });
     }
     return items;

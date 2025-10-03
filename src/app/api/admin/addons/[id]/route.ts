@@ -11,8 +11,8 @@ async function requireAdmin() {
   if (!session) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
-  const role = (session.user as any)?.role || 'VIEWER';
-  if (!canAccessAdmin(role)) {
+  const user = session.user as any;
+  if (!canAccessAdmin(user)) {
     return new NextResponse('Forbidden', { status: 403 });
   }
   return { session };
