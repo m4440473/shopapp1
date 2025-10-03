@@ -7,8 +7,8 @@ import { canAccessAdmin, isMachinist } from '@/lib/rbac';
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
-  const role = (session.user as any)?.role;
-  if (!isMachinist(role) && !canAccessAdmin(role)) return new NextResponse('Forbidden', { status: 403 });
+  const user = session.user as any;
+  if (!isMachinist(user) && !canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });
 
   const json = await req.json().catch(() => null);
   const { status } = json ?? {};

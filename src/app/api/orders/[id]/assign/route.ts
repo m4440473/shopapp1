@@ -7,8 +7,8 @@ import { canAccessAdmin } from '@/lib/rbac';
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions as any);
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
-  const role = (session as any).user?.role as string | undefined;
-  if (!canAccessAdmin(role)) return new NextResponse('Forbidden', { status: 403 });
+  const user = (session as any).user;
+  if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });
 
   const { id } = params;
   const json = await req.json().catch(() => null);

@@ -11,5 +11,6 @@ export async function GET(_req: NextRequest) {
   const role = user?.role as string | undefined;
   const id = user?.id as string | undefined;
   const name = user?.name as string | undefined;
-  return NextResponse.json({ email: session.user.email, role, id, name });
+  const admin = user?.admin === true || role === 'ADMIN';
+  return NextResponse.json({ email: session.user.email, role, id, name, admin });
 }

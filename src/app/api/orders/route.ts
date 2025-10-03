@@ -63,8 +63,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
-  const role = (session.user as any)?.role as string | undefined;
-  if (!canAccessAdmin(role)) return new NextResponse('Forbidden', { status: 403 });
+  const user = session.user as any;
+  if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });
 
   const json = await req.json().catch(() => null);
   const parsed = OrderCreate.safeParse(json);

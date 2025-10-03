@@ -18,12 +18,13 @@ export default async function Page() {
     redirect('/');
   }
 
-  const role = (session.user as any)?.role ?? null;
-  if (!canViewQuotes(role)) {
+  const user = session.user as any;
+  const role = user?.role ?? null;
+  if (!canViewQuotes(user ?? role)) {
     redirect('/');
   }
 
-  const isAdmin = canAccessAdmin(role);
+  const isAdmin = canAccessAdmin(user ?? role);
 
   const rawItems = await prisma.quote.findMany({
     orderBy: { createdAt: 'desc' },
@@ -54,7 +55,7 @@ export default async function Page() {
         </p>
       </div>
       <ToastProvider>
-        <Client initial={initial} initialRole={role} />
+        <Client initial={initial} initialRole={role} initialAdmin={isAdmin} />
       </ToastProvider>
     </div>
   );

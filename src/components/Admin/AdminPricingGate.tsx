@@ -7,18 +7,27 @@ import { canAccessAdmin } from '@/lib/rbac';
 
 interface AdminPricingGateProps {
   initialRole?: string | null;
+  initialAdmin?: boolean;
   admin: ReactNode | null;
   fallback: ReactNode;
 }
 
 export default function AdminPricingGate({
   initialRole,
+  initialAdmin,
   admin,
   fallback,
 }: AdminPricingGateProps) {
   const { data } = useSession();
-  const sessionRole = (data?.user as any)?.role ?? initialRole ?? undefined;
-  const canShowAdmin = !!admin && canAccessAdmin(sessionRole);
+  const sessionUser = data?.user as any;
+  const fallbackInput =
+    sessionUser ??
+    (initialAdmin
+      ? { role: initialRole ?? undefined, admin: true }
+      : initialRole
+      ? { role: initialRole }
+      : undefined);
+  const canShowAdmin = !!admin && canAccessAdmin(fallbackInput);
 
   if (canShowAdmin) {
     return <>{admin}</>;
