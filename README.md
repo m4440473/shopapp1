@@ -2,6 +2,35 @@
 
 This package contains the Prisma schema and seed for the Shop Orders app.
 
+## Prerequisites
+
+1. Install **Node.js 18** or newer. The easiest cross-platform approach is to
+   use [nvm](https://github.com/nvm-sh/nvm#installing-and-updating). Once nvm is
+   installed, run:
+
+   ```bash
+   nvm install --lts
+   nvm use --lts
+   ```
+
+   This installs Node.js and its accompanying `npm` CLI.
+2. Enable [Corepack](https://nodejs.org/api/corepack.html) so you can use the
+   project’s preferred package manager (`pnpm`):
+
+   ```bash
+   corepack enable
+   ```
+
+   If Corepack is unavailable on your Node.js version, install pnpm globally
+   instead: `npm install -g pnpm`.
+
+After the prerequisites are in place, install dependencies from the repository
+root:
+
+```bash
+pnpm install
+```
+
 ## Quickstart (SQLite)
 
 ```bash
