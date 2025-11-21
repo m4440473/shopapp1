@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { PlusCircle, Upload, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import {
@@ -68,7 +68,34 @@ type AttachmentInput = { url: string; storagePath: string; label: string; mimeTy
 const emptyPart = (): PartInput => ({ partNumber: '', quantity: 1, materialId: '', notes: '' });
 const emptyAttachment = (): AttachmentInput => ({ url: '', storagePath: '', label: '', mimeType: '', uploading: false });
 
+const buildPartNotes = (part: { description: string | null; notes: string | null; pieceCount: number }) => {
+  const lines: string[] = [];
+  if (part.description) lines.push(part.description.trim());
+  if (part.pieceCount > 1) lines.push(`Pieces: ${part.pieceCount}`);
+  if (part.notes) lines.push(part.notes.trim());
+  const combined = lines.join('\n').trim();
+  return combined.length ? combined : '';
+};
+
+const buildConversionNote = (quote: any) => {
+  const now = new Date();
+  const sections: string[] = [`Converted from quote ${quote.quoteNumber} on ${now.toLocaleString()}.`];
+  if (quote.materialSummary) sections.push(`Materials:\n${quote.materialSummary}`);
+  if (quote.purchaseItems) sections.push(`Purchase items:\n${quote.purchaseItems}`);
+  if (quote.requirements) sections.push(`Requirements:\n${quote.requirements}`);
+  if (quote.notes) sections.push(`Quote notes:\n${quote.notes}`);
+  const content = sections.join('\n\n').trim();
+  return content.length ? content : '';
+};
+
+const defaultDueDate = () => {
+  const base = new Date();
+  base.setDate(base.getDate() + 14);
+  return base.toISOString().slice(0, 10);
+};
+
 export default function NewOrderPage() {
+  const searchParams = useSearchParams();
   const [customerId, setCustomerId] = React.useState('');
   const [customers, setCustomers] = React.useState<Option[]>([]);
   const [customerDialogOpen, setCustomerDialogOpen] = React.useState(false);
@@ -99,6 +126,10 @@ export default function NewOrderPage() {
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState('');
   const [createdOrderId, setCreatedOrderId] = React.useState<string | null>(null);
+  const [quotePrefillError, setQuotePrefillError] = React.useState<string | null>(null);
+  const [quotePrefillLoading, setQuotePrefillLoading] = React.useState(false);
+  const quoteId = searchParams.get('quoteId');
+  const conversionMode = Boolean(quoteId);
   const router = useRouter();
   const handlePrintNewOrder = React.useCallback(() => {
     if (!createdOrderId) return;
@@ -193,6 +224,50 @@ export default function NewOrderPage() {
       setAttachmentBusiness(option.name as BusinessName);
     }
   }, [business]);
+
+  React.useEffect(() => {
+    if (!quoteId) return;
+    setQuotePrefillLoading(true);
+    setQuotePrefillError(null);
+    fetch(`/api/admin/quotes/${quoteId}`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        const quote = data?.item;
+        if (!quote) throw new Error('Quote not found');
+        setBusiness(quote.business);
+        setCustomerId(quote.customer?.id ?? '');
+        setModelIncluded(Boolean(quote.multiPiece));
+        setParts(
+          (quote.parts ?? []).length
+            ? quote.parts.map((part: any) => ({
+                partNumber: part.name ?? '',
+                quantity: part.quantity ?? 1,
+                materialId: part.materialId ?? '',
+                notes: buildPartNotes({
+                  description: part.description ?? null,
+                  notes: part.notes ?? null,
+                  pieceCount: part.pieceCount ?? 1,
+                }),
+              }))
+            : [emptyPart()],
+        );
+        setSelectedAddonIds(
+          Array.from(
+            new Set(
+              (quote.addonSelections ?? [])
+                .map((sel: any) => sel.addon?.id ?? sel.addonId ?? null)
+                .filter(Boolean),
+            ),
+          ),
+        );
+        setDueDate((quote.dueDate as string | null)?.slice(0, 10) || defaultDueDate());
+        setNotes((prev) => prev || buildConversionNote(quote));
+      })
+      .catch(() => {
+        setQuotePrefillError('Unable to prefill from quote. You can still create the order manually.');
+      })
+      .finally(() => setQuotePrefillLoading(false));
+  }, [quoteId]);
 
   const selectedBusinessOption = React.useMemo(
     () => BUSINESS_OPTIONS.find((option) => option.name === attachmentBusiness) ?? BUSINESS_OPTIONS[0],
@@ -341,12 +416,6 @@ export default function NewOrderPage() {
       return;
     }
 
-    if (!dueDate) {
-      setMessage('Please provide a due date.');
-      setLoading(false);
-      return;
-    }
-
     if (cleanedParts.length === 0) {
       setMessage('Add at least one part with a part number.');
       setLoading(false);
@@ -358,6 +427,8 @@ export default function NewOrderPage() {
       setLoading(false);
       return;
     }
+
+    const resolvedDueDate = dueDate || defaultDueDate();
 
     const cleanAttachments = attachments
       .map((att) => {
@@ -378,7 +449,7 @@ export default function NewOrderPage() {
       customerId,
       modelIncluded,
       receivedDate: new Date().toISOString().slice(0, 10),
-      dueDate,
+      dueDate: resolvedDueDate,
       priority,
       business,
       materialNeeded,
@@ -391,6 +462,49 @@ export default function NewOrderPage() {
       attachments: cleanAttachments,
       notes: notes.trim() ? notes.trim() : undefined,
     } as any;
+
+    if (conversionMode && quoteId) {
+      const res = await fetch(`/api/admin/quotes/${quoteId}/convert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          dueDate: resolvedDueDate,
+          priority,
+          vendorId: vendorId || undefined,
+          poNumber: poNumber || undefined,
+          assignedMachinistId: assignedMachinistId || undefined,
+          materialNeeded,
+          materialOrdered,
+          modelIncluded,
+          addonIds: selectedAddonIds,
+          parts: cleanedParts,
+          notes: notes.trim() || undefined,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        const newId = typeof data?.orderId === 'string' ? data.orderId : null;
+        setMessage('Order created from quote!');
+        setCreatedOrderId(newId);
+        if (newId) {
+          router.push(`/orders/${newId}`);
+        }
+      } else {
+        let errorMessage = 'Conversion failed';
+        try {
+          const error = await res.json();
+          errorMessage = error?.error ? JSON.stringify(error.error) : errorMessage;
+        } catch {
+          // ignore JSON parsing failures
+        }
+        setMessage(errorMessage);
+        setCreatedOrderId(null);
+      }
+      setLoading(false);
+      return;
+    }
 
     const res = await fetch('/api/orders', {
       method: 'POST',
@@ -467,37 +581,54 @@ export default function NewOrderPage() {
     <div className="flex flex-col gap-8">
       <div className="space-y-2">
         <p className="text-xs uppercase tracking-[0.4em] text-primary/70">Intake</p>
-        <h1 className="text-4xl font-semibold text-foreground">Create a production order</h1>
+        <h1 className="text-4xl font-semibold text-foreground">
+          {conversionMode ? 'Convert quote to order' : 'Create a production order'}
+        </h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Order numbers are generated for you, starting at 1001. Gather every part, attachment, and add-on service before the job hits the floor.
+          {conversionMode
+            ? 'We prefill everything we can from the quote. Review the details and supply the missing order info before creating it.'
+            : 'Order numbers are generated for you, starting at 1001. Gather every part, attachment, and add-on service before the job hits the floor.'}
         </p>
+        {conversionMode && (
+          <p className="text-sm text-muted-foreground">
+            Quote ID: <code className="rounded bg-muted px-1 py-0.5 text-xs">{quoteId}</code>
+          </p>
+        )}
+        {quotePrefillLoading && conversionMode && (
+          <p className="text-sm text-muted-foreground">Prefilling from quote…</p>
+        )}
+        {quotePrefillError && <p className="text-sm text-destructive">{quotePrefillError}</p>}
       </div>
 
       <form className="flex flex-col gap-8" onSubmit={handleSubmit}>
         <Card className="border-border/60 bg-card/70 backdrop-blur">
-        <CardHeader>
-          <CardTitle>Customer & schedule</CardTitle>
-          <CardDescription>Who is the work for and when do they need it?</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-6 md:grid-cols-2">
-          <div className="grid gap-2">
-            <Label htmlFor="business">Business</Label>
-            <Select value={business} onValueChange={(value) => setBusiness(value as BusinessCode)}>
-              <SelectTrigger id="business" className="border-border/60 bg-background/80">
-                <SelectValue placeholder="Select a business" />
-              </SelectTrigger>
-              <SelectContent>
-                {BUSINESS_OPTIONS.map((option) => (
-                  <SelectItem key={option.code} value={option.code}>
-                    {option.prefix} — {option.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="customer">Customer</Label>
-            <Select value={customerId} onValueChange={setCustomerId}>
+          <CardHeader>
+            <CardTitle>Customer & schedule</CardTitle>
+            <CardDescription>Who is the work for and when do they need it?</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="business">Business</Label>
+              <Select
+                value={business}
+                disabled={conversionMode}
+                onValueChange={(value) => setBusiness(value as BusinessCode)}
+              >
+                <SelectTrigger id="business" className="border-border/60 bg-background/80">
+                  <SelectValue placeholder="Select a business" />
+                </SelectTrigger>
+                <SelectContent>
+                  {BUSINESS_OPTIONS.map((option) => (
+                    <SelectItem key={option.code} value={option.code}>
+                      {option.prefix} — {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="customer">Customer</Label>
+              <Select value={customerId} onValueChange={setCustomerId} disabled={conversionMode}>
                 <SelectTrigger id="customer" className="border-border/60 bg-background/80">
                   <SelectValue placeholder="Select a customer" />
                 </SelectTrigger>
@@ -511,7 +642,13 @@ export default function NewOrderPage() {
               </Select>
               <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button type="button" variant="ghost" size="sm" className="justify-start px-0 text-sm text-primary">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start px-0 text-sm text-primary"
+                    disabled={conversionMode}
+                  >
                     + Add customer
                   </Button>
                 </DialogTrigger>
@@ -760,122 +897,136 @@ export default function NewOrderPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/60 bg-card/70 backdrop-blur">
-          <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
+        {conversionMode ? (
+          <Card className="border-border/60 bg-card/70 backdrop-blur">
+            <CardHeader>
               <CardTitle>Attachments</CardTitle>
-              <CardDescription>Link drawings, STEP files, or upload lightweight references.</CardDescription>
-            </div>
-            <div className="flex flex-col gap-3 md:items-end">
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
-                <Label className="text-xs uppercase tracking-[0.3em] text-muted-foreground md:text-right">
-                  Storage business
-                </Label>
-                <Select value={attachmentBusiness} onValueChange={(value) => setAttachmentBusiness(value as BusinessName)}>
-                  <SelectTrigger className="w-[220px] border-border/60 bg-background/80">
-                    <SelectValue placeholder="Select a business" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BUSINESS_OPTIONS.map((option) => (
-                      <SelectItem key={option.slug} value={option.name}>
-                        {option.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <p className="text-xs text-muted-foreground md:text-right">
-                Files upload to{' '}
-                <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{attachmentPathPreview}</code>
+              <CardDescription>Existing quote attachments will copy to the order automatically.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Uploads from this screen are disabled while converting a quote. Add attachments to the quote first to have them copied into the order folder.
               </p>
-              <Button
-                type="button"
-                variant="secondary"
-                className="rounded-full border border-primary/40 bg-primary/10 text-primary"
-                onClick={addAttachmentRow}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" /> Add attachment
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            {attachments.map((att, index) => (
-              <div key={index} className="rounded-xl border border-border/60 bg-background/60 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                    Attachment {index + 1}
-                  </h3>
-                  {attachments.length > 1 && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => removeAttachment(index)}>
-                      Remove
-                    </Button>
-                  )}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-border/60 bg-card/70 backdrop-blur">
+            <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <CardTitle>Attachments</CardTitle>
+                <CardDescription>Link drawings, STEP files, or upload lightweight references.</CardDescription>
+              </div>
+              <div className="flex flex-col gap-3 md:items-end">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+                  <Label className="text-xs uppercase tracking-[0.3em] text-muted-foreground md:text-right">
+                    Storage business
+                  </Label>
+                  <Select value={attachmentBusiness} onValueChange={(value) => setAttachmentBusiness(value as BusinessName)}>
+                    <SelectTrigger className="w-[220px] border-border/60 bg-background/80">
+                      <SelectValue placeholder="Select a business" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BUSINESS_OPTIONS.map((option) => (
+                        <SelectItem key={option.slug} value={option.name}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label>Label</Label>
-                    <Input
-                      value={att.label}
-                      onChange={(e) => updateAttachment(index, { label: e.target.value })}
-                      placeholder="e.g. REV B STEP"
-                    />
+                <p className="text-xs text-muted-foreground md:text-right">
+                  Files upload to{' '}
+                  <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{attachmentPathPreview}</code>
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="rounded-full border border-primary/40 bg-primary/10 text-primary"
+                  onClick={addAttachmentRow}
+                >
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add attachment
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              {attachments.map((att, index) => (
+                <div key={index} className="rounded-xl border border-border/60 bg-background/60 p-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                      Attachment {index + 1}
+                    </h3>
+                    {attachments.length > 1 && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeAttachment(index)}>
+                        Remove
+                      </Button>
+                    )}
                   </div>
-                  <div className="grid gap-2">
-                    <Label>Mime type</Label>
-                    <Input
-                      value={att.mimeType}
-                      onChange={(e) => updateAttachment(index, { mimeType: e.target.value })}
-                      placeholder="application/step"
-                    />
-                  </div>
-                  <div className="grid gap-2 md:col-span-2">
-                    <Label>External link</Label>
-                    <Input
-                      value={att.url}
-                      onChange={(e) => handleAttachmentUrlChange(index, e.target.value)}
-                      placeholder="Paste Google Drive or SharePoint link"
-                      disabled={att.uploading}
-                    />
-                  </div>
-                  <div className="grid gap-2 md:col-span-2">
-                    <Label>Upload file</Label>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label>Label</Label>
                       <Input
-                        type="file"
-                        className="bg-background/80"
-                        onChange={(e) => void handleAttachmentFile(index, e.target.files)}
+                        value={att.label}
+                        onChange={(e) => updateAttachment(index, { label: e.target.value })}
+                        placeholder="e.g. REV B STEP"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Mime type</Label>
+                      <Input
+                        value={att.mimeType}
+                        onChange={(e) => updateAttachment(index, { mimeType: e.target.value })}
+                        placeholder="application/step"
+                      />
+                    </div>
+                    <div className="grid gap-2 md:col-span-2">
+                      <Label>External link</Label>
+                      <Input
+                        value={att.url}
+                        onChange={(e) => handleAttachmentUrlChange(index, e.target.value)}
+                        placeholder="Paste Google Drive or SharePoint link"
                         disabled={att.uploading}
                       />
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Upload className="h-4 w-4 text-muted-foreground" />
-                        {att.uploading ? 'Uploading…' : 'Drop a file to upload'}
-                      </div>
                     </div>
-                    <div className="space-y-1 text-xs text-muted-foreground">
-                      <p>Uploads are written to the shared storage above for easy access on the shop floor.</p>
-                      {att.storagePath ? (
-                        <p className="flex flex-wrap items-center gap-1">
-                          Stored file:
-                          <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{att.storagePath}</code>
-                          <a
-                            href={`/attachments/${att.storagePath}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium text-primary hover:underline"
-                          >
-                            Open stored copy
-                          </a>
-                        </p>
-                      ) : (
-                        <p>Add a file to copy it into shared storage.</p>
-                      )}
+                    <div className="grid gap-2 md:col-span-2">
+                      <Label>Upload file</Label>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                        <Input
+                          type="file"
+                          className="bg-background/80"
+                          onChange={(e) => void handleAttachmentFile(index, e.target.files)}
+                          disabled={att.uploading}
+                        />
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Upload className="h-4 w-4 text-muted-foreground" />
+                          {att.uploading ? 'Uploading…' : 'Drop a file to upload'}
+                        </div>
+                      </div>
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        <p>Uploads are written to the shared storage above for easy access on the shop floor.</p>
+                        {att.storagePath ? (
+                          <p className="flex flex-wrap items-center gap-1">
+                            Stored file:
+                            <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{att.storagePath}</code>
+                            <a
+                              href={`/attachments/${att.storagePath}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-primary hover:underline"
+                            >
+                              Open stored copy
+                            </a>
+                          </p>
+                        ) : (
+                          <p>Add a file to copy it into shared storage.</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="border-border/60 bg-card/70 backdrop-blur">
           <CardHeader>

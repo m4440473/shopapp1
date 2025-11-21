@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import { z } from 'zod';
 
 import { authOptions } from '@/lib/auth';
 import {
@@ -16,6 +17,7 @@ import { prisma } from '@/lib/prisma';
 import { canAccessAdmin } from '@/lib/rbac';
 import { businessNameFromCode, type BusinessCode, type BusinessName } from '@/lib/businesses';
 import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
+import { OrderPartCreate, PriorityEnum } from '@/lib/zod-orders';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -37,6 +39,20 @@ interface PreparedAttachment {
   label: string | null;
   mimeType: string | null;
 }
+
+const ConversionOverrides = z.object({
+  dueDate: z.string().trim().optional(),
+  priority: PriorityEnum.optional(),
+  vendorId: z.string().trim().optional(),
+  poNumber: z.string().trim().optional(),
+  assignedMachinistId: z.string().trim().optional(),
+  materialNeeded: z.boolean().optional(),
+  materialOrdered: z.boolean().optional(),
+  modelIncluded: z.boolean().optional(),
+  addonIds: z.array(z.string().trim()).optional(),
+  parts: z.array(OrderPartCreate).optional(),
+  notes: z.string().trim().max(1000).optional(),
+});
 
 function buildPartNotes(part: { description: string | null; notes: string | null; pieceCount: number }): string | null {
   const lines: string[] = [];
@@ -132,6 +148,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
+  let overrides: z.infer<typeof ConversionOverrides> | null = null;
+  if (req.headers.get('content-type')?.includes('application/json')) {
+    const json = await req.json().catch(() => null);
+    if (json && Object.keys(json).length > 0) {
+      const parsed = ConversionOverrides.safeParse(json);
+      if (!parsed.success) {
+        return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      }
+      overrides = parsed.data;
+    }
+  }
+
   const quote = await prisma.quote.findUnique({
     where: { id: params.id },
     include: {
@@ -173,6 +201,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const orderNumber = await generateNextOrderNumber(businessCode);
 
+  const now = new Date();
+  const dueDate = overrides?.dueDate ? new Date(overrides.dueDate) : new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  if (Number.isNaN(dueDate.getTime())) {
+    return NextResponse.json({ error: 'Provide a valid due date for the order.' }, { status: 400 });
+  }
+
   let orderAttachments: PreparedAttachment[] = [];
   try {
     orderAttachments = await prepareAttachments({
@@ -186,7 +220,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  const partsData = quote.parts.map((part) => ({
+  const partsData = (overrides?.parts ?? quote.parts.map((part) => ({
     partNumber: part.name,
     quantity: part.quantity ?? 1,
     materialId: null,
@@ -195,14 +229,27 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       notes: part.notes ?? null,
       pieceCount: part.pieceCount ?? 1,
     }),
+  }))).map((part) => ({
+    ...part,
+    materialId: part.materialId ?? null,
+    notes: part.notes ?? null,
   }));
 
-  const addonIds = Array.from(new Set(quote.addonSelections.map((selection) => selection.addonId))).filter(Boolean);
+  if (partsData.length === 0) {
+    return NextResponse.json({ error: 'Add at least one part before converting.' }, { status: 400 });
+  }
 
-  const now = new Date();
-  const dueDate = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-  const noteContent = buildConversionNote(quote, now);
+  const addonIds = Array.from(
+    new Set((overrides?.addonIds ?? quote.addonSelections.map((selection) => selection.addonId)).filter(Boolean)),
+  );
+
+  const noteContent = overrides?.notes ?? buildConversionNote(quote, now);
   const userId = (guard.session.user as any)?.id as string | undefined;
+
+  const priority = overrides?.priority ?? 'NORMAL';
+  const modelIncluded = overrides?.modelIncluded ?? quote.multiPiece;
+  const materialNeeded = overrides?.materialNeeded ?? false;
+  const materialOrdered = overrides?.materialOrdered ?? false;
 
   const result = await prisma.$transaction(async (tx) => {
     const order = await tx.order.create({
@@ -210,16 +257,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         orderNumber,
         business: quote.business,
         customerId: quote.customerId,
-        modelIncluded: quote.multiPiece,
+        modelIncluded,
         receivedDate: now,
         dueDate,
-        priority: 'NORMAL',
+        priority,
         status: 'RECEIVED',
-        materialNeeded: false,
-        materialOrdered: false,
-        vendorId: null,
-        poNumber: null,
-        assignedMachinistId: null,
+        materialNeeded,
+        materialOrdered,
+        vendorId: overrides?.vendorId ?? null,
+        poNumber: overrides?.poNumber ?? null,
+        assignedMachinistId: overrides?.assignedMachinistId ?? null,
         parts: partsData.length
           ? {
               create: partsData.map((part) => ({

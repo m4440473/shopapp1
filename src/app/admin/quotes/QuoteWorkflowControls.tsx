@@ -170,24 +170,9 @@ export default function QuoteWorkflowControls({
   async function handleConvert() {
     setConverting(true);
     try {
-      const response = await fetchJson<{ orderId: string; orderNumber: string; metadata: QuoteMetadata }>(
-        `/api/admin/quotes/${quoteId}/convert`,
-        { method: 'POST' },
-      );
-
-      setConversionState(response.metadata.conversion ?? conversionState);
-      setApprovalState(response.metadata.approval ?? approvalState);
-      onMetadataUpdate?.(response.metadata);
-      onConverted?.(response);
-
-      toast.push(`Order ${response.orderNumber} created from quote ${quoteNumber}.`, 'success');
-
-      if (layout === 'detail') {
-        router.refresh();
-        router.push(`/orders/${response.orderId}`);
-      }
+      router.push(`/orders/new?quoteId=${quoteId}`);
     } catch (error: any) {
-      const message = error?.body?.error || error.message || 'Conversion failed';
+      const message = error?.body?.error || error.message || 'Conversion setup failed';
       toast.push(message, 'error');
     } finally {
       setConverting(false);
