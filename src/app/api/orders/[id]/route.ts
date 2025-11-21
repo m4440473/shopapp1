@@ -48,6 +48,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const payload = parsed.data;
   const data: Record<string, unknown> = {};
 
+  if (payload.business !== undefined) data.business = payload.business;
+
+  if (payload.customerId !== undefined) data.customerId = payload.customerId;
+
   if (payload.receivedDate !== undefined) {
     const date = new Date(payload.receivedDate);
     if (Number.isNaN(date.getTime())) {
