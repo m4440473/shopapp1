@@ -40,6 +40,17 @@ export const OrderPartCreate = z.object({
   notes: z.string().trim().max(500).optional(),
 });
 
+export const OrderPartUpdate = z
+  .object({
+    partNumber: z.string().trim().min(1).optional(),
+    quantity: z.coerce.number().int().min(1).optional(),
+    materialId: z.string().trim().nullable().optional(),
+    notes: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine((value) => Object.values(value).some((v) => v !== undefined), {
+    message: 'At least one field is required to update a part',
+  });
+
 const OrderAttachmentMetadata = z
   .object({
     url: z.string().trim().min(1).max(1000).optional(),

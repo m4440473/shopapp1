@@ -106,6 +106,7 @@ model OrderChecklist {
   order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   addonId     String
   addon       Addon    @relation(fields: [addonId], references: [id])
+  completed   Boolean  @default(false)
   toggledById String?
   toggledBy   User?    @relation("ChecklistToggledBy", fields: [toggledById], references: [id])
   createdAt   DateTime @default(now())

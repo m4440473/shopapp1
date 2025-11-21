@@ -130,6 +130,9 @@ export default function OrderDetailPage() {
     materialId: '',
     notes: '',
   });
+  const [partEdits, setPartEdits] = useState<Record<string, PartFormState>>({});
+  const [partEditErrors, setPartEditErrors] = useState<Record<string, string | null>>({});
+  const [partSavingIds, setPartSavingIds] = useState<Record<string, boolean>>({});
   const [partSaving, setPartSaving] = useState(false);
   const [partError, setPartError] = useState<string | null>(null);
   const [attachmentForm, setAttachmentForm] = useState<AttachmentFormState>({
@@ -212,6 +215,24 @@ export default function OrderDetailPage() {
   useEffect(() => {
     setExpandedParts({});
   }, [item?.id]);
+
+  useEffect(() => {
+    if (!Array.isArray(item?.parts)) {
+      setPartEdits({});
+      return;
+    }
+    const next: Record<string, PartFormState> = {};
+    item.parts.forEach((part: any) => {
+      if (!part?.id) return;
+      next[part.id] = {
+        partNumber: part.partNumber ?? '',
+        quantity: String(part.quantity ?? 1),
+        materialId: part.materialId ?? '',
+        notes: part.notes ?? '',
+      };
+    });
+    setPartEdits(next);
+  }, [item?.parts]);
 
   useEffect(() => {
     if (item?.attachments?.length) {
@@ -418,6 +439,87 @@ export default function OrderDetailPage() {
       setPartError(err.message || 'Failed to add part');
     } finally {
       setPartSaving(false);
+    }
+  }
+
+  const getPartEditState = (part: any): PartFormState => {
+    if (part?.id && partEdits[part.id]) return partEdits[part.id];
+    return {
+      partNumber: part?.partNumber ?? '',
+      quantity: String(part?.quantity ?? 1),
+      materialId: part?.materialId ?? '',
+      notes: part?.notes ?? '',
+    };
+  };
+
+  function resetPartEdit(part: any) {
+    if (!part?.id) return;
+    setPartEdits((prev) => ({
+      ...prev,
+      [part.id]: {
+        partNumber: part.partNumber ?? '',
+        quantity: String(part.quantity ?? 1),
+        materialId: part.materialId ?? '',
+        notes: part.notes ?? '',
+      },
+    }));
+    setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+  }
+
+  async function handleUpdatePart(part: any) {
+    const partId = part?.id;
+    if (!id || !partId) return;
+    const current = getPartEditState(part);
+    const trimmedPartNumber = current.partNumber.trim();
+    if (!trimmedPartNumber) {
+      setPartEditErrors((prev) => ({ ...prev, [partId]: 'Part number is required' }));
+      return;
+    }
+    const quantityValue = Number.parseInt(current.quantity, 10);
+    if (!Number.isFinite(quantityValue) || quantityValue < 1) {
+      setPartEditErrors((prev) => ({ ...prev, [partId]: 'Quantity must be at least 1' }));
+      return;
+    }
+
+    setPartSavingIds((prev) => ({ ...prev, [partId]: true }));
+    setPartEditErrors((prev) => ({ ...prev, [partId]: null }));
+    try {
+      const payload: Record<string, unknown> = {
+        partNumber: trimmedPartNumber,
+        quantity: quantityValue,
+        materialId: current.materialId || null,
+        notes: current.notes.trim() ? current.notes.trim() : null,
+      };
+
+      const res = await fetch(`/api/orders/${id}/parts/${partId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+
+      const raw = await res.text();
+      if (!res.ok) {
+        let message = 'Failed to update part';
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            message =
+              typeof parsed?.error === 'string'
+                ? parsed.error
+                : parsed?.message || JSON.stringify(parsed?.error ?? parsed);
+          } catch {
+            message = raw;
+          }
+        }
+        throw new Error(message);
+      }
+
+      await load();
+    } catch (error: any) {
+      setPartEditErrors((prev) => ({ ...prev, [partId]: error?.message || 'Failed to update part' }));
+    } finally {
+      setPartSavingIds((prev) => ({ ...prev, [partId]: false }));
     }
   }
 
@@ -638,7 +740,9 @@ export default function OrderDetailPage() {
     return <div className="text-muted-foreground">Order not found.</div>;
   }
 
-  const checkedIds = new Set(item.checklist?.map((c: any) => c.addon?.id));
+  const checkedIds = new Set(
+    (item.checklist ?? []).filter((c: any) => c.completed).map((c: any) => c.addon?.id)
+  );
   const parts: any[] = Array.isArray(item.parts) ? item.parts : [];
   const primaryPart = parts[0];
   const additionalParts = parts.slice(1);
@@ -999,31 +1103,135 @@ export default function OrderDetailPage() {
               </CardTitle>
               <CardDescription>Primary details for the first line item</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-foreground">Part #</span>
-                <span className="text-muted-foreground">{primaryPart?.partNumber ?? '-'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-foreground">Quantity</span>
-                <span className="text-muted-foreground">{primaryPart?.quantity ?? '-'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-foreground">Material</span>
-                <span className="text-muted-foreground">{primaryPart?.material?.name ?? '-'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-foreground">Due</span>
-                <span className="text-muted-foreground">
-                  {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : '-'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-foreground">Machinist</span>
-                <span className="text-muted-foreground">
-                  {item.assignedMachinist?.name ?? item.assignedMachinist?.email ?? 'Unassigned'}
-                </span>
-              </div>
+            <CardContent className="grid gap-4 text-sm">
+              {primaryPart ? (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`part-number-${primaryPart.id}`}>Part number</Label>
+                      <Input
+                        id={`part-number-${primaryPart.id}`}
+                        value={getPartEditState(primaryPart).partNumber}
+                        onChange={(e) => {
+                          setPartEdits((prev) => ({
+                            ...prev,
+                            [primaryPart.id]: {
+                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
+                              partNumber: e.target.value,
+                            },
+                          }));
+                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
+                        }}
+                        placeholder="Enter part number"
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`part-qty-${primaryPart.id}`}>Quantity</Label>
+                      <Input
+                        id={`part-qty-${primaryPart.id}`}
+                        type="number"
+                        min={1}
+                        value={getPartEditState(primaryPart).quantity}
+                        onChange={(e) => {
+                          setPartEdits((prev) => ({
+                            ...prev,
+                            [primaryPart.id]: {
+                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
+                              quantity: e.target.value,
+                            },
+                          }));
+                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
+                        }}
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`part-material-${primaryPart.id}`}>Material</Label>
+                      <Select
+                        value={getPartEditState(primaryPart).materialId || NONE_VALUE}
+                        onValueChange={(value) => {
+                          setPartEdits((prev) => ({
+                            ...prev,
+                            [primaryPart.id]: {
+                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
+                              materialId: value === NONE_VALUE ? '' : value,
+                            },
+                          }));
+                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
+                        }}
+                      >
+                        <SelectTrigger
+                          id={`part-material-${primaryPart.id}`}
+                          className="border-border/60 bg-background/80 text-left"
+                        >
+                          <SelectValue placeholder="Select material" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_VALUE}>TBD</SelectItem>
+                          {materials.map((material) => (
+                            <SelectItem key={material.id} value={material.id}>
+                              {material.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-1.5 sm:col-span-2">
+                      <Label htmlFor={`part-notes-${primaryPart.id}`}>Notes</Label>
+                      <Textarea
+                        id={`part-notes-${primaryPart.id}`}
+                        value={getPartEditState(primaryPart).notes}
+                        onChange={(e) => {
+                          setPartEdits((prev) => ({
+                            ...prev,
+                            [primaryPart.id]: {
+                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
+                              notes: e.target.value,
+                            },
+                          }));
+                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
+                        }}
+                        placeholder="Surface finish, tolerances, tooling, etc."
+                        className="min-h-[90px]"
+                      />
+                    </div>
+                  </div>
+                  {partEditErrors[primaryPart.id] && (
+                    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      {partEditErrors[primaryPart.id]}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <div className="space-y-1">
+                      <div>Due {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'TBD'}</div>
+                      <div>
+                        Machinist {item.assignedMachinist?.name ?? item.assignedMachinist?.email ?? 'Unassigned'}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => resetPartEdit(primaryPart)}
+                        disabled={partSavingIds[primaryPart.id]}
+                      >
+                        Reset
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleUpdatePart(primaryPart)}
+                        disabled={partSavingIds[primaryPart.id]}
+                        className="rounded-full"
+                      >
+                        {partSavingIds[primaryPart.id] ? 'Saving…' : 'Save part'}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No part details yet.</p>
+              )}
             </CardContent>
           </Card>
 
@@ -1062,32 +1270,130 @@ export default function OrderDetailPage() {
                       {isOpen && (
                         <div
                           id={contentId}
-                          className="grid gap-3 border-t border-border/60 bg-background/70 px-3 py-3 text-sm"
+                          className="grid gap-4 border-t border-border/60 bg-background/70 px-3 py-3 text-sm"
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-foreground">Part #</span>
-                            <span className="text-muted-foreground">{part.partNumber ?? '-'}</span>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="grid gap-1.5">
+                              <Label htmlFor={`part-number-${part.id}`}>Part number</Label>
+                              <Input
+                                id={`part-number-${part.id}`}
+                                value={getPartEditState(part).partNumber}
+                                onChange={(e) => {
+                                  setPartEdits((prev) => ({
+                                    ...prev,
+                                    [part.id]: {
+                                      ...(prev[part.id] ?? getPartEditState(part)),
+                                      partNumber: e.target.value,
+                                    },
+                                  }));
+                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+                                }}
+                                placeholder="Enter part number"
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label htmlFor={`part-qty-${part.id}`}>Quantity</Label>
+                              <Input
+                                id={`part-qty-${part.id}`}
+                                type="number"
+                                min={1}
+                                value={getPartEditState(part).quantity}
+                                onChange={(e) => {
+                                  setPartEdits((prev) => ({
+                                    ...prev,
+                                    [part.id]: {
+                                      ...(prev[part.id] ?? getPartEditState(part)),
+                                      quantity: e.target.value,
+                                    },
+                                  }));
+                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+                                }}
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label htmlFor={`part-material-${part.id}`}>Material</Label>
+                              <Select
+                                value={getPartEditState(part).materialId || NONE_VALUE}
+                                onValueChange={(value) => {
+                                  setPartEdits((prev) => ({
+                                    ...prev,
+                                    [part.id]: {
+                                      ...(prev[part.id] ?? getPartEditState(part)),
+                                      materialId: value === NONE_VALUE ? '' : value,
+                                    },
+                                  }));
+                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+                                }}
+                              >
+                                <SelectTrigger
+                                  id={`part-material-${part.id}`}
+                                  className="border-border/60 bg-background/80 text-left"
+                                >
+                                  <SelectValue placeholder="Select material" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value={NONE_VALUE}>TBD</SelectItem>
+                                  {materials.map((material) => (
+                                    <SelectItem key={material.id} value={material.id}>
+                                      {material.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="grid gap-1.5 sm:col-span-2">
+                              <Label htmlFor={`part-notes-${part.id}`}>Notes</Label>
+                              <Textarea
+                                id={`part-notes-${part.id}`}
+                                value={getPartEditState(part).notes}
+                                onChange={(e) => {
+                                  setPartEdits((prev) => ({
+                                    ...prev,
+                                    [part.id]: {
+                                      ...(prev[part.id] ?? getPartEditState(part)),
+                                      notes: e.target.value,
+                                    },
+                                  }));
+                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+                                }}
+                                placeholder="Surface finish, tolerances, tooling, etc."
+                                className="min-h-[90px]"
+                              />
+                            </div>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-foreground">Quantity</span>
-                            <span className="text-muted-foreground">{part.quantity ?? '-'}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-foreground">Material</span>
-                            <span className="text-muted-foreground">{part.material?.name ?? '-'}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-foreground">Due</span>
-                            <span className="text-muted-foreground">
-                              {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : '-'}
-                            </span>
-                          </div>
-                          {part.notes && (
-                            <div>
-                              <span className="font-medium text-foreground">Notes</span>
-                              <p className="mt-1 whitespace-pre-line text-muted-foreground">{part.notes}</p>
+                          {partEditErrors[part.id] && (
+                            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                              {partEditErrors[part.id]}
                             </div>
                           )}
+                          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                            <div className="space-y-1">
+                              <div>Due {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'TBD'}</div>
+                              <div>
+                                Machinist {item.assignedMachinist?.name ?? item.assignedMachinist?.email ?? 'Unassigned'}
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => resetPartEdit(part)}
+                                disabled={partSavingIds[part.id]}
+                              >
+                                Reset
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleUpdatePart(part)}
+                                disabled={partSavingIds[part.id]}
+                                className="rounded-full"
+                              >
+                                {partSavingIds[part.id] ? 'Saving…' : 'Save part'}
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
