@@ -34,22 +34,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     : null;
   const toggledById = checked && toggler ? toggler.id : null;
 
-  const exists = await prisma.orderChecklist.findFirst({ where: { orderId, addonId } });
-  if (!exists) {
-    await prisma.orderChecklist.create({
-      data: {
-        orderId,
-        addonId,
-        completed: checked,
-        toggledById,
-      },
-    });
-    return NextResponse.json({ ok: true });
-  }
-
-  await prisma.orderChecklist.update({
-    where: { id: exists.id },
-    data: { completed: checked, toggledById },
+  await prisma.orderChecklist.upsert({
+    where: { orderId_addonId: { orderId, addonId } },
+    create: {
+      orderId,
+      addonId,
+      completed: checked,
+      toggledById,
+    },
+    update: { completed: checked, toggledById },
   });
 
   return NextResponse.json({ ok: true });
