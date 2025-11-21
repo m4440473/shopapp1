@@ -40,6 +40,17 @@ export const OrderPartCreate = z.object({
   notes: z.string().trim().max(500).optional(),
 });
 
+export const OrderPartUpdate = z
+  .object({
+    partNumber: z.string().trim().min(1).optional(),
+    quantity: z.coerce.number().int().min(1).optional(),
+    materialId: z.string().trim().nullable().optional(),
+    notes: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine((value) => Object.values(value).some((v) => v !== undefined), {
+    message: 'At least one field is required to update a part',
+  });
+
 const OrderAttachmentMetadata = z
   .object({
     url: z.string().trim().min(1).max(1000).optional(),
@@ -78,6 +89,8 @@ export const OrderAttachmentCreate = OrderAttachmentMetadata;
 export type OrderAttachmentCreateInput = z.infer<typeof OrderAttachmentCreate>;
 
 export const OrderUpdate = z.object({
+  business: z.enum(BUSINESS_CODES).optional(),
+  customerId: z.string().trim().min(1).optional(),
   receivedDate: z.string().trim().min(1).optional(),
   dueDate: z.string().trim().min(1).optional(),
   priority: PriorityEnum.optional(),

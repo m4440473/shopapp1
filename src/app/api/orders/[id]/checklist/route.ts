@@ -19,24 +19,28 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const json = await req.json().catch(() => null);
   const { addonId, checked } = json ?? {};
   if (!addonId) return NextResponse.json({ error: 'Missing addonId' }, { status: 400 });
+  if (typeof checked !== 'boolean') return NextResponse.json({ error: 'Missing checked state' }, { status: 400 });
 
   const orderId = params.id;
-  if (checked) {
-    // create if not exists
-    const exists = await prisma.orderChecklist.findFirst({ where: { orderId, addonId } });
-    if (!exists) {
-      await prisma.orderChecklist.create({ data: { orderId, addonId, toggledById: (session.user as any)?.id ?? null } });
-    } else {
-      await prisma.orderChecklist.update({
-        where: { id: exists.id },
-        data: { toggledById: (session.user as any)?.id ?? null },
-      });
-    }
-    return NextResponse.json({ ok: true });
-  } else {
-    await prisma.orderChecklist.deleteMany({ where: { orderId, addonId } });
+  const exists = await prisma.orderChecklist.findFirst({ where: { orderId, addonId } });
+  if (!exists) {
+    await prisma.orderChecklist.create({
+      data: {
+        orderId,
+        addonId,
+        completed: checked,
+        toggledById: checked ? ((session.user as any)?.id ?? null) : null,
+      },
+    });
     return NextResponse.json({ ok: true });
   }
+
+  await prisma.orderChecklist.update({
+    where: { id: exists.id },
+    data: { completed: checked, toggledById: checked ? ((session.user as any)?.id ?? null) : null },
+  });
+
+  return NextResponse.json({ ok: true });
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
