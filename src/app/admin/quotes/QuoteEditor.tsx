@@ -11,6 +11,22 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
   Card,
   CardContent,
   CardDescription,
@@ -29,7 +45,14 @@ import {
 
 import type { QuoteCreateInput } from '@/lib/zod-quotes';
 
-type Option = { id: string; name: string };
+type Option = {
+  id: string;
+  name: string;
+  contact?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+};
 
 type AddonOption = {
   id: string;
@@ -175,6 +198,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [addons, setAddons] = useState<AddonOption[]>([]);
   const [vendors, setVendors] = useState<Option[]>([]);
   const [customers, setCustomers] = useState<Option[]>([]);
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerContact, setNewCustomerContact] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [newCustomerEmail, setNewCustomerEmail] = useState('');
+  const [newCustomerAddress, setNewCustomerAddress] = useState('');
 
   const initialBusinessCode = (initialQuote?.business ?? BUSINESS_OPTIONS[0]?.code ?? 'STD') as BusinessCode;
 
@@ -316,10 +345,67 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
         const list = Array.isArray(data?.items) ? data.items : data;
-        setCustomers((list ?? []).map((item: any) => ({ id: item.id, name: item.name })));
+        setCustomers(
+          (list ?? []).map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            contact: item.contact ?? item.contactName ?? null,
+            phone: item.phone ?? null,
+            email: item.email ?? null,
+            address: item.address ?? null,
+          })),
+        );
       })
       .catch(() => setCustomers([]));
   }, []);
+
+  const handleCustomerSelect = (customerId: string) => {
+    const selected = customers.find((customer) => customer.id === customerId);
+    setForm((prev) => ({
+      ...prev,
+      customerId,
+      companyName: selected?.name ?? prev.companyName,
+      contactName: selected?.contact ?? prev.contactName,
+      contactEmail: selected?.email ?? prev.contactEmail,
+      contactPhone: selected?.phone ?? prev.contactPhone,
+    }));
+  };
+
+  async function createCustomer() {
+    if (!newCustomerName.trim()) return;
+    const payload = {
+      name: newCustomerName,
+      contact: newCustomerContact || undefined,
+      phone: newCustomerPhone || undefined,
+      email: newCustomerEmail || undefined,
+      address: newCustomerAddress || undefined,
+    };
+    const res = await fetch('/api/admin/customers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      credentials: 'include',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const newCustomer: Option = {
+        id: data.item.id,
+        name: data.item.name,
+        contact: data.item.contact ?? data.item.contactName ?? null,
+        phone: data.item.phone ?? null,
+        email: data.item.email ?? null,
+        address: data.item.address ?? null,
+      };
+      setCustomers((s) => [newCustomer, ...s]);
+      handleCustomerSelect(newCustomer.id);
+      setCustomerDialogOpen(false);
+      setNewCustomerName('');
+      setNewCustomerContact('');
+      setNewCustomerPhone('');
+      setNewCustomerEmail('');
+      setNewCustomerAddress('');
+    }
+  }
 
   function addPart() {
     setParts((prev) => [
@@ -573,11 +659,94 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             </select>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="quoteCompany">Company *</Label>
+            <Label htmlFor="quoteCompanyName">Company *</Label>
+            <Select value={form.customerId} onValueChange={handleCustomerSelect}>
+              <SelectTrigger id="quoteCompanySelect" className="border border-border bg-background px-3 py-2 text-sm">
+                <SelectValue placeholder="Select a company" />
+              </SelectTrigger>
+              <SelectContent>
+                {customers.map((customer) => (
+                  <SelectItem key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" variant="ghost" size="sm" className="justify-start px-0 text-sm text-primary">
+                  + Add customer
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>New customer</DialogTitle>
+                  <DialogDescription>Quickly capture a new customer record.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="newCustomerName">Name</Label>
+                    <Input
+                      id="newCustomerName"
+                      value={newCustomerName}
+                      onChange={(e) => setNewCustomerName(e.target.value)}
+                      placeholder="Customer name"
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="newCustomerContact">Contact</Label>
+                    <Input
+                      id="newCustomerContact"
+                      value={newCustomerContact}
+                      onChange={(e) => setNewCustomerContact(e.target.value)}
+                      placeholder="Contact name (optional)"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="newCustomerPhone">Phone</Label>
+                    <Input
+                      id="newCustomerPhone"
+                      value={newCustomerPhone}
+                      onChange={(e) => setNewCustomerPhone(e.target.value)}
+                      placeholder="(555) 123-4567"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="newCustomerEmail">Email</Label>
+                    <Input
+                      id="newCustomerEmail"
+                      type="email"
+                      value={newCustomerEmail}
+                      onChange={(e) => setNewCustomerEmail(e.target.value)}
+                      placeholder="contact@example.com"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="newCustomerAddress">Address</Label>
+                    <Textarea
+                      id="newCustomerAddress"
+                      value={newCustomerAddress}
+                      onChange={(e) => setNewCustomerAddress(e.target.value)}
+                      placeholder="Shipping address"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="ghost" onClick={() => setCustomerDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="button" onClick={createCustomer}>
+                    Save customer
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <Input
-              id="quoteCompany"
+              id="quoteCompanyName"
               value={form.companyName}
               onChange={(event) => setForm((prev) => ({ ...prev, companyName: event.target.value }))}
+              placeholder="Company name"
               required
             />
           </div>
@@ -614,22 +783,6 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               value={form.contactPhone}
               onChange={(event) => setForm((prev) => ({ ...prev, contactPhone: event.target.value }))}
             />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="quoteCustomer">Customer record</Label>
-            <select
-              id="quoteCustomer"
-              value={form.customerId}
-              onChange={(event) => setForm((prev) => ({ ...prev, customerId: event.target.value }))}
-              className="rounded border border-border bg-background px-3 py-2 text-sm"
-            >
-              <option value="">Unassigned</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </select>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="quoteStatus">Status</Label>
