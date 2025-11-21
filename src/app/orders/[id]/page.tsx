@@ -47,7 +47,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { BUSINESS_OPTIONS, getBusinessOptionByCode, slugifyName, type BusinessName } from '@/lib/businesses';
+import {
+  BUSINESS_OPTIONS,
+  getBusinessOptionByCode,
+  slugifyName,
+  type BusinessCode,
+  type BusinessName,
+} from '@/lib/businesses';
 
 const STATUS_OPTIONS: Array<[string, string]> = [
   ['NEW', 'New'],
@@ -66,6 +72,8 @@ const DEFAULT_BUSINESS = (BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die') 
 type Option = { id: string; name: string };
 
 type EditFormState = {
+  business: BusinessCode;
+  customerId: string;
   receivedDate: string;
   dueDate: string;
   priority: string;
@@ -113,6 +121,7 @@ export default function OrderDetailPage() {
   const [noteText, setNoteText] = useState('');
   const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({});
   const [vendors, setVendors] = useState<Option[]>([]);
+  const [customers, setCustomers] = useState<Option[]>([]);
   const [machinists, setMachinists] = useState<Option[]>([]);
   const [materials, setMaterials] = useState<Option[]>([]);
   const [partForm, setPartForm] = useState<PartFormState>({
@@ -121,6 +130,9 @@ export default function OrderDetailPage() {
     materialId: '',
     notes: '',
   });
+  const [partEdits, setPartEdits] = useState<Record<string, PartFormState>>({});
+  const [partEditErrors, setPartEditErrors] = useState<Record<string, string | null>>({});
+  const [partSavingIds, setPartSavingIds] = useState<Record<string, boolean>>({});
   const [partSaving, setPartSaving] = useState(false);
   const [partError, setPartError] = useState<string | null>(null);
   const [attachmentForm, setAttachmentForm] = useState<AttachmentFormState>({
@@ -138,7 +150,15 @@ export default function OrderDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerContact, setNewCustomerContact] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [newCustomerEmail, setNewCustomerEmail] = useState('');
+  const [newCustomerAddress, setNewCustomerAddress] = useState('');
   const [editForm, setEditForm] = useState<EditFormState>({
+    business: BUSINESS_OPTIONS[0]?.code ?? 'STD',
+    customerId: '',
     receivedDate: '',
     dueDate: '',
     priority: 'NORMAL',
@@ -197,6 +217,24 @@ export default function OrderDetailPage() {
   }, [item?.id]);
 
   useEffect(() => {
+    if (!Array.isArray(item?.parts)) {
+      setPartEdits({});
+      return;
+    }
+    const next: Record<string, PartFormState> = {};
+    item.parts.forEach((part: any) => {
+      if (!part?.id) return;
+      next[part.id] = {
+        partNumber: part.partNumber ?? '',
+        quantity: String(part.quantity ?? 1),
+        materialId: part.materialId ?? '',
+        notes: part.notes ?? '',
+      };
+    });
+    setPartEdits(next);
+  }, [item?.parts]);
+
+  useEffect(() => {
     if (item?.attachments?.length) {
       const stored = item.attachments.find((attachment: any) => attachment.storagePath);
       if (stored?.storagePath) {
@@ -225,6 +263,14 @@ export default function OrderDetailPage() {
       })
       .catch(() => setVendors([]));
 
+    fetch('/api/admin/customers?take=200', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        const list = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        setCustomers(list.map((customer: any) => ({ id: customer.id, name: customer.name })));
+      })
+      .catch(() => setCustomers([]));
+
     fetch('/api/admin/materials?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
@@ -252,6 +298,8 @@ export default function OrderDetailPage() {
     const received = item.receivedDate ? new Date(item.receivedDate) : null;
     const due = item.dueDate ? new Date(item.dueDate) : null;
     setEditForm({
+      business: item.business ?? (BUSINESS_OPTIONS[0]?.code as BusinessCode),
+      customerId: item.customerId ?? '',
       receivedDate: received && !Number.isNaN(received.getTime()) ? received.toISOString().slice(0, 10) : '',
       dueDate: due && !Number.isNaN(due.getTime()) ? due.toISOString().slice(0, 10) : '',
       priority: item.priority ?? 'NORMAL',
@@ -269,6 +317,39 @@ export default function OrderDetailPage() {
       setEditError(null);
     }
   }, [editOpen]);
+
+  async function createCustomer() {
+    if (!newCustomerName.trim()) return;
+    const payload = {
+      name: newCustomerName,
+      contact: newCustomerContact || undefined,
+      phone: newCustomerPhone || undefined,
+      email: newCustomerEmail || undefined,
+      address: newCustomerAddress || undefined,
+    };
+    try {
+      const res = await fetch('/api/admin/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to create customer');
+      const data = await res.json();
+      if (data?.item?.id) {
+        setCustomers((prev) => [data.item, ...prev]);
+        setEditForm((prev) => ({ ...prev, customerId: data.item.id }));
+      }
+      setCustomerDialogOpen(false);
+      setNewCustomerName('');
+      setNewCustomerContact('');
+      setNewCustomerPhone('');
+      setNewCustomerEmail('');
+      setNewCustomerAddress('');
+    } catch (error) {
+      setEditError((error as Error).message || 'Failed to create customer');
+    }
+  }
 
   async function toggleChecklist(addonId: string, checked: boolean) {
     setToggling(addonId);
@@ -358,6 +439,87 @@ export default function OrderDetailPage() {
       setPartError(err.message || 'Failed to add part');
     } finally {
       setPartSaving(false);
+    }
+  }
+
+  const getPartEditState = (part: any): PartFormState => {
+    if (part?.id && partEdits[part.id]) return partEdits[part.id];
+    return {
+      partNumber: part?.partNumber ?? '',
+      quantity: String(part?.quantity ?? 1),
+      materialId: part?.materialId ?? '',
+      notes: part?.notes ?? '',
+    };
+  };
+
+  function resetPartEdit(part: any) {
+    if (!part?.id) return;
+    setPartEdits((prev) => ({
+      ...prev,
+      [part.id]: {
+        partNumber: part.partNumber ?? '',
+        quantity: String(part.quantity ?? 1),
+        materialId: part.materialId ?? '',
+        notes: part.notes ?? '',
+      },
+    }));
+    setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+  }
+
+  async function handleUpdatePart(part: any) {
+    const partId = part?.id;
+    if (!id || !partId) return;
+    const current = getPartEditState(part);
+    const trimmedPartNumber = current.partNumber.trim();
+    if (!trimmedPartNumber) {
+      setPartEditErrors((prev) => ({ ...prev, [partId]: 'Part number is required' }));
+      return;
+    }
+    const quantityValue = Number.parseInt(current.quantity, 10);
+    if (!Number.isFinite(quantityValue) || quantityValue < 1) {
+      setPartEditErrors((prev) => ({ ...prev, [partId]: 'Quantity must be at least 1' }));
+      return;
+    }
+
+    setPartSavingIds((prev) => ({ ...prev, [partId]: true }));
+    setPartEditErrors((prev) => ({ ...prev, [partId]: null }));
+    try {
+      const payload: Record<string, unknown> = {
+        partNumber: trimmedPartNumber,
+        quantity: quantityValue,
+        materialId: current.materialId || null,
+        notes: current.notes.trim() ? current.notes.trim() : null,
+      };
+
+      const res = await fetch(`/api/orders/${id}/parts/${partId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+
+      const raw = await res.text();
+      if (!res.ok) {
+        let message = 'Failed to update part';
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            message =
+              typeof parsed?.error === 'string'
+                ? parsed.error
+                : parsed?.message || JSON.stringify(parsed?.error ?? parsed);
+          } catch {
+            message = raw;
+          }
+        }
+        throw new Error(message);
+      }
+
+      await load();
+    } catch (error: any) {
+      setPartEditErrors((prev) => ({ ...prev, [partId]: error?.message || 'Failed to update part' }));
+    } finally {
+      setPartSavingIds((prev) => ({ ...prev, [partId]: false }));
     }
   }
 
@@ -508,10 +670,16 @@ export default function OrderDetailPage() {
   async function handleEditSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!id) return;
+    if (!editForm.customerId) {
+      setEditError('Please select a customer');
+      return;
+    }
     setEditSaving(true);
     setEditError(null);
     try {
       const payload = {
+        business: editForm.business,
+        customerId: editForm.customerId,
         receivedDate: editForm.receivedDate,
         dueDate: editForm.dueDate,
         priority: editForm.priority,
@@ -572,7 +740,9 @@ export default function OrderDetailPage() {
     return <div className="text-muted-foreground">Order not found.</div>;
   }
 
-  const checkedIds = new Set(item.checklist?.map((c: any) => c.addon?.id));
+  const checkedIds = new Set(
+    (item.checklist ?? []).filter((c: any) => c.completed).map((c: any) => c.addon?.id)
+  );
   const parts: any[] = Array.isArray(item.parts) ? item.parts : [];
   const primaryPart = parts[0];
   const additionalParts = parts.slice(1);
@@ -614,6 +784,118 @@ export default function OrderDetailPage() {
               </DialogHeader>
               <form className="space-y-4" onSubmit={handleEditSubmit}>
                 <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-business">Business</Label>
+                    <Select
+                      value={editForm.business}
+                      onValueChange={(value) =>
+                        setEditForm((prev) => ({ ...prev, business: value as BusinessCode }))
+                      }
+                    >
+                      <SelectTrigger id="edit-business" className="border-border/60 bg-background/80 text-left">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BUSINESS_OPTIONS.map((option) => (
+                          <SelectItem key={option.code} value={option.code}>
+                            {option.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Customer</Label>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={editForm.customerId || NONE_VALUE}
+                        onValueChange={(value) =>
+                          setEditForm((prev) => ({ ...prev, customerId: value === NONE_VALUE ? '' : value }))
+                        }
+                      >
+                        <SelectTrigger className="w-full border-border/60 bg-background/80 text-left">
+                          <SelectValue placeholder="Select customer" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_VALUE}>Select customer</SelectItem>
+                          {customers.map((customer) => (
+                            <SelectItem key={customer.id} value={customer.id}>
+                              {customer.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button type="button" variant="outline" className="shrink-0">
+                            New
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Add customer</DialogTitle>
+                            <DialogDescription>Create a new customer record for this order.</DialogDescription>
+                          </DialogHeader>
+                          <div className="grid gap-3">
+                            <div className="grid gap-1.5">
+                              <Label htmlFor="newCustomerName">Name</Label>
+                              <Input
+                                id="newCustomerName"
+                                value={newCustomerName}
+                                onChange={(e) => setNewCustomerName(e.target.value)}
+                                placeholder="Customer name"
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label htmlFor="newCustomerContact">Contact</Label>
+                              <Input
+                                id="newCustomerContact"
+                                value={newCustomerContact}
+                                onChange={(e) => setNewCustomerContact(e.target.value)}
+                                placeholder="Contact name"
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label htmlFor="newCustomerPhone">Phone</Label>
+                              <Input
+                                id="newCustomerPhone"
+                                value={newCustomerPhone}
+                                onChange={(e) => setNewCustomerPhone(e.target.value)}
+                                placeholder="555-123-4567"
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label htmlFor="newCustomerEmail">Email</Label>
+                              <Input
+                                id="newCustomerEmail"
+                                type="email"
+                                value={newCustomerEmail}
+                                onChange={(e) => setNewCustomerEmail(e.target.value)}
+                                placeholder="name@example.com"
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label htmlFor="newCustomerAddress">Address</Label>
+                              <Textarea
+                                id="newCustomerAddress"
+                                value={newCustomerAddress}
+                                onChange={(e) => setNewCustomerAddress(e.target.value)}
+                                placeholder="Shipping address"
+                              />
+                            </div>
+                            <DialogFooter>
+                              <Button type="button" variant="ghost" onClick={() => setCustomerDialogOpen(false)}>
+                                Cancel
+                              </Button>
+                              <Button type="button" onClick={createCustomer} disabled={!newCustomerName.trim()}>
+                                Add customer
+                              </Button>
+                            </DialogFooter>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </div>
                   <div className="grid gap-2">
                     <Label htmlFor="edit-received">Received date</Label>
                     <Input
@@ -821,31 +1103,135 @@ export default function OrderDetailPage() {
               </CardTitle>
               <CardDescription>Primary details for the first line item</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-foreground">Part #</span>
-                <span className="text-muted-foreground">{primaryPart?.partNumber ?? '-'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-foreground">Quantity</span>
-                <span className="text-muted-foreground">{primaryPart?.quantity ?? '-'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-foreground">Material</span>
-                <span className="text-muted-foreground">{primaryPart?.material?.name ?? '-'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-foreground">Due</span>
-                <span className="text-muted-foreground">
-                  {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : '-'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-foreground">Machinist</span>
-                <span className="text-muted-foreground">
-                  {item.assignedMachinist?.name ?? item.assignedMachinist?.email ?? 'Unassigned'}
-                </span>
-              </div>
+            <CardContent className="grid gap-4 text-sm">
+              {primaryPart ? (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`part-number-${primaryPart.id}`}>Part number</Label>
+                      <Input
+                        id={`part-number-${primaryPart.id}`}
+                        value={getPartEditState(primaryPart).partNumber}
+                        onChange={(e) => {
+                          setPartEdits((prev) => ({
+                            ...prev,
+                            [primaryPart.id]: {
+                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
+                              partNumber: e.target.value,
+                            },
+                          }));
+                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
+                        }}
+                        placeholder="Enter part number"
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`part-qty-${primaryPart.id}`}>Quantity</Label>
+                      <Input
+                        id={`part-qty-${primaryPart.id}`}
+                        type="number"
+                        min={1}
+                        value={getPartEditState(primaryPart).quantity}
+                        onChange={(e) => {
+                          setPartEdits((prev) => ({
+                            ...prev,
+                            [primaryPart.id]: {
+                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
+                              quantity: e.target.value,
+                            },
+                          }));
+                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
+                        }}
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`part-material-${primaryPart.id}`}>Material</Label>
+                      <Select
+                        value={getPartEditState(primaryPart).materialId || NONE_VALUE}
+                        onValueChange={(value) => {
+                          setPartEdits((prev) => ({
+                            ...prev,
+                            [primaryPart.id]: {
+                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
+                              materialId: value === NONE_VALUE ? '' : value,
+                            },
+                          }));
+                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
+                        }}
+                      >
+                        <SelectTrigger
+                          id={`part-material-${primaryPart.id}`}
+                          className="border-border/60 bg-background/80 text-left"
+                        >
+                          <SelectValue placeholder="Select material" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_VALUE}>TBD</SelectItem>
+                          {materials.map((material) => (
+                            <SelectItem key={material.id} value={material.id}>
+                              {material.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-1.5 sm:col-span-2">
+                      <Label htmlFor={`part-notes-${primaryPart.id}`}>Notes</Label>
+                      <Textarea
+                        id={`part-notes-${primaryPart.id}`}
+                        value={getPartEditState(primaryPart).notes}
+                        onChange={(e) => {
+                          setPartEdits((prev) => ({
+                            ...prev,
+                            [primaryPart.id]: {
+                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
+                              notes: e.target.value,
+                            },
+                          }));
+                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
+                        }}
+                        placeholder="Surface finish, tolerances, tooling, etc."
+                        className="min-h-[90px]"
+                      />
+                    </div>
+                  </div>
+                  {partEditErrors[primaryPart.id] && (
+                    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      {partEditErrors[primaryPart.id]}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <div className="space-y-1">
+                      <div>Due {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'TBD'}</div>
+                      <div>
+                        Machinist {item.assignedMachinist?.name ?? item.assignedMachinist?.email ?? 'Unassigned'}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => resetPartEdit(primaryPart)}
+                        disabled={partSavingIds[primaryPart.id]}
+                      >
+                        Reset
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleUpdatePart(primaryPart)}
+                        disabled={partSavingIds[primaryPart.id]}
+                        className="rounded-full"
+                      >
+                        {partSavingIds[primaryPart.id] ? 'Saving…' : 'Save part'}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No part details yet.</p>
+              )}
             </CardContent>
           </Card>
 
@@ -884,32 +1270,130 @@ export default function OrderDetailPage() {
                       {isOpen && (
                         <div
                           id={contentId}
-                          className="grid gap-3 border-t border-border/60 bg-background/70 px-3 py-3 text-sm"
+                          className="grid gap-4 border-t border-border/60 bg-background/70 px-3 py-3 text-sm"
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-foreground">Part #</span>
-                            <span className="text-muted-foreground">{part.partNumber ?? '-'}</span>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="grid gap-1.5">
+                              <Label htmlFor={`part-number-${part.id}`}>Part number</Label>
+                              <Input
+                                id={`part-number-${part.id}`}
+                                value={getPartEditState(part).partNumber}
+                                onChange={(e) => {
+                                  setPartEdits((prev) => ({
+                                    ...prev,
+                                    [part.id]: {
+                                      ...(prev[part.id] ?? getPartEditState(part)),
+                                      partNumber: e.target.value,
+                                    },
+                                  }));
+                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+                                }}
+                                placeholder="Enter part number"
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label htmlFor={`part-qty-${part.id}`}>Quantity</Label>
+                              <Input
+                                id={`part-qty-${part.id}`}
+                                type="number"
+                                min={1}
+                                value={getPartEditState(part).quantity}
+                                onChange={(e) => {
+                                  setPartEdits((prev) => ({
+                                    ...prev,
+                                    [part.id]: {
+                                      ...(prev[part.id] ?? getPartEditState(part)),
+                                      quantity: e.target.value,
+                                    },
+                                  }));
+                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+                                }}
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label htmlFor={`part-material-${part.id}`}>Material</Label>
+                              <Select
+                                value={getPartEditState(part).materialId || NONE_VALUE}
+                                onValueChange={(value) => {
+                                  setPartEdits((prev) => ({
+                                    ...prev,
+                                    [part.id]: {
+                                      ...(prev[part.id] ?? getPartEditState(part)),
+                                      materialId: value === NONE_VALUE ? '' : value,
+                                    },
+                                  }));
+                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+                                }}
+                              >
+                                <SelectTrigger
+                                  id={`part-material-${part.id}`}
+                                  className="border-border/60 bg-background/80 text-left"
+                                >
+                                  <SelectValue placeholder="Select material" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value={NONE_VALUE}>TBD</SelectItem>
+                                  {materials.map((material) => (
+                                    <SelectItem key={material.id} value={material.id}>
+                                      {material.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="grid gap-1.5 sm:col-span-2">
+                              <Label htmlFor={`part-notes-${part.id}`}>Notes</Label>
+                              <Textarea
+                                id={`part-notes-${part.id}`}
+                                value={getPartEditState(part).notes}
+                                onChange={(e) => {
+                                  setPartEdits((prev) => ({
+                                    ...prev,
+                                    [part.id]: {
+                                      ...(prev[part.id] ?? getPartEditState(part)),
+                                      notes: e.target.value,
+                                    },
+                                  }));
+                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+                                }}
+                                placeholder="Surface finish, tolerances, tooling, etc."
+                                className="min-h-[90px]"
+                              />
+                            </div>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-foreground">Quantity</span>
-                            <span className="text-muted-foreground">{part.quantity ?? '-'}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-foreground">Material</span>
-                            <span className="text-muted-foreground">{part.material?.name ?? '-'}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-foreground">Due</span>
-                            <span className="text-muted-foreground">
-                              {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : '-'}
-                            </span>
-                          </div>
-                          {part.notes && (
-                            <div>
-                              <span className="font-medium text-foreground">Notes</span>
-                              <p className="mt-1 whitespace-pre-line text-muted-foreground">{part.notes}</p>
+                          {partEditErrors[part.id] && (
+                            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                              {partEditErrors[part.id]}
                             </div>
                           )}
+                          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                            <div className="space-y-1">
+                              <div>Due {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'TBD'}</div>
+                              <div>
+                                Machinist {item.assignedMachinist?.name ?? item.assignedMachinist?.email ?? 'Unassigned'}
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => resetPartEdit(part)}
+                                disabled={partSavingIds[part.id]}
+                              >
+                                Reset
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleUpdatePart(part)}
+                                disabled={partSavingIds[part.id]}
+                                className="rounded-full"
+                              >
+                                {partSavingIds[part.id] ? 'Saving…' : 'Save part'}
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
