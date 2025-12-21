@@ -12,10 +12,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const json = await req.json().catch(() => null);
   const { status } = json ?? {};
+  const employeeName = typeof json?.employeeName === 'string' ? json.employeeName.trim() : '';
   const allowed = ['NEW','PROGRAMMING','RUNNING','INSPECTING','READY_FOR_ADDONS','COMPLETE','CLOSED'];
   if (!status || !allowed.includes(status)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+  if (!employeeName) return NextResponse.json({ error: 'Employee name is required' }, { status: 400 });
 
-  const order = await prisma.order.update({ where: { id: params.id }, data: { status } });
-  await prisma.statusHistory.create({ data: { orderId: params.id, from: order.status, to: status, userId: (session.user as any).id, reason: 'Status changed' } });
-  return NextResponse.json({ ok: true, order });
+  const existingOrder = await prisma.order.findUnique({ where: { id: params.id }, select: { status: true } });
+  if (!existingOrder) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+
+  const updatedOrder = await prisma.order.update({ where: { id: params.id }, data: { status } });
+  await prisma.statusHistory.create({
+    data: {
+      orderId: params.id,
+      from: existingOrder.status,
+      to: status,
+      userId: (session.user as any).id,
+      reason: `Status changed by ${employeeName}`,
+    },
+  });
+  return NextResponse.json({ ok: true, order: updatedOrder });
 }
