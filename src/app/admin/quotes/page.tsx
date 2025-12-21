@@ -5,10 +5,9 @@ import NavTabs from '@/components/Admin/NavTabs';
 import { ToastProvider } from '@/components/ui/Toast';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
-import { canAccessAdmin, canViewQuotes } from '@/lib/rbac';
+import { canAccessAdmin } from '@/lib/rbac';
 import Client from './client';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
-import { sanitizeQuoteSummaryPricing } from '@/lib/quote-visibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,11 +19,11 @@ export default async function Page() {
 
   const user = session.user as any;
   const role = user?.role ?? null;
-  if (!canViewQuotes(user ?? role)) {
+  if (!canAccessAdmin(user ?? role)) {
     redirect('/');
   }
 
-  const isAdmin = canAccessAdmin(user ?? role);
+  const isAdmin = true;
 
   const rawItems = await prisma.quote.findMany({
     orderBy: { createdAt: 'desc' },
@@ -40,7 +39,7 @@ export default async function Page() {
       ...item,
       metadata: mergeQuoteMetadata(parseQuoteMetadata(item.metadata)),
     };
-    return sanitizeQuoteSummaryPricing(enriched, isAdmin);
+    return enriched;
   });
 
   const initial = { items, nextCursor: null };

@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  sanitizeQuoteDetailPricing,
-  sanitizeQuoteSummaryPricing,
+  sanitizePricingForNonAdmin,
+  type OrderWithRelations,
   type QuoteDetailWithRelations,
   type QuoteSummaryWithRelations,
 } from '../quote-visibility';
 
-describe('quote visibility sanitizers', () => {
-  const detailBase = {
+describe('pricing visibility sanitization', () => {
+  const detailBase: QuoteDetailWithRelations = {
     id: 'quote-1',
     quoteNumber: 'Q-001',
     business: 'STD',
@@ -63,9 +63,9 @@ describe('quote visibility sanitizers', () => {
       },
     ],
     attachments: [],
-  } satisfies QuoteDetailWithRelations;
+  };
 
-  const summaryBase = {
+  const summaryBase: QuoteSummaryWithRelations = {
     id: 'quote-1',
     quoteNumber: 'Q-001',
     business: 'STD',
@@ -90,42 +90,89 @@ describe('quote visibility sanitizers', () => {
     updatedAt: new Date('2023-01-02T00:00:00Z'),
     createdBy: { id: 'user-1', name: 'Admin', email: 'admin@example.com' },
     customer: { id: 'cust-1', name: 'Acme Customer' },
-  } satisfies QuoteSummaryWithRelations;
+  };
 
-  it('returns the original detail payload for admins', () => {
-    const result = sanitizeQuoteDetailPricing(detailBase, true);
-    expect(result).toBe(detailBase);
+  const orderBase: OrderWithRelations = {
+    id: 'order-1',
+    orderNumber: 'STD-1001',
+    business: 'STD',
+    customerId: 'cust-1',
+    customer: { id: 'cust-1', name: 'Acme Customer', contact: null, phone: null, email: null, address: null },
+    status: 'RECEIVED',
+    priority: 'NORMAL',
+    dueDate: new Date('2023-01-10T00:00:00Z'),
+    receivedDate: new Date('2023-01-01T00:00:00Z'),
+    modelIncluded: false,
+    materialNeeded: false,
+    materialOrdered: false,
+    vendorId: null,
+    vendor: null,
+    poNumber: null,
+    assignedMachinistId: null,
+    assignedMachinist: null,
+    parts: [],
+    checklist: [
+      {
+        id: 'check-1',
+        orderId: 'order-1',
+        addonId: 'addon-1',
+        addon: {
+          id: 'addon-1',
+          name: 'Weld',
+          description: null,
+          rateType: 'HOURLY',
+          rateCents: 700,
+          active: true,
+          createdAt: new Date('2023-01-01T00:00:00Z'),
+          updatedAt: new Date('2023-01-02T00:00:00Z'),
+        },
+        completed: false,
+        toggledById: null,
+        toggledBy: null,
+        createdAt: new Date('2023-01-02T00:00:00Z'),
+        updatedAt: new Date('2023-01-02T00:00:00Z'),
+      },
+    ],
+    statusHistory: [],
+    notes: [],
+    attachments: [],
+  };
+
+  it('returns the original payload for admins', () => {
+    expect(sanitizePricingForNonAdmin(detailBase, true)).toBe(detailBase);
+    expect(sanitizePricingForNonAdmin(summaryBase, true)).toBe(summaryBase);
   });
 
-  it('zeroes sensitive fields on detail payloads for non-admins', () => {
-    const result = sanitizeQuoteDetailPricing(detailBase, false);
+  it('removes sensitive fields on detail payloads for non-admins', () => {
+    const result = sanitizePricingForNonAdmin(detailBase, false);
 
-    expect(result.basePriceCents).toBe(0);
-    expect(result.totalCents).toBe(0);
-    expect(result.vendorTotalCents).toBe(0);
-    expect(result.addonsTotalCents).toBe(0);
-    expect(result.vendorItems[0].basePriceCents).toBe(0);
-    expect(result.vendorItems[0].finalPriceCents).toBe(0);
-    expect(result.addonSelections[0].rateCents).toBe(0);
-    expect(result.addonSelections[0].totalCents).toBe(0);
-    expect(result.addonSelections[0].addon.rateCents).toBe(0);
+    expect('basePriceCents' in result).toBe(false);
+    expect('totalCents' in result).toBe(false);
+    expect('vendorTotalCents' in result).toBe(false);
+    expect('addonsTotalCents' in result).toBe(false);
+    expect('basePriceCents' in result.vendorItems[0]).toBe(false);
+    expect('finalPriceCents' in result.vendorItems[0]).toBe(false);
+    expect((result.addonSelections[0] as any).rateCents).toBeUndefined();
+    expect((result.addonSelections[0] as any).totalCents).toBeUndefined();
+    expect((result.addonSelections[0].addon as any).rateCents).toBeUndefined();
 
-    // Ensure the original object is not mutated
     expect(detailBase.vendorItems[0].finalPriceCents).toBe(3680);
-    expect(detailBase.addonSelections[0].addon.rateCents).toBe(500);
+    expect(detailBase.addonSelections[0].addon?.rateCents).toBe(500);
   });
 
-  it('returns the original summary payload for admins', () => {
-    const result = sanitizeQuoteSummaryPricing(summaryBase, true);
-    expect(result).toBe(summaryBase);
+  it('removes totals on summary payloads for non-admins', () => {
+    const result = sanitizePricingForNonAdmin(summaryBase, false);
+
+    expect('basePriceCents' in result).toBe(false);
+    expect('totalCents' in result).toBe(false);
+    expect('vendorTotalCents' in result).toBe(false);
+    expect('addonsTotalCents' in result).toBe(false);
   });
 
-  it('zeroes totals on summary payloads for non-admins', () => {
-    const result = sanitizeQuoteSummaryPricing(summaryBase, false);
+  it('strips addon pricing from orders for non-admins', () => {
+    const result = sanitizePricingForNonAdmin(orderBase, false);
 
-    expect(result.basePriceCents).toBe(0);
-    expect(result.totalCents).toBe(0);
-    expect(result.vendorTotalCents).toBe(0);
-    expect(result.addonsTotalCents).toBe(0);
+    expect(result.checklist[0].addon?.rateCents).toBeUndefined();
+    expect(orderBase.checklist[0].addon?.rateCents).toBe(700);
   });
 });
