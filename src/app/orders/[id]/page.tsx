@@ -100,6 +100,10 @@ type AttachmentFormState = {
   uploading: boolean;
 };
 
+type PendingAction =
+  | { type: 'status'; status: string }
+  | { type: 'checklist'; addonId: string; checked: boolean };
+
 const statusColor = (status: string) =>
   ({
     NEW: 'bg-sky-500/20 text-sky-200',
@@ -118,6 +122,7 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [statusSaving, setStatusSaving] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({});
   const [vendors, setVendors] = useState<Option[]>([]);
@@ -148,6 +153,11 @@ export default function OrderDetailPage() {
   const [attachmentFileName, setAttachmentFileName] = useState<string | null>(null);
   const [attachmentBusiness, setAttachmentBusiness] = useState<BusinessName>(DEFAULT_BUSINESS);
   const [editOpen, setEditOpen] = useState(false);
+  const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
+  const [employeeName, setEmployeeName] = useState('');
+  const [employeeDialogError, setEmployeeDialogError] = useState<string | null>(null);
+  const [employeeSubmitting, setEmployeeSubmitting] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
@@ -351,19 +361,36 @@ export default function OrderDetailPage() {
     }
   }
 
-  async function toggleChecklist(addonId: string, checked: boolean) {
+  function openEmployeeDialog(action: PendingAction) {
+    setPendingAction(action);
+    setEmployeeName('');
+    setEmployeeDialogError(null);
+    setEmployeeDialogOpen(true);
+  }
+
+  function closeEmployeeDialog() {
+    setEmployeeDialogOpen(false);
+    setEmployeeDialogError(null);
+    setPendingAction(null);
+  }
+
+  async function toggleChecklist(addonId: string, checked: boolean, employee: string) {
     setToggling(addonId);
     try {
       const res = await fetch(`/api/orders/${id}/checklist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ addonId, checked }),
+        body: JSON.stringify({ addonId, checked, employeeName: employee }),
         credentials: 'include',
       });
-      if (!res.ok) throw res;
+      const message = await res.text();
+      if (!res.ok) {
+        throw new Error(message || 'Failed to update checklist');
+      }
       await load();
     } catch (e) {
       console.error(e);
+      throw e;
     } finally {
       setToggling(null);
     }
@@ -709,18 +736,49 @@ export default function OrderDetailPage() {
     }
   }
 
-  async function changeStatus(newStatus: string) {
+  async function changeStatus(newStatus: string, employee: string) {
+    setStatusSaving(newStatus);
     try {
       const res = await fetch(`/api/orders/${id}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, employeeName: employee }),
         credentials: 'include',
       });
-      if (!res.ok) throw res;
+      const message = await res.text();
+      if (!res.ok) {
+        throw new Error(message || 'Failed to update status');
+      }
       await load();
     } catch (e) {
       console.error(e);
+      throw e;
+    } finally {
+      setStatusSaving(null);
+    }
+  }
+
+  async function handleEmployeeSubmit(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    if (!pendingAction) return;
+    const trimmedName = employeeName.trim();
+    if (!trimmedName) {
+      setEmployeeDialogError('Please enter your name to record this update.');
+      return;
+    }
+    setEmployeeSubmitting(true);
+    setEmployeeDialogError(null);
+    try {
+      if (pendingAction.type === 'status') {
+        await changeStatus(pendingAction.status, trimmedName);
+      } else {
+        await toggleChecklist(pendingAction.addonId, pendingAction.checked, trimmedName);
+      }
+      closeEmployeeDialog();
+    } catch (err: any) {
+      setEmployeeDialogError(err?.message || 'Failed to record update. Please try again.');
+    } finally {
+      setEmployeeSubmitting(false);
     }
   }
 
@@ -748,9 +806,71 @@ export default function OrderDetailPage() {
   const additionalParts = parts.slice(1);
   const attachments: any[] = Array.isArray(item.attachments) ? item.attachments : [];
   const businessOption = BUSINESS_OPTIONS.find((option) => option.code === item.business);
+  const pendingStatusLabel =
+    pendingAction?.type === 'status'
+      ? STATUS_OPTIONS.find(([value]) => value === pendingAction.status)?.[1] ?? pendingAction.status
+      : null;
+  const pendingChecklistName =
+    pendingAction?.type === 'checklist'
+      ? item.checklist?.find((c: any) => c.addon?.id === pendingAction.addonId)?.addon?.name
+      : null;
 
   return (
     <div className="space-y-6">
+      <Dialog
+        open={employeeDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeEmployeeDialog();
+          } else {
+            setEmployeeDialogOpen(true);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {pendingAction?.type === 'status' ? 'Confirm status update' : 'Confirm checklist update'}
+            </DialogTitle>
+            <DialogDescription className="space-y-1">
+              <p>Please enter your name to record this update.</p>
+              {pendingAction?.type === 'status' && pendingStatusLabel ? (
+                <p className="text-xs text-muted-foreground">New status: {pendingStatusLabel}</p>
+              ) : null}
+              {pendingAction?.type === 'checklist' && pendingChecklistName ? (
+                <p className="text-xs text-muted-foreground">
+                  Checklist item: {pendingChecklistName} ({pendingAction.checked ? 'check' : 'uncheck'})
+                </p>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleEmployeeSubmit}>
+            <div className="space-y-1">
+              <Label htmlFor="employee-name">Employee name</Label>
+              <Input
+                id="employee-name"
+                value={employeeName}
+                onChange={(e) => setEmployeeName(e.target.value)}
+                placeholder="Enter your name"
+              />
+            </div>
+            {employeeDialogError ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {employeeDialogError}
+              </div>
+            ) : null}
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" onClick={closeEmployeeDialog} disabled={employeeSubmitting}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={employeeSubmitting}>
+                {employeeSubmitting ? 'Submitting…' : 'Submit'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1504,10 +1624,14 @@ export default function OrderDetailPage() {
                   <div className="flex items-start gap-3">
                     <Checkbox
                       checked={checkedIds.has(c.addon?.id)}
-                      disabled={!!toggling || !c.addon?.id}
+                      disabled={!!toggling || !c.addon?.id || employeeSubmitting || !!pendingAction}
                       onCheckedChange={(value) => {
                         if (!c.addon?.id) return;
-                        toggleChecklist(c.addon.id, value === true);
+                        openEmployeeDialog({
+                          type: 'checklist',
+                          addonId: c.addon.id,
+                          checked: value === true,
+                        });
                       }}
                     />
                     <div>
@@ -1549,10 +1673,11 @@ export default function OrderDetailPage() {
                 <Button
                   key={value}
                   variant={item.status === value ? 'default' : 'outline'}
-                  onClick={() => changeStatus(value)}
+                  onClick={() => openEmployeeDialog({ type: 'status', status: value })}
                   className="justify-between"
+                  disabled={!!statusSaving || employeeSubmitting}
                 >
-                  <span>{label}</span>
+                  <span>{statusSaving === value ? 'Updating…' : label}</span>
                   <ArrowRight className="h-4 w-4 opacity-70" />
                 </Button>
               ))}
@@ -1786,10 +1911,18 @@ export default function OrderDetailPage() {
               {item.statusHistory?.length ? (
                 item.statusHistory.map((s: any) => (
                   <div key={s.id} className="rounded-lg border border-border/60 bg-muted/10 p-3">
-                    <div className="text-foreground">{s.to}</div>
-                    <div className="text-xs">
-                      {new Date(s.createdAt).toLocaleString()}
-                      {s.reason ? ` — ${s.reason}` : ''}
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between gap-2 text-foreground">
+                        <div className="font-medium">
+                          {s.from ? `${s.from} → ${s.to}` : s.to}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(s.createdAt).toLocaleString()}
+                        </div>
+                      </div>
+                      {s.reason ? (
+                        <div className="text-xs text-muted-foreground">{s.reason}</div>
+                      ) : null}
                     </div>
                   </div>
                 ))
