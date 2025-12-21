@@ -52,5 +52,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const session = await requireAuth();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const items = await prisma.orderChecklist.findMany({ where: { orderId: params.id }, include: { addon: true } });
-  return NextResponse.json({ items });
+  const sanitized = items.map(({ addon, ...item }) => ({
+    ...item,
+    addon: addon ? (({ rateCents: _, ...rest }) => rest)(addon) : addon,
+  }));
+  return NextResponse.json({ items: sanitized });
 }

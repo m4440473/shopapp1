@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { OrderUpdate } from '@/lib/zod-orders';
+import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions as any);
@@ -23,11 +24,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       notes: { orderBy: { createdAt: 'asc' }, include: { user: true } },
       attachments: { include: { uploadedBy: true }, orderBy: { createdAt: 'desc' } },
       assignedMachinist: true,
+      vendor: true,
     },
   });
 
   if (!order) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json({ item: order });
+  return NextResponse.json({ item: sanitizePricingForNonAdmin(order) });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {

@@ -4,12 +4,12 @@ import { z } from 'zod';
 
 import { authOptions } from '@/lib/auth';
 import { DEFAULT_QUOTE_METADATA, parseQuoteMetadata, stringifyQuoteMetadata } from '@/lib/quote-metadata';
-import { canAccessAdmin, canViewQuotes } from '@/lib/rbac';
+import { canAccessAdmin } from '@/lib/rbac';
 import { prisma } from '@/lib/prisma';
 import { ListQuery } from '@/lib/zod';
 import { QuoteCreate } from '@/lib/zod-quotes';
 import { prepareQuoteComponents } from '@/lib/quotes.server';
-import { sanitizeQuoteSummaryPricing } from '@/lib/quote-visibility';
+import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 
 async function getSessionWithRole() {
   const session = await getServerSession(authOptions);
@@ -31,25 +31,14 @@ async function requireAdmin() {
   return { session, role, user };
 }
 
-async function requireQuoteReadAccess() {
-  const result = await getSessionWithRole();
-  if (result instanceof NextResponse) return result;
-  const { role, session, user } = result;
-  if (!canViewQuotes(user ?? role)) {
-    return new NextResponse('Forbidden', { status: 403 });
-  }
-  return { session, role, user, isAdmin: canAccessAdmin(user ?? role) };
-}
-
 const QuerySchema = ListQuery.extend({
   status: z.string().trim().optional(),
   customerId: z.string().trim().optional(),
 });
 
 export async function GET(req: NextRequest) {
-  const guard = await requireQuoteReadAccess();
+  const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
-  const { isAdmin } = guard;
 
   const { searchParams } = new URL(req.url);
   const parsed = QuerySchema.safeParse({
@@ -95,7 +84,7 @@ export async function GET(req: NextRequest) {
       ...item,
       metadata: parseQuoteMetadata(item.metadata) ?? null,
     };
-    return sanitizeQuoteSummaryPricing(enriched, isAdmin);
+    return sanitizePricingForNonAdmin(enriched, true);
   });
 
   return NextResponse.json({ items: normalized, nextCursor });

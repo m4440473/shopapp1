@@ -1523,13 +1523,7 @@ export default function OrderDetailPage() {
                     </div>
                   </div>
                   <span className="text-xs text-muted-foreground">
-                    {(() => {
-                      const rate = ((c.addon?.rateCents ?? 0) / 100).toLocaleString('en-US', {
-                        style: 'currency',
-                        currency: 'USD',
-                      });
-                      return c.addon?.rateType === 'HOURLY' ? `${rate} / hr` : rate;
-                    })()}
+                    Pricing available in Admin Portal
                   </span>
                 </label>
               ))}

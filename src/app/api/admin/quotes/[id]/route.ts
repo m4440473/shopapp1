@@ -3,11 +3,11 @@ import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth';
 import { DEFAULT_QUOTE_METADATA, parseQuoteMetadata, stringifyQuoteMetadata } from '@/lib/quote-metadata';
-import { canAccessAdmin, canViewQuotes } from '@/lib/rbac';
+import { canAccessAdmin } from '@/lib/rbac';
 import { prisma } from '@/lib/prisma';
 import { QuoteCreate } from '@/lib/zod-quotes';
 import { prepareQuoteComponents } from '@/lib/quotes.server';
-import { sanitizeQuoteDetailPricing } from '@/lib/quote-visibility';
+import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 
 async function getSessionWithRole() {
   const session = await getServerSession(authOptions);
@@ -29,20 +29,9 @@ async function requireAdmin() {
   return { session, role, user };
 }
 
-async function requireQuoteReadAccess() {
-  const result = await getSessionWithRole();
-  if (result instanceof NextResponse) return result;
-  const { role, session, user } = result;
-  if (!canViewQuotes(user ?? role)) {
-    return new NextResponse('Forbidden', { status: 403 });
-  }
-  return { session, role, user, isAdmin: canAccessAdmin(user ?? role) };
-}
-
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const guard = await requireQuoteReadAccess();
+  const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
-  const { isAdmin } = guard;
 
   const item = await prisma.quote.findUnique({
     where: { id: params.id },
@@ -69,9 +58,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     metadata: parseQuoteMetadata(item.metadata) ?? null,
   };
 
-  const sanitized = sanitizeQuoteDetailPricing(normalized, isAdmin);
-
-  return NextResponse.json({ item: sanitized });
+  return NextResponse.json({ item: sanitizePricingForNonAdmin(normalized, true) });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {

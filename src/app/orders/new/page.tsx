@@ -58,9 +58,8 @@ type AddonOption = {
   id: string;
   name: string;
   description?: string | null;
-  rateType: 'HOURLY' | 'FLAT';
-  rateCents: number;
-  active: boolean;
+  rateType?: 'HOURLY' | 'FLAT';
+  active?: boolean;
 };
 type PartInput = { partNumber: string; quantity: number; materialId?: string; notes?: string };
 type AttachmentInput = { url: string; storagePath: string; label: string; mimeType: string; uploading?: boolean };
@@ -168,54 +167,10 @@ export default function NewOrderPage() {
       })
       .catch(() => setMachinists([]));
 
-    fetch('/api/admin/addons?active=true&take=100', { credentials: 'include' })
+    fetch('/api/orders/addons?active=true&take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => setAddons((data.items ?? []).filter((item: AddonOption) => item.active)))
+      .then((data) => setAddons((data.items ?? []).filter((item: AddonOption) => item.active !== false)))
       .catch(() => setAddons([]));
-
-    const standard = [
-      'Deburr',
-      'Heat Treat',
-      'Grind',
-      'Stamp',
-      'Inspect',
-      'Paint',
-      'Black Oxide',
-      'Plating',
-      'Powder Coating',
-      'Zinc',
-    ];
-
-    (async () => {
-      try {
-        const res = await fetch('/api/admin/addons?take=500', {
-          credentials: 'include',
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        const existing = (data.items ?? []) as AddonOption[];
-        const existingNames = new Set(existing.map((i) => i.name.toLowerCase()));
-        for (const name of standard) {
-          if (!existingNames.has(name.toLowerCase())) {
-            await fetch('/api/admin/addons', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name, rateType: 'FLAT', rateCents: 0, active: true }),
-              credentials: 'include',
-            });
-          }
-        }
-        const refreshed = await fetch('/api/admin/addons?active=true&take=500', {
-          credentials: 'include',
-        });
-        if (refreshed.ok) {
-          const d2 = await refreshed.json();
-          setAddons((d2.items ?? []).filter((item: AddonOption) => item.active));
-        }
-      } catch (e) {
-        // ignore background seeding errors
-      }
-    })();
   }, []);
 
   React.useEffect(() => {
@@ -1058,16 +1013,8 @@ export default function NewOrderPage() {
                           )}
                         </div>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {item.rateType === 'HOURLY'
-                          ? `${(item.rateCents / 100).toLocaleString('en-US', {
-                              style: 'currency',
-                              currency: 'USD',
-                            })} / hr`
-                          : (item.rateCents / 100).toLocaleString('en-US', {
-                              style: 'currency',
-                              currency: 'USD',
-                            })}
+                      <span className="text-xs text-muted-foreground text-right">
+                        Pricing available in Admin Portal
                       </span>
                     </label>
                   );
@@ -1143,4 +1090,3 @@ export default function NewOrderPage() {
     </div>
   );
 }
-

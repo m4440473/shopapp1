@@ -53,8 +53,7 @@ export function isViewer(roleOrUser?: RoleInput): boolean {
 export function canViewQuotes(roleOrUser?: RoleInput): boolean {
   if (extractAdminFlag(roleOrUser)) return true;
   const role = extractRole(roleOrUser);
-  if (!role) return false;
-  return role === 'ADMIN' || role === 'MACHINIST' || role === 'VIEWER';
+  return role === 'ADMIN';
 }
 
 export function requireRole(roleOrUser: RoleInput, predicate: (r?: string) => boolean): void {

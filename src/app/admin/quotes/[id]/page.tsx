@@ -18,8 +18,7 @@ import AdminPricingGate from '@/components/Admin/AdminPricingGate';
 import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
 import QuoteWorkflowControls from '../QuoteWorkflowControls';
-import { canAccessAdmin, canViewQuotes } from '@/lib/rbac';
-import { sanitizeQuoteDetailPricing } from '@/lib/quote-visibility';
+import { canAccessAdmin } from '@/lib/rbac';
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Draft',
@@ -41,11 +40,11 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
 
   const user = session.user as any;
   const role = user?.role ?? null;
-  if (!canViewQuotes(user ?? role)) {
+  if (!canAccessAdmin(user ?? role)) {
     redirect('/');
   }
 
-  const isAdmin = canAccessAdmin(user ?? role);
+  const isAdmin = true;
   const initialRole = role;
 
   const headerStore = headers();
@@ -71,7 +70,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
     notFound();
   }
 
-  const quote = sanitizeQuoteDetailPricing(quoteRecord, isAdmin);
+  const quote = quoteRecord;
 
   const businessOption = BUSINESS_OPTIONS.find((option) => option.code === quote.business);
   const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata));
