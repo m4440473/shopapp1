@@ -4,11 +4,13 @@ import { Activity, ArrowUpRight, CalendarDays, CircleCheck, Users } from 'lucide
 import { getServerSession } from 'next-auth';
 
 import { RecentOrdersTable } from '@/components/RecentOrdersTable';
+import { ShopFloorLayouts } from '@/components/ShopFloorLayouts';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { authOptions } from '@/lib/auth';
+import { decorateOrder } from '@/lib/order-filtering';
 import { getInitials } from '@/lib/get-initials';
 import { prisma } from '@/lib/prisma';
 import { ORDER_STATUS_LABELS } from '@/lib/order-status-labels';
@@ -30,7 +32,10 @@ export default async function Home() {
       where: { status: { not: 'CLOSED' } },
       include: {
         customer: { select: { name: true } },
-        assignedMachinist: { select: { name: true } },
+        assignedMachinist: { select: { id: true, name: true, email: true } },
+        parts: { select: { quantity: true } },
+        checklist: { select: { completed: true, addon: { select: { name: true } } } },
+        statusHistory: { select: { createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 },
       },
       orderBy: [{ dueDate: 'asc' }, { orderNumber: 'asc' }],
       take: 50,
@@ -70,6 +75,19 @@ export default async function Home() {
   const workloadList = (Object.values(machinistWorkload) as Array<{ name: string; count: number }>)
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
+
+  const decoratedActiveOrders = activeOrders.map((order) => decorateOrder(order as any));
+  const machinistList = activeOrders
+    .map((order) => order.assignedMachinist)
+    .filter(Boolean)
+    .reduce((acc: Array<{ id: string | null; name?: string | null; email?: string | null }>, item) => {
+      if (!item) return acc;
+      if (!acc.find((m) => m.id === (item as any).id)) {
+        acc.push({ id: (item as any).id ?? null, name: item.name ?? null, email: (item as any).email ?? null });
+      }
+      return acc;
+    }, []);
+  machinistList.unshift({ id: null, name: 'Unassigned', email: null });
 
   return (
     <div className="flex flex-col gap-8">
@@ -133,6 +151,8 @@ export default async function Home() {
           </CardContent>
         </Card>
       </div>
+
+      <ShopFloorLayouts orders={decoratedActiveOrders} machinists={machinistList} />
 
       <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <Card className="xl:col-span-2">
