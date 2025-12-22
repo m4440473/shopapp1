@@ -50,6 +50,7 @@ model Material {
   notes String?
 
   parts OrderPart[]
+  quoteParts QuotePart[] @relation("QuotePartMaterial")
 }
 
 model Vendor {
@@ -232,7 +233,7 @@ model QuotePart {
   notes      String?
   partNumber String?
   materialId String?
-  material   Material? @relation(fields: [materialId], references: [id])
+  material   Material? @relation("QuotePartMaterial", fields: [materialId], references: [id])
   stockSize  String?
   cutLength  String?
 }
