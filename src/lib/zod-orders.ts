@@ -37,6 +37,8 @@ export const OrderPartCreate = z.object({
   partNumber: z.string().trim().min(1),
   quantity: z.coerce.number().int().min(1),
   materialId: z.string().trim().optional(),
+  stockSize: z.string().trim().max(200).optional(),
+  cutLength: z.string().trim().max(200).optional(),
   notes: z.string().trim().max(500).optional(),
 });
 
@@ -45,6 +47,8 @@ export const OrderPartUpdate = z
     partNumber: z.string().trim().min(1).optional(),
     quantity: z.coerce.number().int().min(1).optional(),
     materialId: z.string().trim().nullable().optional(),
+    stockSize: z.string().trim().max(200).nullable().optional(),
+    cutLength: z.string().trim().max(200).nullable().optional(),
     notes: z.string().trim().max(500).nullable().optional(),
   })
   .refine((value) => Object.values(value).some((v) => v !== undefined), {

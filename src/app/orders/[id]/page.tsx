@@ -89,6 +89,8 @@ type PartFormState = {
   partNumber: string;
   quantity: string;
   materialId: string;
+  stockSize: string;
+  cutLength: string;
   notes: string;
 };
 
@@ -133,6 +135,8 @@ export default function OrderDetailPage() {
     partNumber: '',
     quantity: '1',
     materialId: '',
+    stockSize: '',
+    cutLength: '',
     notes: '',
   });
   const [partEdits, setPartEdits] = useState<Record<string, PartFormState>>({});
@@ -238,6 +242,8 @@ export default function OrderDetailPage() {
         partNumber: part.partNumber ?? '',
         quantity: String(part.quantity ?? 1),
         materialId: part.materialId ?? '',
+        stockSize: part.stockSize ?? '',
+        cutLength: part.cutLength ?? '',
         notes: part.notes ?? '',
       };
     });
@@ -416,6 +422,8 @@ export default function OrderDetailPage() {
         partNumber: trimmedPartNumber,
         quantity: quantityValue,
       };
+      if (partForm.stockSize.trim()) payload.stockSize = partForm.stockSize.trim();
+      if (partForm.cutLength.trim()) payload.cutLength = partForm.cutLength.trim();
       if (partForm.materialId) payload.materialId = partForm.materialId;
       if (partForm.notes.trim()) payload.notes = partForm.notes.trim();
 
@@ -452,7 +460,7 @@ export default function OrderDetailPage() {
         }
       }
 
-      setPartForm({ partNumber: '', quantity: '1', materialId: '', notes: '' });
+      setPartForm({ partNumber: '', quantity: '1', materialId: '', stockSize: '', cutLength: '', notes: '' });
       const updated = await load();
       if (createdPartId) {
         setExpandedParts((prev) => ({ ...prev, [createdPartId]: true }));
@@ -475,6 +483,8 @@ export default function OrderDetailPage() {
       partNumber: part?.partNumber ?? '',
       quantity: String(part?.quantity ?? 1),
       materialId: part?.materialId ?? '',
+      stockSize: part?.stockSize ?? '',
+      cutLength: part?.cutLength ?? '',
       notes: part?.notes ?? '',
     };
   };
@@ -487,6 +497,8 @@ export default function OrderDetailPage() {
         partNumber: part.partNumber ?? '',
         quantity: String(part.quantity ?? 1),
         materialId: part.materialId ?? '',
+        stockSize: part.stockSize ?? '',
+        cutLength: part.cutLength ?? '',
         notes: part.notes ?? '',
       },
     }));
@@ -511,12 +523,14 @@ export default function OrderDetailPage() {
     setPartSavingIds((prev) => ({ ...prev, [partId]: true }));
     setPartEditErrors((prev) => ({ ...prev, [partId]: null }));
     try {
-      const payload: Record<string, unknown> = {
-        partNumber: trimmedPartNumber,
-        quantity: quantityValue,
-        materialId: current.materialId || null,
-        notes: current.notes.trim() ? current.notes.trim() : null,
-      };
+    const payload: Record<string, unknown> = {
+      partNumber: trimmedPartNumber,
+      quantity: quantityValue,
+      materialId: current.materialId || null,
+      stockSize: current.stockSize?.trim() ? current.stockSize.trim() : null,
+      cutLength: current.cutLength?.trim() ? current.cutLength.trim() : null,
+      notes: current.notes.trim() ? current.notes.trim() : null,
+    };
 
       const res = await fetch(`/api/orders/${id}/parts/${partId}`, {
         method: 'PATCH',
@@ -1295,6 +1309,42 @@ export default function OrderDetailPage() {
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`part-stock-${primaryPart.id}`}>Stock size</Label>
+                      <Input
+                        id={`part-stock-${primaryPart.id}`}
+                        value={getPartEditState(primaryPart).stockSize}
+                        onChange={(e) => {
+                          setPartEdits((prev) => ({
+                            ...prev,
+                            [primaryPart.id]: {
+                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
+                              stockSize: e.target.value,
+                            },
+                          }));
+                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
+                        }}
+                        placeholder="Optional (e.g. 2in x 12in bar)"
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`part-cut-${primaryPart.id}`}>Cut length</Label>
+                      <Input
+                        id={`part-cut-${primaryPart.id}`}
+                        value={getPartEditState(primaryPart).cutLength}
+                        onChange={(e) => {
+                          setPartEdits((prev) => ({
+                            ...prev,
+                            [primaryPart.id]: {
+                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
+                              cutLength: e.target.value,
+                            },
+                          }));
+                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
+                        }}
+                        placeholder="Optional (e.g. 6.5 in)"
+                      />
+                    </div>
                     <div className="grid gap-1.5 sm:col-span-2">
                       <Label htmlFor={`part-notes-${primaryPart.id}`}>Notes</Label>
                       <Textarea
@@ -1461,6 +1511,42 @@ export default function OrderDetailPage() {
                                 </SelectContent>
                               </Select>
                             </div>
+                            <div className="grid gap-1.5">
+                              <Label htmlFor={`part-stock-${part.id}`}>Stock size</Label>
+                              <Input
+                                id={`part-stock-${part.id}`}
+                                value={getPartEditState(part).stockSize}
+                                onChange={(e) => {
+                                  setPartEdits((prev) => ({
+                                    ...prev,
+                                    [part.id]: {
+                                      ...(prev[part.id] ?? getPartEditState(part)),
+                                      stockSize: e.target.value,
+                                    },
+                                  }));
+                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+                                }}
+                                placeholder="Optional (e.g. 2in x 12in bar)"
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label htmlFor={`part-cut-${part.id}`}>Cut length</Label>
+                              <Input
+                                id={`part-cut-${part.id}`}
+                                value={getPartEditState(part).cutLength}
+                                onChange={(e) => {
+                                  setPartEdits((prev) => ({
+                                    ...prev,
+                                    [part.id]: {
+                                      ...(prev[part.id] ?? getPartEditState(part)),
+                                      cutLength: e.target.value,
+                                    },
+                                  }));
+                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
+                                }}
+                                placeholder="Optional (e.g. 6.5 in)"
+                              />
+                            </div>
                             <div className="grid gap-1.5 sm:col-span-2">
                               <Label htmlFor={`part-notes-${part.id}`}>Notes</Label>
                               <Textarea
@@ -1557,6 +1643,24 @@ export default function OrderDetailPage() {
                         setPartForm((prev) => ({ ...prev, quantity: e.target.value }));
                         setPartError(null);
                       }}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="new-part-stock">Stock size</Label>
+                    <Input
+                      id="new-part-stock"
+                      value={partForm.stockSize}
+                      onChange={(e) => setPartForm((prev) => ({ ...prev, stockSize: e.target.value }))}
+                      placeholder="Optional (e.g. 2in x 12in bar)"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="new-part-cut">Cut length</Label>
+                    <Input
+                      id="new-part-cut"
+                      value={partForm.cutLength}
+                      onChange={(e) => setPartForm((prev) => ({ ...prev, cutLength: e.target.value }))}
+                      placeholder="Optional (e.g. 6.5 in)"
                     />
                   </div>
                   <div className="grid gap-2">

@@ -335,10 +335,17 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
           {quote.parts.map((part) => (
             <div key={part.id} className="rounded border border-border/50 bg-card/40 p-4 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-base font-medium">{part.name}</h3>
-                <span className="text-muted-foreground">
-                  Qty {part.quantity} • Pieces {part.pieceCount}
-                </span>
+                <div className="space-y-1">
+                  <h3 className="text-base font-medium">{part.name}</h3>
+                  {part.partNumber && <p className="text-xs text-muted-foreground">Part #: {part.partNumber}</p>}
+                  {part.material && <p className="text-xs text-muted-foreground">Material: {part.material.name}</p>}
+                </div>
+                <div className="text-right text-muted-foreground">
+                  <p>Qty {part.quantity}</p>
+                  <p>Pieces {part.pieceCount}</p>
+                  {part.stockSize && <p className="text-xs">Stock: {part.stockSize}</p>}
+                  {part.cutLength && <p className="text-xs">Cut: {part.cutLength}</p>}
+                </div>
               </div>
               {part.description && (
                 <p className="mt-2 whitespace-pre-wrap text-muted-foreground">{part.description}</p>

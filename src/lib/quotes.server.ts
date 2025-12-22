@@ -31,6 +31,10 @@ export interface PreparedQuoteComponents {
   totalCents: number;
   parts: Array<{
     name: string;
+    partNumber: string | null;
+    materialId: string | null;
+    stockSize: string | null;
+    cutLength: string | null;
     description: string | null;
     quantity: number;
     pieceCount: number;
@@ -157,6 +161,10 @@ export async function prepareQuoteComponents(
 
   const partsData = parts.map((part) => ({
     name: part.name,
+    partNumber: part.partNumber ?? null,
+    materialId: part.materialId ?? null,
+    stockSize: part.stockSize ?? null,
+    cutLength: part.cutLength ?? null,
     description: part.description ?? null,
     quantity: part.quantity ?? 1,
     pieceCount: part.pieceCount ?? 1,

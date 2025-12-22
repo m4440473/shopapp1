@@ -71,6 +71,7 @@ export async function GET(req: NextRequest) {
     include: {
       customer: { select: { id: true, name: true } },
       createdBy: { select: { id: true, name: true, email: true } },
+      parts: { include: { material: true } },
     },
     orderBy: { createdAt: 'desc' },
     take: take + 1,

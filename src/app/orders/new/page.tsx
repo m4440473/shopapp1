@@ -61,16 +61,38 @@ type AddonOption = {
   rateType?: 'HOURLY' | 'FLAT';
   active?: boolean;
 };
-type PartInput = { partNumber: string; quantity: number; materialId?: string; notes?: string };
+type PartInput = {
+  partNumber: string;
+  quantity: number;
+  materialId?: string;
+  stockSize?: string;
+  cutLength?: string;
+  notes?: string;
+};
 type AttachmentInput = { url: string; storagePath: string; label: string; mimeType: string; uploading?: boolean };
 
-const emptyPart = (): PartInput => ({ partNumber: '', quantity: 1, materialId: '', notes: '' });
+const emptyPart = (): PartInput => ({
+  partNumber: '',
+  quantity: 1,
+  materialId: '',
+  stockSize: '',
+  cutLength: '',
+  notes: '',
+});
 const emptyAttachment = (): AttachmentInput => ({ url: '', storagePath: '', label: '', mimeType: '', uploading: false });
 
-const buildPartNotes = (part: { description: string | null; notes: string | null; pieceCount: number }) => {
+const buildPartNotes = (part: {
+  description: string | null;
+  notes: string | null;
+  pieceCount: number;
+  stockSize?: string | null;
+  cutLength?: string | null;
+}) => {
   const lines: string[] = [];
   if (part.description) lines.push(part.description.trim());
   if (part.pieceCount > 1) lines.push(`Pieces: ${part.pieceCount}`);
+  if (part.stockSize) lines.push(`Stock size: ${part.stockSize}`);
+  if (part.cutLength) lines.push(`Cut length: ${part.cutLength}`);
   if (part.notes) lines.push(part.notes.trim());
   const combined = lines.join('\n').trim();
   return combined.length ? combined : '';
@@ -195,13 +217,17 @@ export default function NewOrderPage() {
         setParts(
           (quote.parts ?? []).length
             ? quote.parts.map((part: any) => ({
-                partNumber: part.name ?? '',
+                partNumber: part.partNumber ?? part.name ?? '',
                 quantity: part.quantity ?? 1,
                 materialId: part.materialId ?? '',
+                stockSize: part.stockSize ?? '',
+                cutLength: part.cutLength ?? '',
                 notes: buildPartNotes({
                   description: part.description ?? null,
                   notes: part.notes ?? null,
                   pieceCount: part.pieceCount ?? 1,
+                  stockSize: part.stockSize ?? null,
+                  cutLength: part.cutLength ?? null,
                 }),
               }))
             : [emptyPart()],
@@ -361,6 +387,8 @@ export default function NewOrderPage() {
         partNumber: part.partNumber.trim(),
         quantity: Number.isFinite(part.quantity) ? part.quantity : 1,
         materialId: part.materialId ? part.materialId : undefined,
+        stockSize: part.stockSize?.trim() ? part.stockSize.trim() : undefined,
+        cutLength: part.cutLength?.trim() ? part.cutLength.trim() : undefined,
         notes: part.notes?.trim() ? part.notes.trim() : undefined,
       }))
       .filter((part) => part.partNumber.length > 0);
@@ -816,6 +844,22 @@ export default function NewOrderPage() {
                       min={1}
                       value={part.quantity}
                       onChange={(e) => updatePart(index, { quantity: Number(e.target.value) || 1 })}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Stock size (optional)</Label>
+                    <Input
+                      value={part.stockSize || ''}
+                      onChange={(e) => updatePart(index, { stockSize: e.target.value })}
+                      placeholder="e.g. 2in x 12in bar"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Cut length (optional)</Label>
+                    <Input
+                      value={part.cutLength || ''}
+                      onChange={(e) => updatePart(index, { cutLength: e.target.value })}
+                      placeholder="e.g. 6.5 in"
                     />
                   </div>
                   <div className="grid gap-2">

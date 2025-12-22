@@ -31,6 +31,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (payload.partNumber !== undefined) data.partNumber = payload.partNumber;
   if (payload.quantity !== undefined) data.quantity = payload.quantity;
   if (payload.materialId !== undefined) data.materialId = payload.materialId;
+  if (payload.stockSize !== undefined) data.stockSize = payload.stockSize;
+  if (payload.cutLength !== undefined) data.cutLength = payload.cutLength;
   if (payload.notes !== undefined) data.notes = payload.notes;
 
   const part = await prisma.orderPart.update({ where: { id: partId }, data });
