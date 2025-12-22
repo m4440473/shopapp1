@@ -54,13 +54,25 @@ const ConversionOverrides = z.object({
   notes: z.string().trim().max(1000).optional(),
 });
 
-function buildPartNotes(part: { description: string | null; notes: string | null; pieceCount: number }): string | null {
+function buildPartNotes(part: {
+  description: string | null;
+  notes: string | null;
+  pieceCount: number;
+  stockSize?: string | null;
+  cutLength?: string | null;
+}): string | null {
   const lines: string[] = [];
   if (part.description) {
     lines.push(part.description.trim());
   }
   if (part.pieceCount > 1) {
     lines.push(`Pieces: ${part.pieceCount}`);
+  }
+  if (part.stockSize) {
+    lines.push(`Stock size: ${part.stockSize}`);
+  }
+  if (part.cutLength) {
+    lines.push(`Cut length: ${part.cutLength}`);
   }
   if (part.notes) {
     lines.push(part.notes.trim());
@@ -164,7 +176,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     where: { id: params.id },
     include: {
       customer: { select: { id: true, name: true } },
-      parts: true,
+      parts: { include: { material: true } },
       addonSelections: true,
       attachments: true,
     },
@@ -220,18 +232,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  const partsData = (overrides?.parts ?? quote.parts.map((part) => ({
-    partNumber: part.name,
-    quantity: part.quantity ?? 1,
-    materialId: null,
-    notes: buildPartNotes({
-      description: part.description ?? null,
-      notes: part.notes ?? null,
-      pieceCount: part.pieceCount ?? 1,
-    }),
-  }))).map((part) => ({
+  const partsData = (overrides?.parts ??
+    quote.parts.map((part) => ({
+      partNumber: part.partNumber ?? part.name,
+      quantity: part.quantity ?? 1,
+      materialId: part.materialId ?? null,
+      stockSize: part.stockSize ?? null,
+      cutLength: part.cutLength ?? null,
+      notes: buildPartNotes({
+        description: part.description ?? null,
+        notes: part.notes ?? null,
+        pieceCount: part.pieceCount ?? 1,
+        stockSize: part.stockSize ?? null,
+        cutLength: part.cutLength ?? null,
+      }),
+    }))).map((part) => ({
     ...part,
     materialId: part.materialId ?? null,
+    stockSize: part.stockSize ?? null,
+    cutLength: part.cutLength ?? null,
     notes: part.notes ?? null,
   }));
 
@@ -273,6 +292,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
                 partNumber: part.partNumber,
                 quantity: part.quantity,
                 materialId: part.materialId,
+                stockSize: part.stockSize ?? null,
+                cutLength: part.cutLength ?? null,
                 notes: part.notes ?? undefined,
               })),
             }

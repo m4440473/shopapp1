@@ -22,7 +22,7 @@ export default async function QuotePrintPage({ params }: { params: { id: string 
     where: { id: params.id },
     include: {
       customer: { select: { id: true, name: true } },
-      parts: true,
+      parts: { include: { material: true } },
       vendorItems: true,
       addonSelections: { include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true } } } },
     },
@@ -80,6 +80,10 @@ export default async function QuotePrintPage({ params }: { params: { id: string 
               <tr key={part.id} className="align-top">
                 <td className="border border-black px-2 py-2">
                   <div className="font-medium">{part.name}</div>
+                  {part.partNumber && <div className="text-xs">Part #: {part.partNumber}</div>}
+                  {part.material && <div className="text-xs">Material: {part.material.name}</div>}
+                  {part.stockSize && <div className="text-xs">Stock size: {part.stockSize}</div>}
+                  {part.cutLength && <div className="text-xs">Cut length: {part.cutLength}</div>}
                   {part.description && <div className="mt-1 whitespace-pre-wrap text-xs">{part.description}</div>}
                 </td>
                 <td className="border border-black px-2 py-2">{part.quantity}</td>

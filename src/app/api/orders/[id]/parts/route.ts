@@ -34,6 +34,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       partNumber: payload.partNumber,
       quantity: payload.quantity,
       materialId: payload.materialId ?? null,
+      stockSize: payload.stockSize ?? null,
+      cutLength: payload.cutLength ?? null,
       notes: payload.notes ?? null,
     },
   });

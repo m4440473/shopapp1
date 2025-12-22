@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     include: {
       customer: { select: { id: true, name: true } },
       createdBy: { select: { id: true, name: true, email: true } },
-      parts: true,
+      parts: { include: { material: true } },
       vendorItems: true,
       addonSelections: {
         include: {
