@@ -94,10 +94,7 @@ export function ShopFloorLayouts({ orders, machinists }: Props) {
     return list;
   }, [filtered, sortKey, sortDir]);
 
-  const handoffOrders = sorted.filter(
-    (order) =>
-      ['RUNNING', 'DONE_MACHINING', 'CLOSED'].includes(order.status) && (order.openAddonCount ?? 0) > 0,
-  );
+  const handoffOrders = sorted.filter((order) => order.status === 'COMPLETE' && (order.openAddonCount ?? 0) > 0);
 
   const machinistBuckets = useMemo(() => {
     const buckets: Record<string, OrderWithMeta[]> = {};

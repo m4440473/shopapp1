@@ -1,11 +1,15 @@
 export const ORDER_STATUS_LABELS: Record<string, string> = {
+  NEW: 'New',
   RECEIVED: 'Received',
   PROGRAMMING: 'Programming',
-  SETUP: 'Setup',
   RUNNING: 'Running',
+  INSPECTING: 'Inspecting',
+  READY_FOR_ADDONS: 'Ready for addons',
+  COMPLETE: 'Complete',
+  CLOSED: 'Closed',
+  SETUP: 'Setup',
   FINISHING: 'Finishing',
   DONE_MACHINING: 'Machining Done',
   INSPECTION: 'Inspection',
   SHIPPING: 'Shipping',
-  CLOSED: 'Closed',
 };
