@@ -50,6 +50,7 @@ model Material {
   notes String?
 
   parts OrderPart[]
+  quoteParts QuotePart[] @relation("QuotePartMaterial")
 }
 
 model Vendor {
@@ -98,6 +99,8 @@ model OrderPart {
   materialId String?
   material   Material? @relation(fields: [materialId], references: [id])
   notes      String?
+  stockSize  String?
+  cutLength  String?
 }
 
 model OrderChecklist {
@@ -228,6 +231,11 @@ model QuotePart {
   quantity   Int    @default(1)
   pieceCount Int    @default(1)
   notes      String?
+  partNumber String?
+  materialId String?
+  material   Material? @relation("QuotePartMaterial", fields: [materialId], references: [id])
+  stockSize  String?
+  cutLength  String?
 }
 
 model QuoteVendorItem {
