@@ -45,6 +45,8 @@ import {
 
 import type { QuoteCreateInput } from '@/lib/zod-quotes';
 
+const NO_MATERIAL_VALUE = '__no_material__';
+
 type Option = {
   id: string;
   name: string;
@@ -965,10 +967,14 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                   <div className="grid gap-2">
                     <Label>Material</Label>
                     <Select
-                      value={part.materialId || ''}
+                      value={part.materialId || NO_MATERIAL_VALUE}
                       onValueChange={(value) =>
                         setParts((prev) =>
-                          prev.map((item) => (item.key === part.key ? { ...item, materialId: value } : item))
+                          prev.map((item) =>
+                            item.key === part.key
+                              ? { ...item, materialId: value === NO_MATERIAL_VALUE ? '' : value }
+                              : item
+                          )
                         )
                       }
                     >
@@ -976,7 +982,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                         <SelectValue placeholder="Select material (optional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">No material (optional)</SelectItem>
+                        <SelectItem value={NO_MATERIAL_VALUE}>No material (optional)</SelectItem>
                         {materials.map((material) => (
                           <SelectItem key={material.id} value={material.id}>
                             {material.name}
