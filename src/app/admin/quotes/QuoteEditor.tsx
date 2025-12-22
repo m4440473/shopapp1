@@ -964,24 +964,26 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                   </div>
                   <div className="grid gap-2">
                     <Label>Material</Label>
-                    <select
-                      className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                      value={part.materialId}
-                      onChange={(event) =>
+                    <Select
+                      value={part.materialId || ''}
+                      onValueChange={(value) =>
                         setParts((prev) =>
-                          prev.map((item) =>
-                            item.key === part.key ? { ...item, materialId: event.target.value } : item
-                          )
+                          prev.map((item) => (item.key === part.key ? { ...item, materialId: value } : item))
                         )
                       }
                     >
-                      <option value="">Select material (optional)</option>
-                      {materials.map((material) => (
-                        <option key={material.id} value={material.id}>
-                          {material.name}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger className="border border-border bg-background px-3 py-2 text-sm text-left">
+                        <SelectValue placeholder="Select material (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">No material (optional)</SelectItem>
+                        {materials.map((material) => (
+                          <SelectItem key={material.id} value={material.id}>
+                            {material.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="grid gap-2">
                     <Label>Stock size</Label>

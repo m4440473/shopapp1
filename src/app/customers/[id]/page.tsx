@@ -19,7 +19,7 @@ const STATUS_STYLES: Record<string, string> = {
   RUNNING: 'border-emerald-400/40 bg-emerald-400/15 text-emerald-200',
   FINISHING: 'border-amber-400/40 bg-amber-400/15 text-amber-100',
   DONE_MACHINING: 'border-violet-400/40 bg-violet-400/15 text-violet-200',
-  INSPECTION: 'border-orange-400/40 bg-orange-400/15 text-orange-100',
+  INSPECTION: 'border-lime-300/60 bg-lime-300/20 text-lime-100',
   SHIPPING: 'border-cyan-400/40 bg-cyan-400/15 text-cyan-100',
   CLOSED: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200',
 };
