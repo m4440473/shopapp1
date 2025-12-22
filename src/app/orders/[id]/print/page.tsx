@@ -85,7 +85,15 @@ export default async function OrderPrintPage({ params }: { params: { id: string 
   const safeAddons = activeAddons.map(({ rateCents: _rateCents, ...addon }) => addon);
   const sortedAddons = sortAddons(safeAddons);
   const selectedAddonIds = new Set(safeOrder.checklist.map((item) => item.addonId));
-  const partSummaries = safeOrder.parts.map((part) => `${part.partNumber} (Qty: ${part.quantity})`);
+  const partSummaries = safeOrder.parts.map((part) => {
+    const details = [
+      `Qty: ${part.quantity}`,
+      part.material?.name ? `Material: ${part.material.name}` : null,
+      part.stockSize ? `Stock: ${part.stockSize}` : null,
+      part.cutLength ? `Cut: ${part.cutLength}` : null,
+    ].filter(Boolean);
+    return `${part.partNumber}${details.length ? ` (${details.join(' • ')})` : ''}`;
+  });
   const totalQuantity = safeOrder.parts.reduce((sum, part) => sum + part.quantity, 0);
   const materialsUsed = Array.from(new Set(safeOrder.parts.map((part) => part.material?.name).filter(Boolean)));
   const notesContent = safeOrder.notes

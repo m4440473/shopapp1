@@ -121,6 +121,8 @@ export async function POST(req: NextRequest) {
           partNumber: p.partNumber,
           quantity: p.quantity,
           materialId: p.materialId ?? null,
+          stockSize: p.stockSize ?? null,
+          cutLength: p.cutLength ?? null,
           notes: p.notes ?? null,
         })),
       },

@@ -4,6 +4,10 @@ import { BUSINESS_CODES } from '@/lib/businesses';
 
 export const QuotePartInput = z.object({
   name: z.string().trim().min(1).max(200),
+  partNumber: z.string().trim().max(200).optional(),
+  materialId: z.string().trim().max(100).optional(),
+  stockSize: z.string().trim().max(200).optional(),
+  cutLength: z.string().trim().max(200).optional(),
   description: z.string().trim().max(2000).optional(),
   quantity: z.coerce.number().int().min(1).default(1),
   pieceCount: z.coerce.number().int().min(1).default(1),

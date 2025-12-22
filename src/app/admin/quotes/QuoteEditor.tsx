@@ -66,6 +66,10 @@ type AddonOption = {
 type QuotePartState = {
   key: string;
   name: string;
+  partNumber: string;
+  materialId: string;
+  stockSize: string;
+  cutLength: string;
   description: string;
   quantity: string;
   pieceCount: string;
@@ -121,6 +125,11 @@ type QuoteDetail = {
   parts: Array<{
     id: string;
     name: string;
+    partNumber?: string | null;
+    materialId?: string | null;
+    material?: { id: string; name: string; spec?: string | null } | null;
+    stockSize?: string | null;
+    cutLength?: string | null;
     description?: string | null;
     quantity: number;
     pieceCount: number;
@@ -198,6 +207,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [addons, setAddons] = useState<AddonOption[]>([]);
   const [vendors, setVendors] = useState<Option[]>([]);
   const [customers, setCustomers] = useState<Option[]>([]);
+  const [materials, setMaterials] = useState<Option[]>([]);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerContact, setNewCustomerContact] = useState('');
@@ -224,15 +234,38 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     multiPiece: initialQuote?.multiPiece ?? false,
   });
 
+  const buildEmptyPart = React.useCallback(
+    () =>
+      ({
+        key: createKey(),
+        name: '',
+        partNumber: '',
+        materialId: '',
+        stockSize: '',
+        cutLength: '',
+        description: '',
+        quantity: '1',
+        pieceCount: '1',
+        notes: '',
+      }) satisfies QuotePartState,
+    []
+  );
+
   const [parts, setParts] = useState<QuotePartState[]>(
-    (initialQuote?.parts ?? []).map((part) => ({
-      key: part.id,
-      name: part.name,
-      description: part.description ?? '',
-      quantity: String(part.quantity ?? 1),
-      pieceCount: String(part.pieceCount ?? 1),
-      notes: part.notes ?? '',
-    }))
+    (initialQuote?.parts ?? []).length
+      ? (initialQuote?.parts ?? []).map((part) => ({
+          key: part.id,
+          name: part.name,
+          partNumber: part.partNumber ?? '',
+          materialId: part.materialId ?? '',
+          stockSize: part.stockSize ?? '',
+          cutLength: part.cutLength ?? '',
+          description: part.description ?? '',
+          quantity: String(part.quantity ?? 1),
+          pieceCount: String(part.pieceCount ?? 1),
+          notes: part.notes ?? '',
+        }))
+      : [buildEmptyPart()]
   );
 
   const [vendorItems, setVendorItems] = useState<QuoteVendorItemState[]>(
@@ -341,6 +374,11 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       })
       .catch(() => setVendors([]));
 
+    fetch('/api/admin/materials?take=100', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => setMaterials(data.items ?? []))
+      .catch(() => setMaterials([]));
+
     fetch('/api/admin/customers?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
@@ -408,10 +446,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   }
 
   function addPart() {
-    setParts((prev) => [
-      ...prev,
-      { key: createKey(), name: '', description: '', quantity: '1', pieceCount: '1', notes: '' },
-    ]);
+    setParts((prev) => [...prev, buildEmptyPart()]);
   }
 
   function addVendorItem() {
@@ -570,6 +605,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         .filter((part) => part.name.trim())
         .map((part) => ({
           name: part.name,
+          partNumber: part.partNumber || undefined,
+          materialId: part.materialId || undefined,
+          stockSize: part.stockSize || undefined,
+          cutLength: part.cutLength || undefined,
           description: part.description || undefined,
           quantity: Number.parseInt(part.quantity || '1', 10) || 1,
           pieceCount: Number.parseInt(part.pieceCount || '1', 10) || 1,
@@ -884,6 +923,20 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                     />
                   </div>
                   <div className="grid gap-2">
+                    <Label>Part number</Label>
+                    <Input
+                      value={part.partNumber}
+                      onChange={(event) =>
+                        setParts((prev) =>
+                          prev.map((item) =>
+                            item.key === part.key ? { ...item, partNumber: event.target.value } : item
+                          )
+                        )
+                      }
+                      placeholder="Optional part #"
+                    />
+                  </div>
+                  <div className="grid gap-2">
                     <Label>Quantity</Label>
                     <Input
                       type="number"
@@ -907,6 +960,51 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                           prev.map((item) => (item.key === part.key ? { ...item, pieceCount: event.target.value } : item))
                         )
                       }
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Material</Label>
+                    <select
+                      className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      value={part.materialId}
+                      onChange={(event) =>
+                        setParts((prev) =>
+                          prev.map((item) =>
+                            item.key === part.key ? { ...item, materialId: event.target.value } : item
+                          )
+                        )
+                      }
+                    >
+                      <option value="">Select material (optional)</option>
+                      {materials.map((material) => (
+                        <option key={material.id} value={material.id}>
+                          {material.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Stock size</Label>
+                    <Input
+                      value={part.stockSize}
+                      onChange={(event) =>
+                        setParts((prev) =>
+                          prev.map((item) => (item.key === part.key ? { ...item, stockSize: event.target.value } : item))
+                        )
+                      }
+                      placeholder='e.g. "2in x 12in bar"'
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Cut length</Label>
+                    <Input
+                      value={part.cutLength}
+                      onChange={(event) =>
+                        setParts((prev) =>
+                          prev.map((item) => (item.key === part.key ? { ...item, cutLength: event.target.value } : item))
+                        )
+                      }
+                      placeholder='e.g. "6.5 in"'
                     />
                   </div>
                   <div className="grid gap-2">
