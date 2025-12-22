@@ -451,7 +451,7 @@ export function ShopFloorLayouts({ orders, machinists }: Props) {
                 Use this for the fabrication crew to grab parts that are ready for the next step.
               </p>
             </div>
-            <Badge variant="secondary" className="rounded-full border border-amber-400/40 bg-amber-400/10 text-amber-500">
+            <Badge variant="secondary" className="rounded-full border border-lime-300/60 bg-lime-300/15 text-lime-100">
               {handoffOrders.length} highlighted
             </Badge>
           </div>
@@ -459,21 +459,21 @@ export function ShopFloorLayouts({ orders, machinists }: Props) {
             {handoffOrders.map((order) => (
               <div
                 key={order.id}
-                className="space-y-2 rounded-lg border border-amber-400/40 bg-amber-500/10 p-4 shadow-sm shadow-amber-500/20"
+                className="space-y-2 rounded-lg border border-lime-300/60 bg-lime-500/10 p-4 shadow-sm shadow-lime-400/20"
               >
                 <div className="flex items-center justify-between">
-                  <Link href={`/orders/${order.id}`} className="text-lg font-semibold text-amber-900 hover:underline">
+                  <Link href={`/orders/${order.id}`} className="text-lg font-semibold text-lime-100 hover:underline">
                     #{order.orderNumber}
                   </Link>
-                  <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700">
+                  <Badge variant="outline" className="border-lime-300/60 bg-lime-300/20 text-lime-50">
                     {formatStatusLabel(order.status)}
                   </Badge>
                 </div>
-                <p className="text-sm text-amber-900">
+                <p className="text-sm text-lime-100">
                   {order.customer?.name ?? 'Unknown customer'} •{' '}
                   {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
                 </p>
-                <p className="text-xs font-medium uppercase tracking-wide text-amber-800">
+                <p className="text-xs font-medium uppercase tracking-wide text-lime-200">
                   {order.openAddonCount} addon{order.openAddonCount === 1 ? '' : 's'} remaining
                 </p>
               </div>
