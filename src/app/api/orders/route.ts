@@ -52,6 +52,18 @@ export async function GET(req: NextRequest) {
       assignedMachinist: { select: { id: true, name: true, email: true } },
       materialNeeded: true,
       materialOrdered: true,
+      parts: { select: { quantity: true } },
+      checklist: {
+        select: {
+          completed: true,
+          addon: { select: { name: true } },
+        },
+      },
+      statusHistory: {
+        select: { createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
     },
   });
 

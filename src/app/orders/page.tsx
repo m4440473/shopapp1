@@ -9,6 +9,7 @@ import {
   Filter,
   Loader2,
   Package,
+  SlidersHorizontal,
   Users,
 } from 'lucide-react';
 
@@ -22,6 +23,16 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
@@ -33,11 +44,23 @@ import {
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BUSINESS_OPTIONS } from '@/lib/businesses';
+import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters } from '@/lib/order-filtering';
 
-const SORT_KEYS = ['dueDate', 'receivedDate', 'priority', 'status'] as const;
+const SORT_KEYS = ['dueDate', 'receivedDate', 'priority', 'status', 'quantity', 'lastChange'] as const;
 const PRIORITY_FILTERS = ['all', 'HOT', 'RUSH', 'NORMAL', 'LOW'] as const;
 const STATUS_FILTERS = ['all', 'active', 'closed'] as const;
 const UNASSIGNED_VALUE = '__unassigned__';
+const STATUS_OPTIONS = [
+  'RECEIVED',
+  'PROGRAMMING',
+  'SETUP',
+  'RUNNING',
+  'FINISHING',
+  'DONE_MACHINING',
+  'INSPECTION',
+  'SHIPPING',
+  'CLOSED',
+] as const;
 
 const STATUS_STYLES: Record<string, string> = {
   RECEIVED: 'border-primary/40 bg-primary/10 text-primary',
@@ -51,11 +74,36 @@ const STATUS_STYLES: Record<string, string> = {
   CLOSED: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200',
 };
 
-function formatDate(input?: string | null) {
+function formatDate(input?: string | Date | null) {
   if (!input) return 'TBD';
-  const date = new Date(input);
+  const date = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(date.getTime())) return 'TBD';
   return date.toLocaleDateString();
+}
+
+function SortableHeader({
+  label,
+  column,
+  current,
+  dir,
+  onChange,
+}: {
+  label: string;
+  column: (typeof SORT_KEYS)[number];
+  current: string;
+  dir: 'asc' | 'desc';
+  onChange: (column: (typeof SORT_KEYS)[number]) => void;
+}) {
+  const active = current === column;
+  return (
+    <button
+      className={`flex items-center gap-1 text-left text-xs font-medium uppercase tracking-wide transition hover:text-primary ${active ? 'text-primary' : 'text-muted-foreground'}`}
+      onClick={() => onChange(column)}
+    >
+      <ArrowUpDown className="h-3.5 w-3.5" />
+      {label} {active ? (dir === 'asc' ? '↑' : '↓') : ''}
+    </button>
+  );
 }
 
 export default function OrdersPage() {
@@ -69,6 +117,8 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>('all');
   const [priorityFilter, setPriorityFilter] = useState<(typeof PRIORITY_FILTERS)[number]>('all');
   const [machinistFilter, setMachinistFilter] = useState<string>('all');
+  const [advancedFilters, setAdvancedFilters] = useState({ ...DEFAULT_ORDER_FILTERS });
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   async function load(cursor?: string, append = false) {
     try {
@@ -114,43 +164,43 @@ export default function OrdersPage() {
       .catch(() => setMachinists([]));
   }, []);
 
+  const decorated = useMemo(() => items.map((order) => decorateOrder(order)), [items]);
+
   const sorted = useMemo(() => {
-    const arr = [...items];
+    const arr: any[] = [...decorated];
     if (!SORT_KEYS.includes(sortKey as any)) return arr;
     arr.sort((a, b) => {
-      const A = a[sortKey];
-      const B = b[sortKey];
-      if (!A && !B) return 0;
-      if (!A) return 1;
-      if (!B) return -1;
+      const dir = sortDir === 'asc' ? 1 : -1;
       if (sortKey === 'dueDate' || sortKey === 'receivedDate') {
-        const timeA = new Date(A as any).getTime();
-        const timeB = new Date(B as any).getTime();
+        const timeA = new Date(a[sortKey] as any).getTime();
+        const timeB = new Date(b[sortKey] as any).getTime();
         if (Number.isNaN(timeA) && Number.isNaN(timeB)) return 0;
         if (Number.isNaN(timeA)) return 1;
         if (Number.isNaN(timeB)) return -1;
-        return (timeA - timeB) * (sortDir === 'asc' ? 1 : -1);
+        return (timeA - timeB) * dir;
       }
-      return String(A).localeCompare(String(B)) * (sortDir === 'asc' ? 1 : -1);
+      if (sortKey === 'quantity') {
+        return (a.totalQuantity - b.totalQuantity) * dir;
+      }
+      if (sortKey === 'lastChange') {
+        const timeA = a.lastStatusChange ? a.lastStatusChange.getTime() : 0;
+        const timeB = b.lastStatusChange ? b.lastStatusChange.getTime() : 0;
+        return (timeA - timeB) * dir;
+      }
+      return String(a[sortKey]).localeCompare(String(b[sortKey])) * dir;
     });
     return arr;
-  }, [items, sortKey, sortDir]);
+  }, [decorated, sortKey, sortDir]);
 
   const filtered = useMemo(() => {
-    return sorted.filter((order) => {
-      if (statusFilter === 'active' && order.status === 'CLOSED') return false;
-      if (statusFilter === 'closed' && order.status !== 'CLOSED') return false;
-      if (priorityFilter !== 'all' && order.priority !== priorityFilter) return false;
-      if (machinistFilter !== 'all') {
-        if (machinistFilter === UNASSIGNED_VALUE) {
-          if (order.assignedMachinistId) return false;
-        } else if (order.assignedMachinistId !== machinistFilter) {
-          return false;
-        }
-      }
-      return true;
-    });
-  }, [sorted, statusFilter, priorityFilter, machinistFilter]);
+    const withAssigned = sorted.map((order) => ({
+      ...order,
+      assignedMachinistId: order.assignedMachinist?.id ?? null,
+    }));
+    return withAssigned.filter((order) =>
+      orderMatchesFilters(order as any, { ...advancedFilters, machinistId: machinistFilter }, statusFilter, priorityFilter),
+    );
+  }, [sorted, statusFilter, priorityFilter, machinistFilter, advancedFilters]);
 
   const now = Date.now();
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
@@ -163,7 +213,18 @@ export default function OrdersPage() {
     return due - now < sevenDays && due >= now;
   }).length;
   const awaitingMaterial = sorted.filter((order) => order.materialNeeded && !order.materialOrdered).length;
-  const unassignedCount = sorted.filter((order) => !order.assignedMachinistId).length;
+  const unassignedCount = sorted.filter((order) => !order.assignedMachinist?.id).length;
+
+  const handleSortChange = (column: (typeof SORT_KEYS)[number]) => {
+    setSortKey((prev) => {
+      if (prev === column) {
+        setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+        return prev;
+      }
+      setSortDir('asc');
+      return column;
+    });
+  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -270,6 +331,179 @@ export default function OrdersPage() {
                 ))}
               </RadioGroup>
             </div>
+            <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="inline-flex items-center gap-2 rounded-full border-border/60 bg-background/60">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  More filters
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>Advanced filters</DialogTitle>
+                  <DialogDescription>Layer additional filters to zero in on exactly what you need.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-3 rounded-lg border border-border/60 bg-secondary/30 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {STATUS_OPTIONS.map((status) => {
+                        const active = advancedFilters.statuses.includes(status);
+                        return (
+                          <button
+                            key={status}
+                            className={`flex items-center justify-between rounded-md border px-3 py-2 text-xs uppercase tracking-wide transition hover:border-primary/60 hover:text-primary ${active ? 'border-primary/60 bg-primary/10 text-primary' : 'border-border/60 text-muted-foreground'}`}
+                            onClick={() =>
+                              setAdvancedFilters((prev) => ({
+                                ...prev,
+                                statuses: active
+                                  ? prev.statuses.filter((s) => s !== status)
+                                  : [...prev.statuses, status],
+                              }))
+                            }
+                          >
+                            <span>{status.replace(/_/g, ' ')}</span>
+                            <Checkbox checked={active} className="pointer-events-none h-4 w-4" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="space-y-3 rounded-lg border border-border/60 bg-secondary/30 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Priority</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['HOT', 'RUSH', 'NORMAL', 'LOW'].map((priority) => {
+                        const active = advancedFilters.priorities.includes(priority);
+                        return (
+                          <button
+                            key={priority}
+                            className={`flex items-center justify-between rounded-md border px-3 py-2 text-xs uppercase tracking-wide transition hover:border-primary/60 hover:text-primary ${active ? 'border-primary/60 bg-primary/10 text-primary' : 'border-border/60 text-muted-foreground'}`}
+                            onClick={() =>
+                              setAdvancedFilters((prev) => ({
+                                ...prev,
+                                priorities: active
+                                  ? prev.priorities.filter((p) => p !== priority)
+                                  : [...prev.priorities, priority],
+                              }))
+                            }
+                          >
+                            <span>{priority}</span>
+                            <Checkbox checked={active} className="pointer-events-none h-4 w-4" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="space-y-3 rounded-lg border border-border/60 bg-secondary/30 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dates</p>
+                    <div className="grid grid-cols-2 gap-3 text-sm text-muted-foreground">
+                      <div className="space-y-1">
+                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Created from</Label>
+                        <Input
+                          type="date"
+                          value={advancedFilters.createdFrom ?? ''}
+                          onChange={(e) => setAdvancedFilters((prev) => ({ ...prev, createdFrom: e.target.value }))}
+                          className="border-border/60 bg-background/80"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Created to</Label>
+                        <Input
+                          type="date"
+                          value={advancedFilters.createdTo ?? ''}
+                          onChange={(e) => setAdvancedFilters((prev) => ({ ...prev, createdTo: e.target.value }))}
+                          className="border-border/60 bg-background/80"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Due from</Label>
+                        <Input
+                          type="date"
+                          value={advancedFilters.dueFrom ?? ''}
+                          onChange={(e) => setAdvancedFilters((prev) => ({ ...prev, dueFrom: e.target.value }))}
+                          className="border-border/60 bg-background/80"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Due to</Label>
+                        <Input
+                          type="date"
+                          value={advancedFilters.dueTo ?? ''}
+                          onChange={(e) => setAdvancedFilters((prev) => ({ ...prev, dueTo: e.target.value }))}
+                          className="border-border/60 bg-background/80"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-3 rounded-lg border border-border/60 bg-secondary/30 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Part & addon details</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Min qty</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={advancedFilters.minQty ?? ''}
+                          onChange={(e) =>
+                            setAdvancedFilters((prev) => ({
+                              ...prev,
+                              minQty: e.target.value ? Number(e.target.value) : undefined,
+                            }))
+                          }
+                          className="border-border/60 bg-background/80"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Max qty</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={advancedFilters.maxQty ?? ''}
+                          onChange={(e) =>
+                            setAdvancedFilters((prev) => ({
+                              ...prev,
+                              maxQty: e.target.value ? Number(e.target.value) : undefined,
+                            }))
+                          }
+                          className="border-border/60 bg-background/80"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="requires-addons"
+                        checked={advancedFilters.requiresAddons}
+                        onCheckedChange={(checked) => setAdvancedFilters((prev) => ({ ...prev, requiresAddons: Boolean(checked) }))}
+                      />
+                      <Label htmlFor="requires-addons" className="text-sm text-muted-foreground">
+                        Requires addons
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="stale-status"
+                        checked={advancedFilters.staleStatus}
+                        onCheckedChange={(checked) => setAdvancedFilters((prev) => ({ ...prev, staleStatus: Boolean(checked) }))}
+                      />
+                      <Label htmlFor="stale-status" className="text-sm text-muted-foreground">
+                        No recent status change (30+ days)
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border/60 bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+                  <span>Filters combine with the top bar and machinist picker.</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setAdvancedFilters({ ...DEFAULT_ORDER_FILTERS })}
+                    className="rounded-full"
+                  >
+                    Reset
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -330,13 +564,28 @@ export default function OrdersPage() {
             <Table>
               <TableHeader>
                 <TableRow className="border-border/60">
-                  <TableHead className="w-[140px]">Order</TableHead>
+                  <TableHead className="w-[140px]">
+                    <SortableHeader label="Order" column="receivedDate" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                  </TableHead>
                   <TableHead>Business</TableHead>
                   <TableHead>Customer</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Due</TableHead>
-                  <TableHead>Priority</TableHead>
+                  <TableHead>
+                    <SortableHeader label="Status" column="status" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                  </TableHead>
+                  <TableHead>
+                    <SortableHeader label="Due" column="dueDate" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                  </TableHead>
+                  <TableHead>
+                    <SortableHeader label="Priority" column="priority" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                  </TableHead>
+                  <TableHead>
+                    <SortableHeader label="Qty" column="quantity" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                  </TableHead>
+                  <TableHead>
+                    <SortableHeader label="Last change" column="lastChange" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                  </TableHead>
                   <TableHead>Machinist</TableHead>
+                  <TableHead>Addons</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -374,15 +623,37 @@ export default function OrdersPage() {
                           STATUS_STYLES[order.status] ?? 'border-border/60 bg-secondary/40 text-foreground'
                         }`}
                       >
-                        {order.status.replace(/_/g, ' ')}
+                        {formatStatusLabel(order.status)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{formatDate(order.dueDate)}</TableCell>
                     <TableCell className="text-sm font-semibold uppercase text-muted-foreground">
                       {order.priority}
                     </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{order.totalQuantity ?? 0}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {order.lastStatusChange ? formatDate(order.lastStatusChange) : '—'}
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {order.checklist?.length ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="font-semibold text-foreground">
+                            {order.checklist.length - (order.openAddonCount ?? 0)}/{order.checklist.length} done
+                          </span>
+                          {order.openAddonCount ? (
+                            <span className="text-xs text-amber-500">
+                              {order.openAddonCount} addon{order.openAddonCount === 1 ? '' : 's'} open
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">All clear</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">None</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button asChild size="sm" variant="ghost" className="text-primary hover:text-primary">
@@ -423,4 +694,3 @@ export default function OrdersPage() {
     </div>
   );
 }
-
