@@ -44,6 +44,21 @@ async function main() {
     { name: 'Grind', rateType: 'FLAT', rateCents: 0, description: 'Grinding or surface finishing required.' },
     { name: 'Inspect', rateType: 'FLAT', rateCents: 0, description: 'Special inspection prior to shipment.' },
     { name: 'Paint', rateType: 'FLAT', rateCents: 0, description: 'Painting or coating service.' },
+    { name: 'Anodize', rateType: 'FLAT', rateCents: 0, description: 'External anodizing service.' },
+    { name: 'Program / Setup', rateType: 'FLAT', rateCents: 0, description: 'Combined programming and setup time.' },
+    { name: 'CNC Lathe', rateType: 'FLAT', rateCents: 0, description: 'CNC lathe operation planned.' },
+    { name: 'CNC Mill', rateType: 'FLAT', rateCents: 0, description: 'CNC mill operation planned.' },
+    { name: 'Manual Lathe', rateType: 'FLAT', rateCents: 0, description: 'Manual lathe operation planned.' },
+    { name: 'Manual Mill', rateType: 'FLAT', rateCents: 0, description: 'Manual mill operation planned.' },
+    { name: 'Weld / Fabricate', rateType: 'FLAT', rateCents: 0, description: 'Welding or fabrication required.' },
+    { name: 'Stamp', rateType: 'FLAT', rateCents: 0, description: 'Stamping operation required.' },
+    { name: 'Black Oxide', rateType: 'FLAT', rateCents: 0, description: 'Black oxide finish required.' },
+    { name: 'Shop', rateType: 'FLAT', rateCents: 0, description: 'General shop work placeholder.' },
+    { name: 'Scrap', rateType: 'FLAT', rateCents: 0, description: 'Scrap handling or recording.' },
+    { name: 'Plating', rateType: 'FLAT', rateCents: 0, description: 'External plating service.' },
+    { name: 'Powder Coating', rateType: 'FLAT', rateCents: 0, description: 'Powder coating service required.' },
+    { name: 'Wet Paint', rateType: 'FLAT', rateCents: 0, description: 'Wet paint finish required.' },
+    { name: 'Zinc', rateType: 'FLAT', rateCents: 0, description: 'Zinc finish required.' },
   ];
   const addonRecords = [] as Awaited<ReturnType<typeof prisma.addon.upsert>>[];
   for (const addon of addonSeeds) {

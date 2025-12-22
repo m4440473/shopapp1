@@ -10,7 +10,48 @@ function formatDate(input?: string | Date | null, withTime = false) {
   if (!input) return '-';
   const date = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(date.getTime())) return '-';
-  return format(date, withTime ? 'PPpp' : 'PP');
+  return format(date, withTime ? 'M/d/yyyy h:mm a' : 'M/d/yyyy');
+}
+
+const addonPriority = [
+  'Anodize',
+  'Program / Setup',
+  'CNC Lathe',
+  'CNC Mill',
+  'Manual Lathe',
+  'Manual Mill',
+  'Saw',
+  'Weld / Fabricate',
+  'Deburr',
+  'Heat Treat',
+  'Grind',
+  'Stamp',
+  'Inspect',
+  'Paint',
+  'Black Oxide',
+  'Shop',
+  'Scrap',
+  'Plating',
+  'Powder Coating',
+  'Wet Paint',
+  'Zinc',
+];
+
+function sortAddons(addons: { name: string }[]) {
+  return [...addons].sort((a, b) => {
+    const aIndex = addonPriority.indexOf(a.name);
+    const bIndex = addonPriority.indexOf(b.name);
+    if (aIndex !== -1 || bIndex !== -1) {
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+    }
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function formatStepNumber(idx: number) {
+  return String(idx + 1).padStart(3, '0');
 }
 
 export default async function OrderPrintPage({ params }: { params: { id: string } }) {
@@ -19,203 +60,184 @@ export default async function OrderPrintPage({ params }: { params: { id: string 
     redirect(`/auth/signin?callbackUrl=/orders/${params.id}/print`);
   }
 
-  const order = await prisma.order.findUnique({
-    where: { id: params.id },
-    include: {
-      customer: true,
-      assignedMachinist: true,
-      vendor: true,
-      parts: { include: { material: true } },
-      checklist: { include: { addon: true } },
-      attachments: true,
-      notes: { include: { user: true }, orderBy: { createdAt: 'asc' } },
-      statusHistory: true,
-    },
-  });
+  const [order, activeAddons] = await Promise.all([
+    prisma.order.findUnique({
+      where: { id: params.id },
+      include: {
+        customer: true,
+        assignedMachinist: true,
+        vendor: true,
+        parts: { include: { material: true } },
+        checklist: { include: { addon: true } },
+        attachments: true,
+        notes: { include: { user: true }, orderBy: { createdAt: 'asc' } },
+        statusHistory: true,
+      },
+    }),
+    prisma.addon.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
+  ]);
 
   if (!order) {
     notFound();
   }
 
   const safeOrder = sanitizePricingForNonAdmin(order);
+  const safeAddons = activeAddons.map(({ rateCents: _rateCents, ...addon }) => addon);
+  const sortedAddons = sortAddons(safeAddons);
+  const selectedAddonIds = new Set(safeOrder.checklist.map((item) => item.addonId));
+  const partSummaries = safeOrder.parts.map((part) => `${part.partNumber} (Qty: ${part.quantity})`);
+  const totalQuantity = safeOrder.parts.reduce((sum, part) => sum + part.quantity, 0);
+  const materialsUsed = Array.from(new Set(safeOrder.parts.map((part) => part.material?.name).filter(Boolean)));
+  const notesContent = safeOrder.notes
+    .map((note) => `${formatDate(note.createdAt)} - ${note.user?.name ?? 'User'}: ${note.content}`)
+    .join('\n');
+  const printableDate = safeOrder.receivedDate ?? safeOrder.dueDate ?? new Date();
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8 bg-white p-8 text-sm text-black print:p-6">
-      <header className="flex flex-col gap-4 border-b border-gray-300 pb-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Sterling Tool and Die</h1>
-          <p className="text-base font-medium">ShopApp Work Order</p>
-        </div>
-        <div className="text-right">
-          <p className="text-xl font-semibold">Order #{safeOrder.orderNumber}</p>
-          <p className="text-gray-600">Status: {safeOrder.status.replace(/_/g, ' ')}</p>
-          <p className="text-gray-600">Due: {formatDate(safeOrder.dueDate)}</p>
-        </div>
-      </header>
+    <div className="mx-auto max-w-5xl bg-white p-6 text-sm text-black print:p-4">
+      <div className="space-y-6 border border-black p-6">
+        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-black pb-4">
+          <div>
+            <h1 className="text-xl font-extrabold uppercase">C&amp;R Machine &amp; Fabrication</h1>
+            <p className="text-lg font-semibold uppercase">Job Router</p>
+          </div>
+          <div className="text-right text-xs uppercase text-gray-700">
+            <p className="font-semibold">Order #{safeOrder.orderNumber}</p>
+            <p>Priority: {safeOrder.priority}</p>
+            <p>Due: {formatDate(safeOrder.dueDate)}</p>
+          </div>
+        </header>
 
-      <section className="grid gap-4 border border-gray-300 p-4">
-        <h2 className="text-lg font-semibold">Job summary</h2>
-        <div className="grid gap-2 md:grid-cols-2">
-          <div>
-            <p className="text-xs uppercase text-gray-500">Received</p>
-            <p className="font-medium">{formatDate(safeOrder.receivedDate)}</p>
+        <section className="grid gap-4 md:grid-cols-2">
+          <div className="border border-black">
+            <div className="grid grid-cols-[110px,1fr] text-sm">
+              <div className="col-span-2 border-b border-black bg-gray-100 px-2 py-1 text-xs font-semibold uppercase">
+                Job Details
+              </div>
+              <div className="border-b border-black px-2 py-2 font-semibold">Job #</div>
+              <div className="border-b border-black px-2 py-2">{safeOrder.orderNumber}</div>
+              <div className="border-b border-black px-2 py-2 font-semibold">Due Date</div>
+              <div className="border-b border-black px-2 py-2">{formatDate(safeOrder.dueDate)}</div>
+              <div className="border-b border-black px-2 py-2 font-semibold">P.O. #</div>
+              <div className="border-b border-black px-2 py-2">{safeOrder.poNumber ?? '—'}</div>
+              <div className="px-2 py-2 font-semibold">Machinist</div>
+              <div className="px-2 py-2">
+                {safeOrder.assignedMachinist?.name ?? safeOrder.assignedMachinist?.email ?? 'Unassigned'}
+              </div>
+            </div>
           </div>
-          <div>
-            <p className="text-xs uppercase text-gray-500">Priority</p>
-            <p className="font-medium">{safeOrder.priority}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase text-gray-500">Machinist</p>
-            <p className="font-medium">
-              {safeOrder.assignedMachinist?.name ?? safeOrder.assignedMachinist?.email ?? 'Unassigned'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase text-gray-500">PO Number</p>
-            <p className="font-medium">{safeOrder.poNumber ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase text-gray-500">Vendor</p>
-            <p className="font-medium">{safeOrder.vendor?.name ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase text-gray-500">Material status</p>
-            <p className="font-medium">
-              {safeOrder.materialNeeded ? (safeOrder.materialOrdered ? 'Ordered / On hand' : 'Needed') : 'Not required'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase text-gray-500">Model included</p>
-            <p className="font-medium">{safeOrder.modelIncluded ? 'Yes' : 'No'}</p>
-          </div>
-        </div>
-      </section>
 
-      <section className="grid gap-4 border border-gray-300 p-4">
-        <h2 className="text-lg font-semibold">Customer</h2>
-        <div className="grid gap-2 md:grid-cols-2">
-          <div>
-            <p className="text-xs uppercase text-gray-500">Name</p>
-            <p className="font-medium">{safeOrder.customer?.name ?? '—'}</p>
+          <div className="border border-black">
+            <div className="grid grid-cols-[110px,1fr] text-sm">
+              <div className="col-span-2 border-b border-black bg-gray-100 px-2 py-1 text-xs font-semibold uppercase">
+                Part Information
+              </div>
+              <div className="border-b border-black px-2 py-2 font-semibold">Part #(s)</div>
+              <div className="border-b border-black px-2 py-2">
+                {partSummaries.length ? (
+                  <ul className="space-y-1">
+                    {partSummaries.map((summary) => (
+                      <li key={summary} className="flex items-center justify-between gap-2">
+                        <span>{summary}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span>—</span>
+                )}
+              </div>
+              <div className="border-b border-black px-2 py-2 font-semibold">Quantity</div>
+              <div className="border-b border-black px-2 py-2 font-semibold">{totalQuantity}</div>
+              <div className="px-2 py-2 font-semibold">Date</div>
+              <div className="px-2 py-2">{formatDate(printableDate)}</div>
+            </div>
           </div>
-          <div>
-            <p className="text-xs uppercase text-gray-500">Contact</p>
-            <p className="font-medium">{safeOrder.customer?.contact ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase text-gray-500">Phone</p>
-            <p className="font-medium">{safeOrder.customer?.phone ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase text-gray-500">Email</p>
-            <p className="font-medium">{safeOrder.customer?.email ?? '—'}</p>
-          </div>
-          <div className="md:col-span-2">
-            <p className="text-xs uppercase text-gray-500">Address</p>
-            <p className="whitespace-pre-line font-medium">{safeOrder.customer?.address ?? '—'}</p>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="grid gap-4 border border-gray-300 p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Parts</h2>
-          <p className="text-xs uppercase text-gray-500">Total parts: {safeOrder.parts.length}</p>
-        </div>
-        <table className="w-full table-fixed border-collapse">
-          <thead>
-            <tr className="border-b border-gray-300 text-left">
-              <th className="w-1/4 py-2 text-xs uppercase text-gray-500">Part #</th>
-              <th className="w-1/6 py-2 text-xs uppercase text-gray-500">Qty</th>
-              <th className="w-1/4 py-2 text-xs uppercase text-gray-500">Material</th>
-              <th className="py-2 text-xs uppercase text-gray-500">Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {safeOrder.parts.map((part) => (
-              <tr key={part.id} className="border-b border-gray-200 align-top">
-                <td className="py-2 font-medium">{part.partNumber}</td>
-                <td className="py-2">{part.quantity}</td>
-                <td className="py-2">{part.material?.name ?? '—'}</td>
-                <td className="py-2">{part.notes ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="grid gap-4 border border-gray-300 p-4">
-        <h2 className="text-lg font-semibold">Checklist</h2>
-        {safeOrder.checklist.length ? (
-          <ul className="space-y-2">
-            {safeOrder.checklist.map((item) => {
-              const addon = item.addon;
-              return (
-                <li key={item.id} className="flex items-start justify-between gap-3 border border-gray-200 px-3 py-2">
-                  <div>
-                    <span className="font-medium">{addon?.name ?? 'Add-on removed'}</span>
-                    {addon?.description && (
-                      <span className="block text-xs text-gray-600">{addon.description}</span>
-                    )}
-                  </div>
-                  <div className="text-right text-xs uppercase text-gray-500">
-                    <div>Updated {formatDate(item.updatedAt, true)}</div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="text-sm text-gray-600">No add-ons recorded for this order.</p>
-        )}
-      </section>
-
-      <section className="grid gap-4 border border-gray-300 p-4">
-        <h2 className="text-lg font-semibold">Attachments</h2>
-        {safeOrder.attachments.length ? (
-          <table className="w-full table-fixed border-collapse">
+        <section className="border border-black">
+          <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
+            Shipping Box Information
+          </div>
+          <table className="w-full table-fixed border-collapse text-sm">
             <thead>
-              <tr className="border-b border-gray-300 text-left">
-                <th className="w-1/3 py-2 text-xs uppercase text-gray-500">Label</th>
-                <th className="w-1/3 py-2 text-xs uppercase text-gray-500">Type</th>
-                <th className="py-2 text-xs uppercase text-gray-500">Link</th>
+              <tr>
+                <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Box</th>
+                <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Weight</th>
+                <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Qty</th>
+                <th className="px-2 py-2 text-left font-semibold">Dimensions</th>
               </tr>
             </thead>
             <tbody>
-              {safeOrder.attachments.map((att) => (
-                <tr key={att.id} className="border-b border-gray-200 align-top">
-                  <td className="py-2 font-medium">{att.label ?? 'Attachment'}</td>
-                  <td className="py-2">{att.mimeType ?? '—'}</td>
-                  <td className="py-2 break-words text-blue-700">
-                    {att.url}
-                  </td>
+              {['Box 1', 'Box 2'].map((label) => (
+                <tr key={label} className="border-t border-black">
+                  <td className="border-r border-black px-2 py-2 font-semibold">{label}</td>
+                  <td className="border-r border-black px-2 py-2">&nbsp;</td>
+                  <td className="border-r border-black px-2 py-2">&nbsp;</td>
+                  <td className="px-2 py-2">&nbsp;</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        ) : (
-          <p className="text-sm text-gray-600">No attachments on file.</p>
-        )}
-      </section>
+        </section>
 
-      <section className="grid gap-4 border border-gray-300 p-4">
-        <h2 className="text-lg font-semibold">Notes</h2>
-        {safeOrder.notes.length ? (
-          <ul className="space-y-3">
-            {safeOrder.notes.map((note) => (
-              <li key={note.id} className="border border-gray-200 p-3">
-                <div className="flex items-center justify-between text-xs uppercase text-gray-500">
-                  <span>{note.user?.name ?? 'Unknown'}</span>
-                  <span>{formatDate(note.createdAt, true)}</span>
-                </div>
-                <p className="mt-2 whitespace-pre-line text-sm text-gray-800">{note.content}</p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-gray-600">No notes recorded.</p>
-        )}
-      </section>
+        <section className="border border-black">
+          <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">Notes</div>
+          <div className="min-h-[96px] whitespace-pre-line px-3 py-3">{notesContent ? notesContent : ' '}</div>
+        </section>
+
+        <section className="border border-black">
+          <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
+            Process Checklist
+          </div>
+          <table className="w-full table-fixed border-collapse text-sm">
+            <thead>
+              <tr>
+                <th className="w-16 border-r border-black px-2 py-2 text-left font-semibold">Step</th>
+                <th className="border-r border-black px-2 py-2 text-left font-semibold">Addon / Operation</th>
+                <th className="w-28 px-2 py-2 text-left font-semibold">Planned</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedAddons.map((addon, idx) => {
+                const selected = selectedAddonIds.has(addon.id);
+                return (
+                  <tr key={addon.id} className="border-t border-black">
+                    <td className="border-r border-black px-2 py-2 font-semibold">{formatStepNumber(idx)}</td>
+                    <td className={`border-r border-black px-2 py-2 ${selected ? 'font-semibold' : ''}`}>
+                      {addon.name}
+                    </td>
+                    <td className="px-2 py-2">{selected ? '✓' : ''}</td>
+                  </tr>
+                );
+              })}
+              {sortedAddons.length === 0 && (
+                <tr className="border-t border-black">
+                  <td className="border-r border-black px-2 py-2">001</td>
+                  <td className="border-r border-black px-2 py-2">No addons configured.</td>
+                  <td className="px-2 py-2" />
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </section>
+
+        <section className="border border-black">
+          <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
+            Materials Used
+          </div>
+          <div className="min-h-[48px] px-3 py-3">
+            {materialsUsed.length ? (
+              <ul className="list-disc pl-4">
+                {materialsUsed.map((mat) => (
+                  <li key={mat}>{mat}</li>
+                ))}
+              </ul>
+            ) : (
+              <span>—</span>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
