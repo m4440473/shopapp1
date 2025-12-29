@@ -16,6 +16,7 @@ import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import AdminPricingGate from '@/components/Admin/AdminPricingGate';
 import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
+import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
 import QuoteWorkflowControls from '../QuoteWorkflowControls';
 import { canAccessAdmin } from '@/lib/rbac';
@@ -79,6 +80,12 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
   const addonTotal = quote.addonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const vendorTotal = quote.vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
   const downloadBase = (process.env.NEXT_PUBLIC_BASE_URL ?? runtimeBase).replace(/\/$/, '');
+  const totalCents = quote.basePriceCents + addonTotal + vendorTotal;
+  const partPricing = getPartPricingEntries({
+    parts: quote.parts,
+    totalCents,
+    metadata,
+  });
   const attachmentLinks = quote.attachments
     .map((attachment) => {
       if (attachment.url) {
@@ -101,16 +108,14 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
     '',
   ];
 
-  const pricingLines = isAdmin
-    ? [
-        `Total estimate: ${formatCurrency(quote.totalCents)}`,
-        `Base fabrication: ${formatCurrency(quote.basePriceCents + vendorTotal)}`,
-        `Add-ons and labor: ${formatCurrency(addonTotal)}`,
-      ]
-    : [
-        'Pricing details are restricted to administrators.',
-        'Please coordinate with an administrator for a full cost breakdown.',
-      ];
+  const pricingLines = [
+    'Part pricing summary:',
+    ...partPricing.map((entry) => {
+      const label = entry.partNumber ? `${entry.name ?? 'Part'} (${entry.partNumber})` : entry.name ?? 'Part';
+      return `- ${label}: ${formatCurrency(entry.priceCents)}`;
+    }),
+    `Total estimate: ${formatCurrency(totalCents)}`,
+  ];
 
   const bodyLines = [...baseBodyLines, ...pricingLines];
 

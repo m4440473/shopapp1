@@ -95,6 +95,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  const existingMetadata = parseQuoteMetadata(existing.metadata) ?? DEFAULT_QUOTE_METADATA;
+  const nextMetadata = parsed.data.partPricing
+    ? {
+        ...existingMetadata,
+        partPricing: parsed.data.partPricing.map((entry) => ({
+          name: entry.name ?? null,
+          partNumber: entry.partNumber ?? null,
+          priceCents: entry.priceCents ?? 0,
+        })),
+      }
+    : existingMetadata;
+
   const updated = await prisma.quote.update({
     where: { id: params.id },
     data: {
@@ -115,7 +127,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       vendorTotalCents: prepared.vendorTotalCents,
       addonsTotalCents: prepared.addonsTotalCents,
       totalCents: prepared.totalCents,
-      metadata: stringifyQuoteMetadata(parseQuoteMetadata(existing.metadata) ?? DEFAULT_QUOTE_METADATA),
+      metadata: stringifyQuoteMetadata(nextMetadata),
       parts: {
         deleteMany: {},
         create: prepared.parts,
