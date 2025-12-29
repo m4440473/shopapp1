@@ -135,7 +135,14 @@ export async function POST(req: NextRequest) {
       addonsTotalCents: prepared.addonsTotalCents,
       vendorTotalCents: prepared.vendorTotalCents,
       totalCents: prepared.totalCents,
-      metadata: stringifyQuoteMetadata(DEFAULT_QUOTE_METADATA),
+      metadata: stringifyQuoteMetadata({
+        ...DEFAULT_QUOTE_METADATA,
+        partPricing: data.partPricing?.map((entry) => ({
+          name: entry.name ?? null,
+          partNumber: entry.partNumber ?? null,
+          priceCents: entry.priceCents ?? 0,
+        })),
+      }),
       createdById: userId,
       parts: {
         create: prepared.parts,

@@ -13,10 +13,17 @@ export interface QuoteConversionMetadata {
   convertedAt?: string | null;
 }
 
+export type QuotePartPricingEntry = {
+  name?: string | null;
+  partNumber?: string | null;
+  priceCents: number;
+};
+
 export type QuoteMetadata = Record<string, unknown> & {
   markupSuggestions?: number[];
   approval?: QuoteApprovalMetadata;
   conversion?: QuoteConversionMetadata;
+  partPricing?: QuotePartPricingEntry[];
 };
 
 const DEFAULT_APPROVAL: QuoteApprovalMetadata = {
@@ -45,6 +52,11 @@ function cloneDefaultArray(values: number[] | undefined): number[] | undefined {
   return values.slice();
 }
 
+function clonePartPricing(values: QuotePartPricingEntry[] | undefined): QuotePartPricingEntry[] | undefined {
+  if (!values) return undefined;
+  return values.map((entry) => ({ ...entry }));
+}
+
 export function mergeQuoteMetadata(metadata: QuoteMetadata | null | undefined): QuoteMetadata {
   const base = metadata && typeof metadata === 'object' ? metadata : {};
   const approval =
@@ -63,6 +75,7 @@ export function mergeQuoteMetadata(metadata: QuoteMetadata | null | undefined): 
       : cloneDefaultArray(DEFAULT_QUOTE_METADATA.markupSuggestions),
     approval,
     conversion,
+    partPricing: Array.isArray(base.partPricing) ? clonePartPricing(base.partPricing) : undefined,
   } satisfies QuoteMetadata;
 }
 

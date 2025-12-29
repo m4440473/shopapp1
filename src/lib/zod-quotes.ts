@@ -62,6 +62,15 @@ export const QuoteCreate = z.object({
   vendorItems: z.array(QuoteVendorItemInput).default([]),
   addonSelections: z.array(QuoteAddonSelectionInput).default([]),
   attachments: z.array(QuoteAttachmentInput).default([]),
+  partPricing: z
+    .array(
+      z.object({
+        name: z.string().trim().max(200).optional(),
+        partNumber: z.string().trim().max(200).optional(),
+        priceCents: z.coerce.number().int().min(0),
+      })
+    )
+    .optional(),
 });
 
 export const QuoteUpdate = QuoteCreate;
