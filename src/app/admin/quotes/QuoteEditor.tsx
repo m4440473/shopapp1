@@ -96,6 +96,13 @@ type QuoteAddonState = {
   notes: string;
 };
 
+type PartPricingState = {
+  key: string;
+  name: string;
+  partNumber: string;
+  price: string;
+};
+
 type AttachmentState = {
   key: string;
   url: string;
@@ -216,6 +223,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerEmail, setNewCustomerEmail] = useState('');
   const [newCustomerAddress, setNewCustomerAddress] = useState('');
+  const [partPricingDialogOpen, setPartPricingDialogOpen] = useState(false);
+  const [partPricingEntries, setPartPricingEntries] = useState<PartPricingState[]>([]);
+  const [partPricingConfirmed, setPartPricingConfirmed] = useState(false);
 
   const initialBusinessCode = (initialQuote?.business ?? BUSINESS_OPTIONS[0]?.code ?? 'STD') as BusinessCode;
 
@@ -583,68 +593,117 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const basePriceCents = centsFromString(form.basePrice);
   const totalCents = basePriceCents + vendorTotalsCents + addonsTotalsCents;
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    const payload: QuoteCreateInput = {
-      business: form.business,
-      quoteNumber: form.quoteNumber || undefined,
-      companyName: form.companyName,
-      contactName: form.contactName || undefined,
-      contactEmail: form.contactEmail || undefined,
-      contactPhone: form.contactPhone || undefined,
-      customerId: form.customerId || undefined,
-      status: form.status || 'DRAFT',
-      materialSummary: form.materialSummary || undefined,
-      purchaseItems: form.purchaseItems || undefined,
-      requirements: form.requirements || undefined,
-      notes: form.notes || undefined,
-      basePriceCents,
-      multiPiece: form.multiPiece,
-      parts: parts
+  const normalizedParts = useMemo(
+    () =>
+      parts
         .filter((part) => part.name.trim())
         .map((part) => ({
-          name: part.name,
-          partNumber: part.partNumber || undefined,
-          materialId: part.materialId || undefined,
-          stockSize: part.stockSize || undefined,
-          cutLength: part.cutLength || undefined,
-          description: part.description || undefined,
-          quantity: Number.parseInt(part.quantity || '1', 10) || 1,
-          pieceCount: Number.parseInt(part.pieceCount || '1', 10) || 1,
-          notes: part.notes || undefined,
+          key: part.key,
+          name: part.name.trim(),
+          partNumber: part.partNumber.trim(),
         })),
-      vendorItems: vendorItems
-        .filter((item) => item.vendorId || item.vendorName || centsFromString(item.basePrice) > 0)
-        .map((item) => ({
-          vendorId: item.vendorId || undefined,
-          vendorName: item.vendorName || undefined,
-          partNumber: item.partNumber || undefined,
-          partUrl: item.partUrl || undefined,
-          basePriceCents: centsFromString(item.basePrice),
-          markupPercent: Number.parseFloat(item.markupPercent || '0') || 0,
-          finalPriceCents: 0,
-          notes: item.notes || undefined,
-        })),
-      addonSelections: addonSelections
-        .filter((selection) => selection.addonId)
-        .map((selection) => ({
-          addonId: selection.addonId,
-          units: numberFromString(selection.units),
-          notes: selection.notes || undefined,
-        })),
-      attachments: attachments
-        .filter((attachment) => attachment.url.trim().length > 0 || attachment.storagePath.trim().length > 0)
-        .map((attachment) => ({
-          url: attachment.url.trim() ? attachment.url.trim() : undefined,
-          storagePath: attachment.storagePath.trim() ? attachment.storagePath.trim() : undefined,
-          label: attachment.label || undefined,
-          mimeType: attachment.mimeType || undefined,
-        })),
-    } as QuoteCreateInput;
+    [parts]
+  );
 
+  useEffect(() => {
+    setPartPricingConfirmed(false);
+  }, [normalizedParts.length, totalCents]);
+
+  const buildDefaultPartPricing = (entries: typeof normalizedParts) => {
+    if (!entries.length) return [];
+    const even = Math.floor(totalCents / entries.length);
+    const remainder = totalCents - even * entries.length;
+    return entries.map((part, index) => ({
+      key: part.key,
+      name: part.name,
+      partNumber: part.partNumber,
+      price: ((even + (index === entries.length - 1 ? remainder : 0)) / 100).toFixed(2),
+    }));
+  };
+
+  const partPricingTotalCents = partPricingEntries.reduce(
+    (sum, entry) => sum + centsFromString(entry.price),
+    0
+  );
+  const partPricingDifferenceCents = totalCents - partPricingTotalCents;
+  const partPricingValid = normalizedParts.length === partPricingEntries.length && partPricingDifferenceCents === 0;
+
+  const buildPayload = (pricingOverride?: PartPricingState[]): QuoteCreateInput => ({
+    business: form.business,
+    quoteNumber: form.quoteNumber || undefined,
+    companyName: form.companyName,
+    contactName: form.contactName || undefined,
+    contactEmail: form.contactEmail || undefined,
+    contactPhone: form.contactPhone || undefined,
+    customerId: form.customerId || undefined,
+    status: form.status || 'DRAFT',
+    materialSummary: form.materialSummary || undefined,
+    purchaseItems: form.purchaseItems || undefined,
+    requirements: form.requirements || undefined,
+    notes: form.notes || undefined,
+    basePriceCents,
+    multiPiece: form.multiPiece,
+    parts: parts
+      .filter((part) => part.name.trim())
+      .map((part) => ({
+        name: part.name,
+        partNumber: part.partNumber || undefined,
+        materialId: part.materialId || undefined,
+        stockSize: part.stockSize || undefined,
+        cutLength: part.cutLength || undefined,
+        description: part.description || undefined,
+        quantity: Number.parseInt(part.quantity || '1', 10) || 1,
+        pieceCount: Number.parseInt(part.pieceCount || '1', 10) || 1,
+        notes: part.notes || undefined,
+      })),
+    vendorItems: vendorItems
+      .filter((item) => item.vendorId || item.vendorName || centsFromString(item.basePrice) > 0)
+      .map((item) => ({
+        vendorId: item.vendorId || undefined,
+        vendorName: item.vendorName || undefined,
+        partNumber: item.partNumber || undefined,
+        partUrl: item.partUrl || undefined,
+        basePriceCents: centsFromString(item.basePrice),
+        markupPercent: Number.parseFloat(item.markupPercent || '0') || 0,
+        finalPriceCents: 0,
+        notes: item.notes || undefined,
+      })),
+    addonSelections: addonSelections
+      .filter((selection) => selection.addonId)
+      .map((selection) => ({
+        addonId: selection.addonId,
+        units: numberFromString(selection.units),
+        notes: selection.notes || undefined,
+      })),
+    attachments: attachments
+      .filter((attachment) => attachment.url.trim().length > 0 || attachment.storagePath.trim().length > 0)
+      .map((attachment) => ({
+        url: attachment.url.trim() ? attachment.url.trim() : undefined,
+        storagePath: attachment.storagePath.trim() ? attachment.storagePath.trim() : undefined,
+        label: attachment.label || undefined,
+        mimeType: attachment.mimeType || undefined,
+      })),
+    partPricing:
+      pricingOverride?.map((entry) => ({
+        name: entry.name || undefined,
+        partNumber: entry.partNumber || undefined,
+        priceCents: centsFromString(entry.price),
+      })) ??
+      (normalizedParts.length === 1
+        ? [
+            {
+              name: normalizedParts[0]?.name,
+              partNumber: normalizedParts[0]?.partNumber || undefined,
+              priceCents: totalCents,
+            },
+          ]
+        : undefined),
+  });
+
+  const submitQuote = async (pricingOverride?: PartPricingState[]) => {
+    setLoading(true);
+    setError(null);
+    const payload = buildPayload(pricingOverride);
     try {
       const response =
         mode === 'edit' && initialQuote
@@ -666,10 +725,97 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (mode === 'create' && normalizedParts.length > 1 && !partPricingConfirmed) {
+      setPartPricingEntries(buildDefaultPartPricing(normalizedParts));
+      setPartPricingDialogOpen(true);
+      return;
+    }
+
+    await submitQuote(partPricingConfirmed ? partPricingEntries : undefined);
   }
 
   return (
     <form className="space-y-6" onSubmit={handleSubmit}>
+      <Dialog open={partPricingDialogOpen} onOpenChange={setPartPricingDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Confirm part pricing</DialogTitle>
+            <DialogDescription>
+              Enter the final price for each part. The totals must match the invoice total before you can submit.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between rounded border border-border/60 bg-muted/30 px-4 py-3 text-sm">
+              <span className="font-medium">Invoice total</span>
+              <span>{formatCurrency(totalCents)}</span>
+            </div>
+            <div className="space-y-3">
+              {partPricingEntries.map((entry) => (
+                <div key={entry.key} className="grid gap-2 md:grid-cols-[1fr_160px] md:items-center">
+                  <div>
+                    <div className="font-medium">{entry.name}</div>
+                    {entry.partNumber && <div className="text-xs text-muted-foreground">Part #: {entry.partNumber}</div>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Price</span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={entry.price}
+                      onChange={(event) =>
+                        setPartPricingEntries((prev) =>
+                          prev.map((item) =>
+                            item.key === entry.key ? { ...item, price: event.target.value } : item
+                          )
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Allocated total</span>
+              <span>{formatCurrency(partPricingTotalCents)}</span>
+            </div>
+            {partPricingDifferenceCents !== 0 && (
+              <div className="text-sm text-destructive">
+                {partPricingDifferenceCents > 0
+                  ? `Remaining balance: ${formatCurrency(partPricingDifferenceCents)}.`
+                  : `Over by: ${formatCurrency(Math.abs(partPricingDifferenceCents))}.`}{' '}
+                Adjust part prices to match the invoice total.
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPartPricingDialogOpen(false)}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={async () => {
+                if (!partPricingValid) return;
+                setPartPricingConfirmed(true);
+                setPartPricingDialogOpen(false);
+                await submitQuote(partPricingEntries);
+              }}
+              disabled={!partPricingValid || loading}
+            >
+              Submit quote
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {error && (
         <div className="rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
           {error}
