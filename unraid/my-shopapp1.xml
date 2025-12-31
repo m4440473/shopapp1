@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Shopapp1</Name>
+  <Repository>shopapp1:latest</Repository>
+  <Registry></Registry>
+  <Network>bridge</Network>
+  <MyIP></MyIP>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support></Support>
+  <Project></Project>
+  <Overview>Shopapp1 is a production-ready Shop Orders web app with Prisma-backed storage and file uploads. This template assumes the offline-loaded image (shopapp1:latest). It defaults to SQLite stored under /mnt/user/appdata/shopapp1/db, but you can point DATABASE_URL to MySQL if desired.</Overview>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL></TemplateURL>
+  <Icon></Icon>
+  <ExtraParams></ExtraParams>
+  <Config Name="WebUI" Target="3000" Default="3000" Mode="tcp" Description="Web UI" Type="Port" Display="always" Required="true" Mask="false"/>
+  <Config Name="Uploads Path" Target="/app/storage" Default="/mnt/user/appdata/shopapp1/uploads" Mode="rw" Description="Persistent attachments/uploads" Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="SQLite DB Path" Target="/app/data" Default="/mnt/user/appdata/shopapp1/db" Mode="rw" Description="SQLite database directory (used when DATABASE_URL is file:/app/data/...)" Type="Path" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="APP_BASE_URL" Target="APP_BASE_URL" Default="http://[IP]:[PORT:3000]" Mode="" Description="Base URL for the application" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="NEXTAUTH_URL" Target="NEXTAUTH_URL" Default="http://[IP]:[PORT:3000]" Mode="" Description="NextAuth callback URL" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="NEXT_PUBLIC_BASE_URL" Target="NEXT_PUBLIC_BASE_URL" Default="http://[IP]:[PORT:3000]" Mode="" Description="Public base URL for client usage" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="NEXTAUTH_SECRET" Target="NEXTAUTH_SECRET" Default="" Mode="" Description="Random secret for NextAuth (32+ chars)" Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="DATABASE_URL" Target="DATABASE_URL" Default="file:/app/data/shopapp1.db" Mode="" Description="Prisma database URL (SQLite default). For MySQL: mysql://user:pass@host:3306/db" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="ATTACHMENTS_DIR" Target="ATTACHMENTS_DIR" Default="/app/storage" Mode="" Description="Attachments root path" Type="Variable" Display="advanced" Required="true" Mask="false"/>
+</Container>
