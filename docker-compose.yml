@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  shopapp1:
+    image: shopapp1:latest
+    container_name: shopapp1
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      ATTACHMENTS_DIR: /app/storage
+      DATABASE_URL: ${DATABASE_URL:-file:/app/data/shopapp1.db}
+    volumes:
+      - /mnt/user/appdata/shopapp1/uploads:/app/storage
+      - /mnt/user/appdata/shopapp1/db:/app/data
+    profiles:
+      - sqlite
+      - mysql
+
+  mysql:
+    image: mysql:8
+    container_name: shopapp1-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: shopapp1
+      MYSQL_USER: shopapp1
+      MYSQL_PASSWORD: shopapp1_password
+      MYSQL_ROOT_PASSWORD: root_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - /mnt/user/appdata/shopapp1-mysql:/var/lib/mysql
+    profiles:
+      - mysql
