@@ -59,6 +59,16 @@ function formatStepNumber(idx: number) {
   return String(idx + 1).padStart(3, '0');
 }
 
+function normalizeStringList(input: unknown): string[] {
+  if (Array.isArray(input)) {
+    return input.map((item) => String(item));
+  }
+  if (typeof input === 'string') {
+    return [input];
+  }
+  return [];
+}
+
 export default async function OrderPrintPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) {
@@ -100,7 +110,9 @@ export default async function OrderPrintPage({ params }: { params: { id: string 
     return `${part.partNumber}${details.length ? ` (${details.join(' • ')})` : ''}`;
   });
   const totalQuantity = safeOrder.parts.reduce((sum, part) => sum + part.quantity, 0);
-  const materialsUsed = Array.from(new Set(safeOrder.parts.map((part) => part.material?.name).filter(Boolean)));
+  const materialsUsed: string[] = Array.from(
+    new Set(safeOrder.parts.flatMap((part) => normalizeStringList(part.material?.name))),
+  );
   const notesContent = safeOrder.notes
     .map((note) => `${formatDate(note.createdAt)} - ${note.user?.name ?? 'User'}: ${note.content}`)
     .join('\n');
