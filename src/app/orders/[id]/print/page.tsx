@@ -13,6 +13,11 @@ function formatDate(input?: string | Date | null, withTime = false) {
   return format(date, withTime ? 'M/d/yyyy h:mm a' : 'M/d/yyyy');
 }
 
+type SortableAddon = {
+  id: string;
+  name: string;
+};
+
 const addonPriority = [
   'Anodize',
   'Program / Setup',
@@ -37,7 +42,7 @@ const addonPriority = [
   'Zinc',
 ];
 
-function sortAddons(addons: { name: string }[]) {
+function sortAddons(addons: SortableAddon[]) {
   return [...addons].sort((a, b) => {
     const aIndex = addonPriority.indexOf(a.name);
     const bIndex = addonPriority.indexOf(b.name);
