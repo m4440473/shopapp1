@@ -115,7 +115,7 @@ const defaultDueDate = () => {
   return base.toISOString().slice(0, 10);
 };
 
-export default function NewOrderPage() {
+function NewOrderForm() {
   const searchParams = useSearchParams();
   const [customerId, setCustomerId] = React.useState('');
   const [customers, setCustomers] = React.useState<Option[]>([]);
@@ -1132,5 +1132,13 @@ export default function NewOrderPage() {
         </Card>
       </form>
     </div>
+  );
+}
+
+export default function NewOrderPage() {
+  return (
+    <React.Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading order form…</div>}>
+      <NewOrderForm />
+    </React.Suspense>
   );
 }
