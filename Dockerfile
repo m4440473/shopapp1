@@ -2,13 +2,14 @@ FROM node:18-bookworm-slim AS deps
 WORKDIR /app
 ENV SKIP_DB_SETUP=1
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 FROM node:18-bookworm-slim AS builder
 WORKDIR /app
 ENV SKIP_DB_SETUP=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN npm run postinstall
 RUN npx prisma generate
 RUN npm run build
 
