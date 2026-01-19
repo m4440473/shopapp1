@@ -16,7 +16,11 @@ export default async function Page() {
     redirect('/');
   }
 
-  const items = await prisma.addon.findMany({ orderBy: { name: 'asc' }, take: 50 });
+  const items = await prisma.addon.findMany({
+    orderBy: { name: 'asc' },
+    take: 50,
+    include: { department: true },
+  });
   const initial = { items, nextCursor: null };
 
   return (

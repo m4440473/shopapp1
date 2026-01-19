@@ -25,7 +25,7 @@ export default function ConfirmButton({ onConfirm, children, description }: Conf
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="sm">
+        <Button type="button" variant="ghost" size="sm">
           {children}
         </Button>
       </AlertDialogTrigger>
@@ -38,7 +38,9 @@ export default function ConfirmButton({ onConfirm, children, description }: Conf
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>Continue</AlertDialogAction>
+          <AlertDialogAction type="button" onClick={onConfirm}>
+            Continue
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

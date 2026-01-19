@@ -54,8 +54,17 @@ export const AddonUpsert = z.object({
   rateType: AddonRateType.default('HOURLY'),
   rateCents: z.coerce.number().int().min(0).max(10_000_000),
   active: z.boolean().default(true),
+  departmentId: Id,
 });
 export const AddonPatch = AddonUpsert.partial();
+
+/** DEPARTMENTS */
+export const DepartmentUpsert = z.object({
+  name: z.string().trim().min(2).max(120),
+  sortOrder: z.coerce.number().int().min(0).max(9999).default(0),
+  isActive: z.boolean().default(true),
+});
+export const DepartmentPatch = DepartmentUpsert.partial();
 
 /** Common query schema for list endpoints: ?q=&cursor=&take= */
 export const ListQuery = z.object({
@@ -74,3 +83,5 @@ export type TVendorPatch = z.infer<typeof VendorPatch>;
 export type TListQuery = z.infer<typeof ListQuery>;
 export type TAddonUpsert = z.infer<typeof AddonUpsert>;
 export type TAddonPatch = z.infer<typeof AddonPatch>;
+export type TDepartmentUpsert = z.infer<typeof DepartmentUpsert>;
+export type TDepartmentPatch = z.infer<typeof DepartmentPatch>;

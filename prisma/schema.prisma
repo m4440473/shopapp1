@@ -173,6 +173,8 @@ model Addon {
   rateType    String
   rateCents   Int
   active      Boolean  @default(true)
+  departmentId String
+  department  Department @relation(fields: [departmentId], references: [id])
 
   quoteSelections QuoteAddonSelection[]
   orderChecklist  OrderChecklist[]
@@ -182,6 +184,17 @@ model Addon {
 
   @@index([active])
   @@unique([name])
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  addons    Addon[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Quote {

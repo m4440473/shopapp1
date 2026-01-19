@@ -9,8 +9,19 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import Table from '@/components/Admin/Table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { hexToHslCss, isValidHex, normalizeHex } from '@/lib/colors';
 import { getInitials } from '@/lib/get-initials';
+import { fetchJson } from '@/lib/fetchJson';
+import { DepartmentUpsert } from '@/lib/zod';
 
 const TEMPLATE_OPTIONS = [
   {
@@ -84,6 +95,16 @@ type AppSettingsProps = {
   invoiceOptions: string | null;
 };
 
+type Department = {
+  id: string;
+  name: string;
+  slug: string;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+type DepartmentDialogState = { mode: 'create' | 'edit'; data?: Department } | null;
+
 export default function Client({ settings }: { settings: AppSettingsProps }) {
   const [companyName, setCompanyName] = React.useState(settings.companyName);
   const [logoPath, setLogoPath] = React.useState<string | null>(settings.logoPath);
@@ -106,11 +127,39 @@ export default function Client({ settings }: { settings: AppSettingsProps }) {
   const [saving, setSaving] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [departments, setDepartments] = React.useState<Department[]>([]);
+  const [deptDialog, setDeptDialog] = React.useState<DepartmentDialogState>(null);
+  const [deptForm, setDeptForm] = React.useState({ name: '', sortOrder: 0, isActive: true });
+  const [deptSaving, setDeptSaving] = React.useState(false);
+  const [deptMessage, setDeptMessage] = React.useState<string | null>(null);
+  const [deptError, setDeptError] = React.useState<string | null>(null);
 
   const logoUrl = logoPath ? `/branding/logo?v=${logoVersion}` : null;
   const initials = getInitials(companyName);
   const safePrimary = isValidHex(themePrimary) ? normalizeHex(themePrimary) : '#0ea5e9';
   const safeAccent = isValidHex(themeAccent) ? normalizeHex(themeAccent) : '#a855f7';
+
+  React.useEffect(() => {
+    fetchJson<{ items: Department[] }>('/api/admin/departments')
+      .then((data) => setDepartments(data.items ?? []))
+      .catch(() => setDepartments([]));
+  }, []);
+
+  React.useEffect(() => {
+    if (deptDialog?.mode === 'edit' && deptDialog.data) {
+      setDeptForm({
+        name: deptDialog.data.name,
+        sortOrder: deptDialog.data.sortOrder,
+        isActive: deptDialog.data.isActive,
+      });
+    } else if (deptDialog?.mode === 'create') {
+      setDeptForm({ name: '', sortOrder: 0, isActive: true });
+    }
+  }, [deptDialog]);
+
+  function sortDepartments(next: Department[]) {
+    return [...next].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  }
 
   async function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -174,6 +223,59 @@ export default function Client({ settings }: { settings: AppSettingsProps }) {
     }
   }
 
+  async function saveDepartment() {
+    setDeptSaving(true);
+    setDeptError(null);
+    setDeptMessage(null);
+    try {
+      const payload = DepartmentUpsert.parse({
+        name: deptForm.name,
+        sortOrder: deptForm.sortOrder,
+        isActive: deptForm.isActive,
+      });
+
+      if (deptDialog?.mode === 'edit' && deptDialog.data) {
+        const res = await fetchJson<{ item: Department }>(
+          `/api/admin/departments/${deptDialog.data.id}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }
+        );
+        setDepartments((prev) =>
+          sortDepartments(prev.map((item) => (item.id === deptDialog.data?.id ? res.item : item)))
+        );
+        setDeptMessage('Department updated.');
+      } else {
+        const res = await fetchJson<{ item: Department }>(`/api/admin/departments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        setDepartments((prev) => sortDepartments([res.item, ...prev]));
+        setDeptMessage('Department created.');
+      }
+      setDeptDialog(null);
+    } catch (err: any) {
+      setDeptError(err?.message || 'Failed to save department');
+    } finally {
+      setDeptSaving(false);
+    }
+  }
+
+  async function removeDepartment(department: Department) {
+    setDeptError(null);
+    setDeptMessage(null);
+    try {
+      await fetchJson(`/api/admin/departments/${department.id}`, { method: 'DELETE' });
+      setDepartments((prev) => prev.filter((item) => item.id !== department.id));
+      setDeptMessage('Department deleted.');
+    } catch (err: any) {
+      setDeptError(err?.message || 'Unable to delete department');
+    }
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <Card>
@@ -199,6 +301,7 @@ export default function Client({ settings }: { settings: AppSettingsProps }) {
           <TabsTrigger value="storage">Uploads &amp; storage</TabsTrigger>
           <TabsTrigger value="workflow">Workflow rules</TabsTrigger>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
+          <TabsTrigger value="departments">Departments</TabsTrigger>
         </TabsList>
 
         <TabsContent value="branding" className="mt-4">
@@ -419,6 +522,95 @@ export default function Client({ settings }: { settings: AppSettingsProps }) {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="departments" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Departments</CardTitle>
+              <CardDescription>
+                Organize add-ons and labor items by shop department. Inactive departments remain visible on existing
+                add-ons.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" onClick={() => setDeptDialog({ mode: 'create' })}>
+                  New department
+                </Button>
+                {deptMessage && <p className="text-sm text-emerald-300">{deptMessage}</p>}
+                {deptError && <p className="text-sm text-destructive">{deptError}</p>}
+              </div>
+              <Table
+                columns={[
+                  { key: 'name', header: 'Name' },
+                  { key: 'sortOrder', header: 'Sort order' },
+                  {
+                    key: 'isActive',
+                    header: 'Active',
+                    render: (value: boolean) => (value ? 'Yes' : 'No'),
+                  },
+                ]}
+                rows={departments}
+                onEdit={(row) => setDeptDialog({ mode: 'edit', data: row })}
+                onDelete={removeDepartment}
+              />
+            </CardContent>
+          </Card>
+
+          <Dialog open={deptDialog !== null} onOpenChange={(open) => !open && setDeptDialog(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {deptDialog?.mode === 'edit' ? 'Edit department' : 'New department'}
+                </DialogTitle>
+                <DialogDescription>Keep department names short and recognizable.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="departmentName">Name</Label>
+                  <Input
+                    id="departmentName"
+                    value={deptForm.name}
+                    onChange={(event) => setDeptForm((prev) => ({ ...prev, name: event.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="departmentSort">Sort order</Label>
+                  <Input
+                    id="departmentSort"
+                    type="number"
+                    min="0"
+                    value={deptForm.sortOrder}
+                    onChange={(event) =>
+                      setDeptForm((prev) => ({ ...prev, sortOrder: Number(event.target.value) }))
+                    }
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="departmentActive"
+                    checked={deptForm.isActive}
+                    onCheckedChange={(checked) =>
+                      setDeptForm((prev) => ({ ...prev, isActive: Boolean(checked) }))
+                    }
+                  />
+                  <Label htmlFor="departmentActive" className="text-sm font-normal">
+                    Active and available for new add-ons
+                  </Label>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setDeptDialog(null)}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={saveDepartment} disabled={deptSaving}>
+                  {deptSaving ? 'Saving…' : 'Save'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
       </Tabs>
     </form>

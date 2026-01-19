@@ -47,7 +47,7 @@ export default function Table({ columns = [], rows = [], onEdit, onDelete }: Tab
               {(onEdit || onDelete) && (
                 <TableCell className="flex items-center justify-end gap-2">
                   {onEdit && (
-                    <Button variant="ghost" size="sm" onClick={() => onEdit(row)}>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(row)}>
                       Edit
                     </Button>
                   )}
