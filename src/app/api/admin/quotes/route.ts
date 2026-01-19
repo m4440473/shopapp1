@@ -142,6 +142,7 @@ export async function POST(req: NextRequest) {
           partNumber: entry.partNumber ?? null,
           priceCents: entry.priceCents ?? 0,
         })),
+        charges: prepared.charges,
       }),
       createdById: userId,
       parts: {

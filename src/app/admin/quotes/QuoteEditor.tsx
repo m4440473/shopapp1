@@ -63,6 +63,14 @@ type AddonOption = {
   rateCents: number;
   active: boolean;
   description?: string | null;
+  departmentId: string;
+  department?: { id: string; name: string } | null;
+};
+
+type DepartmentOption = {
+  id: string;
+  name: string;
+  isActive: boolean;
 };
 
 type QuotePartState = {
@@ -103,6 +111,18 @@ type PartPricingState = {
   price: string;
 };
 
+type QuoteChargeState = {
+  key: string;
+  scopeKey: string;
+  addonId: string;
+  departmentId: string;
+  kind: string;
+  name: string;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+};
+
 type AttachmentState = {
   key: string;
   url: string;
@@ -131,6 +151,7 @@ type QuoteDetail = {
   addonsTotalCents: number;
   totalCents: number;
   multiPiece: boolean;
+  metadata?: any;
   parts: Array<{
     id: string;
     name: string;
@@ -208,12 +229,16 @@ const createKey = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
 
+const ORDER_WIDE_SCOPE = '__order__';
+const CUSTOM_ADDON_VALUE = '__custom_addon__';
+
 export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const router = useRouter();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addons, setAddons] = useState<AddonOption[]>([]);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [vendors, setVendors] = useState<Option[]>([]);
   const [customers, setCustomers] = useState<Option[]>([]);
   const [materials, setMaterials] = useState<Option[]>([]);
@@ -226,8 +251,20 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [partPricingDialogOpen, setPartPricingDialogOpen] = useState(false);
   const [partPricingEntries, setPartPricingEntries] = useState<PartPricingState[]>([]);
   const [partPricingConfirmed, setPartPricingConfirmed] = useState(false);
+  const [charges, setCharges] = useState<QuoteChargeState[]>([]);
 
   const initialBusinessCode = (initialQuote?.business ?? BUSINESS_OPTIONS[0]?.code ?? 'STD') as BusinessCode;
+  const initialMetadata = useMemo(() => {
+    if (!initialQuote?.metadata) return null;
+    if (typeof initialQuote.metadata === 'string') {
+      try {
+        return JSON.parse(initialQuote.metadata);
+      } catch {
+        return null;
+      }
+    }
+    return initialQuote.metadata;
+  }, [initialQuote?.metadata]);
 
   const [form, setForm] = useState({
     business: initialBusinessCode,
@@ -301,6 +338,34 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       notes: selection.notes ?? '',
     }))
   );
+  const chargesInitializedRef = React.useRef(false);
+
+  useEffect(() => {
+    if (chargesInitializedRef.current) return;
+    const entries = Array.isArray(initialMetadata?.charges) ? initialMetadata.charges : [];
+    if (!entries.length) {
+      chargesInitializedRef.current = true;
+      return;
+    }
+
+    setCharges(
+      entries.map((entry: any, index: number) => ({
+        key: createKey(),
+        scopeKey:
+          typeof entry.partIndex === 'number' && parts[entry.partIndex]
+            ? parts[entry.partIndex].key
+            : ORDER_WIDE_SCOPE,
+        addonId: entry.addonId ?? '',
+        departmentId: entry.departmentId ?? '',
+        kind: entry.kind ?? 'LABOR',
+        name: entry.name ?? '',
+        description: entry.description ?? '',
+        quantity: String(entry.quantity ?? 1),
+        unitPrice: ((entry.unitPriceCents ?? 0) / 100).toFixed(2),
+      }))
+    );
+    chargesInitializedRef.current = true;
+  }, [initialMetadata, parts]);
 
   const initialAttachmentBusiness = useMemo<BusinessName>(() => {
     const stored = initialQuote?.attachments?.find((attachment) => attachment.storagePath);
@@ -373,10 +438,17 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             rateCents: item.rateCents,
             active: item.active,
             description: item.description,
+            departmentId: item.departmentId,
+            department: item.department ?? null,
           }))
         );
       })
       .catch(() => setAddons([]));
+
+    fetch('/api/admin/departments', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => setDepartments(Array.isArray(data?.items) ? data.items : []))
+      .catch(() => setDepartments([]));
 
     fetch('/api/admin/vendors?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
@@ -481,6 +553,24 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     setAddonSelections((prev) => [
       ...prev,
       { key: createKey(), addonId: '', units: '1.0', notes: '' },
+    ]);
+  }
+
+  function addCharge() {
+    const fallbackDepartment = departments.find((dept) => dept.isActive) ?? departments[0];
+    setCharges((prev) => [
+      ...prev,
+      {
+        key: createKey(),
+        scopeKey: ORDER_WIDE_SCOPE,
+        addonId: '',
+        departmentId: fallbackDepartment?.id ?? '',
+        kind: 'LABOR',
+        name: '',
+        description: '',
+        quantity: '1',
+        unitPrice: '0.00',
+      },
     ]);
   }
 
@@ -590,45 +680,24 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     return sum + Math.round(addon.rateCents * (units > 0 ? units : 0));
   }, 0);
 
+  const chargeTotalsCents = charges.reduce((sum, charge) => {
+    const qty = numberFromString(charge.quantity);
+    const unit = centsFromString(charge.unitPrice);
+    return sum + Math.round(unit * (qty > 0 ? qty : 0));
+  }, 0);
+
+  const orderWideChargeCents = charges.reduce((sum, charge) => {
+    if (charge.scopeKey !== ORDER_WIDE_SCOPE) return sum;
+    const qty = numberFromString(charge.quantity);
+    const unit = centsFromString(charge.unitPrice);
+    return sum + Math.round(unit * (qty > 0 ? qty : 0));
+  }, 0);
+
+  const partChargeCents = Math.max(chargeTotalsCents - orderWideChargeCents, 0);
   const basePriceCents = centsFromString(form.basePrice);
-  const totalCents = basePriceCents + vendorTotalsCents + addonsTotalsCents;
+  const totalCents = basePriceCents + vendorTotalsCents + chargeTotalsCents;
 
-  const normalizedParts = useMemo(
-    () =>
-      parts
-        .filter((part) => part.name.trim())
-        .map((part) => ({
-          key: part.key,
-          name: part.name.trim(),
-          partNumber: part.partNumber.trim(),
-        })),
-    [parts]
-  );
-
-  useEffect(() => {
-    setPartPricingConfirmed(false);
-  }, [normalizedParts.length, totalCents]);
-
-  const buildDefaultPartPricing = (entries: typeof normalizedParts) => {
-    if (!entries.length) return [];
-    const even = Math.floor(totalCents / entries.length);
-    const remainder = totalCents - even * entries.length;
-    return entries.map((part, index) => ({
-      key: part.key,
-      name: part.name,
-      partNumber: part.partNumber,
-      price: ((even + (index === entries.length - 1 ? remainder : 0)) / 100).toFixed(2),
-    }));
-  };
-
-  const partPricingTotalCents = partPricingEntries.reduce(
-    (sum, entry) => sum + centsFromString(entry.price),
-    0
-  );
-  const partPricingDifferenceCents = totalCents - partPricingTotalCents;
-  const partPricingValid = normalizedParts.length === partPricingEntries.length && partPricingDifferenceCents === 0;
-
-  const buildPayload = (pricingOverride?: PartPricingState[]): QuoteCreateInput => ({
+  const buildPayload = (): QuoteCreateInput => ({
     business: form.business,
     quoteNumber: form.quoteNumber || undefined,
     companyName: form.companyName,
@@ -675,6 +744,24 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         units: numberFromString(selection.units),
         notes: selection.notes || undefined,
       })),
+    charges: charges
+      .filter((charge) => charge.name.trim())
+      .map((charge, index) => {
+        const rawIndex = parts.findIndex((part) => part.key === charge.scopeKey);
+        const partIndex = charge.scopeKey === ORDER_WIDE_SCOPE ? null : rawIndex >= 0 ? rawIndex : null;
+        return {
+          partIndex,
+        departmentId: charge.departmentId,
+        departmentName: departments.find((dept) => dept.id === charge.departmentId)?.name,
+        addonId: charge.addonId || undefined,
+        kind: charge.kind,
+        name: charge.name,
+        description: charge.description || undefined,
+        quantity: numberFromString(charge.quantity),
+        unitPriceCents: centsFromString(charge.unitPrice),
+        sortOrder: index,
+        };
+      }),
     attachments: attachments
       .filter((attachment) => attachment.url.trim().length > 0 || attachment.storagePath.trim().length > 0)
       .map((attachment) => ({
@@ -683,27 +770,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         label: attachment.label || undefined,
         mimeType: attachment.mimeType || undefined,
       })),
-    partPricing:
-      pricingOverride?.map((entry) => ({
-        name: entry.name || undefined,
-        partNumber: entry.partNumber || undefined,
-        priceCents: centsFromString(entry.price),
-      })) ??
-      (normalizedParts.length === 1
-        ? [
-            {
-              name: normalizedParts[0]?.name,
-              partNumber: normalizedParts[0]?.partNumber || undefined,
-              priceCents: totalCents,
-            },
-          ]
-        : undefined),
   });
 
-  const submitQuote = async (pricingOverride?: PartPricingState[]) => {
+  const submitQuote = async () => {
     setLoading(true);
     setError(null);
-    const payload = buildPayload(pricingOverride);
+    const payload = buildPayload();
     try {
       const response =
         mode === 'edit' && initialQuote
@@ -729,93 +801,11 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (mode === 'create' && normalizedParts.length > 1 && !partPricingConfirmed) {
-      setPartPricingEntries(buildDefaultPartPricing(normalizedParts));
-      setPartPricingDialogOpen(true);
-      return;
-    }
-
-    await submitQuote(partPricingConfirmed ? partPricingEntries : undefined);
+    await submitQuote();
   }
 
   return (
     <form className="space-y-6" onSubmit={handleSubmit}>
-      <Dialog open={partPricingDialogOpen} onOpenChange={setPartPricingDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Confirm part pricing</DialogTitle>
-            <DialogDescription>
-              Enter the final price for each part. The totals must match the invoice total before you can submit.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between rounded border border-border/60 bg-muted/30 px-4 py-3 text-sm">
-              <span className="font-medium">Invoice total</span>
-              <span>{formatCurrency(totalCents)}</span>
-            </div>
-            <div className="space-y-3">
-              {partPricingEntries.map((entry) => (
-                <div key={entry.key} className="grid gap-2 md:grid-cols-[1fr_160px] md:items-center">
-                  <div>
-                    <div className="font-medium">{entry.name}</div>
-                    {entry.partNumber && <div className="text-xs text-muted-foreground">Part #: {entry.partNumber}</div>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Price</span>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={entry.price}
-                      onChange={(event) =>
-                        setPartPricingEntries((prev) =>
-                          prev.map((item) =>
-                            item.key === entry.key ? { ...item, price: event.target.value } : item
-                          )
-                        )
-                      }
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Allocated total</span>
-              <span>{formatCurrency(partPricingTotalCents)}</span>
-            </div>
-            {partPricingDifferenceCents !== 0 && (
-              <div className="text-sm text-destructive">
-                {partPricingDifferenceCents > 0
-                  ? `Remaining balance: ${formatCurrency(partPricingDifferenceCents)}.`
-                  : `Over by: ${formatCurrency(Math.abs(partPricingDifferenceCents))}.`}{' '}
-                Adjust part prices to match the invoice total.
-              </div>
-            )}
-          </div>
-          <DialogFooter className="mt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPartPricingDialogOpen(false)}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={async () => {
-                if (!partPricingValid) return;
-                setPartPricingConfirmed(true);
-                setPartPricingDialogOpen(false);
-                await submitQuote(partPricingEntries);
-              }}
-              disabled={!partPricingValid || loading}
-            >
-              Submit quote
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       {error && (
         <div className="rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
           {error}
@@ -1369,49 +1359,135 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Add-ons and labor</CardTitle>
-          <CardDescription>Select add-ons to capture labor or fixed-rate services.</CardDescription>
+          <CardTitle>Charges</CardTitle>
+          <CardDescription>Assign department charges per part or order-wide.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {addonSelections.map((selection) => {
-            const addon = addonMap.get(selection.addonId);
-            const units = numberFromString(selection.units);
-            const totalCents = addon ? Math.round(addon.rateCents * (units > 0 ? units : 0)) : 0;
+          {charges.map((charge) => {
+            const addon = addonMap.get(charge.addonId);
+            const qty = numberFromString(charge.quantity);
+            const unit = centsFromString(charge.unitPrice);
+            const subtotal = Math.round(unit * (qty > 0 ? qty : 0));
             return (
-              <div key={selection.key} className="rounded border border-border/50 bg-card/40 p-4">
+              <div key={charge.key} className="rounded border border-border/50 bg-card/40 p-4">
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="grid gap-2">
-                    <Label>Add-on</Label>
-                    <select
-                      value={selection.addonId}
-                      onChange={(event) =>
-                        setAddonSelections((prev) =>
-                          prev.map((row) => (row.key === selection.key ? { ...row, addonId: event.target.value } : row))
+                    <Label>Scope</Label>
+                    <Select
+                      value={charge.scopeKey}
+                      onValueChange={(value) =>
+                        setCharges((prev) =>
+                          prev.map((row) => (row.key === charge.key ? { ...row, scopeKey: value } : row))
                         )
                       }
-                      className="rounded border border-border bg-background px-3 py-2 text-sm"
                     >
-                      <option value="">Select add-on</option>
-                      {addons.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.name} ({option.rateType === 'HOURLY' ? 'Hourly' : 'Flat'})
-                        </option>
-                      ))}
-                    </select>
-                    {addon?.description && (
-                      <p className="text-xs text-muted-foreground mt-1">{addon.description}</p>
-                    )}
+                      <SelectTrigger className="border-border/60 bg-background">
+                        <SelectValue placeholder="Select scope" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ORDER_WIDE_SCOPE}>Order-wide</SelectItem>
+                        {parts.map((part, idx) => (
+                          <SelectItem key={part.key} value={part.key}>
+                            {part.partNumber || part.name || `Part ${idx + 1}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="grid gap-2">
-                    <Label>{addon?.rateType === 'FLAT' ? 'Quantity' : 'Hours'}</Label>
+                    <Label>Addon (optional)</Label>
+                    <Select
+                      value={charge.addonId || CUSTOM_ADDON_VALUE}
+                      onValueChange={(value) => {
+                        const addonId = value === CUSTOM_ADDON_VALUE ? '' : value;
+                        const selected = addonMap.get(addonId);
+                        setCharges((prev) =>
+                          prev.map((row) =>
+                            row.key === charge.key
+                              ? {
+                                  ...row,
+                                  addonId,
+                                  departmentId: selected?.departmentId ?? row.departmentId,
+                                  name: selected?.name ?? row.name,
+                                  kind: selected ? 'ADDON' : row.kind,
+                                  unitPrice: selected ? (selected.rateCents / 100).toFixed(2) : row.unitPrice,
+                                }
+                              : row
+                          )
+                        );
+                      }}
+                    >
+                      <SelectTrigger className="border-border/60 bg-background">
+                        <SelectValue placeholder="Select addon" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={CUSTOM_ADDON_VALUE}>Custom</SelectItem>
+                        {addons.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {addon?.description && <p className="text-xs text-muted-foreground mt-1">{addon.description}</p>}
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Department</Label>
+                    <Select
+                      value={charge.departmentId || ''}
+                      onValueChange={(value) =>
+                        setCharges((prev) =>
+                          prev.map((row) => (row.key === charge.key ? { ...row, departmentId: value } : row))
+                        )
+                      }
+                    >
+                      <SelectTrigger className="border-border/60 bg-background">
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departments.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.id}>
+                            {dept.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Name</Label>
+                    <Input
+                      value={charge.name}
+                      onChange={(event) =>
+                        setCharges((prev) =>
+                          prev.map((row) => (row.key === charge.key ? { ...row, name: event.target.value } : row))
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Quantity</Label>
                     <Input
                       type="number"
                       min="0"
                       step="0.25"
-                      value={selection.units}
+                      value={charge.quantity}
                       onChange={(event) =>
-                        setAddonSelections((prev) =>
-                          prev.map((row) => (row.key === selection.key ? { ...row, units: event.target.value } : row))
+                        setCharges((prev) =>
+                          prev.map((row) => (row.key === charge.key ? { ...row, quantity: event.target.value } : row))
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Unit price</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={charge.unitPrice}
+                      onChange={(event) =>
+                        setCharges((prev) =>
+                          prev.map((row) => (row.key === charge.key ? { ...row, unitPrice: event.target.value } : row))
                         )
                       }
                     />
@@ -1419,45 +1495,35 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                   <div className="grid gap-2">
                     <Label>Subtotal</Label>
                     <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
-                      {addon ? `${formatCurrency(addon.rateCents)} x ${units.toFixed(2)} = ${formatCurrency(totalCents)}` : '—'}
+                      {formatCurrency(subtotal)}
                     </div>
                   </div>
-                </div>
-                <div className="grid gap-2 mt-4">
-                  <Label>Notes</Label>
-                  <Textarea
-                    value={selection.notes}
-                    onChange={(event) =>
-                      setAddonSelections((prev) =>
-                        prev.map((row) => (row.key === selection.key ? { ...row, notes: event.target.value } : row))
-                      )
-                    }
-                  />
+                  <div className="grid gap-2 md:col-span-3">
+                    <Label>Description</Label>
+                    <Textarea
+                      value={charge.description}
+                      onChange={(event) =>
+                        setCharges((prev) =>
+                          prev.map((row) => (row.key === charge.key ? { ...row, description: event.target.value } : row))
+                        )
+                      }
+                    />
+                  </div>
                 </div>
                 <div className="mt-4 flex justify-end">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() =>
-                      setAddonSelections((prev) => prev.filter((row) => row.key !== selection.key))
-                    }
-                  >
+                  <Button type="button" variant="ghost" onClick={() => setCharges((prev) => prev.filter((row) => row.key !== charge.key))}>
                     Remove
                   </Button>
                 </div>
               </div>
             );
           })}
-          <Button type="button" variant="outline" onClick={addAddonSelection}>
-            Add labor/add-on
+          <Button type="button" variant="outline" onClick={addCharge}>
+            Add charge
           </Button>
-          {addons.length === 0 && (
+          {!charges.length && (
             <p className="text-xs text-muted-foreground">
-              Need more options? Configure add-ons in the{' '}
-              <Link href="/admin/addons" className="underline">
-                Add-ons admin panel
-              </Link>
-              .
+              Add per-part or order-wide charges to drive quote totals.
             </p>
           )}
         </CardContent>
@@ -1601,8 +1667,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             <span className="font-medium">{formatCurrency(vendorTotalsCents)}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span>Add-ons and labor</span>
-            <span className="font-medium">{formatCurrency(addonsTotalsCents)}</span>
+            <span>Order-wide charges</span>
+            <span className="font-medium">{formatCurrency(orderWideChargeCents)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span>Part charges</span>
+            <span className="font-medium">{formatCurrency(partChargeCents)}</span>
           </div>
           <div className="border-t border-border/60 pt-3 text-sm font-semibold">
             <div className="flex items-center justify-between">
@@ -1613,7 +1683,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         </CardContent>
         <CardFooter className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            Add-on rates remain private—only admins can view hourly costs.
+            Charges total from per-part and order-wide work items.
           </p>
           <div className="flex gap-3">
             <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading}>

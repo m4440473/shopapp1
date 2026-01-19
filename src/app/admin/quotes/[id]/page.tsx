@@ -16,7 +16,6 @@ import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import AdminPricingGate from '@/components/Admin/AdminPricingGate';
 import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
-import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
 import QuoteWorkflowControls from '../QuoteWorkflowControls';
 import { canAccessAdmin } from '@/lib/rbac';
@@ -77,15 +76,24 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
   const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata));
 
   const statusLabel = STATUS_LABELS[quote.status] ?? quote.status;
-  const addonTotal = quote.addonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const vendorTotal = quote.vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
   const downloadBase = (process.env.NEXT_PUBLIC_BASE_URL ?? runtimeBase).replace(/\/$/, '');
-  const totalCents = quote.basePriceCents + addonTotal + vendorTotal;
-  const partPricing = getPartPricingEntries({
-    parts: quote.parts,
-    totalCents,
-    metadata,
-  });
+  const chargeEntries = Array.isArray(metadata.charges) ? metadata.charges : [];
+  const partChargeTotals = quote.parts.map((_, index) =>
+    chargeEntries
+      .filter((charge) => charge.partIndex === index)
+      .reduce((sum, charge) => sum + charge.unitPriceCents * charge.quantity, 0)
+  );
+  const orderWideTotal = chargeEntries
+    .filter((charge) => charge.partIndex === null)
+    .reduce((sum, charge) => sum + charge.unitPriceCents * charge.quantity, 0);
+  const chargeTotal = partChargeTotals.reduce((sum, total) => sum + total, 0) + orderWideTotal;
+  const totalCents = quote.basePriceCents + vendorTotal + chargeTotal;
+  const partPricing = quote.parts.map((part, index) => ({
+    name: part.name,
+    partNumber: part.partNumber ?? null,
+    priceCents: partChargeTotals[index] ?? 0,
+  }));
   const attachmentLinks = quote.attachments
     .map((attachment) => {
       if (attachment.url) {
@@ -114,6 +122,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
       const label = entry.partNumber ? `${entry.name ?? 'Part'} (${entry.partNumber})` : entry.name ?? 'Part';
       return `- ${label}: ${formatCurrency(entry.priceCents)}`;
     }),
+    ...(orderWideTotal > 0 ? [`Order-wide charges: ${formatCurrency(orderWideTotal)}`] : []),
     `Total estimate: ${formatCurrency(totalCents)}`,
   ];
 
@@ -254,12 +263,16 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
                     <span className="font-medium">{formatCurrency(vendorTotal)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Add-ons and labor</span>
-                    <span className="font-medium">{formatCurrency(addonTotal)}</span>
+                    <span className="text-muted-foreground">Order-wide charges</span>
+                    <span className="font-medium">{formatCurrency(orderWideTotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Part charges</span>
+                    <span className="font-medium">{formatCurrency(chargeTotal - orderWideTotal)}</span>
                   </div>
                   <div className="border-t border-border/60 pt-2 flex justify-between text-base font-semibold">
                     <span>Total estimate</span>
-                    <span className="text-primary">{formatCurrency(quote.totalCents)}</span>
+                    <span className="text-primary">{formatCurrency(totalCents)}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -281,7 +294,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
                   <span className="font-medium text-muted-foreground">Restricted</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Add-ons and labor</span>
+                  <span className="text-muted-foreground">Charges</span>
                   <span className="font-medium text-muted-foreground">Restricted</span>
                 </div>
                 <div className="border-t border-border/60 pt-2 flex justify-between text-base font-semibold">
@@ -416,46 +429,37 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
 
       <Card>
         <CardHeader>
-          <CardTitle>Add-ons & labor</CardTitle>
-          <CardDescription>Hourly or fixed-rate services applied to the quote.</CardDescription>
+          <CardTitle>Charges</CardTitle>
+          <CardDescription>Department charges captured for this quote.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {quote.addonSelections.length === 0 && <p className="text-sm text-muted-foreground">No add-ons applied.</p>}
-          {quote.addonSelections.map((selection) => (
-            <div key={selection.id} className="rounded border border-border/50 bg-card/40 p-4 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-medium">{selection.addon?.name ?? 'Add-on removed'}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {selection.units} {selection.rateTypeSnapshot === 'FLAT' ? 'qty' : 'hrs'} •{' '}
-                    <AdminPricingGate
-                      initialRole={initialRole}
-                      initialAdmin={isAdmin}
-                      admin={
-                        isAdmin ? (
-                          <span>Rate {formatCurrency(selection.rateCents)}</span>
-                        ) : null
-                      }
-                      fallback={<span>Rate hidden</span>}
-                    />
-                  </p>
+          {chargeEntries.length === 0 && <p className="text-sm text-muted-foreground">No charges applied.</p>}
+          {chargeEntries.map((charge, index) => {
+            const partLabel =
+              typeof charge.partIndex === 'number'
+                ? quote.parts[charge.partIndex]?.partNumber || quote.parts[charge.partIndex]?.name || `Part ${charge.partIndex + 1}`
+                : 'Order-wide';
+            const subtotal = charge.unitPriceCents * charge.quantity;
+            return (
+              <div key={`${charge.partIndex ?? 'order'}-${index}`} className="rounded border border-border/50 bg-card/40 p-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium">{charge.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {charge.departmentName || 'Department'} • {partLabel} • {charge.quantity} × {formatCurrency(charge.unitPriceCents)}
+                    </p>
+                  </div>
+                  <AdminPricingGate
+                    initialRole={initialRole}
+                    initialAdmin={isAdmin}
+                    admin={isAdmin ? <div className="text-right font-medium">{formatCurrency(subtotal)}</div> : null}
+                    fallback={<div className="text-right text-muted-foreground">Subtotal hidden</div>}
+                  />
                 </div>
-                <AdminPricingGate
-                  initialRole={initialRole}
-                  initialAdmin={isAdmin}
-                  admin={
-                    isAdmin ? (
-                      <div className="text-right font-medium">{formatCurrency(selection.totalCents)}</div>
-                    ) : null
-                  }
-                  fallback={
-                    <div className="text-right text-muted-foreground">Subtotal hidden</div>
-                  }
-                />
+                {charge.description && <p className="mt-2 text-xs text-muted-foreground">{charge.description}</p>}
               </div>
-              {selection.notes && <p className="mt-2 text-xs text-muted-foreground">{selection.notes}</p>}
-            </div>
-          ))}
+            );
+          })}
         </CardContent>
       </Card>
 

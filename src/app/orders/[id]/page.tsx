@@ -71,6 +71,18 @@ const DEFAULT_BUSINESS = (BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die') 
 
 type Option = { id: string; name: string };
 
+type DepartmentOption = { id: string; name: string; isActive?: boolean };
+
+type AddonOption = {
+  id: string;
+  name: string;
+  description?: string | null;
+  rateType: string;
+  rateCents: number;
+  departmentId: string;
+  department?: { id: string; name: string } | null;
+};
+
 type EditFormState = {
   business: BusinessCode;
   customerId: string;
@@ -102,9 +114,30 @@ type AttachmentFormState = {
   uploading: boolean;
 };
 
+type ChargeFormState = {
+  partId: string | null;
+  addonId: string;
+  departmentId: string;
+  kind: string;
+  name: string;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+};
+
+type PartAttachmentFormState = {
+  kind: string;
+  label: string;
+  url: string;
+  mimeType: string;
+  storagePath: string;
+  file: File | null;
+  uploading: boolean;
+};
+
 type PendingAction =
   | { type: 'status'; status: string }
-  | { type: 'checklist'; addonId: string; checked: boolean };
+  | { type: 'checklist'; checklistId: string; checked: boolean };
 
 const statusColor = (status: string) =>
   ({
@@ -131,6 +164,8 @@ export default function OrderDetailPage() {
   const [customers, setCustomers] = useState<Option[]>([]);
   const [machinists, setMachinists] = useState<Option[]>([]);
   const [materials, setMaterials] = useState<Option[]>([]);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
+  const [addons, setAddons] = useState<AddonOption[]>([]);
   const [partForm, setPartForm] = useState<PartFormState>({
     partNumber: '',
     quantity: '1',
@@ -156,6 +191,21 @@ export default function OrderDetailPage() {
   const [attachmentFileKey, setAttachmentFileKey] = useState(0);
   const [attachmentFileName, setAttachmentFileName] = useState<string | null>(null);
   const [attachmentBusiness, setAttachmentBusiness] = useState<BusinessName>(DEFAULT_BUSINESS);
+  const [chargeDialogOpen, setChargeDialogOpen] = useState(false);
+  const [chargeForm, setChargeForm] = useState<ChargeFormState>({
+    partId: null,
+    addonId: '',
+    departmentId: '',
+    kind: 'LABOR',
+    name: '',
+    description: '',
+    quantity: '1',
+    unitPrice: '0',
+  });
+  const [chargeSaving, setChargeSaving] = useState(false);
+  const [chargeError, setChargeError] = useState<string | null>(null);
+  const [partAttachmentForms, setPartAttachmentForms] = useState<Record<string, PartAttachmentFormState>>({});
+  const [partAttachmentErrors, setPartAttachmentErrors] = useState<Record<string, string | null>>({});
   const [editOpen, setEditOpen] = useState(false);
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [employeeName, setEmployeeName] = useState('');
@@ -197,6 +247,36 @@ export default function OrderDetailPage() {
     const referenceSlug = slugifyName(referenceValue, 'order');
     return `${businessSlug}/${customerSlug || 'customer'}/${referenceSlug}`;
   }, [attachmentBusiness, id, item?.customer?.name, item?.orderNumber]);
+
+  const formatCurrency = React.useCallback(
+    (amount: number) =>
+      new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0),
+    []
+  );
+
+  const getPartAttachmentForm = React.useCallback(
+    (partId: string): PartAttachmentFormState =>
+      partAttachmentForms[partId] ?? {
+        kind: 'DWG',
+        label: '',
+        url: '',
+        mimeType: '',
+        storagePath: '',
+        file: null,
+        uploading: false,
+      },
+    [partAttachmentForms]
+  );
+
+  const updatePartAttachmentForm = React.useCallback(
+    (partId: string, updates: Partial<PartAttachmentFormState>) => {
+      setPartAttachmentForms((prev) => ({
+        ...prev,
+        [partId]: { ...getPartAttachmentForm(partId), ...updates },
+      }));
+    },
+    [getPartAttachmentForm]
+  );
 
   async function load() {
     if (!id) return null;
@@ -307,6 +387,16 @@ export default function OrderDetailPage() {
         );
       })
       .catch(() => setMachinists([]));
+
+    fetch('/api/admin/departments', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => setDepartments(Array.isArray(data?.items) ? data.items : []))
+      .catch(() => setDepartments([]));
+
+    fetch('/api/admin/addons?active=true&take=200', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => setAddons(Array.isArray(data?.items) ? data.items : []))
+      .catch(() => setAddons([]));
   }, []);
 
   useEffect(() => {
@@ -380,13 +470,13 @@ export default function OrderDetailPage() {
     setPendingAction(null);
   }
 
-  async function toggleChecklist(addonId: string, checked: boolean, employee: string) {
-    setToggling(addonId);
+  async function toggleChecklist(checklistId: string, checked: boolean, employee: string) {
+    setToggling(checklistId);
     try {
       const res = await fetch(`/api/orders/${id}/checklist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ addonId, checked, employeeName: employee }),
+        body: JSON.stringify({ checklistId, checked, employeeName: employee }),
         credentials: 'include',
       });
       const message = await res.text();
@@ -691,6 +781,152 @@ export default function OrderDetailPage() {
     }
   }
 
+  function openChargeDialog(partId: string | null) {
+    const fallbackDepartment = departments.find((dept) => dept.isActive !== false) ?? departments[0];
+    setChargeForm({
+      partId,
+      addonId: '',
+      departmentId: fallbackDepartment?.id ?? '',
+      kind: 'LABOR',
+      name: '',
+      description: '',
+      quantity: '1',
+      unitPrice: '0',
+    });
+    setChargeError(null);
+    setChargeDialogOpen(true);
+  }
+
+  async function handleAddCharge(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!id) return;
+    setChargeSaving(true);
+    setChargeError(null);
+    try {
+      const payload = {
+        partId: chargeForm.partId,
+        addonId: chargeForm.addonId || null,
+        departmentId: chargeForm.departmentId,
+        kind: chargeForm.kind,
+        name: chargeForm.name.trim(),
+        description: chargeForm.description.trim() || undefined,
+        quantity: Number.parseFloat(chargeForm.quantity || '0') || 0,
+        unitPrice: Number.parseFloat(chargeForm.unitPrice || '0') || 0,
+      };
+
+      const res = await fetch(`/api/orders/${id}/charges`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+      const raw = await res.text();
+      if (!res.ok) {
+        let message = 'Failed to add charge';
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            message =
+              typeof parsed?.error === 'string'
+                ? parsed.error
+                : parsed?.message || JSON.stringify(parsed?.error ?? parsed);
+          } catch {
+            message = raw;
+          }
+        }
+        throw new Error(message || 'Failed to add charge');
+      }
+
+      setChargeDialogOpen(false);
+      await load();
+    } catch (err: any) {
+      setChargeError(err.message || 'Failed to add charge');
+    } finally {
+      setChargeSaving(false);
+    }
+  }
+
+  async function toggleChargeCompletion(chargeId: string, completed: boolean) {
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/orders/${id}/charges/${chargeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed }),
+        credentials: 'include',
+      });
+      if (!res.ok) throw res;
+      await load();
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function handlePartAttachmentSubmit(partId: string, event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!id) return;
+
+    const form = getPartAttachmentForm(partId);
+    if (form.uploading) {
+      setPartAttachmentErrors((prev) => ({ ...prev, [partId]: 'Wait for the upload to finish.' }));
+      return;
+    }
+
+    setPartAttachmentErrors((prev) => ({ ...prev, [partId]: null }));
+    updatePartAttachmentForm(partId, { uploading: true });
+    try {
+      if (form.file) {
+        const data = new FormData();
+        data.append('file', form.file);
+        data.append('kind', form.kind);
+        if (form.label.trim()) data.append('label', form.label.trim());
+
+        const res = await fetch(`/api/orders/parts/${partId}/attachments/upload`, {
+          method: 'POST',
+          body: data,
+          credentials: 'include',
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(payload?.error || 'Failed to upload attachment');
+        }
+      } else if (form.url.trim() || form.storagePath.trim()) {
+        const payload = {
+          kind: form.kind,
+          url: form.url.trim() || undefined,
+          storagePath: form.storagePath.trim() || undefined,
+          label: form.label.trim() || undefined,
+          mimeType: form.mimeType.trim() || undefined,
+        };
+        const res = await fetch(`/api/orders/parts/${partId}/attachments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          credentials: 'include',
+        });
+        const raw = await res.text();
+        if (!res.ok) {
+          throw new Error(raw || 'Failed to add attachment');
+        }
+      } else {
+        throw new Error('Add a link or upload a file to attach.');
+      }
+
+      updatePartAttachmentForm(partId, {
+        label: '',
+        url: '',
+        mimeType: '',
+        storagePath: '',
+        file: null,
+        uploading: false,
+      });
+      await load();
+    } catch (err: any) {
+      setPartAttachmentErrors((prev) => ({ ...prev, [partId]: err.message || 'Failed to add attachment' }));
+      updatePartAttachmentForm(partId, { uploading: false });
+    }
+  }
+
   async function addNote() {
     if (!noteText.trim()) return;
     try {
@@ -786,7 +1022,7 @@ export default function OrderDetailPage() {
       if (pendingAction.type === 'status') {
         await changeStatus(pendingAction.status, trimmedName);
       } else {
-        await toggleChecklist(pendingAction.addonId, pendingAction.checked, trimmedName);
+        await toggleChecklist(pendingAction.checklistId, pendingAction.checked, trimmedName);
       }
       closeEmployeeDialog();
     } catch (err: any) {
@@ -812,13 +1048,13 @@ export default function OrderDetailPage() {
     return <div className="text-muted-foreground">Order not found.</div>;
   }
 
-  const checkedIds = new Set(
-    (item.checklist ?? []).filter((c: any) => c.completed).map((c: any) => c.addon?.id)
-  );
+  const checkedIds = new Set((item.checklist ?? []).filter((c: any) => c.completed).map((c: any) => c.id));
   const parts: any[] = Array.isArray(item.parts) ? item.parts : [];
   const primaryPart = parts[0];
   const additionalParts = parts.slice(1);
   const attachments: any[] = Array.isArray(item.attachments) ? item.attachments : [];
+  const charges: any[] = Array.isArray(item.charges) ? item.charges : [];
+  const orderWideCharges = charges.filter((charge) => !charge.partId);
   const businessOption = BUSINESS_OPTIONS.find((option) => option.code === item.business);
   const pendingStatusLabel =
     pendingAction?.type === 'status'
@@ -826,7 +1062,7 @@ export default function OrderDetailPage() {
       : null;
   const pendingChecklistName =
     pendingAction?.type === 'checklist'
-      ? item.checklist?.find((c: any) => c.addon?.id === pendingAction.addonId)?.addon?.name
+      ? item.checklist?.find((c: any) => c.id === pendingAction.checklistId)?.addon?.name
       : null;
 
   return (
@@ -879,6 +1115,141 @@ export default function OrderDetailPage() {
               </Button>
               <Button type="submit" disabled={employeeSubmitting}>
                 {employeeSubmitting ? 'Submitting…' : 'Submit'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={chargeDialogOpen} onOpenChange={setChargeDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Add charge</DialogTitle>
+            <DialogDescription>Capture labor, materials, and add-on charges for this order.</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleAddCharge}>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label>Addon (optional)</Label>
+                <Select
+                  value={chargeForm.addonId || NONE_VALUE}
+                  onValueChange={(value) => {
+                    const addonId = value === NONE_VALUE ? '' : value;
+                    const addon = addons.find((item) => item.id === addonId);
+                    setChargeForm((prev) => ({
+                      ...prev,
+                      addonId,
+                      departmentId: addon?.departmentId ?? prev.departmentId,
+                      name: addon?.name ?? prev.name,
+                      kind: addon ? 'ADDON' : prev.kind,
+                      unitPrice: addon ? (addon.rateCents / 100).toFixed(2) : prev.unitPrice,
+                    }));
+                  }}
+                >
+                  <SelectTrigger className="border-border/60 bg-background/80">
+                    <SelectValue placeholder="Select addon" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE_VALUE}>Custom charge</SelectItem>
+                    {addons.map((addon) => (
+                      <SelectItem key={addon.id} value={addon.id}>
+                        {addon.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Department *</Label>
+                <Select
+                  value={chargeForm.departmentId || NONE_VALUE}
+                  onValueChange={(value) =>
+                    setChargeForm((prev) => ({
+                      ...prev,
+                      departmentId: value === NONE_VALUE ? '' : value,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="border-border/60 bg-background/80">
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Kind</Label>
+                <Select
+                  value={chargeForm.kind}
+                  onValueChange={(value) => setChargeForm((prev) => ({ ...prev, kind: value }))}
+                >
+                  <SelectTrigger className="border-border/60 bg-background/80">
+                    <SelectValue placeholder="Select kind" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['LABOR', 'ADDON', 'MATERIAL', 'FEE', 'SHIPPING', 'DISCOUNT'].map((kind) => (
+                      <SelectItem key={kind} value={kind}>
+                        {kind}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Name *</Label>
+                <Input
+                  value={chargeForm.name}
+                  onChange={(event) => setChargeForm((prev) => ({ ...prev, name: event.target.value }))}
+                  placeholder="Charge name"
+                  required
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Quantity</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={chargeForm.quantity}
+                  onChange={(event) => setChargeForm((prev) => ({ ...prev, quantity: event.target.value }))}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Unit price</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={chargeForm.unitPrice}
+                  onChange={(event) => setChargeForm((prev) => ({ ...prev, unitPrice: event.target.value }))}
+                />
+              </div>
+              <div className="grid gap-1.5 md:col-span-2">
+                <Label>Description</Label>
+                <Textarea
+                  value={chargeForm.description}
+                  onChange={(event) => setChargeForm((prev) => ({ ...prev, description: event.target.value }))}
+                  placeholder="Optional details"
+                  className="min-h-[80px]"
+                />
+              </div>
+            </div>
+            {chargeError && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {chargeError}
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setChargeDialogOpen(false)} disabled={chargeSaving}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={chargeSaving || !chargeForm.name.trim() || !chargeForm.departmentId}>
+                {chargeSaving ? 'Saving…' : 'Add charge'}
               </Button>
             </DialogFooter>
           </form>
@@ -1612,6 +1983,219 @@ export default function OrderDetailPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
+                <ClipboardList className="h-4 w-4 text-muted-foreground" /> Charges & attachments
+              </CardTitle>
+              <CardDescription>Track department work and part-level files.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">Order-wide charges</div>
+                    <div className="text-xs text-muted-foreground">Applies to the full order.</div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => openChargeDialog(null)}>
+                    Add charge
+                  </Button>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {orderWideCharges.length ? (
+                    orderWideCharges.map((charge) => {
+                      const quantity = Number(charge.quantity ?? 0);
+                      const unitPrice = Number(charge.unitPrice ?? 0);
+                      const hasPrice = Number.isFinite(unitPrice);
+                      return (
+                        <div
+                          key={charge.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded border border-border/60 bg-background/70 px-3 py-2 text-sm"
+                        >
+                          <div>
+                            <div className="font-medium text-foreground">{charge.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {charge.department?.name ?? 'No department'} • {charge.kind}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span>
+                              {quantity} × {hasPrice ? formatCurrency(unitPrice) : '—'}
+                            </span>
+                            <span className="text-foreground">
+                              {hasPrice ? formatCurrency(quantity * unitPrice) : '—'}
+                            </span>
+                            <Checkbox
+                              checked={Boolean(charge.completedAt)}
+                              onCheckedChange={(value) => toggleChargeCompletion(charge.id, value === true)}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No order-wide charges yet.</p>
+                  )}
+                </div>
+              </div>
+              {parts.map((part, index) => {
+                const partCharges = charges.filter((charge) => charge.partId === part.id);
+                const partAttachments = Array.isArray(part.attachments) ? part.attachments : [];
+                const form = getPartAttachmentForm(part.id);
+                return (
+                  <div key={part.id} className="rounded-lg border border-border/60 bg-muted/5 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">
+                          {part.partNumber || `Part ${index + 1}`}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Qty {part.quantity ?? 1}</div>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => openChargeDialog(part.id)}>
+                        Add charge
+                      </Button>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Charges</div>
+                      {partCharges.length ? (
+                        partCharges.map((charge) => {
+                          const quantity = Number(charge.quantity ?? 0);
+                          const unitPrice = Number(charge.unitPrice ?? 0);
+                          const hasPrice = Number.isFinite(unitPrice);
+                          return (
+                            <div
+                              key={charge.id}
+                              className="flex flex-wrap items-center justify-between gap-3 rounded border border-border/60 bg-background/70 px-3 py-2 text-sm"
+                            >
+                              <div>
+                                <div className="font-medium text-foreground">{charge.name}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {charge.department?.name ?? 'No department'} • {charge.kind}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                <span>
+                                  {quantity} × {hasPrice ? formatCurrency(unitPrice) : '—'}
+                                </span>
+                                <span className="text-foreground">
+                                  {hasPrice ? formatCurrency(quantity * unitPrice) : '—'}
+                                </span>
+                                <Checkbox
+                                  checked={Boolean(charge.completedAt)}
+                                  onCheckedChange={(value) => toggleChargeCompletion(charge.id, value === true)}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No charges yet.</p>
+                      )}
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Attachments</div>
+                      <div className="space-y-2">
+                        {partAttachments.length ? (
+                          partAttachments.map((att: any) => {
+                            const openHref = att.storagePath ? `/attachments/${att.storagePath}` : att.url;
+                            return (
+                              <div
+                                key={att.id}
+                                className="flex flex-wrap items-center justify-between gap-3 rounded border border-border/60 bg-background/70 px-3 py-2 text-xs text-muted-foreground"
+                              >
+                                <div>
+                                  <div className="text-sm font-medium text-foreground">{att.label || 'Attachment'}</div>
+                                  <div>
+                                    {att.kind} • {att.mimeType || 'Unknown type'}
+                                  </div>
+                                </div>
+                                {openHref ? (
+                                  <a
+                                    href={openHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-medium text-primary hover:underline"
+                                  >
+                                    Open
+                                  </a>
+                                ) : (
+                                  <span>No link</span>
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No attachments yet.</p>
+                        )}
+                      </div>
+                      <form className="grid gap-3 rounded border border-dashed border-border/60 p-3" onSubmit={(event) => handlePartAttachmentSubmit(part.id, event)}>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          <div className="grid gap-1.5">
+                            <Label>Kind</Label>
+                            <Select
+                              value={form.kind}
+                              onValueChange={(value) => updatePartAttachmentForm(part.id, { kind: value })}
+                            >
+                              <SelectTrigger className="border-border/60 bg-background/80">
+                                <SelectValue placeholder="Select kind" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {['DWG', 'STEP', 'PDF', 'PO', 'IMAGE', 'OTHER'].map((kind) => (
+                                  <SelectItem key={kind} value={kind}>
+                                    {kind}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-1.5">
+                            <Label>Label</Label>
+                            <Input
+                              value={form.label}
+                              onChange={(event) => updatePartAttachmentForm(part.id, { label: event.target.value })}
+                              placeholder="Optional label"
+                            />
+                          </div>
+                          <div className="grid gap-1.5 md:col-span-2">
+                            <Label>URL</Label>
+                            <Input
+                              value={form.url}
+                              onChange={(event) => updatePartAttachmentForm(part.id, { url: event.target.value })}
+                              placeholder="https://..."
+                            />
+                          </div>
+                          <div className="grid gap-1.5 md:col-span-2">
+                            <Label>Upload file</Label>
+                            <Input
+                              type="file"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0] ?? null;
+                                updatePartAttachmentForm(part.id, {
+                                  file,
+                                  label: file && !form.label ? file.name : form.label,
+                                });
+                              }}
+                            />
+                          </div>
+                        </div>
+                        {partAttachmentErrors[part.id] && (
+                          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                            {partAttachmentErrors[part.id]}
+                          </div>
+                        )}
+                        <div className="flex justify-end">
+                          <Button type="submit" size="sm" disabled={form.uploading}>
+                            {form.uploading ? 'Saving…' : 'Add attachment'}
+                          </Button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
                 <PlusCircle className="h-4 w-4 text-muted-foreground" /> Add another part
               </CardTitle>
               <CardDescription>Extend this order with additional line items.</CardDescription>
@@ -1727,13 +2311,13 @@ export default function OrderDetailPage() {
                 >
                   <div className="flex items-start gap-3">
                     <Checkbox
-                      checked={checkedIds.has(c.addon?.id)}
-                      disabled={!!toggling || !c.addon?.id || employeeSubmitting || !!pendingAction}
+                      checked={checkedIds.has(c.id)}
+                      disabled={!!toggling || !c.id || employeeSubmitting || !!pendingAction || c.isActive === false}
                       onCheckedChange={(value) => {
-                        if (!c.addon?.id) return;
+                        if (!c.id) return;
                         openEmployeeDialog({
                           type: 'checklist',
-                          addonId: c.addon.id,
+                          checklistId: c.id,
                           checked: value === true,
                         });
                       }}
@@ -1742,8 +2326,14 @@ export default function OrderDetailPage() {
                       <div className="font-medium text-foreground">
                         {c.addon?.name ?? 'Add-on removed'}
                       </div>
+                      {c.part?.partNumber && (
+                        <div className="text-xs text-muted-foreground">Part: {c.part.partNumber}</div>
+                      )}
                       {c.addon?.description && (
                         <div className="text-xs text-muted-foreground">{c.addon.description}</div>
+                      )}
+                      {c.isActive === false && (
+                        <div className="text-xs text-muted-foreground">Archived (charge removed)</div>
                       )}
                       <div className="text-xs text-muted-foreground">
                         Updated {new Date(c.updatedAt).toLocaleString()}

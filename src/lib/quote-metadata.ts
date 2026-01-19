@@ -19,11 +19,25 @@ export type QuotePartPricingEntry = {
   priceCents: number;
 };
 
+export type QuoteChargeEntry = {
+  partIndex: number | null;
+  departmentId: string;
+  departmentName?: string | null;
+  addonId?: string | null;
+  kind: string;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  sortOrder?: number;
+};
+
 export type QuoteMetadata = Record<string, unknown> & {
   markupSuggestions?: number[];
   approval?: QuoteApprovalMetadata;
   conversion?: QuoteConversionMetadata;
   partPricing?: QuotePartPricingEntry[];
+  charges?: QuoteChargeEntry[];
 };
 
 const DEFAULT_APPROVAL: QuoteApprovalMetadata = {
@@ -57,6 +71,11 @@ function clonePartPricing(values: QuotePartPricingEntry[] | undefined): QuotePar
   return values.map((entry) => ({ ...entry }));
 }
 
+function cloneCharges(values: QuoteChargeEntry[] | undefined): QuoteChargeEntry[] | undefined {
+  if (!values) return undefined;
+  return values.map((entry) => ({ ...entry }));
+}
+
 export function mergeQuoteMetadata(metadata: QuoteMetadata | null | undefined): QuoteMetadata {
   const base = metadata && typeof metadata === 'object' ? metadata : {};
   const approval =
@@ -76,6 +95,7 @@ export function mergeQuoteMetadata(metadata: QuoteMetadata | null | undefined): 
     approval,
     conversion,
     partPricing: Array.isArray(base.partPricing) ? clonePartPricing(base.partPricing) : undefined,
+    charges: Array.isArray(base.charges) ? cloneCharges(base.charges) : undefined,
   } satisfies QuoteMetadata;
 }
 

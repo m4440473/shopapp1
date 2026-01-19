@@ -114,6 +114,7 @@ export default function OrdersPage() {
   const [sortKey, setSortKey] = useState<string>('dueDate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [machinists, setMachinists] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>('all');
   const [priorityFilter, setPriorityFilter] = useState<(typeof PRIORITY_FILTERS)[number]>('all');
   const [machinistFilter, setMachinistFilter] = useState<string>('all');
@@ -162,6 +163,13 @@ export default function OrdersPage() {
       .then((r) => (r.ok ? r.json() : Promise.resolve({ items: [] })))
       .then((d) => setMachinists(d.items ?? []))
       .catch(() => setMachinists([]));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/admin/departments', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : Promise.resolve({ items: [] })))
+      .then((d) => setDepartments((d.items ?? []).filter((dept: any) => dept.isActive)))
+      .catch(() => setDepartments([]));
   }, []);
 
   const decorated = useMemo(() => items.map((order) => decorateOrder(order)), [items]);
@@ -436,7 +444,7 @@ export default function OrdersPage() {
                     </div>
                   </div>
                   <div className="space-y-3 rounded-lg border border-border/60 bg-secondary/30 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Part & addon details</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Part, addon & department</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <Label className="text-xs uppercase tracking-wide text-muted-foreground">Min qty</Label>
@@ -468,6 +476,25 @@ export default function OrdersPage() {
                           className="border-border/60 bg-background/80"
                         />
                       </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Department</Label>
+                      <Select
+                        value={advancedFilters.departmentId ?? 'all'}
+                        onValueChange={(value) => setAdvancedFilters((prev) => ({ ...prev, departmentId: value }))}
+                      >
+                        <SelectTrigger className="border-border/60 bg-background/80">
+                          <SelectValue placeholder="All departments" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All departments</SelectItem>
+                          {departments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.id}>
+                              {dept.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="flex items-center gap-2">
                       <Checkbox
@@ -585,7 +612,7 @@ export default function OrdersPage() {
                     <SortableHeader label="Last change" column="lastChange" current={sortKey} dir={sortDir} onChange={handleSortChange} />
                   </TableHead>
                   <TableHead>Machinist</TableHead>
-                  <TableHead>Addons</TableHead>
+                  <TableHead>Checklist</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -649,6 +676,13 @@ export default function OrdersPage() {
                             </span>
                           ) : (
                             <span className="text-xs text-muted-foreground">All clear</span>
+                          )}
+                          {order.pendingDepartments?.length ? (
+                            <span className="text-xs text-muted-foreground">
+                              Pending: {order.pendingDepartments.map((dept: any) => dept.name).join(', ')}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No dept work</span>
                           )}
                         </div>
                       ) : (

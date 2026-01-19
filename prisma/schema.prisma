@@ -84,6 +84,7 @@ model Order {
   assignedMachinist   User? @relation("AssignedOrders", fields: [assignedMachinistId], references: [id])
   parts            OrderPart[]
   checklist        OrderChecklist[]
+  charges          OrderCharge[]
   attachments      Attachment[]
   notes            Note[]
   timeLogs         TimeLog[]
@@ -101,21 +102,27 @@ model OrderPart {
   notes      String?
   stockSize  String?
   cutLength  String?
+  charges    OrderCharge[]
+  attachments PartAttachment[]
+  checklistItems OrderChecklist[]
 }
 
 model OrderChecklist {
   id          String   @id @default(cuid())
   orderId     String
   order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId      String?
+  part        OrderPart? @relation(fields: [partId], references: [id])
   addonId     String
   addon       Addon    @relation(fields: [addonId], references: [id])
   completed   Boolean  @default(false)
+  isActive    Boolean  @default(true)
   toggledById String?
   toggledBy   User?    @relation("ChecklistToggledBy", fields: [toggledById], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([orderId, addonId])
+  @@unique([orderId, partId, addonId])
 }
 
 model Note {
@@ -178,6 +185,7 @@ model Addon {
 
   quoteSelections QuoteAddonSelection[]
   orderChecklist  OrderChecklist[]
+  orderCharges    OrderCharge[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -193,8 +201,49 @@ model Department {
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
   addons    Addon[]
+  charges   OrderCharge[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model OrderCharge {
+  id           String   @id @default(cuid())
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId       String?
+  part         OrderPart? @relation(fields: [partId], references: [id])
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  addonId      String?
+  addon        Addon?   @relation(fields: [addonId], references: [id])
+  kind         String
+  name         String
+  description  String?
+  quantity     Decimal  @default(1)
+  unitPrice    Decimal  @default(0)
+  sortOrder    Int      @default(0)
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([partId])
+  @@index([departmentId])
+}
+
+model PartAttachment {
+  id          String   @id @default(cuid())
+  partId      String
+  part        OrderPart @relation(fields: [partId], references: [id], onDelete: Cascade)
+  kind        String
+  url         String
+  storagePath String?
+  label       String?
+  mimeType    String?
+  createdAt   DateTime @default(now())
+
+  @@index([partId])
+  @@index([storagePath])
 }
 
 model Quote {
