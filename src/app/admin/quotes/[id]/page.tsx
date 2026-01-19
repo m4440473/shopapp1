@@ -94,7 +94,6 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
   const totalCents = quote.basePriceCents + addonTotal + vendorTotal;
   const partPricing = getPartPricingEntries({
     parts: quote.parts,
-    totalCents,
     metadata,
   });
   const attachmentLinks = quote.attachments

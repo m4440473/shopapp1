@@ -3,13 +3,7 @@ import type { QuoteMetadata, QuotePartPricingEntry } from '@/lib/quote-metadata'
 type PartLike = {
   name: string;
   partNumber?: string | null;
-};
-
-const buildEvenSplit = (totalCents: number, count: number): number[] => {
-  if (count <= 0) return [];
-  const even = Math.floor(totalCents / count);
-  const remainder = totalCents - even * count;
-  return Array.from({ length: count }, (_, index) => even + (index === count - 1 ? remainder : 0));
+  addonSelections?: Array<{ totalCents: number }>;
 };
 
 const isValidPricing = (entries: QuotePartPricingEntry[], expectedTotal: number, partCount: number) => {
@@ -20,14 +14,17 @@ const isValidPricing = (entries: QuotePartPricingEntry[], expectedTotal: number,
 
 export const getPartPricingEntries = ({
   parts,
-  totalCents,
   metadata,
 }: {
   parts: PartLike[];
-  totalCents: number;
   metadata?: QuoteMetadata | null;
 }): QuotePartPricingEntry[] => {
   if (!parts.length) return [];
+
+  const partTotals = parts.map((part) =>
+    (part.addonSelections ?? []).reduce((sum, selection) => sum + (selection.totalCents || 0), 0)
+  );
+  const expectedTotal = partTotals.reduce((sum, total) => sum + total, 0);
 
   const stored = Array.isArray(metadata?.partPricing)
     ? metadata.partPricing.map((entry) => ({
@@ -37,7 +34,7 @@ export const getPartPricingEntries = ({
       }))
     : [];
 
-  if (stored.length && isValidPricing(stored, totalCents, parts.length)) {
+  if (stored.length && isValidPricing(stored, expectedTotal, parts.length)) {
     return stored.map((entry, index) => ({
       name: entry.name ?? parts[index]?.name ?? null,
       partNumber: entry.partNumber ?? parts[index]?.partNumber ?? null,
@@ -45,10 +42,9 @@ export const getPartPricingEntries = ({
     }));
   }
 
-  const fallbackPrices = buildEvenSplit(totalCents, parts.length);
   return parts.map((part, index) => ({
     name: part.name,
     partNumber: part.partNumber ?? null,
-    priceCents: fallbackPrices[index] ?? 0,
+    priceCents: partTotals[index] ?? 0,
   }));
 };

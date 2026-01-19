@@ -50,7 +50,6 @@ export default async function QuotePrintPage({ params }: { params: { id: string 
   const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata));
   const partPricing = getPartPricingEntries({
     parts: quote.parts,
-    totalCents: total,
     metadata,
   });
 
