@@ -18,6 +18,7 @@ import { canAccessAdmin } from '@/lib/rbac';
 import { businessNameFromCode, type BusinessCode, type BusinessName } from '@/lib/businesses';
 import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
 import { OrderPartCreate, PriorityEnum } from '@/lib/zod-orders';
+import { getAppSettings } from '@/lib/app-settings';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -105,16 +106,18 @@ async function prepareAttachments({
   businessName,
   customerName,
   orderNumber,
+  rootDir,
 }: {
   attachments: Array<{ storagePath: string | null; url: string | null; label: string | null; mimeType: string | null }>;
   businessName: BusinessName;
   customerName: string;
   orderNumber: string;
+  rootDir: string;
 }): Promise<PreparedAttachment[]> {
   if (!attachments.length) return [];
 
   const prepared: PreparedAttachment[] = [];
-  const attachmentRoot = await ensureAttachmentRoot();
+  const attachmentRoot = await ensureAttachmentRoot(rootDir);
 
   for (const attachment of attachments) {
     if (attachment.storagePath) {
@@ -132,6 +135,7 @@ async function prepareAttachments({
         referenceNumber: orderNumber,
         originalFilename: attachment.label || path.basename(sourcePath),
         buffer,
+        rootDir,
       });
 
       prepared.push({
@@ -159,6 +163,8 @@ async function prepareAttachments({
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
+
+  const settings = await getAppSettings();
 
   let overrides: z.infer<typeof ConversionOverrides> | null = null;
   if (req.headers.get('content-type')?.includes('application/json')) {
@@ -195,8 +201,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     );
   }
 
-  if (!metadata.approval?.received) {
-    return NextResponse.json({ error: 'Approval must be received before conversion.' }, { status: 400 });
+  if (settings.requirePOForQuoteToOrder) {
+    const hasApprovalAttachment = Boolean(
+      metadata.approval?.attachmentId ||
+        metadata.approval?.attachmentUrl ||
+        metadata.approval?.attachmentStoragePath,
+    );
+    if (!hasApprovalAttachment) {
+      return NextResponse.json(
+        { error: 'Attach the approval or PO before converting this quote.' },
+        { status: 400 },
+      );
+    }
   }
 
   if (!quote.customerId) {
@@ -226,6 +242,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       businessName,
       customerName,
       orderNumber,
+      rootDir: settings.attachmentsDir,
     });
   } catch (error: any) {
     const message = typeof error?.message === 'string' ? error.message : 'Failed to copy attachments';

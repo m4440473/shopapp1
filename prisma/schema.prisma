@@ -278,3 +278,17 @@ model QuoteAttachment {
 
   @@index([storagePath])
 }
+
+model AppSettings {
+  id                      String   @id @default("singleton")
+  companyName             String   @default("Shopapp1")
+  logoPath                String?
+  themePrimary            String   @default("#0ea5e9")
+  themeAccent             String   @default("#a855f7")
+  attachmentsDir          String   @default("/app/storage")
+  requirePOForQuoteApproval Boolean @default(true)
+  requirePOForQuoteToOrder Boolean @default(false)
+  invoiceTemplateId       String   @default("classic")
+  invoiceOptions          String?
+  updatedAt               DateTime @updatedAt
+}
