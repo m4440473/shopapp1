@@ -17,9 +17,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!canAccessMachinist(role)) return new NextResponse('Forbidden', { status: 403 });
 
   const json = await req.json().catch(() => null);
-  const { checklistId, addonId, partId, checked } = json ?? {};
+  const { checklistId, chargeId, addonId, partId, checked } = json ?? {};
   const employeeName = typeof json?.employeeName === 'string' ? json.employeeName.trim() : '';
-  if (!checklistId && !addonId) return NextResponse.json({ error: 'Missing checklistId' }, { status: 400 });
+  if (!checklistId && !chargeId && !addonId) {
+    return NextResponse.json({ error: 'Missing checklistId' }, { status: 400 });
+  }
   if (typeof checked !== 'boolean') return NextResponse.json({ error: 'Missing checked state' }, { status: 400 });
   if (!employeeName) return NextResponse.json({ error: 'Employee name is required' }, { status: 400 });
 
@@ -28,19 +30,36 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!orderExists) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
 
   const existingChecklist = checklistId
-    ? await prisma.orderChecklist.findUnique({ where: { id: checklistId, orderId } })
-    : await prisma.orderChecklist.findFirst({
-        where: { orderId, addonId, partId: typeof partId === 'string' ? partId : null, isActive: true },
-      });
+    ? await prisma.orderChecklist.findUnique({ where: { id: checklistId } })
+    : chargeId
+      ? await prisma.orderChecklist.findFirst({ where: { orderId, chargeId, isActive: true } })
+      : await prisma.orderChecklist.findFirst({
+          where: { orderId, addonId, partId: typeof partId === 'string' ? partId : null, isActive: true },
+        });
   if (!existingChecklist) {
     return NextResponse.json({ error: 'Checklist item not found' }, { status: 404 });
   }
+  if (existingChecklist.orderId !== orderId) {
+    return NextResponse.json({ error: 'Checklist item not found' }, { status: 404 });
+  }
 
-  const addonExists = await prisma.addon.findUnique({
-    where: { id: existingChecklist.addonId },
-    select: { id: true, name: true },
-  });
-  if (!addonExists) return NextResponse.json({ error: 'Addon not found' }, { status: 404 });
+  const charge = existingChecklist.chargeId
+    ? await prisma.orderCharge.findUnique({
+        where: { id: existingChecklist.chargeId },
+        select: { id: true, name: true },
+      })
+    : null;
+
+  const addonExists = existingChecklist.addonId
+    ? await prisma.addon.findUnique({ where: { id: existingChecklist.addonId }, select: { id: true, name: true } })
+    : null;
+
+  if (existingChecklist.chargeId && !charge) {
+    return NextResponse.json({ error: 'Charge not found' }, { status: 404 });
+  }
+  if (existingChecklist.addonId && !addonExists) {
+    return NextResponse.json({ error: 'Addon not found' }, { status: 404 });
+  }
 
   const previousState = existingChecklist?.completed ?? false;
 
@@ -50,18 +69,30 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     : null;
   const toggledById = toggler ? toggler.id : null;
 
-  await prisma.orderChecklist.update({
-    where: { id: existingChecklist.id },
-    data: { completed: checked, toggledById },
-  });
+  await prisma.$transaction([
+    prisma.orderChecklist.update({
+      where: { id: existingChecklist.id },
+      data: { completed: checked, toggledById },
+    }),
+    ...(existingChecklist.chargeId
+      ? [
+          prisma.orderCharge.update({
+            where: { id: existingChecklist.chargeId },
+            data: { completedAt: checked ? new Date() : null },
+          }),
+        ]
+      : []),
+  ]);
+
+  const label = charge?.name ?? addonExists?.name ?? 'Checklist';
 
   await prisma.statusHistory.create({
     data: {
       orderId,
-      from: `${addonExists.name} ${previousState ? 'checked' : 'unchecked'}`,
-      to: `${addonExists.name} ${checked ? 'checked' : 'unchecked'}`,
+      from: `${label} ${previousState ? 'checked' : 'unchecked'}`,
+      to: `${label} ${checked ? 'checked' : 'unchecked'}`,
       userId: toggledById,
-      reason: `Checklist "${addonExists.name}" ${checked ? 'checked' : 'unchecked'} by ${employeeName}`,
+      reason: `Checklist "${label}" ${checked ? 'checked' : 'unchecked'} by ${employeeName}`,
     },
   });
 
@@ -73,7 +104,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const items = await prisma.orderChecklist.findMany({
     where: { orderId: params.id },
-    include: { addon: true, part: true },
+    include: {
+      addon: true,
+      department: true,
+      part: true,
+      charge: { select: { id: true, name: true, kind: true, completedAt: true, partId: true, departmentId: true } },
+    },
   });
   const sanitized = items.map(({ addon, ...item }) => ({
     ...item,

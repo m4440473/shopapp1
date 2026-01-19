@@ -32,7 +32,6 @@ type LayoutOption = 'grid' | 'handoff' | 'machinist';
 type Props = {
   orders: OrderWithMeta[];
   machinists: Array<{ id: string | null; name?: string | null; email?: string | null }>;
-  departments: Array<{ id: string; name: string; isActive: boolean }>;
 };
 
 const SORT_KEYS = ['dueDate', 'priority', 'status', 'quantity'] as const;
@@ -62,7 +61,7 @@ function SortButton({
   );
 }
 
-export function ShopFloorLayouts({ orders, machinists, departments }: Props) {
+export function ShopFloorLayouts({ orders, machinists }: Props) {
   const [layout, setLayout] = useState<LayoutOption>('grid');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'closed'>('active');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'HOT' | 'RUSH' | 'NORMAL' | 'LOW'>('all');
@@ -70,11 +69,6 @@ export function ShopFloorLayouts({ orders, machinists, departments }: Props) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sortKey, setSortKey] = useState<(typeof SORT_KEYS)[number]>('dueDate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-
-  const activeDepartments = useMemo(
-    () => departments.filter((department) => department.isActive),
-    [departments]
-  );
 
   const filtered = useMemo(() => {
     const decoratedOrders = orders.map((order) => decorateOrder(order));
@@ -100,7 +94,7 @@ export function ShopFloorLayouts({ orders, machinists, departments }: Props) {
     return list;
   }, [filtered, sortKey, sortDir]);
 
-  const handoffOrders = sorted.filter((order) => order.status === 'COMPLETE' && (order.openChargeCount ?? 0) > 0);
+  const handoffOrders = sorted.filter((order) => order.status === 'COMPLETE' && (order.openAddonCount ?? 0) > 0);
 
   const machinistBuckets = useMemo(() => {
     const buckets: Record<string, OrderWithMeta[]> = {};
@@ -164,7 +158,7 @@ export function ShopFloorLayouts({ orders, machinists, departments }: Props) {
             <DialogContent className="max-w-3xl">
               <DialogHeader>
                 <DialogTitle>Queue filters</DialogTitle>
-                <DialogDescription>Target orders by machinist, status, dates, quantities, and department readiness.</DialogDescription>
+                <DialogDescription>Target orders by machinist, status, dates, quantities, and addon readiness.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-3 rounded-lg border border-border/60 bg-secondary/30 p-4">
@@ -184,25 +178,6 @@ export function ShopFloorLayouts({ orders, machinists, departments }: Props) {
                         {machinists.map((mach) => (
                           <SelectItem key={mach.id ?? mach.email ?? 'unknown'} value={mach.id ?? mach.email ?? 'unknown'}>
                             {mach.name ?? mach.email ?? 'Unassigned'}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">Department</Label>
-                    <Select
-                      value={filters.departmentId ?? 'all'}
-                      onValueChange={(value) => setFilters((prev) => ({ ...prev, departmentId: value }))}
-                    >
-                      <SelectTrigger className="border-border/60 bg-background/80">
-                        <SelectValue placeholder="All departments" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All departments</SelectItem>
-                        {activeDepartments.map((dept) => (
-                          <SelectItem key={dept.id} value={dept.id}>
-                            {dept.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -402,14 +377,9 @@ export function ShopFloorLayouts({ orders, machinists, departments }: Props) {
                   <p className="text-foreground">{order.totalQuantity ?? 0}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide">Checklist</p>
+                  <p className="text-xs uppercase tracking-wide">Addons</p>
                   <p className="text-foreground">
                     {order.checklist?.length ? `${order.checklist.length - (order.openAddonCount ?? 0)}/${order.checklist.length} done` : 'None'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {order.pendingDepartments?.length
-                      ? `${order.pendingDepartments.length} dept${order.pendingDepartments.length === 1 ? '' : 's'} pending`
-                      : 'No dept work'}
                   </p>
                 </div>
               </div>
@@ -440,7 +410,7 @@ export function ShopFloorLayouts({ orders, machinists, departments }: Props) {
                       <TableHead>Status</TableHead>
                       <TableHead>Due</TableHead>
                       <TableHead>Qty</TableHead>
-                      <TableHead>Checklist</TableHead>
+                      <TableHead>Addons</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -457,18 +427,9 @@ export function ShopFloorLayouts({ orders, machinists, departments }: Props) {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{order.totalQuantity ?? 0}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          <div className="flex flex-col">
-                            <span>
-                              {order.checklist?.length
-                                ? `${order.checklist.length - (order.openAddonCount ?? 0)}/${order.checklist.length} complete`
-                                : 'None'}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {order.pendingDepartments?.length
-                                ? `${order.pendingDepartments.length} dept${order.pendingDepartments.length === 1 ? '' : 's'} pending`
-                                : 'No dept work'}
-                            </span>
-                          </div>
+                          {order.checklist?.length
+                            ? `${order.checklist.length - (order.openAddonCount ?? 0)}/${order.checklist.length} complete`
+                            : 'None'}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -485,7 +446,7 @@ export function ShopFloorLayouts({ orders, machinists, departments }: Props) {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-foreground">Running/complete with department work open</p>
+              <p className="text-sm font-semibold text-foreground">Running/complete but addons open</p>
               <p className="text-xs text-muted-foreground">
                 Use this for the fabrication crew to grab parts that are ready for the next step.
               </p>
@@ -513,19 +474,12 @@ export function ShopFloorLayouts({ orders, machinists, departments }: Props) {
                   {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
                 </p>
                 <p className="text-xs font-medium uppercase tracking-wide text-lime-200">
-                  {order.openChargeCount} charge{order.openChargeCount === 1 ? '' : 's'} remaining
+                  {order.openAddonCount} addon{order.openAddonCount === 1 ? '' : 's'} remaining
                 </p>
-                {order.pendingDepartments.length > 0 && (
-                  <p className="text-xs text-lime-200">
-                    Pending: {order.pendingDepartments.map((dept) => dept.name).join(', ')}
-                  </p>
-                )}
               </div>
             ))}
             {!handoffOrders.length && (
-              <p className="col-span-full text-sm text-muted-foreground">
-                No running/completed orders with pending department work.
-              </p>
+              <p className="col-span-full text-sm text-muted-foreground">No running/completed orders with addons outstanding.</p>
             )}
           </div>
         </div>

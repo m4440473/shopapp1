@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 
+import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
-import { getBusinessOptionByCode, type BusinessName } from '@/lib/businesses';
-import { storeAttachmentFile } from '@/lib/storage';
+import { businessNameFromCode, type BusinessName } from '@/lib/businesses';
 import { getAppSettings } from '@/lib/app-settings';
-import { prisma } from '@/lib/prisma';
-import { PartAttachmentKind } from '@/lib/zod-charges';
+import { storeAttachmentFile } from '@/lib/storage';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -23,10 +22,6 @@ async function requireAdmin() {
   return { session };
 }
 
-function extractString(value: FormDataEntryValue | null): string {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
 export async function POST(req: NextRequest, { params }: { params: { partId: string } }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
@@ -36,7 +31,16 @@ export async function POST(req: NextRequest, { params }: { params: { partId: str
 
   const part = await prisma.orderPart.findUnique({
     where: { id: partId },
-    include: { order: { include: { customer: true } } },
+    select: {
+      id: true,
+      order: {
+        select: {
+          orderNumber: true,
+          business: true,
+          customer: { select: { name: true } },
+        },
+      },
+    },
   });
   if (!part) return NextResponse.json({ error: 'Part not found' }, { status: 404 });
 
@@ -46,19 +50,9 @@ export async function POST(req: NextRequest, { params }: { params: { partId: str
     return NextResponse.json({ error: 'Missing file upload' }, { status: 400 });
   }
 
-  const kindValue = extractString(form.get('kind'));
-  const parsedKind = PartAttachmentKind.safeParse(kindValue || 'OTHER');
-  if (!parsedKind.success) {
-    return NextResponse.json({ error: 'Invalid attachment kind' }, { status: 400 });
-  }
-
-  const label = extractString(form.get('label'));
-
-  const order = part.order;
-  const businessOption = getBusinessOptionByCode(order.business);
-  const businessName = (businessOption?.name ?? 'Sterling Tool and Die') as BusinessName;
-  const customerName = order.customer?.name ?? 'customer';
-  const orderReference = order.orderNumber;
+  const customerName = part.order.customer?.name?.trim() || 'Customer';
+  const business = businessNameFromCode(part.order.business) as BusinessName;
+  const orderReference = part.order.orderNumber;
 
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
@@ -66,7 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: { partId: str
   try {
     const settings = await getAppSettings();
     const stored = await storeAttachmentFile({
-      business: businessName,
+      business,
       customerName,
       referenceNumber: orderReference,
       originalFilename: file.name,
@@ -74,18 +68,11 @@ export async function POST(req: NextRequest, { params }: { params: { partId: str
       rootDir: settings.attachmentsDir,
     });
 
-    const attachment = await prisma.partAttachment.create({
-      data: {
-        partId,
-        kind: parsedKind.data,
-        url: `/attachments/${stored.storagePath}`,
-        storagePath: stored.storagePath,
-        label: label || file.name,
-        mimeType: file.type || null,
-      },
+    return NextResponse.json({
+      storagePath: stored.storagePath,
+      label: file.name,
+      mimeType: file.type || null,
     });
-
-    return NextResponse.json({ attachment });
   } catch (error: any) {
     const message = typeof error?.message === 'string' ? error.message : 'Failed to store attachment';
     return NextResponse.json({ error: message }, { status: 500 });

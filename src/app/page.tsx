@@ -25,7 +25,7 @@ export default async function Home() {
   const now = new Date();
   const soon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const [totalOrders, closedOrders, activeOrders, recentOrders, departments] = await Promise.all([
+  const [totalOrders, closedOrders, activeOrders, recentOrders] = await Promise.all([
     prisma.order.count(),
     prisma.order.count({ where: { status: 'CLOSED' } }),
     prisma.order.findMany({
@@ -34,8 +34,7 @@ export default async function Home() {
         customer: { select: { name: true } },
         assignedMachinist: { select: { id: true, name: true, email: true } },
         parts: { select: { quantity: true } },
-        checklist: { select: { completed: true, isActive: true, addon: { select: { name: true } } } },
-        charges: { select: { completedAt: true, department: { select: { id: true, name: true, isActive: true } } } },
+        checklist: { select: { completed: true, addon: { select: { name: true } } } },
         statusHistory: { select: { createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 },
       },
       orderBy: [{ dueDate: 'asc' }, { orderNumber: 'asc' }],
@@ -49,7 +48,6 @@ export default async function Home() {
       orderBy: [{ receivedDate: 'desc' }],
       take: 8,
     }),
-    prisma.department.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
   ]);
 
   const dueSoon = activeOrders.filter((order) => {
@@ -154,7 +152,7 @@ export default async function Home() {
         </Card>
       </div>
 
-      <ShopFloorLayouts orders={decoratedActiveOrders} machinists={machinistList} departments={departments} />
+      <ShopFloorLayouts orders={decoratedActiveOrders} machinists={machinistList} />
 
       <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <Card className="xl:col-span-2">
