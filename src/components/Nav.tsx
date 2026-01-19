@@ -11,6 +11,7 @@ type NavLink = { href: string; label: string };
 
 const baseLinks: NavLink[] = [
   { href: '/', label: 'Shop Floor Intelligence' },
+  { href: '/about', label: 'Overview' },
   { href: '/orders', label: 'Orders' },
   { href: '/customers', label: 'Customers' },
   { href: '/orders/new', label: 'New Order' },

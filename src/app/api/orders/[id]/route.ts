@@ -10,6 +10,8 @@ import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions as any);
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
+  const user = (session as any).user;
+  const isAdmin = canAccessAdmin(user);
 
   const { id } = params;
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
@@ -18,18 +20,20 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     where: { id },
     include: {
       customer: true,
-      parts: { include: { material: true } },
-      checklist: { include: { addon: true } },
+      parts: { include: { material: true, attachments: true, charges: { include: { department: true } } } },
+      checklist: { include: { addon: true, department: true, part: true, charge: true } },
+      charges: { include: { department: true, part: true }, orderBy: { sortOrder: 'asc' } },
       statusHistory: { orderBy: { createdAt: 'asc' } },
       notes: { orderBy: { createdAt: 'asc' }, include: { user: true } },
       attachments: { include: { uploadedBy: true }, orderBy: { createdAt: 'desc' } },
+      partAttachments: { orderBy: { createdAt: 'desc' } },
       assignedMachinist: true,
       vendor: true,
     },
   });
 
   if (!order) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json({ item: sanitizePricingForNonAdmin(order) });
+  return NextResponse.json({ item: sanitizePricingForNonAdmin(order, isAdmin) });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {

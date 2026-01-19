@@ -11,6 +11,7 @@ const tabs = [
   { href: '/admin/vendors', label: 'Vendors' },
   { href: '/admin/addons', label: 'Add-ons & Checklist' },
   { href: '/admin/quotes', label: 'Quotes' },
+  { href: '/admin/settings', label: 'Settings' },
 ];
 
 export default function NavTabs() {

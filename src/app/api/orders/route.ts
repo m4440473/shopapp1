@@ -54,6 +54,7 @@ export async function GET(req: NextRequest) {
       materialOrdered: true,
       parts: { select: { quantity: true } },
       checklist: {
+        where: { isActive: true },
         select: {
           completed: true,
           addon: { select: { name: true } },

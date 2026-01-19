@@ -29,7 +29,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const data = parsed.data;
-  const item = await prisma.addon.update({ where: { id: params.id }, data });
+  const item = await prisma.addon.update({
+    where: { id: params.id },
+    data,
+    include: { department: true },
+  });
   return NextResponse.json({ ok: true, item });
 }
 
@@ -45,7 +49,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const item = await prisma.addon.findUnique({ where: { id: params.id } });
+  const item = await prisma.addon.findUnique({
+    where: { id: params.id },
+    include: { department: true },
+  });
   if (!item) {
     return new NextResponse('Not found', { status: 404 });
   }

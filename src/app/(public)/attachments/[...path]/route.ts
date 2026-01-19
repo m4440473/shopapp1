@@ -5,6 +5,7 @@ import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 
 import { ensureAttachmentRoot } from '@/lib/storage';
+import { getAppSettings } from '@/lib/app-settings';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(_req: NextRequest, { params }: { params: { path: string[] } }) {
@@ -32,7 +33,8 @@ export async function GET(_req: NextRequest, { params }: { params: { path: strin
     return new NextResponse('Not found', { status: 404 });
   }
 
-  const root = await ensureAttachmentRoot();
+  const settings = await getAppSettings();
+  const root = await ensureAttachmentRoot(settings.attachmentsDir);
   const resolved = path.resolve(root, ...segments);
   const normalizedRoot = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
   if (!resolved.startsWith(normalizedRoot)) {

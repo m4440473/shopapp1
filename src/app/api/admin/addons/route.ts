@@ -59,6 +59,7 @@ export async function GET(req: NextRequest) {
     orderBy: { name: 'asc' },
     take: take + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    include: { department: true },
   });
   const nextCursor = items.length > take ? items[take]?.id ?? null : null;
   if (nextCursor) items.pop();
@@ -76,6 +77,6 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
-  const item = await prisma.addon.create({ data });
+  const item = await prisma.addon.create({ data, include: { department: true } });
   return NextResponse.json({ ok: true, item });
 }

@@ -20,6 +20,13 @@ import {
 import { fetchJson } from '@/lib/fetchJson';
 import { AddonUpsert } from '@/lib/zod';
 
+interface Department {
+  id: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
 interface Item {
   id: string;
   name: string;
@@ -27,6 +34,8 @@ interface Item {
   rateType: 'HOURLY' | 'FLAT';
   rateCents: number;
   active: boolean;
+  departmentId: string;
+  department?: Department | null;
 }
 
 interface ClientProps {
@@ -48,14 +57,22 @@ export default function Client({ initial }: ClientProps) {
   const [nextCursor, setNextCursor] = useState<string | null>(initial.nextCursor ?? null);
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [form, setForm] = useState({
     name: '',
     description: '',
     rateType: 'HOURLY' as Item['rateType'],
     rate: '0.00',
     active: true,
+    departmentId: '',
   });
   const toast = useToast();
+
+  useEffect(() => {
+    fetchJson<{ items: Department[] }>('/api/admin/departments')
+      .then((data) => setDepartments(data.items ?? []))
+      .catch(() => setDepartments([]));
+  }, []);
 
   useEffect(() => {
     if (dialog?.mode === 'edit' && dialog.data) {
@@ -65,9 +82,17 @@ export default function Client({ initial }: ClientProps) {
         rateType: dialog.data.rateType,
         rate: (dialog.data.rateCents / 100).toFixed(2),
         active: dialog.data.active,
+        departmentId: dialog.data.departmentId,
       });
     } else if (dialog?.mode === 'create') {
-      setForm({ name: '', description: '', rateType: 'HOURLY', rate: '0.00', active: true });
+      setForm({
+        name: '',
+        description: '',
+        rateType: 'HOURLY',
+        rate: '0.00',
+        active: true,
+        departmentId: '',
+      });
     }
   }, [dialog]);
 
@@ -89,6 +114,11 @@ export default function Client({ initial }: ClientProps) {
         key: 'active',
         header: 'Active',
         render: (value: boolean) => (value ? 'Yes' : 'No'),
+      },
+      {
+        key: 'department',
+        header: 'Department',
+        render: (_: Department | null, row: Item) => row.department?.name ?? '—',
       },
       {
         key: 'description',
@@ -128,6 +158,7 @@ export default function Client({ initial }: ClientProps) {
       rateType: form.rateType,
       rateCents,
       active: form.active,
+      departmentId: form.departmentId,
     });
 
     try {
@@ -159,6 +190,17 @@ export default function Client({ initial }: ClientProps) {
     setItems(items.filter((i) => i.id !== row.id));
     toast.push('Add-on deleted', 'success');
   }
+
+  const selectableDepartments = useMemo(() => {
+    const active = departments.filter((department) => department.isActive);
+    if (dialog?.mode === 'edit' && form.departmentId) {
+      const selected = departments.find((department) => department.id === form.departmentId);
+      if (selected && !selected.isActive) {
+        return [selected, ...active];
+      }
+    }
+    return active;
+  }, [departments, dialog?.mode, form.departmentId]);
 
   return (
     <div className="space-y-4">
@@ -235,6 +277,28 @@ export default function Client({ initial }: ClientProps) {
                 onChange={(event) => setForm((prev) => ({ ...prev, rate: event.target.value }))}
                 required
               />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="addonDepartment">Department</Label>
+              <select
+                id="addonDepartment"
+                value={form.departmentId}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, departmentId: event.target.value }))
+                }
+                className="rounded border border-border bg-background px-3 py-2 text-sm"
+                required
+              >
+                <option value="" disabled>
+                  Select department
+                </option>
+                {selectableDepartments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                    {!department.isActive ? ' (inactive)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="addonDescription">Description</Label>

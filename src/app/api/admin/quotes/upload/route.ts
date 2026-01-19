@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { BUSINESS_NAMES, storeAttachmentFile, type BusinessName } from '@/lib/storage';
+import { getAppSettings } from '@/lib/app-settings';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -60,12 +61,14 @@ export async function POST(req: NextRequest) {
   const buffer = Buffer.from(arrayBuffer);
 
   try {
+    const settings = await getAppSettings();
     const stored = await storeAttachmentFile({
       business,
       customerName,
       referenceNumber: quoteNumber,
       originalFilename: file.name,
       buffer,
+      rootDir: settings.attachmentsDir,
     });
 
     return NextResponse.json({

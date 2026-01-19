@@ -1,0 +1,25 @@
+<svg width="800" height="480" viewBox="0 0 800 480" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#a855f7" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="480" rx="32" fill="url(#bg)"/>
+  <rect x="40" y="36" width="720" height="60" rx="16" fill="#0b1220" stroke="#1f2a44"/>
+  <rect x="40" y="120" width="320" height="140" rx="20" fill="#111b2f" stroke="#1f2a44"/>
+  <rect x="380" y="120" width="380" height="140" rx="20" fill="#111b2f" stroke="#1f2a44"/>
+  <rect x="40" y="280" width="720" height="160" rx="24" fill="#0f172a" stroke="#1f2a44"/>
+  <rect x="80" y="150" width="200" height="16" rx="8" fill="url(#accent)"/>
+  <rect x="420" y="150" width="220" height="16" rx="8" fill="url(#accent)"/>
+  <rect x="80" y="320" width="300" height="18" rx="9" fill="#1f2a44"/>
+  <rect x="80" y="350" width="260" height="14" rx="7" fill="#243250"/>
+  <rect x="80" y="380" width="220" height="14" rx="7" fill="#243250"/>
+  <rect x="80" y="410" width="180" height="14" rx="7" fill="#243250"/>
+  <text x="72" y="76" fill="#e2e8f0" font-size="20" font-family="'Inter', sans-serif" font-weight="600">Order tracking</text>
+  <text x="72" y="108" fill="#94a3b8" font-size="12" font-family="'Inter', sans-serif">Placeholder view</text>
+</svg>

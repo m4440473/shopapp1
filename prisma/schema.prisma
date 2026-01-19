@@ -84,7 +84,9 @@ model Order {
   assignedMachinist   User? @relation("AssignedOrders", fields: [assignedMachinistId], references: [id])
   parts            OrderPart[]
   checklist        OrderChecklist[]
+  charges          OrderCharge[]
   attachments      Attachment[]
+  partAttachments  PartAttachment[]
   notes            Note[]
   timeLogs         TimeLog[]
   statusHistory    StatusHistory[]
@@ -101,21 +103,32 @@ model OrderPart {
   notes      String?
   stockSize  String?
   cutLength  String?
+  charges    OrderCharge[]
+  attachments PartAttachment[]
+  checklistItems OrderChecklist[]
 }
 
 model OrderChecklist {
   id          String   @id @default(cuid())
   orderId     String
   order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  addonId     String
-  addon       Addon    @relation(fields: [addonId], references: [id])
+  partId      String?
+  part        OrderPart? @relation(fields: [partId], references: [id], onDelete: SetNull)
+  chargeId    String?
+  charge      OrderCharge? @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+  departmentId String?
+  department  Department? @relation(fields: [departmentId], references: [id])
+  addonId     String?
+  addon       Addon?    @relation(fields: [addonId], references: [id])
   completed   Boolean  @default(false)
+  isActive    Boolean  @default(true)
   toggledById String?
   toggledBy   User?    @relation("ChecklistToggledBy", fields: [toggledById], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([orderId, addonId])
+  @@unique([orderId, addonId, partId])
+  @@unique([orderId, chargeId])
 }
 
 model Note {
@@ -173,15 +186,75 @@ model Addon {
   rateType    String
   rateCents   Int
   active      Boolean  @default(true)
+  departmentId String
+  department  Department @relation(fields: [departmentId], references: [id])
 
   quoteSelections QuoteAddonSelection[]
   orderChecklist  OrderChecklist[]
+  orderCharges    OrderCharge[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([active])
   @@unique([name])
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  addons    Addon[]
+  charges   OrderCharge[]
+  checklistItems OrderChecklist[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrderCharge {
+  id           String   @id @default(cuid())
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId       String?
+  part         OrderPart? @relation(fields: [partId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  addonId      String?
+  addon        Addon?   @relation(fields: [addonId], references: [id])
+  checklistItems OrderChecklist[]
+  kind         String
+  name         String
+  description  String?
+  quantity     Decimal  @default(1)
+  unitPrice    Decimal  @default(0)
+  sortOrder    Int      @default(0)
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([partId])
+  @@index([departmentId])
+}
+
+model PartAttachment {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId      String
+  part        OrderPart @relation(fields: [partId], references: [id], onDelete: Cascade)
+  kind        String
+  url         String?
+  storagePath String?
+  label       String?
+  mimeType    String?
+  createdAt   DateTime @default(now())
+
+  @@index([orderId])
+  @@index([partId])
+  @@index([storagePath])
 }
 
 model Quote {
@@ -277,4 +350,18 @@ model QuoteAttachment {
   createdAt   DateTime @default(now())
 
   @@index([storagePath])
+}
+
+model AppSettings {
+  id                      String   @id @default("singleton")
+  companyName             String   @default("Shopapp1")
+  logoPath                String?
+  themePrimary            String   @default("#0ea5e9")
+  themeAccent             String   @default("#a855f7")
+  attachmentsDir          String   @default("/app/storage")
+  requirePOForQuoteApproval Boolean @default(true)
+  requirePOForQuoteToOrder Boolean @default(false)
+  invoiceTemplateId       String   @default("classic")
+  invoiceOptions          String?
+  updatedAt               DateTime @updatedAt
 }

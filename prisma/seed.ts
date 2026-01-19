@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 
 import { DEFAULT_QUOTE_METADATA, stringifyQuoteMetadata } from '../src/lib/quote-metadata';
+import { slugifyName } from '../src/lib/businesses';
 
 const prisma = new PrismaClient();
 
@@ -29,6 +30,35 @@ async function main() {
   for (const v of vendorSeeds) {
     const record = await prisma.vendor.upsert({ where: { name: v.name }, update: {}, create: v });
     vendorRecords.push(record);
+  }
+
+  const departmentSeeds = [
+    { name: 'Machining', sortOrder: 0 },
+    { name: 'Fab', sortOrder: 10 },
+    { name: 'Paint', sortOrder: 20 },
+    { name: 'Shipping', sortOrder: 30 },
+  ];
+  const departmentRecords = [] as Awaited<ReturnType<typeof prisma.department.upsert>>[];
+  for (const department of departmentSeeds) {
+    const record = await prisma.department.upsert({
+      where: { name: department.name },
+      update: {
+        sortOrder: department.sortOrder,
+        isActive: true,
+        slug: slugifyName(department.name, 'department'),
+      },
+      create: {
+        ...department,
+        isActive: true,
+        slug: slugifyName(department.name, 'department'),
+      },
+    });
+    departmentRecords.push(record);
+  }
+
+  const machiningDepartment = departmentRecords.find((department) => department.name === 'Machining');
+  if (!machiningDepartment) {
+    throw new Error('Missing Machining department seed');
   }
 
   const addonSeeds = [
@@ -69,8 +99,9 @@ async function main() {
         rateType: addon.rateType,
         rateCents: addon.rateCents,
         active: true,
+        departmentId: machiningDepartment.id,
       },
-      create: addon,
+      create: { ...addon, departmentId: machiningDepartment.id },
     });
     addonRecords.push(record);
   }
