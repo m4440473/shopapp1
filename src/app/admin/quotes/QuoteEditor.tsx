@@ -76,6 +76,7 @@ type QuotePartState = {
   quantity: string;
   pieceCount: string;
   notes: string;
+  addonSelections: QuoteAddonState[];
 };
 
 type QuoteVendorItemState = {
@@ -96,12 +97,6 @@ type QuoteAddonState = {
   notes: string;
 };
 
-type PartPricingState = {
-  key: string;
-  name: string;
-  partNumber: string;
-  price: string;
-};
 
 type AttachmentState = {
   key: string;
@@ -143,6 +138,17 @@ type QuoteDetail = {
     quantity: number;
     pieceCount: number;
     notes?: string | null;
+    addonSelections?: Array<{
+      id: string;
+      quotePartId?: string | null;
+      addonId: string;
+      units: number;
+      rateTypeSnapshot: string;
+      rateCents: number;
+      totalCents: number;
+      notes?: string | null;
+      addon?: { id: string; name: string; rateType: string; rateCents: number } | null;
+    }>;
   }>;
   vendorItems: Array<{
     id: string;
@@ -155,8 +161,9 @@ type QuoteDetail = {
     finalPriceCents: number;
     notes?: string | null;
   }>;
-  addonSelections: Array<{
+  addonSelections?: Array<{
     id: string;
+    quotePartId?: string | null;
     addonId: string;
     units: number;
     rateTypeSnapshot: string;
@@ -223,9 +230,6 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerEmail, setNewCustomerEmail] = useState('');
   const [newCustomerAddress, setNewCustomerAddress] = useState('');
-  const [partPricingDialogOpen, setPartPricingDialogOpen] = useState(false);
-  const [partPricingEntries, setPartPricingEntries] = useState<PartPricingState[]>([]);
-  const [partPricingConfirmed, setPartPricingConfirmed] = useState(false);
 
   const initialBusinessCode = (initialQuote?.business ?? BUSINESS_OPTIONS[0]?.code ?? 'STD') as BusinessCode;
 
@@ -259,24 +263,43 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         quantity: '1',
         pieceCount: '1',
         notes: '',
+        addonSelections: [],
       }) satisfies QuotePartState,
     []
   );
 
   const [parts, setParts] = useState<QuotePartState[]>(
     (initialQuote?.parts ?? []).length
-      ? (initialQuote?.parts ?? []).map((part) => ({
-          key: part.id,
-          name: part.name,
-          partNumber: part.partNumber ?? '',
-          materialId: part.materialId ?? '',
-          stockSize: part.stockSize ?? '',
-          cutLength: part.cutLength ?? '',
-          description: part.description ?? '',
-          quantity: String(part.quantity ?? 1),
-          pieceCount: String(part.pieceCount ?? 1),
-          notes: part.notes ?? '',
-        }))
+      ? (() => {
+          const legacySelections = (initialQuote?.addonSelections ?? []).filter(
+            (selection) => !selection.quotePartId
+          );
+          return (initialQuote?.parts ?? []).map((part, index) => {
+            const selections = part.addonSelections?.length
+              ? part.addonSelections
+              : index === 0
+                ? legacySelections
+                : [];
+            return {
+              key: part.id,
+              name: part.name,
+              partNumber: part.partNumber ?? '',
+              materialId: part.materialId ?? '',
+              stockSize: part.stockSize ?? '',
+              cutLength: part.cutLength ?? '',
+              description: part.description ?? '',
+              quantity: String(part.quantity ?? 1),
+              pieceCount: String(part.pieceCount ?? 1),
+              notes: part.notes ?? '',
+              addonSelections: selections.map((selection) => ({
+                key: selection.id,
+                addonId: selection.addonId,
+                units: String(selection.units ?? 0),
+                notes: selection.notes ?? '',
+              })),
+            };
+          });
+        })()
       : [buildEmptyPart()]
   );
 
@@ -290,15 +313,6 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       basePrice: ((item.basePriceCents ?? 0) / 100).toFixed(2),
       markupPercent: String(item.markupPercent ?? 0),
       notes: item.notes ?? '',
-    }))
-  );
-
-  const [addonSelections, setAddonSelections] = useState<QuoteAddonState[]>(
-    (initialQuote?.addonSelections ?? []).map((selection) => ({
-      key: selection.id,
-      addonId: selection.addonId,
-      units: String(selection.units ?? 0),
-      notes: selection.notes ?? '',
     }))
   );
 
@@ -477,11 +491,14 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     ]);
   }
 
-  function addAddonSelection() {
-    setAddonSelections((prev) => [
-      ...prev,
-      { key: createKey(), addonId: '', units: '1.0', notes: '' },
-    ]);
+  function addAddonSelection(partKey: string) {
+    setParts((prev) =>
+      prev.map((part) =>
+        part.key === partKey
+          ? { ...part, addonSelections: [...part.addonSelections, { key: createKey(), addonId: '', units: '1.0', notes: '' }] }
+          : part
+      )
+    );
   }
 
   function addAttachment() {
@@ -489,6 +506,31 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       ...prev,
       { key: createKey(), url: '', storagePath: '', label: '', mimeType: '', uploading: false },
     ]);
+  }
+
+  function updateAddonSelection(partKey: string, selectionKey: string, patch: Partial<QuoteAddonState>) {
+    setParts((prev) =>
+      prev.map((part) =>
+        part.key === partKey
+          ? {
+              ...part,
+              addonSelections: part.addonSelections.map((selection) =>
+                selection.key === selectionKey ? { ...selection, ...patch } : selection
+              ),
+            }
+          : part
+      )
+    );
+  }
+
+  function removeAddonSelection(partKey: string, selectionKey: string) {
+    setParts((prev) =>
+      prev.map((part) =>
+        part.key === partKey
+          ? { ...part, addonSelections: part.addonSelections.filter((selection) => selection.key !== selectionKey) }
+          : part
+      )
+    );
   }
 
   async function handleAttachmentUpload(attachmentKey: string, fileList: FileList | null) {
@@ -583,52 +625,22 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     return sum + (final > 0 ? final : 0);
   }, 0);
 
-  const addonsTotalsCents = addonSelections.reduce((sum, selection) => {
-    const addon = addonMap.get(selection.addonId);
-    if (!addon) return sum;
-    const units = numberFromString(selection.units);
-    return sum + Math.round(addon.rateCents * (units > 0 ? units : 0));
+  const addonsTotalsCents = parts.reduce((sum, part) => {
+    return (
+      sum +
+      part.addonSelections.reduce((innerSum, selection) => {
+        const addon = addonMap.get(selection.addonId);
+        if (!addon) return innerSum;
+        const units = numberFromString(selection.units);
+        return innerSum + Math.round(addon.rateCents * (units > 0 ? units : 0));
+      }, 0)
+    );
   }, 0);
 
   const basePriceCents = centsFromString(form.basePrice);
   const totalCents = basePriceCents + vendorTotalsCents + addonsTotalsCents;
 
-  const normalizedParts = useMemo(
-    () =>
-      parts
-        .filter((part) => part.name.trim())
-        .map((part) => ({
-          key: part.key,
-          name: part.name.trim(),
-          partNumber: part.partNumber.trim(),
-        })),
-    [parts]
-  );
-
-  useEffect(() => {
-    setPartPricingConfirmed(false);
-  }, [normalizedParts.length, totalCents]);
-
-  const buildDefaultPartPricing = (entries: typeof normalizedParts) => {
-    if (!entries.length) return [];
-    const even = Math.floor(totalCents / entries.length);
-    const remainder = totalCents - even * entries.length;
-    return entries.map((part, index) => ({
-      key: part.key,
-      name: part.name,
-      partNumber: part.partNumber,
-      price: ((even + (index === entries.length - 1 ? remainder : 0)) / 100).toFixed(2),
-    }));
-  };
-
-  const partPricingTotalCents = partPricingEntries.reduce(
-    (sum, entry) => sum + centsFromString(entry.price),
-    0
-  );
-  const partPricingDifferenceCents = totalCents - partPricingTotalCents;
-  const partPricingValid = normalizedParts.length === partPricingEntries.length && partPricingDifferenceCents === 0;
-
-  const buildPayload = (pricingOverride?: PartPricingState[]): QuoteCreateInput => ({
+  const buildPayload = (): QuoteCreateInput => ({
     business: form.business,
     quoteNumber: form.quoteNumber || undefined,
     companyName: form.companyName,
@@ -655,6 +667,13 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         quantity: Number.parseInt(part.quantity || '1', 10) || 1,
         pieceCount: Number.parseInt(part.pieceCount || '1', 10) || 1,
         notes: part.notes || undefined,
+        addonSelections: part.addonSelections
+          .filter((selection) => selection.addonId)
+          .map((selection) => ({
+            addonId: selection.addonId,
+            units: numberFromString(selection.units),
+            notes: selection.notes || undefined,
+          })),
       })),
     vendorItems: vendorItems
       .filter((item) => item.vendorId || item.vendorName || centsFromString(item.basePrice) > 0)
@@ -668,13 +687,6 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         finalPriceCents: 0,
         notes: item.notes || undefined,
       })),
-    addonSelections: addonSelections
-      .filter((selection) => selection.addonId)
-      .map((selection) => ({
-        addonId: selection.addonId,
-        units: numberFromString(selection.units),
-        notes: selection.notes || undefined,
-      })),
     attachments: attachments
       .filter((attachment) => attachment.url.trim().length > 0 || attachment.storagePath.trim().length > 0)
       .map((attachment) => ({
@@ -683,27 +695,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         label: attachment.label || undefined,
         mimeType: attachment.mimeType || undefined,
       })),
-    partPricing:
-      pricingOverride?.map((entry) => ({
-        name: entry.name || undefined,
-        partNumber: entry.partNumber || undefined,
-        priceCents: centsFromString(entry.price),
-      })) ??
-      (normalizedParts.length === 1
-        ? [
-            {
-              name: normalizedParts[0]?.name,
-              partNumber: normalizedParts[0]?.partNumber || undefined,
-              priceCents: totalCents,
-            },
-          ]
-        : undefined),
   });
 
-  const submitQuote = async (pricingOverride?: PartPricingState[]) => {
+  const submitQuote = async () => {
     setLoading(true);
     setError(null);
-    const payload = buildPayload(pricingOverride);
+    const payload = buildPayload();
     try {
       const response =
         mode === 'edit' && initialQuote
@@ -729,93 +726,11 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (mode === 'create' && normalizedParts.length > 1 && !partPricingConfirmed) {
-      setPartPricingEntries(buildDefaultPartPricing(normalizedParts));
-      setPartPricingDialogOpen(true);
-      return;
-    }
-
-    await submitQuote(partPricingConfirmed ? partPricingEntries : undefined);
+    await submitQuote();
   }
 
   return (
     <form className="space-y-6" onSubmit={handleSubmit}>
-      <Dialog open={partPricingDialogOpen} onOpenChange={setPartPricingDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Confirm part pricing</DialogTitle>
-            <DialogDescription>
-              Enter the final price for each part. The totals must match the invoice total before you can submit.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between rounded border border-border/60 bg-muted/30 px-4 py-3 text-sm">
-              <span className="font-medium">Invoice total</span>
-              <span>{formatCurrency(totalCents)}</span>
-            </div>
-            <div className="space-y-3">
-              {partPricingEntries.map((entry) => (
-                <div key={entry.key} className="grid gap-2 md:grid-cols-[1fr_160px] md:items-center">
-                  <div>
-                    <div className="font-medium">{entry.name}</div>
-                    {entry.partNumber && <div className="text-xs text-muted-foreground">Part #: {entry.partNumber}</div>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Price</span>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={entry.price}
-                      onChange={(event) =>
-                        setPartPricingEntries((prev) =>
-                          prev.map((item) =>
-                            item.key === entry.key ? { ...item, price: event.target.value } : item
-                          )
-                        )
-                      }
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Allocated total</span>
-              <span>{formatCurrency(partPricingTotalCents)}</span>
-            </div>
-            {partPricingDifferenceCents !== 0 && (
-              <div className="text-sm text-destructive">
-                {partPricingDifferenceCents > 0
-                  ? `Remaining balance: ${formatCurrency(partPricingDifferenceCents)}.`
-                  : `Over by: ${formatCurrency(Math.abs(partPricingDifferenceCents))}.`}{' '}
-                Adjust part prices to match the invoice total.
-              </div>
-            )}
-          </div>
-          <DialogFooter className="mt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPartPricingDialogOpen(false)}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={async () => {
-                if (!partPricingValid) return;
-                setPartPricingConfirmed(true);
-                setPartPricingDialogOpen(false);
-                await submitQuote(partPricingEntries);
-              }}
-              disabled={!partPricingValid || loading}
-            >
-              Submit quote
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       {error && (
         <div className="rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
           {error}
@@ -1197,6 +1112,91 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                   placeholder="What needs to happen for this part or assembly?"
                 />
               </div>
+              <div className="mt-4 space-y-3 rounded border border-border/60 bg-muted/10 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label className="text-sm font-medium">Add-ons & labor</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={() => addAddonSelection(part.key)}>
+                    Add add-on
+                  </Button>
+                </div>
+                {part.addonSelections.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No add-ons assigned to this part yet.</p>
+                )}
+                {part.addonSelections.map((selection) => {
+                  const addon = addonMap.get(selection.addonId);
+                  const units = numberFromString(selection.units);
+                  const totalCents = addon ? Math.round(addon.rateCents * (units > 0 ? units : 0)) : 0;
+                  return (
+                    <div key={selection.key} className="rounded border border-border/50 bg-card/40 p-3">
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <div className="grid gap-2">
+                          <Label className="text-xs">Add-on</Label>
+                          <select
+                            value={selection.addonId}
+                            onChange={(event) =>
+                              updateAddonSelection(part.key, selection.key, { addonId: event.target.value })
+                            }
+                            className="rounded border border-border bg-background px-3 py-2 text-sm"
+                          >
+                            <option value="">Select add-on</option>
+                            {addons.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.name} ({option.rateType === 'HOURLY' ? 'Hourly' : 'Flat'})
+                              </option>
+                            ))}
+                          </select>
+                          {addon?.description && (
+                            <p className="text-xs text-muted-foreground mt-1">{addon.description}</p>
+                          )}
+                        </div>
+                        <div className="grid gap-2">
+                          <Label className="text-xs">{addon?.rateType === 'FLAT' ? 'Quantity' : 'Hours'}</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.25"
+                            value={selection.units}
+                            onChange={(event) => updateAddonSelection(part.key, selection.key, { units: event.target.value })}
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label className="text-xs">Subtotal</Label>
+                          <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
+                            {addon
+                              ? `${formatCurrency(addon.rateCents)} x ${units.toFixed(2)} = ${formatCurrency(totalCents)}`
+                              : '—'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid gap-2 mt-3">
+                        <Label className="text-xs">Notes</Label>
+                        <Textarea
+                          value={selection.notes}
+                          onChange={(event) => updateAddonSelection(part.key, selection.key, { notes: event.target.value })}
+                        />
+                      </div>
+                      <div className="mt-3 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => removeAddonSelection(part.key, selection.key)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {addons.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Need more options? Configure add-ons in the{' '}
+                    <Link href="/admin/addons" className="underline">
+                      Add-ons admin panel
+                    </Link>
+                    .
+                  </p>
+                )}
+              </div>
             </div>
           ))}
           <Button type="button" variant="outline" onClick={addPart}>
@@ -1364,102 +1364,6 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           <Button type="button" variant="outline" onClick={addVendorItem}>
             Add purchased item
           </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Add-ons and labor</CardTitle>
-          <CardDescription>Select add-ons to capture labor or fixed-rate services.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {addonSelections.map((selection) => {
-            const addon = addonMap.get(selection.addonId);
-            const units = numberFromString(selection.units);
-            const totalCents = addon ? Math.round(addon.rateCents * (units > 0 ? units : 0)) : 0;
-            return (
-              <div key={selection.key} className="rounded border border-border/50 bg-card/40 p-4">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="grid gap-2">
-                    <Label>Add-on</Label>
-                    <select
-                      value={selection.addonId}
-                      onChange={(event) =>
-                        setAddonSelections((prev) =>
-                          prev.map((row) => (row.key === selection.key ? { ...row, addonId: event.target.value } : row))
-                        )
-                      }
-                      className="rounded border border-border bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="">Select add-on</option>
-                      {addons.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.name} ({option.rateType === 'HOURLY' ? 'Hourly' : 'Flat'})
-                        </option>
-                      ))}
-                    </select>
-                    {addon?.description && (
-                      <p className="text-xs text-muted-foreground mt-1">{addon.description}</p>
-                    )}
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>{addon?.rateType === 'FLAT' ? 'Quantity' : 'Hours'}</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.25"
-                      value={selection.units}
-                      onChange={(event) =>
-                        setAddonSelections((prev) =>
-                          prev.map((row) => (row.key === selection.key ? { ...row, units: event.target.value } : row))
-                        )
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Subtotal</Label>
-                    <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
-                      {addon ? `${formatCurrency(addon.rateCents)} x ${units.toFixed(2)} = ${formatCurrency(totalCents)}` : '—'}
-                    </div>
-                  </div>
-                </div>
-                <div className="grid gap-2 mt-4">
-                  <Label>Notes</Label>
-                  <Textarea
-                    value={selection.notes}
-                    onChange={(event) =>
-                      setAddonSelections((prev) =>
-                        prev.map((row) => (row.key === selection.key ? { ...row, notes: event.target.value } : row))
-                      )
-                    }
-                  />
-                </div>
-                <div className="mt-4 flex justify-end">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() =>
-                      setAddonSelections((prev) => prev.filter((row) => row.key !== selection.key))
-                    }
-                  >
-                    Remove
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-          <Button type="button" variant="outline" onClick={addAddonSelection}>
-            Add labor/add-on
-          </Button>
-          {addons.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              Need more options? Configure add-ons in the{' '}
-              <Link href="/admin/addons" className="underline">
-                Add-ons admin panel
-              </Link>
-              .
-            </p>
-          )}
         </CardContent>
       </Card>
 

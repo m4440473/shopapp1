@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 
 import { authOptions } from '@/lib/auth';
 import {
@@ -19,6 +20,7 @@ import { businessNameFromCode, type BusinessCode, type BusinessName } from '@/li
 import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
 import { OrderPartCreate, PriorityEnum } from '@/lib/zod-orders';
 import { getAppSettings } from '@/lib/app-settings';
+import { syncChecklistForOrder } from '@/lib/order-charges';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -50,7 +52,6 @@ const ConversionOverrides = z.object({
   materialNeeded: z.boolean().optional(),
   materialOrdered: z.boolean().optional(),
   modelIncluded: z.boolean().optional(),
-  addonIds: z.array(z.string().trim()).optional(),
   parts: z.array(OrderPartCreate).optional(),
   notes: z.string().trim().max(1000).optional(),
 });
@@ -182,8 +183,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     where: { id: params.id },
     include: {
       customer: { select: { id: true, name: true } },
-      parts: { include: { material: true } },
-      addonSelections: true,
+      parts: {
+        include: {
+          material: true,
+          addonSelections: {
+            include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true, departmentId: true } } },
+          },
+        },
+      },
+      addonSelections: { include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true, departmentId: true } } } },
       attachments: true,
     },
   });
@@ -275,10 +283,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Add at least one part before converting.' }, { status: 400 });
   }
 
-  const addonIds = Array.from(
-    new Set((overrides?.addonIds ?? quote.addonSelections.map((selection) => selection.addonId)).filter(Boolean)),
-  );
-
   const noteContent = overrides?.notes ?? buildConversionNote(quote, now);
   const userId = (guard.session.user as any)?.id as string | undefined;
 
@@ -303,54 +307,101 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         vendorId: overrides?.vendorId ?? null,
         poNumber: overrides?.poNumber ?? null,
         assignedMachinistId: overrides?.assignedMachinistId ?? null,
-        parts: partsData.length
-          ? {
-              create: partsData.map((part) => ({
-                partNumber: part.partNumber,
-                quantity: part.quantity,
-                materialId: part.materialId,
-                stockSize: part.stockSize ?? null,
-                cutLength: part.cutLength ?? null,
-                notes: part.notes ?? undefined,
-              })),
-            }
-          : undefined,
-        checklist: addonIds.length
-          ? {
-              create: addonIds.map((addonId) => ({ addonId })),
-            }
-          : undefined,
-        attachments: orderAttachments.length
-          ? {
-              create: orderAttachments.map((attachment) => ({
-                url: attachment.url,
-                storagePath: attachment.storagePath,
-                label: attachment.label,
-                mimeType: attachment.mimeType,
-                uploadedById: userId ?? null,
-              })),
-            }
-          : undefined,
-        notes:
-          noteContent && userId
-            ? {
-                create: {
-                  content: noteContent,
-                  userId,
-                },
-              }
-            : undefined,
-        statusHistory: {
-          create: {
-            from: 'RECEIVED',
-            to: 'RECEIVED',
-            userId,
-            reason: `Converted from quote ${quote.quoteNumber}`,
-          },
-        },
       },
       select: { id: true },
     });
+
+    const orderParts = await Promise.all(
+      partsData.map((part) =>
+        tx.orderPart.create({
+          data: {
+            orderId: order.id,
+            partNumber: part.partNumber,
+            quantity: part.quantity,
+            materialId: part.materialId,
+            stockSize: part.stockSize ?? null,
+            cutLength: part.cutLength ?? null,
+            notes: part.notes ?? undefined,
+          },
+          select: { id: true },
+        })
+      )
+    );
+
+    if (orderAttachments.length) {
+      await tx.attachment.createMany({
+        data: orderAttachments.map((attachment) => ({
+          orderId: order.id,
+          url: attachment.url,
+          storagePath: attachment.storagePath,
+          label: attachment.label,
+          mimeType: attachment.mimeType,
+          uploadedById: userId ?? null,
+        })),
+      });
+    }
+
+    if (noteContent && userId) {
+      await tx.note.create({
+        data: {
+          orderId: order.id,
+          content: noteContent,
+          userId,
+        },
+      });
+    }
+
+    await tx.statusHistory.create({
+      data: {
+        orderId: order.id,
+        from: 'RECEIVED',
+        to: 'RECEIVED',
+        userId,
+        reason: `Converted from quote ${quote.quoteNumber}`,
+      },
+    });
+
+    const quotePartSelections = quote.parts.flatMap((part, index) => {
+      const orderPartId = orderParts[index]?.id;
+      if (!orderPartId) return [];
+      return (part.addonSelections ?? []).map((selection) => ({
+        selection,
+        orderPartId,
+      }));
+    });
+
+    const legacySelections =
+      quote.addonSelections
+        ?.filter((selection) => !selection.quotePartId)
+        .map((selection) => ({
+          selection,
+          orderPartId: orderParts[0]?.id ?? null,
+        })) ?? [];
+
+    const chargeSelections = [...quotePartSelections, ...legacySelections].filter(
+      (entry) => entry.orderPartId && entry.selection.addon?.departmentId
+    );
+
+    if (chargeSelections.length) {
+      await Promise.all(
+        chargeSelections.map(({ selection, orderPartId }, index) =>
+          tx.orderCharge.create({
+            data: {
+              orderId: order.id,
+              partId: orderPartId!,
+              departmentId: selection.addon?.departmentId ?? '',
+              addonId: selection.addonId,
+              kind: 'ADDON',
+              name: selection.addon?.name ?? 'Add-on',
+              description: selection.notes ?? null,
+              quantity: new Prisma.Decimal(selection.units ?? 0),
+              unitPrice: new Prisma.Decimal(selection.rateCents ?? 0),
+              sortOrder: index,
+            },
+          })
+        )
+      );
+    }
 
     const updatedMetadata = mergeQuoteMetadata({
       ...metadata,
@@ -371,6 +422,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     return { orderId: order.id, metadata: updatedMetadata };
   });
+
+  await syncChecklistForOrder(result.orderId);
 
   return NextResponse.json({
     ok: true,

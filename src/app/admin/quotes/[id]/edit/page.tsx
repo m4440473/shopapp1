@@ -20,7 +20,13 @@ export default async function EditQuotePage({ params }: { params: { id: string }
     include: {
       customer: { select: { id: true, name: true } },
       createdBy: { select: { id: true, name: true, email: true } },
-      parts: true,
+      parts: {
+        include: {
+          addonSelections: {
+            include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true } } },
+          },
+        },
+      },
       vendorItems: true,
       addonSelections: {
         include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true } } },
