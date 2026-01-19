@@ -104,7 +104,7 @@ type AttachmentFormState = {
 
 type PendingAction =
   | { type: 'status'; status: string }
-  | { type: 'checklist'; addonId: string; checked: boolean };
+  | { type: 'checklist'; checklistId: string; checked: boolean };
 
 const statusColor = (status: string) =>
   ({
@@ -380,18 +380,23 @@ export default function OrderDetailPage() {
     setPendingAction(null);
   }
 
-  async function toggleChecklist(addonId: string, checked: boolean, employee: string) {
-    setToggling(addonId);
+  async function toggleChecklist(checklistId: string, checked: boolean, employee: string) {
+    setToggling(checklistId);
     try {
       const res = await fetch(`/api/orders/${id}/checklist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ addonId, checked, employeeName: employee }),
+        body: JSON.stringify({ checklistId, checked, employeeName: employee }),
         credentials: 'include',
       });
       const message = await res.text();
       if (!res.ok) {
-        throw new Error(message || 'Failed to update checklist');
+        try {
+          const parsed = JSON.parse(message);
+          throw new Error(parsed?.error || 'Failed to update checklist');
+        } catch {
+          throw new Error(message || 'Failed to update checklist');
+        }
       }
       await load();
     } catch (e) {
@@ -786,7 +791,7 @@ export default function OrderDetailPage() {
       if (pendingAction.type === 'status') {
         await changeStatus(pendingAction.status, trimmedName);
       } else {
-        await toggleChecklist(pendingAction.addonId, pendingAction.checked, trimmedName);
+        await toggleChecklist(pendingAction.checklistId, pendingAction.checked, trimmedName);
       }
       closeEmployeeDialog();
     } catch (err: any) {
@@ -812,9 +817,20 @@ export default function OrderDetailPage() {
     return <div className="text-muted-foreground">Order not found.</div>;
   }
 
-  const checkedIds = new Set(
-    (item.checklist ?? []).filter((c: any) => c.completed).map((c: any) => c.addon?.id)
-  );
+  const checklistItems = Array.isArray(item.checklist) ? item.checklist : [];
+  const activeChecklistItems = checklistItems.filter((entry: any) => entry.isActive !== false);
+  const checklistByPartId = new Map<string, any[]>();
+  const legacyChecklistItems: any[] = [];
+  activeChecklistItems.forEach((entry: any) => {
+    const partId = entry.part?.id ?? entry.charge?.partId ?? entry.partId ?? null;
+    if (partId) {
+      const existing = checklistByPartId.get(partId) ?? [];
+      existing.push(entry);
+      checklistByPartId.set(partId, existing);
+    } else {
+      legacyChecklistItems.push(entry);
+    }
+  });
   const parts: any[] = Array.isArray(item.parts) ? item.parts : [];
   const primaryPart = parts[0];
   const additionalParts = parts.slice(1);
@@ -824,10 +840,11 @@ export default function OrderDetailPage() {
     pendingAction?.type === 'status'
       ? STATUS_OPTIONS.find(([value]) => value === pendingAction.status)?.[1] ?? pendingAction.status
       : null;
-  const pendingChecklistName =
+  const pendingChecklistItem =
     pendingAction?.type === 'checklist'
-      ? item.checklist?.find((c: any) => c.addon?.id === pendingAction.addonId)?.addon?.name
+      ? checklistItems.find((c: any) => c.id === pendingAction.checklistId)
       : null;
+  const pendingChecklistName = pendingChecklistItem?.charge?.name ?? pendingChecklistItem?.addon?.name ?? null;
 
   return (
     <div className="space-y-6">
@@ -1720,42 +1737,98 @@ export default function OrderDetailPage() {
               <CardDescription>Track downstream processes and finishing services.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
-              {item.checklist?.map((c: any) => (
-                <label
-                  key={c.id}
-                  className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
-                >
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={checkedIds.has(c.addon?.id)}
-                      disabled={!!toggling || !c.addon?.id || employeeSubmitting || !!pendingAction}
-                      onCheckedChange={(value) => {
-                        if (!c.addon?.id) return;
-                        openEmployeeDialog({
-                          type: 'checklist',
-                          addonId: c.addon.id,
-                          checked: value === true,
-                        });
-                      }}
-                    />
-                    <div>
-                      <div className="font-medium text-foreground">
-                        {c.addon?.name ?? 'Add-on removed'}
-                      </div>
-                      {c.addon?.description && (
-                        <div className="text-xs text-muted-foreground">{c.addon.description}</div>
-                      )}
-                      <div className="text-xs text-muted-foreground">
-                        Updated {new Date(c.updatedAt).toLocaleString()}
-                      </div>
+              {parts.map((part: any, index: number) => {
+                const partChecklist = checklistByPartId.get(part.id) ?? [];
+                if (!partChecklist.length) return null;
+                const partLabel = part.partNumber || part.name || `Part ${index + 1}`;
+                return (
+                  <div key={part.id} className="space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {partLabel}
                     </div>
+                    {partChecklist.map((c: any) => {
+                      const label = c.charge?.name ?? c.addon?.name ?? 'Checklist item';
+                      const description = c.addon?.description ?? null;
+                      return (
+                        <label
+                          key={c.id}
+                          className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
+                        >
+                          <div className="flex items-start gap-3">
+                            <Checkbox
+                              checked={!!c.completed}
+                              disabled={!!toggling || employeeSubmitting || !!pendingAction}
+                              onCheckedChange={(value) => {
+                                openEmployeeDialog({
+                                  type: 'checklist',
+                                  checklistId: c.id,
+                                  checked: value === true,
+                                });
+                              }}
+                            />
+                            <div>
+                              <div className="font-medium text-foreground">{label}</div>
+                              {description ? (
+                                <div className="text-xs text-muted-foreground">{description}</div>
+                              ) : null}
+                              <div className="text-xs text-muted-foreground">
+                                Updated {new Date(c.updatedAt).toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            Pricing available in Admin Portal
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    Pricing available in Admin Portal
-                  </span>
-                </label>
-              ))}
-              {(!item.checklist || item.checklist.length === 0) && (
+                );
+              })}
+              {legacyChecklistItems.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Legacy order-level add-ons
+                  </div>
+                  {legacyChecklistItems.map((c: any) => {
+                    const label = c.charge?.name ?? c.addon?.name ?? 'Checklist item';
+                    const description = c.addon?.description ?? null;
+                    return (
+                      <label
+                        key={c.id}
+                        className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
+                      >
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={!!c.completed}
+                            disabled={!!toggling || employeeSubmitting || !!pendingAction}
+                            onCheckedChange={(value) => {
+                              openEmployeeDialog({
+                                type: 'checklist',
+                                checklistId: c.id,
+                                checked: value === true,
+                              });
+                            }}
+                          />
+                          <div>
+                            <div className="font-medium text-foreground">{label}</div>
+                            {description ? (
+                              <div className="text-xs text-muted-foreground">{description}</div>
+                            ) : null}
+                            <div className="text-xs text-muted-foreground">
+                              Updated {new Date(c.updatedAt).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          Pricing available in Admin Portal
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {activeChecklistItems.length === 0 && (
                 <p className="text-sm text-muted-foreground">
                   No services assigned. Manage add-ons from the admin dashboard.
                 </p>
