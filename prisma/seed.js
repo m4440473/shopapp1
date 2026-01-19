@@ -2,6 +2,15 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
+function slugifyName(value, fallback = 'item') {
+  const normalized = `${value ?? ''}`
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || fallback;
+}
+
 async function main() {
   // Materials
   for (const m of [
@@ -24,6 +33,35 @@ async function main() {
     { name: 'Yamazen' },
   ]) {
     await prisma.vendor.upsert({ where: { name: v.name }, update: {}, create: v });
+  }
+
+  const departmentSeeds = [
+    { name: 'Machining', sortOrder: 0 },
+    { name: 'Fab', sortOrder: 10 },
+    { name: 'Paint', sortOrder: 20 },
+    { name: 'Shipping', sortOrder: 30 },
+  ];
+  const departmentRecords = [];
+  for (const department of departmentSeeds) {
+    const record = await prisma.department.upsert({
+      where: { name: department.name },
+      update: {
+        sortOrder: department.sortOrder,
+        isActive: true,
+        slug: slugifyName(department.name, 'department'),
+      },
+      create: {
+        ...department,
+        isActive: true,
+        slug: slugifyName(department.name, 'department'),
+      },
+    });
+    departmentRecords.push(record);
+  }
+
+  const machiningDepartment = departmentRecords.find((department) => department.name === 'Machining');
+  if (!machiningDepartment) {
+    throw new Error('Missing Machining department seed');
   }
 
   const addonSeeds = [
@@ -65,8 +103,9 @@ async function main() {
         rateType: addon.rateType,
         rateCents: addon.rateCents,
         active: true,
+        departmentId: machiningDepartment.id,
       },
-      create: addon,
+      create: { ...addon, departmentId: machiningDepartment.id },
     });
     addonRecords.push(record);
   }
