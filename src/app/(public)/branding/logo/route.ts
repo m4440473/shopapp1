@@ -1,41 +1,29 @@
-import { NextRequest, NextResponse } from 'next/server';
 import path from 'node:path';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 
-import { ensureAttachmentRoot } from '@/lib/storage';
+import { NextRequest, NextResponse } from 'next/server';
+
 import { getAppSettings } from '@/lib/app-settings';
-import { prisma } from '@/lib/prisma';
+import { ensureAttachmentRoot } from '@/lib/storage';
 
-export async function GET(_req: NextRequest, { params }: { params: { path: string[] } }) {
-  const segments = Array.isArray(params.path) ? params.path : [];
-  if (segments.length === 0) {
-    return new NextResponse('Not found', { status: 404 });
-  }
+const MIME_BY_EXTENSION: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+};
 
-  const relativePath = segments.join('/');
-  const quoteAttachment = await prisma.quoteAttachment.findFirst({
-    where: { storagePath: relativePath },
-    select: { mimeType: true, label: true },
-  });
-
-  const orderAttachment = quoteAttachment
-    ? null
-    : await prisma.attachment.findFirst({
-        where: { storagePath: relativePath },
-        select: { mimeType: true, label: true },
-      });
-
-  const attachment = quoteAttachment ?? orderAttachment;
-
-  if (!attachment) {
-    return new NextResponse('Not found', { status: 404 });
-  }
-
+export async function GET(_req: NextRequest) {
   const settings = await getAppSettings();
+  if (!settings.logoPath) {
+    return new NextResponse('Not found', { status: 404 });
+  }
+
   const root = await ensureAttachmentRoot(settings.attachmentsDir);
-  const resolved = path.resolve(root, ...segments);
+  const resolved = path.resolve(root, settings.logoPath);
   const normalizedRoot = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
   if (!resolved.startsWith(normalizedRoot)) {
     return new NextResponse('Not found', { status: 404 });
@@ -54,9 +42,10 @@ export async function GET(_req: NextRequest, { params }: { params: { path: strin
 
   const nodeStream = createReadStream(resolved);
   const stream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+  const ext = path.extname(resolved).toLowerCase();
 
   const headers = new Headers();
-  headers.set('Content-Type', attachment.mimeType || 'application/octet-stream');
+  headers.set('Content-Type', MIME_BY_EXTENSION[ext] ?? 'application/octet-stream');
   headers.set('Content-Length', fileInfo.size.toString());
   headers.set('Cache-Control', 'private, max-age=60');
   headers.set('Content-Disposition', `inline; filename="${path.basename(resolved)}"`);

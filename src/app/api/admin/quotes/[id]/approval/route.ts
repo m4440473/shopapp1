@@ -12,6 +12,7 @@ import {
 } from '@/lib/quote-metadata';
 import { canAccessAdmin } from '@/lib/rbac';
 import { prisma } from '@/lib/prisma';
+import { getAppSettings } from '@/lib/app-settings';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -56,6 +57,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const { received, attachment } = parsed.data;
 
+  const settings = await getAppSettings();
+
   return prisma.$transaction(async (tx) => {
     const quote = await tx.quote.findUnique({
       where: { id: params.id },
@@ -68,7 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata) ?? DEFAULT_QUOTE_METADATA);
 
-    if (received && !attachment && !metadata.approval?.attachmentId) {
+    if (settings.requirePOForQuoteApproval && received && !attachment && !metadata.approval?.attachmentId) {
       return NextResponse.json(
         { error: 'An approval document must be uploaded before marking as received.' },
         { status: 400 },
