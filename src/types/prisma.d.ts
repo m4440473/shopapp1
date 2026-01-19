@@ -6,4 +6,12 @@ declare module '@prisma/client' {
     $use(...args: any[]): void;
     [key: string]: any;
   }
+
+  export namespace Prisma {
+    class Decimal {
+      constructor(value?: any);
+      toNumber(): number;
+      toString(): string;
+    }
+  }
 }

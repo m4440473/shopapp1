@@ -13,7 +13,8 @@ export type OrderListItem = {
   customer?: { name?: string | null } | null;
   assignedMachinist?: { id?: string; name?: string | null; email?: string | null } | null;
   parts?: Array<{ quantity: number | null }>;
-  checklist?: Array<{ completed: boolean; addon?: { name?: string | null } | null }>;
+  checklist?: Array<{ completed: boolean; isActive?: boolean | null; addon?: { name?: string | null } | null }>;
+  charges?: Array<{ completedAt: string | Date | null; department?: { id?: string | null; name?: string | null; isActive?: boolean | null } | null }>;
   statusHistory?: Array<{ createdAt: string | Date }>;
 };
 
@@ -22,6 +23,8 @@ export type OrderWithMeta = OrderListItem & {
   addonCount: number;
   openAddonCount: number;
   hasAddons: boolean;
+  openChargeCount: number;
+  pendingDepartments: Array<{ id: string; name: string; isActive: boolean }>;
   lastStatusChange: Date | null;
 };
 
@@ -29,6 +32,7 @@ export type OrderFilterState = {
   statuses: string[];
   priorities: string[];
   machinistId: string;
+  departmentId?: string;
   createdFrom?: string;
   createdTo?: string;
   dueFrom?: string;
@@ -43,6 +47,7 @@ export const DEFAULT_ORDER_FILTERS: OrderFilterState = {
   statuses: [],
   priorities: [],
   machinistId: 'all',
+  departmentId: 'all',
   requiresAddons: false,
   staleStatus: false,
 };
@@ -55,8 +60,21 @@ function parseDate(value: string | Date | null | undefined) {
 
 export function decorateOrder(order: OrderListItem): OrderWithMeta {
   const totalQuantity = (order.parts ?? []).reduce((sum, part) => sum + (part.quantity ?? 0), 0);
-  const addonCount = order.checklist?.length ?? 0;
-  const openAddonCount = order.checklist?.filter((item) => !item.completed).length ?? 0;
+  const activeChecklist = (order.checklist ?? []).filter((item) => item.isActive !== false);
+  const addonCount = activeChecklist.length;
+  const openAddonCount = activeChecklist.filter((item) => !item.completed).length;
+  const openChargeCount = order.charges?.filter((charge) => !charge.completedAt).length ?? 0;
+  const pendingDepartments = (order.charges ?? []).reduce(
+    (acc: Array<{ id: string; name: string; isActive: boolean }>, charge) => {
+      if (charge.completedAt) return acc;
+      const dept = charge.department;
+      if (!dept?.id || !dept.name) return acc;
+      if (acc.some((existing) => existing.id === dept.id)) return acc;
+      acc.push({ id: dept.id, name: dept.name, isActive: dept.isActive !== false });
+      return acc;
+    },
+    []
+  );
   const latestStatusHistory = order.statusHistory?.[0];
   const lastStatusChange = latestStatusHistory ? parseDate(latestStatusHistory.createdAt) : parseDate(order.receivedDate);
 
@@ -66,6 +84,8 @@ export function decorateOrder(order: OrderListItem): OrderWithMeta {
     addonCount,
     openAddonCount,
     hasAddons: addonCount > 0,
+    openChargeCount,
+    pendingDepartments,
     lastStatusChange,
   };
 }
@@ -90,6 +110,11 @@ export function orderMatchesFilters(
   if (filters.machinistId !== 'all') {
     if (filters.machinistId === '__unassigned__' && order.assignedMachinist?.id) return false;
     if (filters.machinistId !== '__unassigned__' && order.assignedMachinist?.id !== filters.machinistId) return false;
+  }
+
+  if (filters.departmentId && filters.departmentId !== 'all') {
+    const hasDept = order.pendingDepartments?.some((dept) => dept.id === filters.departmentId);
+    if (!hasDept) return false;
   }
 
   const created = parseDate(order.receivedDate);
