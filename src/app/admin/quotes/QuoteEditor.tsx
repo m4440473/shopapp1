@@ -163,6 +163,7 @@ type QuoteDetail = {
   }>;
   addonSelections?: Array<{
     id: string;
+    quotePartId?: string | null;
     addonId: string;
     units: number;
     rateTypeSnapshot: string;
