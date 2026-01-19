@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
+import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
 
 import { PrintControls } from './PrintControls';
@@ -33,19 +34,15 @@ export default async function QuotePrintPage({ params }: { params: { id: string 
     redirect('/admin/quotes');
   }
 
+  const addonTotal = quote.addonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const vendorTotal = quote.vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
+  const total = quote.basePriceCents + addonTotal + vendorTotal;
   const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata));
-  const chargeEntries = Array.isArray(metadata.charges) ? metadata.charges : [];
-  const partChargeTotals = quote.parts.map((_, index) =>
-    chargeEntries
-      .filter((charge) => charge.partIndex === index)
-      .reduce((sum, charge) => sum + charge.unitPriceCents * charge.quantity, 0)
-  );
-  const orderWideTotal = chargeEntries
-    .filter((charge) => charge.partIndex === null)
-    .reduce((sum, charge) => sum + charge.unitPriceCents * charge.quantity, 0);
-  const chargeTotal = partChargeTotals.reduce((sum, total) => sum + total, 0) + orderWideTotal;
-  const total = quote.basePriceCents + vendorTotal + chargeTotal;
+  const partPricing = getPartPricingEntries({
+    parts: quote.parts,
+    totalCents: total,
+    metadata,
+  });
 
   return (
     <div className="min-h-screen bg-white p-8 text-black">
@@ -117,7 +114,7 @@ export default async function QuotePrintPage({ params }: { params: { id: string 
             </tr>
           </thead>
           <tbody>
-            {quote.parts.length === 0 && (
+            {partPricing.length === 0 && (
               <tr>
                 <td className="border border-black px-2 py-2 text-center text-neutral-500" colSpan={3}>
                   No pricing captured
@@ -132,18 +129,10 @@ export default async function QuotePrintPage({ params }: { params: { id: string 
                 </td>
                 <td className="border border-black px-2 py-2">{part.quantity}</td>
                 <td className="border border-black px-2 py-2">
-                  {formatCurrency(partChargeTotals[index] ?? 0)}
+                  {formatCurrency(partPricing[index]?.priceCents ?? 0)}
                 </td>
               </tr>
             ))}
-            {orderWideTotal > 0 && (
-              <tr>
-                <td className="border border-black px-2 py-2 font-semibold" colSpan={2}>
-                  Order-wide charges
-                </td>
-                <td className="border border-black px-2 py-2 font-semibold">{formatCurrency(orderWideTotal)}</td>
-              </tr>
-            )}
             {quote.parts.length > 0 && (
               <tr>
                 <td className="border border-black px-2 py-2 font-semibold text-right" colSpan={2}>

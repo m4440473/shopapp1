@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
 import { generateNextOrderNumber } from '@/lib/orders.server';
 import { OrderQuery, OrderCreate } from '@/lib/zod-orders';
-import { syncChecklistForOrder } from '@/lib/order-charges';
 // Status enum not used from prisma; statuses are strings in this schema
 
 /** GET /api/orders — list with filters & cursor pagination */
@@ -56,16 +54,10 @@ export async function GET(req: NextRequest) {
       materialOrdered: true,
       parts: { select: { quantity: true } },
       checklist: {
+        where: { isActive: true },
         select: {
           completed: true,
-          isActive: true,
           addon: { select: { name: true } },
-        },
-      },
-      charges: {
-        select: {
-          completedAt: true,
-          department: { select: { id: true, name: true, isActive: true, slug: true } },
         },
       },
       statusHistory: {
@@ -93,12 +85,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
   const body = parsed.data;
-  const addonRecords = body.addonIds.length
-    ? await prisma.addon.findMany({
-        where: { id: { in: body.addonIds } },
-        select: { id: true, name: true, rateCents: true, departmentId: true },
-      })
-    : [];
 
   const prefix = BUSINESS_PREFIX_BY_CODE[body.business as keyof typeof BUSINESS_PREFIX_BY_CODE] ?? body.business;
   const providedOrderNumber = body.orderNumber?.trim();
@@ -141,18 +127,8 @@ export async function POST(req: NextRequest) {
           notes: p.notes ?? null,
         })),
       },
-      charges: addonRecords.length
-        ? {
-            create: addonRecords.map((addon) => ({
-              addonId: addon.id,
-              departmentId: addon.departmentId,
-              partId: null,
-              kind: 'ADDON',
-              name: addon.name,
-              quantity: new Prisma.Decimal(1),
-              unitPrice: new Prisma.Decimal(addon.rateCents / 100),
-            })),
-          }
+      checklist: body.addonIds.length
+        ? { create: body.addonIds.map(id => ({ addonId: id })) }
         : undefined,
       attachments: body.attachments.length
         ? {
@@ -185,10 +161,6 @@ export async function POST(req: NextRequest) {
     },
     select: { id: true },
   });
-
-  if (addonRecords.length) {
-    await syncChecklistForOrder(order.id);
-  }
 
   return NextResponse.json({ id: order.id }, { status: 201 });
 }

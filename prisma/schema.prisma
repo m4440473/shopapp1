@@ -86,6 +86,7 @@ model Order {
   checklist        OrderChecklist[]
   charges          OrderCharge[]
   attachments      Attachment[]
+  partAttachments  PartAttachment[]
   notes            Note[]
   timeLogs         TimeLog[]
   statusHistory    StatusHistory[]
@@ -112,9 +113,13 @@ model OrderChecklist {
   orderId     String
   order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   partId      String?
-  part        OrderPart? @relation(fields: [partId], references: [id])
-  addonId     String
-  addon       Addon    @relation(fields: [addonId], references: [id])
+  part        OrderPart? @relation(fields: [partId], references: [id], onDelete: SetNull)
+  chargeId    String?
+  charge      OrderCharge? @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+  departmentId String?
+  department  Department? @relation(fields: [departmentId], references: [id])
+  addonId     String?
+  addon       Addon?    @relation(fields: [addonId], references: [id])
   completed   Boolean  @default(false)
   isActive    Boolean  @default(true)
   toggledById String?
@@ -122,7 +127,8 @@ model OrderChecklist {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([orderId, partId, addonId])
+  @@unique([orderId, addonId, partId])
+  @@unique([orderId, chargeId])
 }
 
 model Note {
@@ -202,6 +208,7 @@ model Department {
   isActive  Boolean  @default(true)
   addons    Addon[]
   charges   OrderCharge[]
+  checklistItems OrderChecklist[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -211,11 +218,12 @@ model OrderCharge {
   orderId      String
   order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   partId       String?
-  part         OrderPart? @relation(fields: [partId], references: [id])
+  part         OrderPart? @relation(fields: [partId], references: [id], onDelete: Cascade)
   departmentId String
   department   Department @relation(fields: [departmentId], references: [id])
   addonId      String?
   addon        Addon?   @relation(fields: [addonId], references: [id])
+  checklistItems OrderChecklist[]
   kind         String
   name         String
   description  String?
@@ -233,15 +241,18 @@ model OrderCharge {
 
 model PartAttachment {
   id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   partId      String
   part        OrderPart @relation(fields: [partId], references: [id], onDelete: Cascade)
   kind        String
-  url         String
+  url         String?
   storagePath String?
   label       String?
   mimeType    String?
   createdAt   DateTime @default(now())
 
+  @@index([orderId])
   @@index([partId])
   @@index([storagePath])
 }

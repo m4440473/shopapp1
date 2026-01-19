@@ -29,18 +29,6 @@ export interface PreparedQuoteComponents {
   vendorTotalCents: number;
   addonsTotalCents: number;
   totalCents: number;
-  charges: Array<{
-    partIndex: number | null;
-    departmentId: string;
-    departmentName: string | null;
-    addonId: string | null;
-    kind: string;
-    name: string;
-    description: string | null;
-    quantity: number;
-    unitPriceCents: number;
-    sortOrder: number;
-  }>;
   parts: Array<{
     name: string;
     partNumber: string | null;
@@ -87,7 +75,6 @@ export async function prepareQuoteComponents(
   const parts = input.parts ?? [];
   const vendorItemsInput = input.vendorItems ?? [];
   const addonSelectionsInput = input.addonSelections ?? [];
-  const chargeInputs = input.charges ?? [];
   const attachmentsInput = input.attachments ?? [];
 
   const vendorIds = vendorItemsInput
@@ -128,21 +115,6 @@ export async function prepareQuoteComponents(
 
   const addonsTotalCents = addonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
 
-  const charges = chargeInputs.map((charge, index) => ({
-    partIndex: typeof charge.partIndex === 'number' ? charge.partIndex : null,
-    departmentId: charge.departmentId,
-    departmentName: charge.departmentName ?? null,
-    addonId: charge.addonId ?? null,
-    kind: charge.kind,
-    name: charge.name,
-    description: charge.description ?? null,
-    quantity: typeof charge.quantity === 'number' ? charge.quantity : 0,
-    unitPriceCents: typeof charge.unitPriceCents === 'number' ? charge.unitPriceCents : 0,
-    sortOrder: typeof charge.sortOrder === 'number' ? charge.sortOrder : index,
-  }));
-
-  const chargesTotalCents = charges.reduce((sum, charge) => sum + charge.unitPriceCents * charge.quantity, 0);
-
   const vendorItems = vendorItemsInput.map((item) => {
     const vendor = item.vendorId ? vendorMap.get(item.vendorId) : undefined;
     const basePriceCents = item.basePriceCents ?? 0;
@@ -163,8 +135,7 @@ export async function prepareQuoteComponents(
 
   const vendorTotalCents = vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
   const basePriceCents = input.basePriceCents ?? 0;
-  const effectiveAddonsTotal = charges.length ? chargesTotalCents : addonsTotalCents;
-  const totalCents = basePriceCents + vendorTotalCents + effectiveAddonsTotal;
+  const totalCents = basePriceCents + vendorTotalCents + addonsTotalCents;
 
   const providedQuoteNumber = input.quoteNumber?.trim();
   let quoteNumber: string;
@@ -214,9 +185,8 @@ export async function prepareQuoteComponents(
     multiPiece,
     basePriceCents,
     vendorTotalCents,
-    addonsTotalCents: effectiveAddonsTotal,
+    addonsTotalCents,
     totalCents,
-    charges,
     parts: partsData,
     vendorItems,
     addonSelections,

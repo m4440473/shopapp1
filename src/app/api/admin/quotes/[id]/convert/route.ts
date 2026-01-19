@@ -19,8 +19,6 @@ import { businessNameFromCode, type BusinessCode, type BusinessName } from '@/li
 import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
 import { OrderPartCreate, PriorityEnum } from '@/lib/zod-orders';
 import { getAppSettings } from '@/lib/app-settings';
-import { Prisma } from '@prisma/client';
-import { syncChecklistForOrder } from '@/lib/order-charges';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -52,6 +50,7 @@ const ConversionOverrides = z.object({
   materialNeeded: z.boolean().optional(),
   materialOrdered: z.boolean().optional(),
   modelIncluded: z.boolean().optional(),
+  addonIds: z.array(z.string().trim()).optional(),
   parts: z.array(OrderPartCreate).optional(),
   notes: z.string().trim().max(1000).optional(),
 });
@@ -276,6 +275,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Add at least one part before converting.' }, { status: 400 });
   }
 
+  const addonIds = Array.from(
+    new Set((overrides?.addonIds ?? quote.addonSelections.map((selection) => selection.addonId)).filter(Boolean)),
+  );
+
   const noteContent = overrides?.notes ?? buildConversionNote(quote, now);
   const userId = (guard.session.user as any)?.id as string | undefined;
 
@@ -300,6 +303,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         vendorId: overrides?.vendorId ?? null,
         poNumber: overrides?.poNumber ?? null,
         assignedMachinistId: overrides?.assignedMachinistId ?? null,
+        parts: partsData.length
+          ? {
+              create: partsData.map((part) => ({
+                partNumber: part.partNumber,
+                quantity: part.quantity,
+                materialId: part.materialId,
+                stockSize: part.stockSize ?? null,
+                cutLength: part.cutLength ?? null,
+                notes: part.notes ?? undefined,
+              })),
+            }
+          : undefined,
+        checklist: addonIds.length
+          ? {
+              create: addonIds.map((addonId) => ({ addonId })),
+            }
+          : undefined,
         attachments: orderAttachments.length
           ? {
               create: orderAttachments.map((attachment) => ({
@@ -332,44 +352,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       select: { id: true },
     });
 
-    const createdParts = await Promise.all(
-      partsData.map((part) =>
-        tx.orderPart.create({
-          data: {
-            orderId: order.id,
-            partNumber: part.partNumber,
-            quantity: part.quantity,
-            materialId: part.materialId,
-            stockSize: part.stockSize ?? null,
-            cutLength: part.cutLength ?? null,
-            notes: part.notes ?? undefined,
-          },
-        })
-      )
-    );
-
-    const chargeEntries = Array.isArray(metadata.charges) ? metadata.charges : [];
-    for (const charge of chargeEntries) {
-      const partId =
-        typeof charge.partIndex === 'number' && createdParts[charge.partIndex]
-          ? createdParts[charge.partIndex].id
-          : null;
-      await tx.orderCharge.create({
-        data: {
-          orderId: order.id,
-          partId,
-          departmentId: charge.departmentId,
-          addonId: charge.addonId ?? null,
-          kind: charge.kind,
-          name: charge.name,
-          description: charge.description ?? null,
-          quantity: new Prisma.Decimal(charge.quantity ?? 0),
-          unitPrice: new Prisma.Decimal((charge.unitPriceCents ?? 0) / 100),
-          sortOrder: charge.sortOrder ?? 0,
-        },
-      });
-    }
-
     const updatedMetadata = mergeQuoteMetadata({
       ...metadata,
       conversion: {
@@ -389,8 +371,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     return { orderId: order.id, metadata: updatedMetadata };
   });
-
-  await syncChecklistForOrder(result.orderId);
 
   return NextResponse.json({
     ok: true,

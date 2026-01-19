@@ -43,19 +43,6 @@ export const QuoteAttachmentInput = z
     path: ['url'],
   });
 
-const QuoteChargeInput = z.object({
-  partIndex: z.coerce.number().int().min(0).optional().nullable(),
-  departmentId: z.string().trim().min(1),
-  departmentName: z.string().trim().max(200).optional(),
-  addonId: z.string().trim().optional(),
-  kind: z.string().trim().min(1).max(40),
-  name: z.string().trim().min(1).max(200),
-  description: z.string().trim().max(2000).optional(),
-  quantity: z.coerce.number().min(0).default(1),
-  unitPriceCents: z.coerce.number().int().min(0).default(0),
-  sortOrder: z.coerce.number().int().min(0).default(0),
-});
-
 export const QuoteCreate = z.object({
   business: z.enum(BUSINESS_CODES),
   quoteNumber: z.string().trim().max(50).optional(),
@@ -74,7 +61,6 @@ export const QuoteCreate = z.object({
   parts: z.array(QuotePartInput).default([]),
   vendorItems: z.array(QuoteVendorItemInput).default([]),
   addonSelections: z.array(QuoteAddonSelectionInput).default([]),
-  charges: z.array(QuoteChargeInput).default([]),
   attachments: z.array(QuoteAttachmentInput).default([]),
   partPricing: z
     .array(
@@ -95,4 +81,3 @@ export type QuotePartInputType = z.infer<typeof QuotePartInput>;
 export type QuoteVendorItemInputType = z.infer<typeof QuoteVendorItemInput>;
 export type QuoteAddonSelectionInputType = z.infer<typeof QuoteAddonSelectionInput>;
 export type QuoteAttachmentInputType = z.infer<typeof QuoteAttachmentInput>;
-export type QuoteChargeInputType = z.infer<typeof QuoteChargeInput>;

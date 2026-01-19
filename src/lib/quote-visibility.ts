@@ -37,10 +37,8 @@ type SanitizedOrderChecklistEntry = Omit<OrderWithRelations['checklist'][number]
     : Omit<NonNullable<OrderWithRelations['checklist'][number]['addon']>, 'rateCents'>;
 };
 
-type SanitizedOrderCharge = OrderWithRelations['charges'] extends Array<infer Charge>
-  ? Charge extends { unitPrice: any }
-    ? Omit<Charge, 'unitPrice'>
-    : Charge
+type SanitizedOrderCharge = OrderWithRelations extends { charges: Array<infer Charge> }
+  ? Omit<Charge, 'unitPrice'> & { unitPrice?: never }
   : never;
 
 export type SanitizedOrder = Omit<OrderWithRelations, 'checklist' | 'charges'> & {
@@ -83,6 +81,10 @@ export function sanitizePricingForNonAdmin(entity: SanitizableEntity, isAdmin = 
       checklist: (order.checklist || []).map(({ addon, ...checklist }) => ({
         ...checklist,
         addon: addon ? (({ rateCents: _, ...addonRest }) => addonRest)(addon) : addon,
+      })),
+      parts: (order.parts || []).map((part: any) => ({
+        ...part,
+        charges: (part.charges || []).map(({ unitPrice: _, ...charge }: any) => charge),
       })),
       charges: (order.charges || []).map(({ unitPrice: _, ...charge }) => charge),
     };
