@@ -2,6 +2,12 @@ import { z } from 'zod';
 
 import { BUSINESS_CODES } from '@/lib/businesses';
 
+export const QuoteAddonSelectionInput = z.object({
+  addonId: z.string().trim().min(1),
+  units: z.coerce.number().min(0).default(0),
+  notes: z.string().trim().max(2000).optional(),
+});
+
 export const QuotePartInput = z.object({
   name: z.string().trim().min(1).max(200),
   partNumber: z.string().trim().max(200).optional(),
@@ -12,6 +18,7 @@ export const QuotePartInput = z.object({
   quantity: z.coerce.number().int().min(1).default(1),
   pieceCount: z.coerce.number().int().min(1).default(1),
   notes: z.string().trim().max(2000).optional(),
+  addonSelections: z.array(QuoteAddonSelectionInput).default([]),
 });
 
 export const QuoteVendorItemInput = z.object({
@@ -22,12 +29,6 @@ export const QuoteVendorItemInput = z.object({
   basePriceCents: z.coerce.number().int().min(0).default(0),
   markupPercent: z.coerce.number().min(0).max(1000).default(0),
   finalPriceCents: z.coerce.number().int().min(0).default(0),
-  notes: z.string().trim().max(2000).optional(),
-});
-
-export const QuoteAddonSelectionInput = z.object({
-  addonId: z.string().trim().min(1),
-  units: z.coerce.number().min(0).default(0),
   notes: z.string().trim().max(2000).optional(),
 });
 
@@ -60,7 +61,6 @@ export const QuoteCreate = z.object({
   basePriceCents: z.coerce.number().int().min(0).default(0),
   parts: z.array(QuotePartInput).default([]),
   vendorItems: z.array(QuoteVendorItemInput).default([]),
-  addonSelections: z.array(QuoteAddonSelectionInput).default([]),
   attachments: z.array(QuoteAttachmentInput).default([]),
   partPricing: z
     .array(

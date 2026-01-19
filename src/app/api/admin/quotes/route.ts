@@ -116,65 +116,135 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  const created = await prisma.quote.create({
-    data: {
-      quoteNumber: prepared.quoteNumber,
-      business: data.business,
-      companyName: data.companyName,
-      contactName: data.contactName ?? null,
-      contactEmail: data.contactEmail ?? null,
-      contactPhone: data.contactPhone ?? null,
-      customerId: data.customerId ?? null,
-      status: data.status ?? 'DRAFT',
-      materialSummary: data.materialSummary ?? null,
-      purchaseItems: data.purchaseItems ?? null,
-      requirements: data.requirements ?? null,
-      notes: data.notes ?? null,
-      multiPiece: prepared.multiPiece,
-      basePriceCents: prepared.basePriceCents,
-      addonsTotalCents: prepared.addonsTotalCents,
-      vendorTotalCents: prepared.vendorTotalCents,
-      totalCents: prepared.totalCents,
-      metadata: stringifyQuoteMetadata({
-        ...DEFAULT_QUOTE_METADATA,
-        partPricing: data.partPricing?.map((entry) => ({
-          name: entry.name ?? null,
-          partNumber: entry.partNumber ?? null,
-          priceCents: entry.priceCents ?? 0,
+  const created = await prisma.$transaction(async (tx) => {
+    const quote = await tx.quote.create({
+      data: {
+        quoteNumber: prepared.quoteNumber,
+        business: data.business,
+        companyName: data.companyName,
+        contactName: data.contactName ?? null,
+        contactEmail: data.contactEmail ?? null,
+        contactPhone: data.contactPhone ?? null,
+        customerId: data.customerId ?? null,
+        status: data.status ?? 'DRAFT',
+        materialSummary: data.materialSummary ?? null,
+        purchaseItems: data.purchaseItems ?? null,
+        requirements: data.requirements ?? null,
+        notes: data.notes ?? null,
+        multiPiece: prepared.multiPiece,
+        basePriceCents: prepared.basePriceCents,
+        addonsTotalCents: prepared.addonsTotalCents,
+        vendorTotalCents: prepared.vendorTotalCents,
+        totalCents: prepared.totalCents,
+        metadata: stringifyQuoteMetadata({
+          ...DEFAULT_QUOTE_METADATA,
+          partPricing: data.partPricing?.map((entry) => ({
+            name: entry.name ?? null,
+            partNumber: entry.partNumber ?? null,
+            priceCents: entry.priceCents ?? 0,
+          })),
+        }),
+        createdById: userId,
+      },
+      select: { id: true },
+    });
+
+    const createdParts = await Promise.all(
+      prepared.parts.map((part) =>
+        tx.quotePart.create({
+          data: {
+            quoteId: quote.id,
+            name: part.name,
+            partNumber: part.partNumber,
+            materialId: part.materialId,
+            stockSize: part.stockSize,
+            cutLength: part.cutLength,
+            description: part.description,
+            quantity: part.quantity,
+            pieceCount: part.pieceCount,
+            notes: part.notes,
+          },
+          select: { id: true },
+        })
+      )
+    );
+
+    const addonSelections = prepared.parts.flatMap((part, index) => {
+      const partId = createdParts[index]?.id;
+      if (!partId) return [];
+      return part.addonSelections.map((selection) => ({
+        quoteId: quote.id,
+        quotePartId: partId,
+        addonId: selection.addonId,
+        units: selection.units,
+        rateTypeSnapshot: selection.rateTypeSnapshot,
+        rateCents: selection.rateCents,
+        totalCents: selection.totalCents,
+        notes: selection.notes,
+      }));
+    });
+
+    if (addonSelections.length) {
+      await tx.quoteAddonSelection.createMany({ data: addonSelections });
+    }
+
+    if (prepared.vendorItems.length) {
+      await tx.quoteVendorItem.createMany({
+        data: prepared.vendorItems.map((item) => ({
+          quoteId: quote.id,
+          vendorId: item.vendorId,
+          vendorName: item.vendorName,
+          partNumber: item.partNumber,
+          partUrl: item.partUrl,
+          basePriceCents: item.basePriceCents,
+          markupPercent: item.markupPercent,
+          finalPriceCents: item.finalPriceCents,
+          notes: item.notes,
         })),
-      }),
-      createdById: userId,
-      parts: {
-        create: prepared.parts,
-      },
-      vendorItems: {
-        create: prepared.vendorItems,
-      },
-      addonSelections: {
-        create: prepared.addonSelections,
-      },
-      attachments: {
-        create: prepared.attachments.map((attachment) => ({
+      });
+    }
+
+    if (prepared.attachments.length) {
+      await tx.quoteAttachment.createMany({
+        data: prepared.attachments.map((attachment) => ({
+          quoteId: quote.id,
           url: attachment.url,
           storagePath: attachment.storagePath,
           label: attachment.label,
           mimeType: attachment.mimeType,
         })),
-      },
-    },
-    include: {
-      customer: { select: { id: true, name: true } },
-      createdBy: { select: { id: true, name: true, email: true } },
-      parts: true,
-      vendorItems: true,
-      addonSelections: {
-        include: {
-          addon: { select: { id: true, name: true, rateType: true, rateCents: true } },
+      });
+    }
+
+    return tx.quote.findUnique({
+      where: { id: quote.id },
+      include: {
+        customer: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
+        parts: {
+          include: {
+            material: true,
+            addonSelections: {
+              include: {
+                addon: { select: { id: true, name: true, rateType: true, rateCents: true } },
+              },
+            },
+          },
         },
+        vendorItems: true,
+        addonSelections: {
+          include: {
+            addon: { select: { id: true, name: true, rateType: true, rateCents: true } },
+          },
+        },
+        attachments: true,
       },
-      attachments: true,
-    },
+    });
   });
+
+  if (!created) {
+    return NextResponse.json({ error: 'Unable to create quote' }, { status: 500 });
+  }
 
   const normalized = {
     ...created,

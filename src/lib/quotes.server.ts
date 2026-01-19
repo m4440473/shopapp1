@@ -39,6 +39,14 @@ export interface PreparedQuoteComponents {
     quantity: number;
     pieceCount: number;
     notes: string | null;
+    addonSelections: Array<{
+      addonId: string;
+      units: number;
+      rateTypeSnapshot: string;
+      rateCents: number;
+      totalCents: number;
+      notes: string | null;
+    }>;
   }>;
   vendorItems: Array<{
     vendorId: string | null;
@@ -48,14 +56,6 @@ export interface PreparedQuoteComponents {
     basePriceCents: number;
     markupPercent: number;
     finalPriceCents: number;
-    notes: string | null;
-  }>;
-  addonSelections: Array<{
-    addonId: string;
-    units: number;
-    rateTypeSnapshot: string;
-    rateCents: number;
-    totalCents: number;
     notes: string | null;
   }>;
   attachments: Array<{
@@ -74,7 +74,6 @@ export async function prepareQuoteComponents(
   const prefix = prefixForBusiness(business);
   const parts = input.parts ?? [];
   const vendorItemsInput = input.vendorItems ?? [];
-  const addonSelectionsInput = input.addonSelections ?? [];
   const attachmentsInput = input.attachments ?? [];
 
   const vendorIds = vendorItemsInput
@@ -87,33 +86,42 @@ export async function prepareQuoteComponents(
   const vendorMap = new Map(vendorRecords.map((vendor) => [vendor.id, vendor]));
 
   type AddonRecord = { id: string; name: string; rateType: string; rateCents: number };
-  const addonIds = addonSelectionsInput.map((item) => item.addonId);
+  const addonSelectionsInput = parts.flatMap((part, partIndex) =>
+    (part.addonSelections ?? []).map((item) => ({ partIndex, item }))
+  );
+  const addonIds = addonSelectionsInput.map(({ item }) => item.addonId);
   const addonRecords: AddonRecord[] = addonIds.length
     ? ((await prisma.addon.findMany({ where: { id: { in: addonIds } } })) as AddonRecord[])
     : [];
   const addonMap = new Map(addonRecords.map((addon) => [addon.id, addon]));
 
   for (const selection of addonSelectionsInput) {
-    if (!addonMap.has(selection.addonId)) {
-      throw new Error(`Addon ${selection.addonId} not found`);
+    if (!addonMap.has(selection.item.addonId)) {
+      throw new Error(`Addon ${selection.item.addonId} not found`);
     }
   }
 
-  const addonSelections = addonSelectionsInput.map((item) => {
-    const addon = addonMap.get(item.addonId)!;
-    const units = typeof item.units === 'number' ? item.units : 0;
+  const addonSelectionsByPart = new Map<number, PreparedQuoteComponents['parts'][number]['addonSelections']>();
+  for (const selection of addonSelectionsInput) {
+    const addon = addonMap.get(selection.item.addonId)!;
+    const units = typeof selection.item.units === 'number' ? selection.item.units : 0;
     const totalCents = Math.round(addon.rateCents * units);
-    return {
+    const entry = {
       addonId: addon.id,
       units,
       rateTypeSnapshot: addon.rateType,
       rateCents: addon.rateCents,
       totalCents,
-      notes: item.notes ?? null,
+      notes: selection.item.notes ?? null,
     };
-  });
+    const existing = addonSelectionsByPart.get(selection.partIndex) ?? [];
+    addonSelectionsByPart.set(selection.partIndex, [...existing, entry]);
+  }
 
-  const addonsTotalCents = addonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
+  const addonsTotalCents = Array.from(addonSelectionsByPart.values()).reduce(
+    (sum, selections) => sum + selections.reduce((innerSum, selection) => innerSum + selection.totalCents, 0),
+    0
+  );
 
   const vendorItems = vendorItemsInput.map((item) => {
     const vendor = item.vendorId ? vendorMap.get(item.vendorId) : undefined;
@@ -159,7 +167,7 @@ export async function prepareQuoteComponents(
       ? input.multiPiece
       : parts.some((part) => (part.pieceCount ?? 1) > 1);
 
-  const partsData = parts.map((part) => ({
+  const partsData = parts.map((part, index) => ({
     name: part.name,
     partNumber: part.partNumber ?? null,
     materialId: part.materialId ?? null,
@@ -169,6 +177,7 @@ export async function prepareQuoteComponents(
     quantity: part.quantity ?? 1,
     pieceCount: part.pieceCount ?? 1,
     notes: part.notes ?? null,
+    addonSelections: addonSelectionsByPart.get(index) ?? [],
   }));
 
   const attachments = attachmentsInput
@@ -189,7 +198,6 @@ export async function prepareQuoteComponents(
     totalCents,
     parts: partsData,
     vendorItems,
-    addonSelections,
     attachments,
   };
 }

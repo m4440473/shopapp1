@@ -24,7 +24,12 @@ export default async function QuotePrintPage({ params }: { params: { id: string 
     where: { id: params.id },
     include: {
       customer: { select: { id: true, name: true } },
-      parts: { include: { material: true } },
+      parts: {
+        include: {
+          material: true,
+          addonSelections: true,
+        },
+      },
       vendorItems: true,
       addonSelections: { include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true } } } },
     },
@@ -34,7 +39,12 @@ export default async function QuotePrintPage({ params }: { params: { id: string 
     redirect('/admin/quotes');
   }
 
-  const addonTotal = quote.addonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
+  const legacyAddonSelections = quote.addonSelections.filter((selection) => !selection.quotePartId);
+  const addonTotal =
+    quote.parts.reduce(
+      (sum, part) => sum + (part.addonSelections ?? []).reduce((innerSum, selection) => innerSum + selection.totalCents, 0),
+      0
+    ) + legacyAddonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const vendorTotal = quote.vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
   const total = quote.basePriceCents + addonTotal + vendorTotal;
   const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata));

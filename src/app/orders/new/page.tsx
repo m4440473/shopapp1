@@ -232,15 +232,18 @@ function NewOrderForm() {
               }))
             : [emptyPart()],
         );
-        setSelectedAddonIds(
-          Array.from(
-            new Set(
-              (quote.addonSelections ?? [])
-                .map((sel: any) => sel.addon?.id ?? sel.addonId ?? null)
-                .filter(Boolean),
-            ),
-          ),
-        );
+        const quoteAddonIds = new Set<string>();
+        (quote.parts ?? []).forEach((part: any) => {
+          (part.addonSelections ?? []).forEach((sel: any) => {
+            const addonId = sel.addon?.id ?? sel.addonId ?? null;
+            if (addonId) quoteAddonIds.add(addonId);
+          });
+        });
+        (quote.addonSelections ?? []).forEach((sel: any) => {
+          const addonId = sel.addon?.id ?? sel.addonId ?? null;
+          if (addonId) quoteAddonIds.add(addonId);
+        });
+        setSelectedAddonIds(Array.from(quoteAddonIds));
         setDueDate((quote.dueDate as string | null)?.slice(0, 10) || defaultDueDate());
         setNotes((prev) => prev || buildConversionNote(quote));
       })
@@ -460,7 +463,6 @@ function NewOrderForm() {
           materialNeeded,
           materialOrdered,
           modelIncluded,
-          addonIds: selectedAddonIds,
           parts: cleanedParts,
           notes: notes.trim() || undefined,
         }),
@@ -1030,46 +1032,57 @@ function NewOrderForm() {
         <Card className="border-border/60 bg-card/70 backdrop-blur">
           <CardHeader>
             <CardTitle>Add-ons & notes</CardTitle>
-            <CardDescription>Select value-added services and include launch notes.</CardDescription>
+            <CardDescription>
+              {conversionMode
+                ? 'Add-ons will be pulled from the quote parts during conversion.'
+                : 'Select value-added services and include launch notes.'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-6">
-            <div className="grid gap-2">
-              <Label>Add-on services</Label>
-              <div className="grid gap-3 rounded-lg border border-border/60 bg-background/60 p-4 sm:grid-cols-2">
-                {addons.map((item) => {
-                  const checked = selectedAddonIds.includes(item.id);
-                  return (
-                    <label key={item.id} className="flex items-start justify-between gap-3 rounded-md border border-border/40 bg-muted/10 p-3 text-sm">
-                      <div className="flex items-start gap-3">
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={(value) => {
-                            const isChecked = value === true;
-                            setSelectedAddonIds((sel) =>
-                              isChecked ? [...sel, item.id] : sel.filter((id) => id !== item.id)
-                            );
-                          }}
-                        />
-                        <div className="space-y-1">
-                          <span className="font-medium text-foreground">{item.name}</span>
-                          {item.description && (
-                            <span className="block text-xs text-muted-foreground">{item.description}</span>
-                          )}
+            {!conversionMode && (
+              <div className="grid gap-2">
+                <Label>Add-on services</Label>
+                <div className="grid gap-3 rounded-lg border border-border/60 bg-background/60 p-4 sm:grid-cols-2">
+                  {addons.map((item) => {
+                    const checked = selectedAddonIds.includes(item.id);
+                    return (
+                      <label key={item.id} className="flex items-start justify-between gap-3 rounded-md border border-border/40 bg-muted/10 p-3 text-sm">
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(value) => {
+                              const isChecked = value === true;
+                              setSelectedAddonIds((sel) =>
+                                isChecked ? [...sel, item.id] : sel.filter((id) => id !== item.id)
+                              );
+                            }}
+                          />
+                          <div className="space-y-1">
+                            <span className="font-medium text-foreground">{item.name}</span>
+                            {item.description && (
+                              <span className="block text-xs text-muted-foreground">{item.description}</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <span className="text-xs text-muted-foreground text-right">
-                        Pricing available in Admin Portal
-                      </span>
-                    </label>
-                  );
-                })}
-                {addons.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    No add-ons available yet. Create them from the admin dashboard.
-                  </p>
-                )}
+                        <span className="text-xs text-muted-foreground text-right">
+                          Pricing available in Admin Portal
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {addons.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      No add-ons available yet. Create them from the admin dashboard.
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
+            {conversionMode && (
+              <div className="rounded-lg border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                Add-ons and labor will copy from the quote parts and become part-level charges on the order.
+              </div>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="notes">Launch notes</Label>
               <Textarea
