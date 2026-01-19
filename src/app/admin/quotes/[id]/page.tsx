@@ -58,7 +58,13 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
     include: {
       customer: { select: { id: true, name: true } },
       createdBy: { select: { id: true, name: true, email: true } },
-      parts: true,
+      parts: {
+        include: {
+          addonSelections: {
+            include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true } } },
+          },
+        },
+      },
       vendorItems: true,
       addonSelections: {
         include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true } } },
@@ -77,7 +83,12 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
   const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata));
 
   const statusLabel = STATUS_LABELS[quote.status] ?? quote.status;
-  const addonTotal = quote.addonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
+  const legacyAddonSelections = quote.addonSelections.filter((selection) => !selection.quotePartId);
+  const addonTotal =
+    quote.parts.reduce(
+      (sum, part) => sum + (part.addonSelections ?? []).reduce((innerSum, selection) => innerSum + selection.totalCents, 0),
+      0
+    ) + legacyAddonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const vendorTotal = quote.vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
   const downloadBase = (process.env.NEXT_PUBLIC_BASE_URL ?? runtimeBase).replace(/\/$/, '');
   const totalCents = quote.basePriceCents + addonTotal + vendorTotal;
@@ -358,8 +369,76 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
               {part.notes && (
                 <p className="mt-2 text-xs text-muted-foreground">Notes: {part.notes}</p>
               )}
+              {(part.addonSelections?.length ?? 0) > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs font-medium text-muted-foreground">Add-ons & labor</p>
+                  <div className="mt-2 space-y-2">
+                    {part.addonSelections?.map((selection) => (
+                      <div key={selection.id} className="rounded border border-border/50 bg-muted/20 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="font-medium">{selection.addon?.name ?? 'Add-on removed'}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {selection.units} {selection.rateTypeSnapshot === 'FLAT' ? 'qty' : 'hrs'} •{' '}
+                              <AdminPricingGate
+                                initialRole={initialRole}
+                                initialAdmin={isAdmin}
+                                admin={isAdmin ? <span>Rate {formatCurrency(selection.rateCents)}</span> : null}
+                                fallback={<span>Rate hidden</span>}
+                              />
+                            </p>
+                          </div>
+                          <AdminPricingGate
+                            initialRole={initialRole}
+                            initialAdmin={isAdmin}
+                            admin={
+                              isAdmin ? (
+                                <div className="text-right font-medium">{formatCurrency(selection.totalCents)}</div>
+                              ) : null
+                            }
+                            fallback={<div className="text-right text-muted-foreground">Subtotal hidden</div>}
+                          />
+                        </div>
+                        {selection.notes && <p className="mt-2 text-xs text-muted-foreground">{selection.notes}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
+          {legacyAddonSelections.length > 0 && (
+            <div className="rounded border border-border/50 bg-card/40 p-4 text-sm">
+              <p className="text-xs font-medium text-muted-foreground">Unassigned add-ons</p>
+              <div className="mt-2 space-y-2">
+                {legacyAddonSelections.map((selection) => (
+                  <div key={selection.id} className="rounded border border-border/50 bg-muted/20 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-medium">{selection.addon?.name ?? 'Add-on removed'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {selection.units} {selection.rateTypeSnapshot === 'FLAT' ? 'qty' : 'hrs'} •{' '}
+                          <AdminPricingGate
+                            initialRole={initialRole}
+                            initialAdmin={isAdmin}
+                            admin={isAdmin ? <span>Rate {formatCurrency(selection.rateCents)}</span> : null}
+                            fallback={<span>Rate hidden</span>}
+                          />
+                        </p>
+                      </div>
+                      <AdminPricingGate
+                        initialRole={initialRole}
+                        initialAdmin={isAdmin}
+                        admin={isAdmin ? <div className="text-right font-medium">{formatCurrency(selection.totalCents)}</div> : null}
+                        fallback={<div className="text-right text-muted-foreground">Subtotal hidden</div>}
+                      />
+                    </div>
+                    {selection.notes && <p className="mt-2 text-xs text-muted-foreground">{selection.notes}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -409,51 +488,6 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
                 />
               </div>
               {item.notes && <p className="mt-2 text-xs text-muted-foreground">{item.notes}</p>}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Add-ons & labor</CardTitle>
-          <CardDescription>Hourly or fixed-rate services applied to the quote.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {quote.addonSelections.length === 0 && <p className="text-sm text-muted-foreground">No add-ons applied.</p>}
-          {quote.addonSelections.map((selection) => (
-            <div key={selection.id} className="rounded border border-border/50 bg-card/40 p-4 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-medium">{selection.addon?.name ?? 'Add-on removed'}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {selection.units} {selection.rateTypeSnapshot === 'FLAT' ? 'qty' : 'hrs'} •{' '}
-                    <AdminPricingGate
-                      initialRole={initialRole}
-                      initialAdmin={isAdmin}
-                      admin={
-                        isAdmin ? (
-                          <span>Rate {formatCurrency(selection.rateCents)}</span>
-                        ) : null
-                      }
-                      fallback={<span>Rate hidden</span>}
-                    />
-                  </p>
-                </div>
-                <AdminPricingGate
-                  initialRole={initialRole}
-                  initialAdmin={isAdmin}
-                  admin={
-                    isAdmin ? (
-                      <div className="text-right font-medium">{formatCurrency(selection.totalCents)}</div>
-                    ) : null
-                  }
-                  fallback={
-                    <div className="text-right text-muted-foreground">Subtotal hidden</div>
-                  }
-                />
-              </div>
-              {selection.notes && <p className="mt-2 text-xs text-muted-foreground">{selection.notes}</p>}
             </div>
           ))}
         </CardContent>

@@ -62,10 +62,21 @@ export function sanitizePricingForNonAdmin(entity: SanitizableEntity, isAdmin = 
         addon: addon ? (({ rateCents: ___, ...addonRest }) => addonRest)(addon) : addon,
       }));
 
+      const strippedParts = (rest as any).parts
+        ? (rest as any).parts.map((part: any) => ({
+            ...part,
+            addonSelections: (part.addonSelections || []).map(({ rateCents: _, totalCents: __, addon, ...selection }: any) => ({
+              ...selection,
+              addon: addon ? (({ rateCents: ___, ...addonRest }) => addonRest)(addon) : addon,
+            })),
+          }))
+        : (rest as any).parts;
+
       return {
         ...rest,
         vendorItems: strippedVendorItems,
         addonSelections: strippedAddonSelections,
+        parts: strippedParts,
       };
     }
 

@@ -309,6 +309,7 @@ model QuotePart {
   material   Material? @relation("QuotePartMaterial", fields: [materialId], references: [id])
   stockSize  String?
   cutLength  String?
+  addonSelections QuoteAddonSelection[]
 }
 
 model QuoteVendorItem {
@@ -330,6 +331,8 @@ model QuoteAddonSelection {
   id               String @id @default(cuid())
   quoteId          String
   quote            Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quotePartId      String?
+  quotePart        QuotePart? @relation(fields: [quotePartId], references: [id], onDelete: Cascade)
   addonId          String
   addon            Addon  @relation(fields: [addonId], references: [id])
   units            Float  @default(0)
@@ -337,6 +340,8 @@ model QuoteAddonSelection {
   rateCents        Int
   totalCents       Int
   notes            String?
+
+  @@index([quotePartId])
 }
 
 model QuoteAttachment {

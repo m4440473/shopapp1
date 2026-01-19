@@ -33,7 +33,36 @@ describe('pricing visibility sanitization', () => {
     updatedAt: new Date('2023-01-02T00:00:00Z'),
     createdBy: { id: 'user-1', name: 'Admin', email: 'admin@example.com' },
     customer: { id: 'cust-1', name: 'Acme Customer' },
-    parts: [],
+    parts: [
+      {
+        id: 'part-1',
+        quoteId: 'quote-1',
+        name: 'Bracket',
+        description: null,
+        quantity: 2,
+        pieceCount: 1,
+        notes: null,
+        partNumber: 'BR-1',
+        materialId: null,
+        material: null,
+        stockSize: null,
+        cutLength: null,
+        addonSelections: [
+          {
+            id: 'addon-2',
+            quoteId: 'quote-1',
+            quotePartId: 'part-1',
+            addonId: 'a-2',
+            addon: { id: 'a-2', name: 'Deburr', rateType: 'FLAT', rateCents: 250 },
+            units: 1,
+            rateTypeSnapshot: 'FLAT',
+            rateCents: 250,
+            totalCents: 250,
+            notes: null,
+          },
+        ],
+      },
+    ],
     vendorItems: [
       {
         id: 'vendor-1',
@@ -155,9 +184,13 @@ describe('pricing visibility sanitization', () => {
     expect((result.addonSelections[0] as any).rateCents).toBeUndefined();
     expect((result.addonSelections[0] as any).totalCents).toBeUndefined();
     expect((result.addonSelections[0].addon as any).rateCents).toBeUndefined();
+    expect((result.parts[0].addonSelections[0] as any).rateCents).toBeUndefined();
+    expect((result.parts[0].addonSelections[0] as any).totalCents).toBeUndefined();
+    expect((result.parts[0].addonSelections[0].addon as any).rateCents).toBeUndefined();
 
     expect(detailBase.vendorItems[0].finalPriceCents).toBe(3680);
     expect(detailBase.addonSelections[0].addon?.rateCents).toBe(500);
+    expect(detailBase.parts[0].addonSelections[0].addon?.rateCents).toBe(250);
   });
 
   it('removes totals on summary payloads for non-admins', () => {
