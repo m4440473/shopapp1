@@ -42,6 +42,8 @@ import {
   type BusinessCode,
   type BusinessName,
 } from '@/lib/businesses';
+import { CustomFieldInputs, type CustomFieldDefinition } from '@/components/CustomFieldInputs';
+import { hasCustomFieldValue } from '@/lib/custom-field-values';
 
 import type { QuoteCreateInput } from '@/lib/zod-quotes';
 
@@ -178,6 +180,10 @@ type QuoteDetail = {
     storagePath?: string | null;
     label?: string | null;
     mimeType?: string | null;
+  }>;
+  customFieldValues?: Array<{
+    fieldId: string;
+    value: unknown;
   }>;
 };
 
@@ -346,6 +352,14 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       uploading: false,
     }))
   );
+  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>(() => {
+    const map: Record<string, unknown> = {};
+    initialQuote?.customFieldValues?.forEach((entry) => {
+      map[entry.fieldId] = entry.value;
+    });
+    return map;
+  });
 
   useEffect(() => {
     setAttachmentBusiness(initialAttachmentBusiness);
@@ -359,6 +373,30 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       setAttachmentBusiness(option.name as BusinessName);
     }
   }, [form.business, initialQuote?.attachments?.length, mode]);
+
+  useEffect(() => {
+    setCustomFieldValues((prev) =>
+      form.business === initialQuote?.business ? prev : {}
+    );
+    fetch(`/api/custom-fields?entityType=QUOTE&businessCode=${form.business}&isActive=true`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        const nextFields = data.items ?? [];
+        setCustomFields(nextFields);
+        setCustomFieldValues((prev) => {
+          const next = { ...prev };
+          nextFields.forEach((field: CustomFieldDefinition) => {
+            if (next[field.id] === undefined && field.defaultValue !== undefined) {
+              next[field.id] = field.defaultValue;
+            }
+          });
+          return next;
+        });
+      })
+      .catch(() => setCustomFields([]));
+  }, [form.business, initialQuote?.business]);
 
   const [draftReference] = useState(() => createKey());
 
@@ -695,6 +733,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         label: attachment.label || undefined,
         mimeType: attachment.mimeType || undefined,
       })),
+    customFieldValues: customFields
+      .map((field) => ({ fieldId: field.id, value: customFieldValues[field.id] }))
+      .filter((entry) => hasCustomFieldValue(entry.value)),
   });
 
   const submitQuote = async () => {
@@ -726,6 +767,13 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const missingFields = customFields.filter(
+      (field) => field.isRequired && !hasCustomFieldValue(customFieldValues[field.id])
+    );
+    if (missingFields.length) {
+      setError(`Fill in required custom fields: ${missingFields.map((field) => field.name).join(', ')}.`);
+      return;
+    }
     await submitQuote();
   }
 
@@ -960,6 +1008,22 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               placeholder="Internal notes for the estimating team"
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Custom intake fields</CardTitle>
+          <CardDescription>Additional fields configured for this business.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CustomFieldInputs
+            fields={customFields}
+            values={customFieldValues}
+            onChange={(fieldId, value) =>
+              setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
+            }
+          />
         </CardContent>
       </Card>
 

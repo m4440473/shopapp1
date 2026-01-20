@@ -71,6 +71,14 @@ export const QuoteCreate = z.object({
       })
     )
     .optional(),
+  customFieldValues: z
+    .array(
+      z.object({
+        fieldId: z.string().trim().min(1),
+        value: z.unknown().optional(),
+      })
+    )
+    .optional(),
 });
 
 export const QuoteUpdate = QuoteCreate;

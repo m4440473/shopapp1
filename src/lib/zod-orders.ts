@@ -84,6 +84,14 @@ export const OrderCreate = z.object({
   addonIds: z.array(z.string().trim()).default([]),
   attachments: z.array(OrderAttachmentMetadata).default([]),
   notes: z.string().trim().max(1000).optional(),
+  customFieldValues: z
+    .array(
+      z.object({
+        fieldId: z.string().trim().min(1),
+        value: z.unknown().optional(),
+      })
+    )
+    .optional(),
 });
 
 export type OrderCreateInput = z.infer<typeof OrderCreate>;

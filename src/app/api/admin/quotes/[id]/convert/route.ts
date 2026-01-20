@@ -21,6 +21,7 @@ import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
 import { OrderPartCreate, PriorityEnum } from '@/lib/zod-orders';
 import { getAppSettings } from '@/lib/app-settings';
 import { syncChecklistForOrder } from '@/lib/order-charges';
+import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -54,6 +55,14 @@ const ConversionOverrides = z.object({
   modelIncluded: z.boolean().optional(),
   parts: z.array(OrderPartCreate).optional(),
   notes: z.string().trim().max(1000).optional(),
+  customFieldValues: z
+    .array(
+      z.object({
+        fieldId: z.string().trim().min(1),
+        value: z.unknown().optional(),
+      })
+    )
+    .optional(),
 });
 
 function buildPartNotes(part: {
@@ -290,6 +299,26 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const modelIncluded = overrides?.modelIncluded ?? quote.multiPiece;
   const materialNeeded = overrides?.materialNeeded ?? false;
   const materialOrdered = overrides?.materialOrdered ?? false;
+  const customFieldValues = overrides?.customFieldValues ?? [];
+  const validCustomFieldValues = customFieldValues.length
+    ? await prisma.customField.findMany({
+        where: {
+          id: { in: customFieldValues.map((value) => value.fieldId) },
+          entityType: 'ORDER',
+          isActive: true,
+          OR: [{ businessCode }, { businessCode: null }],
+        },
+        select: { id: true },
+      })
+    : [];
+  const allowedFieldIds = new Set(validCustomFieldValues.map((field) => field.id));
+  const normalizedCustomFieldValues = customFieldValues
+    .filter((value) => allowedFieldIds.has(value.fieldId) && hasCustomFieldValue(value.value))
+    .map((value) => ({
+      fieldId: value.fieldId,
+      value: serializeCustomFieldValue(value.value),
+    }))
+    .filter((value) => value.value !== null);
 
   const result = await prisma.$transaction(async (tx) => {
     const order = await tx.order.create({
@@ -310,6 +339,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       },
       select: { id: true },
     });
+
+    if (normalizedCustomFieldValues.length) {
+      await tx.customFieldValue.createMany({
+        data: normalizedCustomFieldValues.map((value) => ({
+          fieldId: value.fieldId,
+          entityId: order.id,
+          value: value.value,
+        })),
+      });
+    }
 
     const orderParts = await Promise.all(
       partsData.map((part) =>

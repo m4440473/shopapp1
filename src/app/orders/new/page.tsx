@@ -40,6 +40,8 @@ import {
   type BusinessCode,
   type BusinessName,
 } from '@/lib/businesses';
+import { CustomFieldInputs, type CustomFieldDefinition } from '@/components/CustomFieldInputs';
+import { hasCustomFieldValue } from '@/lib/custom-field-values';
 
 const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 const OPTIONAL_VALUE = '__none__';
@@ -144,6 +146,8 @@ function NewOrderForm() {
   const [materialOrdered, setMaterialOrdered] = React.useState(false);
   const [modelIncluded, setModelIncluded] = React.useState(false);
   const [notes, setNotes] = React.useState('');
+  const [customFields, setCustomFields] = React.useState<CustomFieldDefinition[]>([]);
+  const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState('');
   const [createdOrderId, setCreatedOrderId] = React.useState<string | null>(null);
@@ -200,6 +204,28 @@ function NewOrderForm() {
     if (option) {
       setAttachmentBusiness(option.name as BusinessName);
     }
+  }, [business]);
+
+  React.useEffect(() => {
+    setCustomFieldValues({});
+    fetch(`/api/custom-fields?entityType=ORDER&businessCode=${business}&isActive=true`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        const nextFields = data.items ?? [];
+        setCustomFields(nextFields);
+        setCustomFieldValues((prev) => {
+          const next = { ...prev };
+          nextFields.forEach((field: CustomFieldDefinition) => {
+            if (next[field.id] === undefined && field.defaultValue !== undefined) {
+              next[field.id] = field.defaultValue;
+            }
+          });
+          return next;
+        });
+      })
+      .catch(() => setCustomFields([]));
   }, [business]);
 
   React.useEffect(() => {
@@ -414,6 +440,15 @@ function NewOrderForm() {
       return;
     }
 
+    const missingFields = customFields.filter(
+      (field) => field.isRequired && !hasCustomFieldValue(customFieldValues[field.id])
+    );
+    if (missingFields.length) {
+      setMessage(`Fill in required custom fields: ${missingFields.map((field) => field.name).join(', ')}.`);
+      setLoading(false);
+      return;
+    }
+
     const resolvedDueDate = dueDate || defaultDueDate();
 
     const cleanAttachments = attachments
@@ -447,6 +482,9 @@ function NewOrderForm() {
       addonIds: selectedAddonIds,
       attachments: cleanAttachments,
       notes: notes.trim() ? notes.trim() : undefined,
+      customFieldValues: customFields
+        .map((field) => ({ fieldId: field.id, value: customFieldValues[field.id] }))
+        .filter((entry) => hasCustomFieldValue(entry.value)),
     } as any;
 
     if (conversionMode && quoteId) {
@@ -465,6 +503,9 @@ function NewOrderForm() {
           modelIncluded,
           parts: cleanedParts,
           notes: notes.trim() || undefined,
+          customFieldValues: customFields
+            .map((field) => ({ fieldId: field.id, value: customFieldValues[field.id] }))
+            .filter((entry) => hasCustomFieldValue(entry.value)),
         }),
       });
 
@@ -520,6 +561,7 @@ function NewOrderForm() {
       setMaterialOrdered(false);
       setModelIncluded(false);
       setNotes('');
+      setCustomFieldValues({});
     } else {
       let errorMessage = 'Error creating order';
       try {
@@ -757,6 +799,22 @@ function NewOrderForm() {
                 placeholder="Optional purchase order"
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/60 bg-card/70 backdrop-blur">
+          <CardHeader>
+            <CardTitle>Custom intake fields</CardTitle>
+            <CardDescription>Additional fields configured for this business.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CustomFieldInputs
+              fields={customFields}
+              values={customFieldValues}
+              onChange={(fieldId, value) =>
+                setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
+              }
+            />
           </CardContent>
         </Card>
 

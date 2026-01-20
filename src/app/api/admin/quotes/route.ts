@@ -10,6 +10,7 @@ import { ListQuery } from '@/lib/zod';
 import { QuoteCreate } from '@/lib/zod-quotes';
 import { prepareQuoteComponents } from '@/lib/quotes.server';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
+import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 
 async function getSessionWithRole() {
   const session = await getServerSession(authOptions);
@@ -116,6 +117,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  const customFieldValues = data.customFieldValues ?? [];
+  const validCustomFieldValues = customFieldValues.length
+    ? await prisma.customField.findMany({
+        where: {
+          id: { in: customFieldValues.map((value) => value.fieldId) },
+          entityType: 'QUOTE',
+          isActive: true,
+          OR: [{ businessCode: data.business }, { businessCode: null }],
+        },
+        select: { id: true },
+      })
+    : [];
+  const allowedFieldIds = new Set(validCustomFieldValues.map((field) => field.id));
+  const normalizedCustomFieldValues = customFieldValues
+    .filter((value) => allowedFieldIds.has(value.fieldId) && hasCustomFieldValue(value.value))
+    .map((value) => ({
+      fieldId: value.fieldId,
+      value: serializeCustomFieldValue(value.value),
+    }))
+    .filter((value) => value.value !== null);
+
   const created = await prisma.$transaction(async (tx) => {
     const quote = await tx.quote.create({
       data: {
@@ -148,6 +170,16 @@ export async function POST(req: NextRequest) {
       },
       select: { id: true },
     });
+
+    if (normalizedCustomFieldValues.length) {
+      await tx.customFieldValue.createMany({
+        data: normalizedCustomFieldValues.map((value) => ({
+          fieldId: value.fieldId,
+          entityId: quote.id,
+          value: value.value,
+        })),
+      });
+    }
 
     const createdParts = await Promise.all(
       prepared.parts.map((part) =>
