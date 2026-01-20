@@ -10,6 +10,8 @@ const tabs = [
   { href: '/admin/materials', label: 'Materials' },
   { href: '/admin/vendors', label: 'Vendors' },
   { href: '/admin/addons', label: 'Add-ons & Checklist' },
+  { href: '/admin/custom-fields', label: 'Custom Fields' },
+  { href: '/admin/templates', label: 'Templates' },
   { href: '/admin/quotes', label: 'Quotes' },
   { href: '/admin/settings', label: 'Settings' },
 ];

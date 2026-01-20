@@ -111,7 +111,13 @@ async function main() {
     addonRecords.push(record);
   }
 
+  function serializeJsonValue(value) {
+    if (value === undefined) return null;
+    return JSON.stringify(value);
+  }
+
   async function upsertCustomField({ entityType, name, key, fieldType, description, businessCode, isRequired, sortOrder, defaultValue, options }) {
+    const defaultValueSerialized = serializeJsonValue(defaultValue);
     const field = await prisma.customField.upsert({
       where: { key },
       update: {
@@ -123,7 +129,7 @@ async function main() {
         isRequired,
         sortOrder,
         isActive: true,
-        defaultValue,
+        defaultValue: defaultValueSerialized,
       },
       create: {
         name,
@@ -135,7 +141,7 @@ async function main() {
         isRequired,
         sortOrder,
         isActive: true,
-        defaultValue,
+        defaultValue: defaultValueSerialized,
       },
     });
 
@@ -160,6 +166,7 @@ async function main() {
       where: { name, documentType, businessCode: businessCode ?? null },
     });
 
+    const serializedLayout = JSON.stringify(layoutJson);
     const template = existing
       ? await prisma.documentTemplate.update({
           where: { id: existing.id },
@@ -169,7 +176,7 @@ async function main() {
             isDefault: true,
             schemaVersion,
             currentVersion: 1,
-            layoutJson,
+            layoutJson: serializedLayout,
           },
         })
       : await prisma.documentTemplate.create({
@@ -182,18 +189,18 @@ async function main() {
             isDefault: true,
             schemaVersion,
             currentVersion: 1,
-            layoutJson,
+            layoutJson: serializedLayout,
           },
         });
 
     await prisma.documentTemplateVersion.upsert({
       where: { templateId_version: { templateId: template.id, version: 1 } },
-      update: { schemaVersion, layoutJson },
+      update: { schemaVersion, layoutJson: serializedLayout },
       create: {
         templateId: template.id,
         version: 1,
         schemaVersion,
-        layoutJson,
+        layoutJson: serializedLayout,
       },
     });
 

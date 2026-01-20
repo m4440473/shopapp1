@@ -7,27 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum CustomFieldEntityType {
-  ORDER
-  QUOTE
-}
-
-enum CustomFieldType {
-  TEXT
-  LONG_TEXT
-  NUMBER
-  DATE
-  BOOLEAN
-  SELECT
-  MULTISELECT
-}
-
-enum DocumentType {
-  QUOTE
-  INVOICE
-  ORDER_PRINT
-}
-
 model User {
   id               String   @id @default(cuid())
   email            String   @unique
@@ -394,13 +373,13 @@ model AppSettings {
 
 model CustomField {
   id          String   @id @default(cuid())
-  entityType  CustomFieldEntityType
+  entityType  String
   name        String
   key         String   @unique
-  fieldType   CustomFieldType
+  fieldType   String
   description String?
   businessCode String?
-  defaultValue Json?
+  defaultValue String?
   isRequired  Boolean  @default(false)
   isActive    Boolean  @default(true)
   sortOrder   Int      @default(0)
@@ -431,7 +410,7 @@ model CustomFieldValue {
   fieldId   String
   field     CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
   entityId  String
-  value     Json?
+  value     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -442,14 +421,14 @@ model CustomFieldValue {
 model DocumentTemplate {
   id          String   @id @default(cuid())
   name        String
-  documentType DocumentType
+  documentType String
   description String?
   businessCode String?
   isDefault   Boolean  @default(false)
   isActive    Boolean  @default(true)
   schemaVersion Int     @default(1)
   currentVersion Int    @default(1)
-  layoutJson  Json
+  layoutJson  String
   versions    DocumentTemplateVersion[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -466,7 +445,7 @@ model DocumentTemplateVersion {
   template    DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   version     Int
   schemaVersion Int
-  layoutJson  Json
+  layoutJson  String
   createdAt   DateTime @default(now())
 
   @@unique([templateId, version])
