@@ -12,6 +12,7 @@ function slugifyName(value, fallback = 'item') {
 }
 
 async function main() {
+  const businessCodes = ['STD', 'CRM', 'PC'];
   // Materials
   for (const m of [
     { name: '1018 CRS', spec: 'Steel' },
@@ -108,6 +109,202 @@ async function main() {
       create: { ...addon, departmentId: machiningDepartment.id },
     });
     addonRecords.push(record);
+  }
+
+  async function upsertCustomField({ entityType, name, key, fieldType, description, businessCode, isRequired, sortOrder, defaultValue, options }) {
+    const field = await prisma.customField.upsert({
+      where: { key },
+      update: {
+        name,
+        entityType,
+        fieldType,
+        description,
+        businessCode,
+        isRequired,
+        sortOrder,
+        isActive: true,
+        defaultValue,
+      },
+      create: {
+        name,
+        key,
+        entityType,
+        fieldType,
+        description,
+        businessCode,
+        isRequired,
+        sortOrder,
+        isActive: true,
+        defaultValue,
+      },
+    });
+
+    if (options?.length) {
+      await prisma.customFieldOption.deleteMany({ where: { fieldId: field.id } });
+      await prisma.customFieldOption.createMany({
+        data: options.map((option, index) => ({
+          fieldId: field.id,
+          label: option.label,
+          value: option.value,
+          sortOrder: option.sortOrder ?? index,
+          isActive: option.isActive ?? true,
+        })),
+      });
+    }
+
+    return field;
+  }
+
+  async function upsertTemplate({ name, documentType, description, businessCode, schemaVersion, layoutJson }) {
+    const existing = await prisma.documentTemplate.findFirst({
+      where: { name, documentType, businessCode: businessCode ?? null },
+    });
+
+    const template = existing
+      ? await prisma.documentTemplate.update({
+          where: { id: existing.id },
+          data: {
+            description,
+            isActive: true,
+            isDefault: true,
+            schemaVersion,
+            currentVersion: 1,
+            layoutJson,
+          },
+        })
+      : await prisma.documentTemplate.create({
+          data: {
+            name,
+            documentType,
+            description,
+            businessCode,
+            isActive: true,
+            isDefault: true,
+            schemaVersion,
+            currentVersion: 1,
+            layoutJson,
+          },
+        });
+
+    await prisma.documentTemplateVersion.upsert({
+      where: { templateId_version: { templateId: template.id, version: 1 } },
+      update: { schemaVersion, layoutJson },
+      create: {
+        templateId: template.id,
+        version: 1,
+        schemaVersion,
+        layoutJson,
+      },
+    });
+
+    return template;
+  }
+
+  const layoutSections = [
+    { id: 'header', label: 'Header', type: 'HEADER' },
+    { id: 'customer_info', label: 'Customer Info', type: 'CUSTOMER_INFO' },
+    { id: 'total_price', label: 'Total Price', type: 'TOTAL_PRICE' },
+    { id: 'part_name', label: 'Part Name', type: 'PART_NAME' },
+    { id: 'part_info', label: 'Part Info', type: 'PART_INFO' },
+    { id: 'line_items', label: 'Line Items', type: 'LINE_ITEMS' },
+    { id: 'addons_labor', label: 'Addons / Labor', type: 'ADDONS_LABOR' },
+    { id: 'shipping', label: 'Shipping', type: 'SHIPPING' },
+  ];
+
+  const baseLayout = {
+    schemaVersion: 1,
+    sections: layoutSections.map((section, index) => ({
+      ...section,
+      enabled: true,
+      order: index + 1,
+      settings: {},
+    })),
+  };
+
+  for (const businessCode of businessCodes) {
+    await upsertCustomField({
+      entityType: 'ORDER',
+      name: 'Delivery Method',
+      key: `order_delivery_method_${businessCode}`,
+      fieldType: 'SELECT',
+      description: 'Preferred delivery method for the order.',
+      businessCode,
+      isRequired: true,
+      sortOrder: 10,
+      defaultValue: 'pickup',
+      options: [
+        { label: 'Pickup', value: 'pickup' },
+        { label: 'Delivery', value: 'delivery' },
+        { label: 'Freight', value: 'freight' },
+      ],
+    });
+
+    await upsertCustomField({
+      entityType: 'ORDER',
+      name: 'Order Intake Notes',
+      key: `order_intake_notes_${businessCode}`,
+      fieldType: 'LONG_TEXT',
+      description: 'Internal intake notes captured at order creation.',
+      businessCode,
+      isRequired: false,
+      sortOrder: 20,
+    });
+
+    await upsertCustomField({
+      entityType: 'QUOTE',
+      name: 'Lead Time (days)',
+      key: `quote_lead_time_${businessCode}`,
+      fieldType: 'NUMBER',
+      description: 'Estimated lead time for the quote.',
+      businessCode,
+      isRequired: true,
+      sortOrder: 10,
+      defaultValue: 10,
+    });
+
+    await upsertCustomField({
+      entityType: 'QUOTE',
+      name: 'Finish Required',
+      key: `quote_finish_required_${businessCode}`,
+      fieldType: 'SELECT',
+      description: 'Required finish for the quoted parts.',
+      businessCode,
+      isRequired: false,
+      sortOrder: 20,
+      options: [
+        { label: 'None', value: 'none' },
+        { label: 'Anodize', value: 'anodize' },
+        { label: 'Powder Coat', value: 'powder_coat' },
+        { label: 'Paint', value: 'paint' },
+      ],
+    });
+
+    await upsertTemplate({
+      name: `Default ${businessCode} Quote`,
+      documentType: 'QUOTE',
+      description: 'Default quote layout template.',
+      businessCode,
+      schemaVersion: 1,
+      layoutJson: baseLayout,
+    });
+
+    await upsertTemplate({
+      name: `Default ${businessCode} Invoice`,
+      documentType: 'INVOICE',
+      description: 'Default invoice layout template.',
+      businessCode,
+      schemaVersion: 1,
+      layoutJson: baseLayout,
+    });
+
+    await upsertTemplate({
+      name: `Default ${businessCode} Order Print`,
+      documentType: 'ORDER_PRINT',
+      description: 'Default order print layout template.',
+      businessCode,
+      schemaVersion: 1,
+      layoutJson: baseLayout,
+    });
   }
 
   // Customers
