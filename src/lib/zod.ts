@@ -66,6 +66,52 @@ export const DepartmentUpsert = z.object({
 });
 export const DepartmentPatch = DepartmentUpsert.partial();
 
+/** CUSTOM FIELDS */
+export const CustomFieldEntityType = z.enum(['ORDER', 'QUOTE']);
+export const CustomFieldType = z.enum([
+  'TEXT',
+  'LONG_TEXT',
+  'NUMBER',
+  'DATE',
+  'BOOLEAN',
+  'SELECT',
+  'MULTISELECT',
+]);
+export const CustomFieldOptionInput = z.object({
+  label: z.string().trim().min(1).max(200),
+  value: z.string().trim().min(1).max(200),
+  sortOrder: z.coerce.number().int().min(0).max(9999).optional(),
+  isActive: z.boolean().optional(),
+});
+export const CustomFieldUpsert = z.object({
+  entityType: CustomFieldEntityType,
+  name: z.string().trim().min(2).max(120),
+  key: z.string().trim().min(2).max(120),
+  fieldType: CustomFieldType,
+  description: z.string().trim().max(500).optional(),
+  businessCode: z.string().trim().max(20).optional(),
+  defaultValue: z.unknown().optional(),
+  isRequired: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(0).max(9999).default(0),
+  options: z.array(CustomFieldOptionInput).optional(),
+});
+export const CustomFieldPatch = CustomFieldUpsert.partial();
+
+/** DOCUMENT TEMPLATES */
+export const DocumentType = z.enum(['QUOTE', 'INVOICE', 'ORDER_PRINT']);
+export const DocumentTemplateUpsert = z.object({
+  name: z.string().trim().min(2).max(160),
+  documentType: DocumentType,
+  description: z.string().trim().max(500).optional(),
+  businessCode: z.string().trim().max(20).optional(),
+  isDefault: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+  schemaVersion: z.coerce.number().int().min(1).max(999).default(1),
+  layoutJson: z.unknown(),
+});
+export const DocumentTemplatePatch = DocumentTemplateUpsert.partial();
+
 /** Common query schema for list endpoints: ?q=&cursor=&take= */
 export const ListQuery = z.object({
   q: Q,
@@ -85,3 +131,7 @@ export type TAddonUpsert = z.infer<typeof AddonUpsert>;
 export type TAddonPatch = z.infer<typeof AddonPatch>;
 export type TDepartmentUpsert = z.infer<typeof DepartmentUpsert>;
 export type TDepartmentPatch = z.infer<typeof DepartmentPatch>;
+export type TCustomFieldUpsert = z.infer<typeof CustomFieldUpsert>;
+export type TCustomFieldPatch = z.infer<typeof CustomFieldPatch>;
+export type TDocumentTemplateUpsert = z.infer<typeof DocumentTemplateUpsert>;
+export type TDocumentTemplatePatch = z.infer<typeof DocumentTemplatePatch>;
