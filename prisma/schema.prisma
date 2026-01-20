@@ -7,6 +7,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum CustomFieldEntityType {
+  ORDER
+  QUOTE
+}
+
+enum CustomFieldType {
+  TEXT
+  LONG_TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+  MULTISELECT
+}
+
+enum DocumentType {
+  QUOTE
+  INVOICE
+  ORDER_PRINT
+}
+
 model User {
   id               String   @id @default(cuid())
   email            String   @unique
@@ -369,4 +390,85 @@ model AppSettings {
   invoiceTemplateId       String   @default("classic")
   invoiceOptions          String?
   updatedAt               DateTime @updatedAt
+}
+
+model CustomField {
+  id          String   @id @default(cuid())
+  entityType  CustomFieldEntityType
+  name        String
+  key         String   @unique
+  fieldType   CustomFieldType
+  description String?
+  businessCode String?
+  defaultValue Json?
+  isRequired  Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  options     CustomFieldOption[]
+  values      CustomFieldValue[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([entityType])
+  @@index([businessCode])
+  @@index([isActive])
+}
+
+model CustomFieldOption {
+  id        String   @id @default(cuid())
+  fieldId   String
+  field     CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  label     String
+  value     String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+
+  @@index([fieldId])
+}
+
+model CustomFieldValue {
+  id        String   @id @default(cuid())
+  fieldId   String
+  field     CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  entityId  String
+  value     Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fieldId, entityId])
+  @@index([entityId])
+}
+
+model DocumentTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  documentType DocumentType
+  description String?
+  businessCode String?
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  schemaVersion Int     @default(1)
+  currentVersion Int    @default(1)
+  layoutJson  Json
+  versions    DocumentTemplateVersion[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([documentType])
+  @@index([businessCode])
+  @@index([isDefault])
+  @@index([isActive])
+}
+
+model DocumentTemplateVersion {
+  id          String   @id @default(cuid())
+  templateId  String
+  template    DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  version     Int
+  schemaVersion Int
+  layoutJson  Json
+  createdAt   DateTime @default(now())
+
+  @@unique([templateId, version])
+  @@index([templateId])
 }
