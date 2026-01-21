@@ -131,10 +131,46 @@ function insertItem<T>(items: T[], index: number, value: T) {
   return next;
 }
 
-function PreviewSection({ title }: { title: string }) {
+function PreviewSection({
+  title,
+  documentType,
+}: {
+  title: string;
+  documentType: TemplateFormState['documentType'];
+}) {
   const key = normalizeSectionName(title);
+  const isInvoice = documentType === 'INVOICE';
+  const isOrderPrint = documentType === 'ORDER_PRINT';
 
   if (key === 'header') {
+    if (isOrderPrint) {
+      return (
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">C&amp;R Machine</p>
+            <p className="text-lg font-semibold text-foreground">Job Router</p>
+            <p className="text-xs text-muted-foreground">Order #WO-2043 · Due Mar 14, 2026</p>
+          </div>
+          <div className="rounded-md border border-dashed border-border px-3 py-2 text-[10px] text-muted-foreground">
+            Priority: Rush
+          </div>
+        </div>
+      );
+    }
+    if (isInvoice) {
+      return (
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Company</p>
+            <p className="text-lg font-semibold text-foreground">Invoice</p>
+            <p className="text-xs text-muted-foreground">#INV-2043 · Feb 4, 2026</p>
+          </div>
+          <div className="rounded-md border border-dashed border-border px-3 py-2 text-[10px] text-muted-foreground">
+            Net 30
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex items-start justify-between">
         <div>
@@ -150,6 +186,24 @@ function PreviewSection({ title }: { title: string }) {
   }
 
   if (key === 'customer info') {
+    if (isOrderPrint) {
+      return (
+        <div className="grid gap-1 text-xs text-muted-foreground">
+          <p className="text-sm font-medium text-foreground">Apex Industrial</p>
+          <p>Attn: Sam Carter · sam@apexindustrial.com</p>
+          <p>(213) 555-7741 · 88 Foundry Ave.</p>
+        </div>
+      );
+    }
+    if (isInvoice) {
+      return (
+        <div className="grid gap-1 text-xs text-muted-foreground">
+          <p className="text-sm font-medium text-foreground">Precision Parts Co.</p>
+          <p>Accounts Payable · ap@precision.com</p>
+          <p>1200 West Loop Rd. · Chicago, IL</p>
+        </div>
+      );
+    }
     return (
       <div className="grid gap-1 text-xs text-muted-foreground">
         <p className="text-sm font-medium text-foreground">Precision Parts Co.</p>
@@ -160,6 +214,40 @@ function PreviewSection({ title }: { title: string }) {
   }
 
   if (key === 'total price') {
+    if (isOrderPrint) {
+      return (
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <p className="text-[10px] uppercase text-muted-foreground">Job #</p>
+            <p className="font-semibold text-foreground">WO-2043</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase text-muted-foreground">Machinist</p>
+            <p className="font-semibold text-foreground">K. Patel</p>
+          </div>
+          <div className="col-span-2 rounded-md bg-muted/40 px-3 py-2 text-sm font-semibold text-foreground">
+            Due: Mar 14, 2026 · Priority: Rush
+          </div>
+        </div>
+      );
+    }
+    if (isInvoice) {
+      return (
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <p className="text-[10px] uppercase text-muted-foreground">Subtotal</p>
+            <p className="font-semibold text-foreground">$12,450.00</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase text-muted-foreground">Tax</p>
+            <p className="font-semibold text-foreground">$980.00</p>
+          </div>
+          <div className="col-span-2 rounded-md bg-muted/40 px-3 py-2 text-sm font-semibold text-foreground">
+            Balance due: $13,430.00
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="grid grid-cols-2 gap-3 text-xs">
         <div>
@@ -197,6 +285,34 @@ function PreviewSection({ title }: { title: string }) {
   }
 
   if (key === 'line items') {
+    if (isOrderPrint) {
+      return (
+        <div className="space-y-2 text-xs">
+          <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-muted-foreground">
+            <span>001 · CNC Mill</span>
+            <span>✓</span>
+          </div>
+          <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-muted-foreground">
+            <span>002 · Deburr</span>
+            <span>✓</span>
+          </div>
+        </div>
+      );
+    }
+    if (isInvoice) {
+      return (
+        <div className="space-y-2 text-xs">
+          <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-muted-foreground">
+            <span>Bracket Assembly A (24 pcs)</span>
+            <span>$9,600.00</span>
+          </div>
+          <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-muted-foreground">
+            <span>Finishing · Clear anodize</span>
+            <span>$2,850.00</span>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="space-y-2 text-xs">
         <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-muted-foreground">
@@ -212,6 +328,20 @@ function PreviewSection({ title }: { title: string }) {
   }
 
   if (key === 'addons labor') {
+    if (isOrderPrint) {
+      return (
+        <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+          Process checklist, routing, and inspection sign-offs.
+        </div>
+      );
+    }
+    if (isInvoice) {
+      return (
+        <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+          Packaging, rush fees, and invoice adjustments.
+        </div>
+      );
+    }
     return (
       <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
         Packaging, rush fees, and add-on services.
@@ -220,6 +350,20 @@ function PreviewSection({ title }: { title: string }) {
   }
 
   if (key === 'shipping') {
+    if (isOrderPrint) {
+      return (
+        <div className="text-xs text-muted-foreground">
+          Box 1 · 42 lbs · 24 pcs · 24x18x12
+        </div>
+      );
+    }
+    if (isInvoice) {
+      return (
+        <div className="text-xs text-muted-foreground">
+          Ship via UPS Ground · Dock delivery · Tracking sent.
+        </div>
+      );
+    }
     return (
       <div className="text-xs text-muted-foreground">
         UPS Ground · Ship by Nov 10 · Customer pickup available.
@@ -675,7 +819,10 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
                     {section || 'Untitled section'}
                   </p>
                   <div className="mt-3 text-sm">
-                    <PreviewSection title={section || 'Untitled section'} />
+                    <PreviewSection
+                      title={section || 'Untitled section'}
+                      documentType={form.documentType}
+                    />
                   </div>
                 </div>
               ))
