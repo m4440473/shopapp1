@@ -6,6 +6,7 @@ import { canAccessAdmin } from '@/lib/rbac';
 import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
 import { generateNextOrderNumber } from '@/lib/orders.server';
 import { OrderQuery, OrderCreate } from '@/lib/zod-orders';
+import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 // Status enum not used from prisma; statuses are strings in this schema
 
 /** GET /api/orders — list with filters & cursor pagination */
@@ -102,64 +103,99 @@ export async function POST(req: NextRequest) {
   }
   const userId = (session.user as any)?.id as string | undefined;
 
-  const order = await prisma.order.create({
-    data: {
-      orderNumber,
-      business: body.business,
-      customerId: body.customerId,
-      modelIncluded: body.modelIncluded,
-      receivedDate: new Date(body.receivedDate),
-      dueDate: new Date(body.dueDate),
-      priority: body.priority,
-      status: 'RECEIVED',
-      materialNeeded: body.materialNeeded,
-      materialOrdered: body.materialOrdered,
-      vendorId: body.vendorId ?? null,
-      poNumber: body.poNumber ?? null,
-      assignedMachinistId: body.assignedMachinistId ?? null,
-      parts: {
-        create: body.parts.map(p => ({
-          partNumber: p.partNumber,
-          quantity: p.quantity,
-          materialId: p.materialId ?? null,
-          stockSize: p.stockSize ?? null,
-          cutLength: p.cutLength ?? null,
-          notes: p.notes ?? null,
-        })),
-      },
-      checklist: body.addonIds.length
-        ? { create: body.addonIds.map(id => ({ addonId: id })) }
-        : undefined,
-      attachments: body.attachments.length
-        ? {
-            create: body.attachments.map(a => ({
-              url: a.url ?? null,
-              storagePath: a.storagePath ?? null,
-              label: a.label ?? null,
-              mimeType: a.mimeType ?? null,
-              uploadedById: (session.user as any)?.id ?? null,
-            })),
-          }
-        : undefined,
-      notes:
-        body.notes && userId
+  const customFieldValues = body.customFieldValues ?? [];
+  const validCustomFieldValues = customFieldValues.length
+    ? await prisma.customField.findMany({
+        where: {
+          id: { in: customFieldValues.map((value) => value.fieldId) },
+          entityType: 'ORDER',
+          isActive: true,
+          OR: [{ businessCode: body.business }, { businessCode: null }],
+        },
+        select: { id: true },
+      })
+    : [];
+  const allowedFieldIds = new Set(validCustomFieldValues.map((field) => field.id));
+  const normalizedCustomFieldValues = customFieldValues
+    .filter((value) => allowedFieldIds.has(value.fieldId) && hasCustomFieldValue(value.value))
+    .map((value) => ({
+      fieldId: value.fieldId,
+      value: serializeCustomFieldValue(value.value),
+    }))
+    .filter((value) => value.value !== null);
+
+  const order = await prisma.$transaction(async (tx) => {
+    const created = await tx.order.create({
+      data: {
+        orderNumber,
+        business: body.business,
+        customerId: body.customerId,
+        modelIncluded: body.modelIncluded,
+        receivedDate: new Date(body.receivedDate),
+        dueDate: new Date(body.dueDate),
+        priority: body.priority,
+        status: 'RECEIVED',
+        materialNeeded: body.materialNeeded,
+        materialOrdered: body.materialOrdered,
+        vendorId: body.vendorId ?? null,
+        poNumber: body.poNumber ?? null,
+        assignedMachinistId: body.assignedMachinistId ?? null,
+        parts: {
+          create: body.parts.map(p => ({
+            partNumber: p.partNumber,
+            quantity: p.quantity,
+            materialId: p.materialId ?? null,
+            stockSize: p.stockSize ?? null,
+            cutLength: p.cutLength ?? null,
+            notes: p.notes ?? null,
+          })),
+        },
+        checklist: body.addonIds.length
+          ? { create: body.addonIds.map(id => ({ addonId: id })) }
+          : undefined,
+        attachments: body.attachments.length
           ? {
-              create: {
-                content: body.notes,
-                userId,
-              },
+              create: body.attachments.map(a => ({
+                url: a.url ?? null,
+                storagePath: a.storagePath ?? null,
+                label: a.label ?? null,
+                mimeType: a.mimeType ?? null,
+                uploadedById: (session.user as any)?.id ?? null,
+              })),
             }
           : undefined,
-      statusHistory: {
-        create: {
-          from: 'RECEIVED',
-          to: 'RECEIVED',
-          userId,
-          reason: 'Order created',
+        notes:
+          body.notes && userId
+            ? {
+                create: {
+                  content: body.notes,
+                  userId,
+                },
+              }
+            : undefined,
+        statusHistory: {
+          create: {
+            from: 'RECEIVED',
+            to: 'RECEIVED',
+            userId,
+            reason: 'Order created',
+          },
         },
       },
-    },
-    select: { id: true },
+      select: { id: true },
+    });
+
+    if (normalizedCustomFieldValues.length) {
+      await tx.customFieldValue.createMany({
+        data: normalizedCustomFieldValues.map((value) => ({
+          fieldId: value.fieldId,
+          entityId: created.id,
+          value: value.value,
+        })),
+      });
+    }
+
+    return created;
   });
 
   return NextResponse.json({ id: order.id }, { status: 201 });

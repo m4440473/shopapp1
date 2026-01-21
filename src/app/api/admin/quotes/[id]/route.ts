@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma';
 import { QuoteCreate } from '@/lib/zod-quotes';
 import { prepareQuoteComponents } from '@/lib/quotes.server';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
+import { hasCustomFieldValue, parseCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 
 async function getSessionWithRole() {
   const session = await getServerSession(authOptions);
@@ -62,9 +63,21 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return new NextResponse('Not found', { status: 404 });
   }
 
+  const customFieldValues = await prisma.customFieldValue.findMany({
+    where: {
+      entityId: item.id,
+      field: { entityType: 'QUOTE' },
+    },
+    select: { fieldId: true, value: true },
+  });
+
   const normalized = {
     ...item,
     metadata: parseQuoteMetadata(item.metadata) ?? null,
+    customFieldValues: customFieldValues.map((value) => ({
+      fieldId: value.fieldId,
+      value: parseCustomFieldValue(value.value),
+    })),
   };
 
   return NextResponse.json({ item: sanitizePricingForNonAdmin(normalized, true) });
@@ -116,6 +129,27 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       }
     : existingMetadata;
 
+  const customFieldValues = parsed.data.customFieldValues ?? [];
+  const validCustomFieldValues = customFieldValues.length
+    ? await prisma.customField.findMany({
+        where: {
+          id: { in: customFieldValues.map((value) => value.fieldId) },
+          entityType: 'QUOTE',
+          isActive: true,
+          OR: [{ businessCode: parsed.data.business }, { businessCode: null }],
+        },
+        select: { id: true },
+      })
+    : [];
+  const allowedFieldIds = new Set(validCustomFieldValues.map((field) => field.id));
+  const normalizedCustomFieldValues = customFieldValues
+    .filter((value) => allowedFieldIds.has(value.fieldId) && hasCustomFieldValue(value.value))
+    .map((value) => ({
+      fieldId: value.fieldId,
+      value: serializeCustomFieldValue(value.value),
+    }))
+    .filter((value) => value.value !== null);
+
   const updated = await prisma.$transaction(async (tx) => {
     await tx.quote.update({
       where: { id: params.id },
@@ -140,6 +174,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         metadata: stringifyQuoteMetadata(nextMetadata),
       },
     });
+
+    await tx.customFieldValue.deleteMany({ where: { entityId: params.id } });
+    if (normalizedCustomFieldValues.length) {
+      await tx.customFieldValue.createMany({
+        data: normalizedCustomFieldValues.map((value) => ({
+          fieldId: value.fieldId,
+          entityId: params.id,
+          value: value.value,
+        })),
+      });
+    }
 
     await tx.quoteAddonSelection.deleteMany({ where: { quoteId: params.id } });
     await tx.quotePart.deleteMany({ where: { quoteId: params.id } });
@@ -239,9 +284,21 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return new NextResponse('Not found', { status: 404 });
   }
 
+  const updatedCustomFieldValues = await prisma.customFieldValue.findMany({
+    where: {
+      entityId: params.id,
+      field: { entityType: 'QUOTE' },
+    },
+    select: { fieldId: true, value: true },
+  });
+
   const normalized = {
     ...updated,
     metadata: parseQuoteMetadata(updated.metadata) ?? null,
+    customFieldValues: updatedCustomFieldValues.map((value) => ({
+      fieldId: value.fieldId,
+      value: parseCustomFieldValue(value.value),
+    })),
   };
 
   return NextResponse.json({ ok: true, item: normalized });
