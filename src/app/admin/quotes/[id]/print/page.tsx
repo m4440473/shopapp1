@@ -14,14 +14,20 @@ import { getActiveDocumentTemplate } from '@/lib/document-templates';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
 
-import { PrintControls } from './PrintControls';
+import { PrintControls } from '@/components/print/PrintControls';
 
 const formatCurrency = (cents: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format((cents || 0) / 100);
 
 export const dynamic = 'force-dynamic';
 
-export default async function QuotePrintPage({ params }: { params: { id: string } }) {
+export default async function QuotePrintPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { templateId?: string };
+}) {
   const session = await getServerSession(authOptions);
   if (!session || !canAccessAdmin(session.user as any)) {
     redirect('/');
@@ -46,11 +52,25 @@ export default async function QuotePrintPage({ params }: { params: { id: string 
     redirect('/admin/quotes');
   }
 
-  const activeTemplate = await getActiveDocumentTemplate({
-    documentType: 'QUOTE',
-    businessCode: quote.business,
-  });
-  const layout = normalizeTemplateLayout(activeTemplate?.layoutJson);
+  const [activeTemplate, templates] = await Promise.all([
+    getActiveDocumentTemplate({
+      documentType: 'QUOTE',
+      businessCode: quote.business,
+    }),
+    prisma.documentTemplate.findMany({
+      where: {
+        documentType: 'QUOTE',
+        isActive: true,
+        OR: [{ businessCode: quote.business }, { businessCode: null }],
+      },
+      orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
+    }),
+  ]);
+
+  const requestedTemplateId = searchParams?.templateId;
+  const selectedTemplate =
+    templates.find((template) => template.id === requestedTemplateId) ?? activeTemplate ?? templates[0] ?? null;
+  const layout = normalizeTemplateLayout(selectedTemplate?.layoutJson);
   const layoutSections = layout.sections.length ? layout.sections : DEFAULT_TEMPLATE_SECTIONS;
 
   const legacyAddonSelections = quote.addonSelections.filter((selection) => !selection.quotePartId);
@@ -296,7 +316,15 @@ export default async function QuotePrintPage({ params }: { params: { id: string 
 
   return (
     <div className="min-h-screen bg-white p-8 text-black">
-      <PrintControls />
+      <PrintControls
+        templates={templates.map((template) => ({
+          id: template.id,
+          name: template.name,
+          description: template.description,
+        }))}
+        selectedTemplateId={selectedTemplate?.id ?? null}
+        templateLabel="Quote template"
+      />
       <div className="mt-6 space-y-6">
         {layoutSections.map((section, index) => {
           const key = normalizeSectionName(section);
