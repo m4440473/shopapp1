@@ -1,8 +1,15 @@
+import React from 'react';
 import { format } from 'date-fns';
 import { redirect, notFound } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 
 import { authOptions } from '@/lib/auth';
+import {
+  DEFAULT_TEMPLATE_SECTIONS,
+  normalizeSectionName,
+  normalizeTemplateLayout,
+} from '@/lib/document-template-layout';
+import { getActiveDocumentTemplate } from '@/lib/document-templates';
 import { prisma } from '@/lib/prisma';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 
@@ -96,6 +103,13 @@ export default async function OrderPrintPage({ params }: { params: { id: string 
     notFound();
   }
 
+  const activeTemplate = await getActiveDocumentTemplate({
+    documentType: 'ORDER_PRINT',
+    businessCode: order.business,
+  });
+  const layout = normalizeTemplateLayout(activeTemplate?.layoutJson);
+  const layoutSections = layout.sections.length ? layout.sections : DEFAULT_TEMPLATE_SECTIONS;
+
   const safeOrder = sanitizePricingForNonAdmin(order);
   const safeAddons = activeAddons.map(({ rateCents: _rateCents, ...addon }) => addon);
   const sortedAddons = sortAddons(safeAddons);
@@ -118,150 +132,212 @@ export default async function OrderPrintPage({ params }: { params: { id: string 
     .join('\n');
   const printableDate = safeOrder.receivedDate ?? safeOrder.dueDate ?? new Date();
 
+  const headerSection = (
+    <header className="flex flex-wrap items-start justify-between gap-4 border-b border-black pb-4">
+      <div>
+        <h1 className="text-xl font-extrabold uppercase">C&amp;R Machine &amp; Fabrication</h1>
+        <p className="text-lg font-semibold uppercase">Job Router</p>
+      </div>
+      <div className="text-right text-xs uppercase text-gray-700">
+        <p className="font-semibold">Order #{safeOrder.orderNumber}</p>
+        <p>Priority: {safeOrder.priority}</p>
+        <p>Due: {formatDate(safeOrder.dueDate)}</p>
+      </div>
+    </header>
+  );
+
+  const customerInfoSection = (
+    <section className="border border-black">
+      <div className="grid grid-cols-[140px,1fr] text-sm">
+        <div className="col-span-2 border-b border-black bg-gray-100 px-2 py-1 text-xs font-semibold uppercase">
+          Customer Info
+        </div>
+        <div className="border-b border-black px-2 py-2 font-semibold">Customer</div>
+        <div className="border-b border-black px-2 py-2">{safeOrder.customer?.name ?? '—'}</div>
+        <div className="border-b border-black px-2 py-2 font-semibold">Contact</div>
+        <div className="border-b border-black px-2 py-2">{safeOrder.customer?.contact ?? '—'}</div>
+        <div className="border-b border-black px-2 py-2 font-semibold">Email</div>
+        <div className="border-b border-black px-2 py-2">{safeOrder.customer?.email ?? '—'}</div>
+        <div className="border-b border-black px-2 py-2 font-semibold">Phone</div>
+        <div className="border-b border-black px-2 py-2">{safeOrder.customer?.phone ?? '—'}</div>
+        <div className="px-2 py-2 font-semibold">Address</div>
+        <div className="px-2 py-2">{safeOrder.customer?.address ?? '—'}</div>
+      </div>
+    </section>
+  );
+
+  const orderSummarySection = (
+    <section className="border border-black">
+      <div className="grid grid-cols-[110px,1fr] text-sm">
+        <div className="col-span-2 border-b border-black bg-gray-100 px-2 py-1 text-xs font-semibold uppercase">
+          Job Details
+        </div>
+        <div className="border-b border-black px-2 py-2 font-semibold">Job #</div>
+        <div className="border-b border-black px-2 py-2">{safeOrder.orderNumber}</div>
+        <div className="border-b border-black px-2 py-2 font-semibold">Due Date</div>
+        <div className="border-b border-black px-2 py-2">{formatDate(safeOrder.dueDate)}</div>
+        <div className="border-b border-black px-2 py-2 font-semibold">P.O. #</div>
+        <div className="border-b border-black px-2 py-2">{safeOrder.poNumber ?? '—'}</div>
+        <div className="px-2 py-2 font-semibold">Machinist</div>
+        <div className="px-2 py-2">
+          {safeOrder.assignedMachinist?.name ?? safeOrder.assignedMachinist?.email ?? 'Unassigned'}
+        </div>
+      </div>
+    </section>
+  );
+
+  const partInfoSection = (
+    <section className="border border-black">
+      <div className="grid grid-cols-[110px,1fr] text-sm">
+        <div className="col-span-2 border-b border-black bg-gray-100 px-2 py-1 text-xs font-semibold uppercase">
+          Part Information
+        </div>
+        <div className="border-b border-black px-2 py-2 font-semibold">Part #(s)</div>
+        <div className="border-b border-black px-2 py-2">
+          {partSummaries.length ? (
+            <ul className="space-y-1">
+              {partSummaries.map((summary) => (
+                <li key={summary} className="flex items-center justify-between gap-2">
+                  <span>{summary}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span>—</span>
+          )}
+        </div>
+        <div className="border-b border-black px-2 py-2 font-semibold">Quantity</div>
+        <div className="border-b border-black px-2 py-2 font-semibold">{totalQuantity}</div>
+        <div className="px-2 py-2 font-semibold">Date</div>
+        <div className="px-2 py-2">{formatDate(printableDate)}</div>
+      </div>
+    </section>
+  );
+
+  const shippingSection = (
+    <section className="border border-black">
+      <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
+        Shipping Box Information
+      </div>
+      <table className="w-full table-fixed border-collapse text-sm">
+        <thead>
+          <tr>
+            <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Box</th>
+            <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Weight</th>
+            <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Qty</th>
+            <th className="px-2 py-2 text-left font-semibold">Dimensions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {['Box 1', 'Box 2'].map((label) => (
+            <tr key={label} className="border-t border-black">
+              <td className="border-r border-black px-2 py-2 font-semibold">{label}</td>
+              <td className="border-r border-black px-2 py-2">&nbsp;</td>
+              <td className="border-r border-black px-2 py-2">&nbsp;</td>
+              <td className="px-2 py-2">&nbsp;</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+
+  const notesSection = (
+    <section className="border border-black">
+      <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">Notes</div>
+      <div className="min-h-[96px] whitespace-pre-line px-3 py-3">{notesContent ? notesContent : ' '}</div>
+    </section>
+  );
+
+  const checklistSection = (
+    <section className="border border-black">
+      <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
+        Process Checklist
+      </div>
+      <table className="w-full table-fixed border-collapse text-sm">
+        <thead>
+          <tr>
+            <th className="w-16 border-r border-black px-2 py-2 text-left font-semibold">Step</th>
+            <th className="border-r border-black px-2 py-2 text-left font-semibold">Addon / Operation</th>
+            <th className="w-28 px-2 py-2 text-left font-semibold">Planned</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sortedAddons.map((addon, idx) => {
+            const selected = selectedAddonIds.has(addon.id);
+            return (
+              <tr key={addon.id} className="border-t border-black">
+                <td className="border-r border-black px-2 py-2 font-semibold">{formatStepNumber(idx)}</td>
+                <td className={`border-r border-black px-2 py-2 ${selected ? 'font-semibold' : ''}`}>
+                  {addon.name}
+                </td>
+                <td className="px-2 py-2">{selected ? '✓' : ''}</td>
+              </tr>
+            );
+          })}
+          {sortedAddons.length === 0 && (
+            <tr className="border-t border-black">
+              <td className="border-r border-black px-2 py-2">001</td>
+              <td className="border-r border-black px-2 py-2">No addons configured.</td>
+              <td className="px-2 py-2" />
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </section>
+  );
+
+  const materialsSection = (
+    <section className="border border-black">
+      <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
+        Materials Used
+      </div>
+      <div className="min-h-[48px] px-3 py-3">
+        {materialsUsed.length ? (
+          <ul className="list-disc pl-4">
+            {materialsUsed.map((mat) => (
+              <li key={mat}>{mat}</li>
+            ))}
+          </ul>
+        ) : (
+          <span>—</span>
+        )}
+      </div>
+    </section>
+  );
+
+  const sectionContent: Record<string, React.ReactNode> = {
+    header: headerSection,
+    'customer info': customerInfoSection,
+    'total price': orderSummarySection,
+    'job details': orderSummarySection,
+    'part name': partInfoSection,
+    'part info': partInfoSection,
+    'line items': checklistSection,
+    'addons labor': checklistSection,
+    'addons/labor': checklistSection,
+    shipping: shippingSection,
+    notes: notesSection,
+    'process checklist': checklistSection,
+    'materials used': materialsSection,
+  };
+
   return (
     <div className="mx-auto max-w-5xl bg-white p-6 text-sm text-black print:p-4">
       <div className="space-y-6 border border-black p-6">
-        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-black pb-4">
-          <div>
-            <h1 className="text-xl font-extrabold uppercase">C&amp;R Machine &amp; Fabrication</h1>
-            <p className="text-lg font-semibold uppercase">Job Router</p>
-          </div>
-          <div className="text-right text-xs uppercase text-gray-700">
-            <p className="font-semibold">Order #{safeOrder.orderNumber}</p>
-            <p>Priority: {safeOrder.priority}</p>
-            <p>Due: {formatDate(safeOrder.dueDate)}</p>
-          </div>
-        </header>
-
-        <section className="grid gap-4 md:grid-cols-2">
-          <div className="border border-black">
-            <div className="grid grid-cols-[110px,1fr] text-sm">
-              <div className="col-span-2 border-b border-black bg-gray-100 px-2 py-1 text-xs font-semibold uppercase">
-                Job Details
-              </div>
-              <div className="border-b border-black px-2 py-2 font-semibold">Job #</div>
-              <div className="border-b border-black px-2 py-2">{safeOrder.orderNumber}</div>
-              <div className="border-b border-black px-2 py-2 font-semibold">Due Date</div>
-              <div className="border-b border-black px-2 py-2">{formatDate(safeOrder.dueDate)}</div>
-              <div className="border-b border-black px-2 py-2 font-semibold">P.O. #</div>
-              <div className="border-b border-black px-2 py-2">{safeOrder.poNumber ?? '—'}</div>
-              <div className="px-2 py-2 font-semibold">Machinist</div>
-              <div className="px-2 py-2">
-                {safeOrder.assignedMachinist?.name ?? safeOrder.assignedMachinist?.email ?? 'Unassigned'}
-              </div>
-            </div>
-          </div>
-
-          <div className="border border-black">
-            <div className="grid grid-cols-[110px,1fr] text-sm">
-              <div className="col-span-2 border-b border-black bg-gray-100 px-2 py-1 text-xs font-semibold uppercase">
-                Part Information
-              </div>
-              <div className="border-b border-black px-2 py-2 font-semibold">Part #(s)</div>
-              <div className="border-b border-black px-2 py-2">
-                {partSummaries.length ? (
-                  <ul className="space-y-1">
-                    {partSummaries.map((summary) => (
-                      <li key={summary} className="flex items-center justify-between gap-2">
-                        <span>{summary}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <span>—</span>
-                )}
-              </div>
-              <div className="border-b border-black px-2 py-2 font-semibold">Quantity</div>
-              <div className="border-b border-black px-2 py-2 font-semibold">{totalQuantity}</div>
-              <div className="px-2 py-2 font-semibold">Date</div>
-              <div className="px-2 py-2">{formatDate(printableDate)}</div>
-            </div>
-          </div>
-        </section>
-
-        <section className="border border-black">
-          <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
-            Shipping Box Information
-          </div>
-          <table className="w-full table-fixed border-collapse text-sm">
-            <thead>
-              <tr>
-                <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Box</th>
-                <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Weight</th>
-                <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Qty</th>
-                <th className="px-2 py-2 text-left font-semibold">Dimensions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {['Box 1', 'Box 2'].map((label) => (
-                <tr key={label} className="border-t border-black">
-                  <td className="border-r border-black px-2 py-2 font-semibold">{label}</td>
-                  <td className="border-r border-black px-2 py-2">&nbsp;</td>
-                  <td className="border-r border-black px-2 py-2">&nbsp;</td>
-                  <td className="px-2 py-2">&nbsp;</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-
-        <section className="border border-black">
-          <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">Notes</div>
-          <div className="min-h-[96px] whitespace-pre-line px-3 py-3">{notesContent ? notesContent : ' '}</div>
-        </section>
-
-        <section className="border border-black">
-          <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
-            Process Checklist
-          </div>
-          <table className="w-full table-fixed border-collapse text-sm">
-            <thead>
-              <tr>
-                <th className="w-16 border-r border-black px-2 py-2 text-left font-semibold">Step</th>
-                <th className="border-r border-black px-2 py-2 text-left font-semibold">Addon / Operation</th>
-                <th className="w-28 px-2 py-2 text-left font-semibold">Planned</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedAddons.map((addon, idx) => {
-                const selected = selectedAddonIds.has(addon.id);
-                return (
-                  <tr key={addon.id} className="border-t border-black">
-                    <td className="border-r border-black px-2 py-2 font-semibold">{formatStepNumber(idx)}</td>
-                    <td className={`border-r border-black px-2 py-2 ${selected ? 'font-semibold' : ''}`}>
-                      {addon.name}
-                    </td>
-                    <td className="px-2 py-2">{selected ? '✓' : ''}</td>
-                  </tr>
-                );
-              })}
-              {sortedAddons.length === 0 && (
-                <tr className="border-t border-black">
-                  <td className="border-r border-black px-2 py-2">001</td>
-                  <td className="border-r border-black px-2 py-2">No addons configured.</td>
-                  <td className="px-2 py-2" />
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </section>
-
-        <section className="border border-black">
-          <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
-            Materials Used
-          </div>
-          <div className="min-h-[48px] px-3 py-3">
-            {materialsUsed.length ? (
-              <ul className="list-disc pl-4">
-                {materialsUsed.map((mat) => (
-                  <li key={mat}>{mat}</li>
-                ))}
-              </ul>
-            ) : (
-              <span>—</span>
-            )}
-          </div>
-        </section>
+        {layoutSections.map((section, index) => {
+          const key = normalizeSectionName(section);
+          const content = sectionContent[key];
+          if (!content) {
+            return (
+              <section key={`${section}-${index}`} className="border border-dashed border-black px-3 py-3">
+                <div className="text-xs font-semibold uppercase text-gray-500">Unmapped section</div>
+                <div className="text-sm">{section}</div>
+              </section>
+            );
+          }
+          return <React.Fragment key={`${section}-${index}`}>{content}</React.Fragment>;
+        })}
       </div>
     </div>
   );
