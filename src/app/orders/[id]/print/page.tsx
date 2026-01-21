@@ -12,6 +12,7 @@ import {
 import { getActiveDocumentTemplate } from '@/lib/document-templates';
 import { prisma } from '@/lib/prisma';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
+import { PrintControls } from '@/components/print/PrintControls';
 
 function formatDate(input?: string | Date | null, withTime = false) {
   if (!input) return '-';
@@ -76,7 +77,13 @@ function normalizeStringList(input: unknown): string[] {
   return [];
 }
 
-export default async function OrderPrintPage({ params }: { params: { id: string } }) {
+export default async function OrderPrintPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { templateId?: string };
+}) {
   const session = await getServerSession(authOptions);
   if (!session) {
     redirect(`/auth/signin?callbackUrl=/orders/${params.id}/print`);
@@ -103,11 +110,25 @@ export default async function OrderPrintPage({ params }: { params: { id: string 
     notFound();
   }
 
-  const activeTemplate = await getActiveDocumentTemplate({
-    documentType: 'ORDER_PRINT',
-    businessCode: order.business,
-  });
-  const layout = normalizeTemplateLayout(activeTemplate?.layoutJson);
+  const [activeTemplate, templates] = await Promise.all([
+    getActiveDocumentTemplate({
+      documentType: 'ORDER_PRINT',
+      businessCode: order.business,
+    }),
+    prisma.documentTemplate.findMany({
+      where: {
+        documentType: 'ORDER_PRINT',
+        isActive: true,
+        OR: [{ businessCode: order.business }, { businessCode: null }],
+      },
+      orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
+    }),
+  ]);
+
+  const requestedTemplateId = searchParams?.templateId;
+  const selectedTemplate =
+    templates.find((template) => template.id === requestedTemplateId) ?? activeTemplate ?? templates[0] ?? null;
+  const layout = normalizeTemplateLayout(selectedTemplate?.layoutJson);
   const layoutSections = layout.sections.length ? layout.sections : DEFAULT_TEMPLATE_SECTIONS;
 
   const safeOrder = sanitizePricingForNonAdmin(order);
@@ -324,6 +345,15 @@ export default async function OrderPrintPage({ params }: { params: { id: string 
 
   return (
     <div className="mx-auto max-w-5xl bg-white p-6 text-sm text-black print:p-4">
+      <PrintControls
+        templates={templates.map((template) => ({
+          id: template.id,
+          name: template.name,
+          description: template.description,
+        }))}
+        selectedTemplateId={selectedTemplate?.id ?? null}
+        templateLabel="Order print template"
+      />
       <div className="space-y-6 border border-black p-6">
         {layoutSections.map((section, index) => {
           const key = normalizeSectionName(section);

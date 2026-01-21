@@ -7,3 +7,11 @@
 ## 2026-01-21
 - Summary: Added invoice and order-print specific live preview content in the template editor so layouts reflect the selected document type.
 - Tests run: `npm run lint`
+
+## 2026-01-21
+- Summary: Added template selection controls for quote printing so admins can preview and print with any active quote template.
+- Tests run: `npm run lint`
+
+## 2026-01-21
+- Summary: Added template selection for order print previews and disabled webpack caching in dev to avoid missing .next cache warnings.
+- Tests run: `npm run lint`
