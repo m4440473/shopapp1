@@ -16,17 +16,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/Toast';
 import { fetchJson } from '@/lib/fetchJson';
-
-const DEFAULT_SECTIONS = [
-  'Header',
-  'Customer Info',
-  'Total Price',
-  'Part Name',
-  'Part Info',
-  'Line Items',
-  'Addons/Labor',
-  'Shipping',
-];
+import { DEFAULT_TEMPLATE_SECTIONS } from '@/lib/document-template-layout';
 
 const DOCUMENT_TYPES = ['QUOTE', 'INVOICE', 'ORDER_PRINT'] as const;
 
@@ -67,14 +57,14 @@ const emptyTemplate: TemplateFormState = {
   isDefault: false,
   isActive: true,
   schemaVersion: 1,
-  layoutSections: [...DEFAULT_SECTIONS],
+  layoutSections: [...DEFAULT_TEMPLATE_SECTIONS],
 };
 
 function normalizeLayout(layoutJson: unknown): TemplateLayout {
   if (layoutJson && typeof layoutJson === 'object' && Array.isArray((layoutJson as any).sections)) {
     return { sections: (layoutJson as any).sections as string[] };
   }
-  return { sections: [...DEFAULT_SECTIONS] };
+  return { sections: [...DEFAULT_TEMPLATE_SECTIONS] };
 }
 
 export default function TemplatesClient({ initialTemplates }: { initialTemplates: TemplateRecord[] }) {
