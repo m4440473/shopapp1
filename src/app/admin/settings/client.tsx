@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -325,7 +326,7 @@ export default function Client({ settings }: { settings: AppSettingsProps }) {
                 <div className="flex flex-wrap items-center gap-4">
                   <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-border bg-muted">
                     {logoUrl ? (
-                      <img src={logoUrl} alt="Company logo" className="h-12 w-12 object-contain" />
+                      <Image src={logoUrl} alt="Company logo" width={48} height={48} className="h-12 w-12 object-contain" />
                     ) : (
                       <span className="text-lg font-semibold text-muted-foreground">{initials}</span>
                     )}

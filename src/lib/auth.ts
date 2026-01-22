@@ -1,7 +1,46 @@
-import type { NextAuthOptions } from 'next-auth';
+import type { NextAuthOptions, User } from 'next-auth';
+import type { JWT } from 'next-auth/jwt';
 import Credentials from 'next-auth/providers/credentials';
+import type { User as PrismaUser } from '@prisma/client';
 import { prisma } from './prisma';
 import { compare } from 'bcryptjs';
+
+const DEFAULT_ROLE = 'MACHINIST';
+
+const resolveRole = (role?: string | null) => role ?? DEFAULT_ROLE;
+
+const isAdminRole = (role?: string | null) => resolveRole(role) === 'ADMIN';
+
+type SessionUser = User & { role?: string; admin?: boolean; id?: string };
+
+const buildAuthUser = (user: PrismaUser): SessionUser => ({
+  id: user.id,
+  email: user.email,
+  name: user.name ?? '',
+  role: resolveRole(user.role),
+  admin: isAdminRole(user.role),
+});
+
+const applyUserToToken = (token: JWT, user: SessionUser) => {
+  const role = resolveRole(user.role);
+  const admin = user.admin ?? isAdminRole(role);
+  return {
+    ...token,
+    role,
+    admin,
+    id: user.id ?? token.sub,
+  };
+};
+
+const applyTokenToSessionUser = (sessionUser: SessionUser, token: JWT): SessionUser => {
+  const tokenRole = (token as { role?: string }).role;
+  return {
+    ...sessionUser,
+    role: tokenRole ?? DEFAULT_ROLE,
+    admin: (token as { admin?: boolean }).admin ?? isAdminRole(tokenRole),
+    id: (token as { id?: string }).id ?? token.sub ?? sessionUser.id,
+  };
+};
 
 export const authOptions: NextAuthOptions & { trustHost?: boolean } = {
   trustHost: true,
@@ -16,49 +55,36 @@ export const authOptions: NextAuthOptions & { trustHost?: boolean } = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          console.log('Missing credentials');
           return null;
         }
         const user = await prisma.user.findUnique({ where: { email: credentials.email } });
         if (!user) {
-          console.log('User not found:', credentials.email);
           return null;
         }
         if (!user.active) {
-          console.log('User not active:', credentials.email);
           return null;
         }
         if (!user.passwordHash) {
-          console.log('No passwordHash for user:', credentials.email);
           return null;
         }
         const ok = await compare(credentials.password, user.passwordHash);
-        console.log('Password compare:', credentials.password, user.passwordHash, ok);
         if (!ok) {
-          console.log('Password incorrect for user:', credentials.email);
           return null;
         }
-        const adminFlag = (user as any).admin === true;
-        console.log('Sign-in success for user:', credentials.email);
-        return { id: user.id, email: user.email, name: user.name ?? '', role: user.role, admin: adminFlag };
+        return buildAuthUser(user);
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // user.role comes from the Prisma DB as a string; default to 'MACHINIST' for legacy/seeding cases
-        (token as any).role = (user as any).role ?? 'MACHINIST';
-        (token as any).admin = (user as any).admin === true || (token as any).role === 'ADMIN';
-        (token as any).id = (user as any).id ?? token.sub;
+        return applyUserToToken(token, user);
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).role = (token as any).role;
-        (session.user as any).admin = (token as any).admin ?? ((token as any).role === 'ADMIN');
-        (session.user as any).id = (token as any).id ?? token.sub ?? (session.user as any).id;
+        session.user = applyTokenToSessionUser(session.user, token);
       }
       return session;
     },
