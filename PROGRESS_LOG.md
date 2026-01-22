@@ -4,6 +4,10 @@
 - Summary: Simplified NextAuth credential handling by removing debug logs and centralizing role/admin normalization helpers for cleaner session/token mapping.
 - Tests run: `npm run lint`
 
+## 2026-01-22
+- Summary: Replaced raw img tags with Next.js Image components and fixed an effect dependency with useCallback.
+- Tests run: `npm run lint`
+
 ## 2025-09-27
 - Summary: Rebuilt the admin template builder into a drag-and-drop section canvas with a website-builder-style library and richer live preview.
 - Tests run: `npm run lint` (failed: ESLint not installed in environment)

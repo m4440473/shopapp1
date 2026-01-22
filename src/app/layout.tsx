@@ -1,4 +1,5 @@
 ﻿import './globals.css';
+import Image from 'next/image';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { Roboto } from 'next/font/google';
@@ -41,7 +42,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <Link href="/" className="flex items-center gap-3 text-left">
                 {logoUrl ? (
                   <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-primary/30 bg-background shadow-lg shadow-primary/30">
-                    <img src={logoUrl} alt={`${settings.companyName} logo`} className="h-9 w-9 object-contain" />
+                    <Image
+                      src={logoUrl}
+                      alt={`${settings.companyName} logo`}
+                      width={36}
+                      height={36}
+                      className="h-9 w-9 object-contain"
+                    />
                   </span>
                 ) : (
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/90 text-lg font-semibold text-primary-foreground shadow-lg shadow-primary/30">

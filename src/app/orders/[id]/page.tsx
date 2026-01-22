@@ -198,7 +198,7 @@ export default function OrderDetailPage() {
     return `${businessSlug}/${customerSlug || 'customer'}/${referenceSlug}`;
   }, [attachmentBusiness, id, item?.customer?.name, item?.orderNumber]);
 
-  async function load() {
+  const load = React.useCallback(async () => {
     if (!id) return null;
     setLoading(true);
     let nextItem: any | null = null;
@@ -220,11 +220,11 @@ export default function OrderDetailPage() {
       setLoading(false);
     }
     return nextItem;
-  }
+  }, [id]);
 
   useEffect(() => {
     load();
-  }, [id]);
+  }, [load]);
 
   useEffect(() => {
     setExpandedParts({});
