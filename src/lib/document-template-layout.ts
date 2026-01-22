@@ -13,10 +13,26 @@ export const DEFAULT_TEMPLATE_SECTIONS = [
   'Shipping',
 ];
 
+function normalizeSectionEntry(section: unknown): string {
+  if (typeof section === 'string') {
+    return section;
+  }
+
+  if (section && typeof section === 'object') {
+    const record = section as Record<string, unknown>;
+    const candidate = record.label ?? record.name ?? record.title ?? record.type ?? record.id;
+    if (typeof candidate === 'string') {
+      return candidate;
+    }
+  }
+
+  return String(section ?? '');
+}
+
 export function normalizeTemplateLayout(layoutJson: unknown): TemplateLayout {
   if (layoutJson && typeof layoutJson === 'object' && Array.isArray((layoutJson as any).sections)) {
     return {
-      sections: (layoutJson as any).sections.map((section: unknown) => String(section)),
+      sections: (layoutJson as any).sections.map((section: unknown) => normalizeSectionEntry(section)),
     };
   }
 
@@ -25,7 +41,7 @@ export function normalizeTemplateLayout(layoutJson: unknown): TemplateLayout {
       const parsed = JSON.parse(layoutJson);
       if (parsed && typeof parsed === 'object' && Array.isArray((parsed as any).sections)) {
         return {
-          sections: (parsed as any).sections.map((section: unknown) => String(section)),
+          sections: (parsed as any).sections.map((section: unknown) => normalizeSectionEntry(section)),
         };
       }
     } catch {

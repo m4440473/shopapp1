@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import {
   BadgeCheck,
   ClipboardList,
+  Info,
   LayoutDashboard,
   Menu,
   PlusCircle,
@@ -32,7 +33,8 @@ import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/lib/use-current-user";
 
 const baseLinks = [
-  { href: "/about", label: "Overview", icon: LayoutDashboard },
+  { href: "/", label: "Shop Floor Intelligence", icon: LayoutDashboard },
+  { href: "/about", label: "Overview", icon: Info },
   { href: "/orders", label: "Orders", icon: ClipboardList },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/orders/new", label: "New Order", icon: PlusCircle },

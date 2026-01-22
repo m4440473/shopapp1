@@ -16,7 +16,11 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/Toast';
 import { fetchJson } from '@/lib/fetchJson';
-import { DEFAULT_TEMPLATE_SECTIONS, normalizeSectionName } from '@/lib/document-template-layout';
+import {
+  DEFAULT_TEMPLATE_SECTIONS,
+  normalizeSectionName,
+  normalizeTemplateLayout,
+} from '@/lib/document-template-layout';
 
 const DOCUMENT_TYPES = ['QUOTE', 'INVOICE', 'ORDER_PRINT'] as const;
 
@@ -55,10 +59,6 @@ const SECTION_LIBRARY = [
   },
 ];
 
-type TemplateLayout = {
-  sections: string[];
-};
-
 type TemplateRecord = {
   id: string;
   name: string;
@@ -69,7 +69,7 @@ type TemplateRecord = {
   isActive: boolean;
   schemaVersion: number;
   currentVersion: number;
-  layoutJson: TemplateLayout;
+  layoutJson: { sections: string[] };
 };
 
 type TemplateFormState = {
@@ -98,13 +98,6 @@ const emptyTemplate: TemplateFormState = {
   schemaVersion: 1,
   layoutSections: [...DEFAULT_TEMPLATE_SECTIONS],
 };
-
-function normalizeLayout(layoutJson: unknown): TemplateLayout {
-  if (layoutJson && typeof layoutJson === 'object' && Array.isArray((layoutJson as any).sections)) {
-    return { sections: (layoutJson as any).sections as string[] };
-  }
-  return { sections: [...DEFAULT_TEMPLATE_SECTIONS] };
-}
 
 function parseDragPayload(event: React.DragEvent) {
   const raw = event.dataTransfer.getData('text/plain');
@@ -397,7 +390,7 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
       isDefault: selected.isDefault,
       isActive: selected.isActive,
       schemaVersion: selected.schemaVersion ?? 1,
-      layoutSections: normalizeLayout(selected.layoutJson).sections,
+      layoutSections: normalizeTemplateLayout(selected.layoutJson).sections,
     };
   });
 
@@ -414,7 +407,7 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
       isDefault: selected.isDefault,
       isActive: selected.isActive,
       schemaVersion: selected.schemaVersion ?? 1,
-      layoutSections: normalizeLayout(selected.layoutJson).sections,
+      layoutSections: normalizeTemplateLayout(selected.layoutJson).sections,
     });
   }, [selectedId, templates]);
 
