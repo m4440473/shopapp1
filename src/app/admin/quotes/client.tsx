@@ -14,6 +14,8 @@ import { fetchJson } from '@/lib/fetchJson';
 import QuoteWorkflowControls from './QuoteWorkflowControls';
 import { mergeQuoteMetadata, type QuoteMetadata } from '@/lib/quote-metadata';
 import AdminPricingGate from '@/components/Admin/AdminPricingGate';
+import { canAccessAdmin } from '@/lib/rbac';
+import { useCurrentUser } from '@/lib/use-current-user';
 
 interface QuoteItem {
   id: string;
@@ -53,6 +55,8 @@ export default function Client({ initial, initialRole, initialAdmin }: ClientPro
   const [status, setStatus] = useState('');
   const toast = useToast();
   const router = useRouter();
+  const user = useCurrentUser();
+  const isAdmin = canAccessAdmin(user ?? undefined);
 
   const updateRowMetadata = useCallback(
     (id: string, metadata: QuoteMetadata) => {
@@ -207,9 +211,11 @@ export default function Client({ initial, initialRole, initialAdmin }: ClientPro
           Search
         </Button>
         <div className="flex-1" />
-        <Button asChild>
-          <Link href="/admin/quotes/new">New quote</Link>
-        </Button>
+        {isAdmin && (
+          <Button asChild>
+            <Link href="/admin/quotes/new">New quote</Link>
+          </Button>
+        )}
       </div>
 
       <Table
@@ -217,6 +223,7 @@ export default function Client({ initial, initialRole, initialAdmin }: ClientPro
         rows={items}
         onEdit={(row) => router.push(`/admin/quotes/${row.id}`)}
         onDelete={remove}
+        actionsEnabled={isAdmin}
       />
 
       {nextCursor && (

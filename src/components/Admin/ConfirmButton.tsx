@@ -13,19 +13,27 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/Button';
+import { Button, type ButtonProps } from '@/components/ui/Button';
 
 interface ConfirmButtonProps {
   onConfirm: () => void | Promise<void>;
   children: React.ReactNode;
   description?: string;
+  buttonClassName?: string;
+  buttonSize?: ButtonProps['size'];
 }
 
-export default function ConfirmButton({ onConfirm, children, description }: ConfirmButtonProps) {
+export default function ConfirmButton({
+  onConfirm,
+  children,
+  description,
+  buttonClassName,
+  buttonSize,
+}: ConfirmButtonProps) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button type="button" variant="ghost" size="sm">
+        <Button type="button" variant="ghost" size={buttonSize ?? 'sm'} className={buttonClassName}>
           {children}
         </Button>
       </AlertDialogTrigger>

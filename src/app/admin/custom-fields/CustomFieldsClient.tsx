@@ -17,6 +17,8 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { fetchJson } from '@/lib/fetchJson';
 import type { CustomFieldDefinition, CustomFieldOption } from '@/components/CustomFieldInputs';
+import { canAccessAdmin } from '@/lib/rbac';
+import { useCurrentUser } from '@/lib/use-current-user';
 
 const FIELD_TYPES: Array<CustomFieldDefinition['fieldType']> = [
   'TEXT',
@@ -71,6 +73,8 @@ export default function CustomFieldsClient({ initialFields }: { initialFields: C
   const toast = useToast();
   const [fields, setFields] = React.useState<CustomFieldDefinition[]>(initialFields);
   const [selectedId, setSelectedId] = React.useState<string | null>(fields[0]?.id ?? null);
+  const user = useCurrentUser();
+  const isAdmin = canAccessAdmin(user ?? undefined);
   const [form, setForm] = React.useState<CustomFieldFormState>(() => {
     const selected = fields[0];
     if (!selected) return emptyForm;
@@ -241,9 +245,11 @@ export default function CustomFieldsClient({ initialFields }: { initialFields: C
       <div className="rounded-lg border border-muted bg-muted/20 p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Field Library</h2>
-          <Button type="button" size="sm" variant="secondary" onClick={handleCreateNew}>
-            Add field
-          </Button>
+          {isAdmin && (
+            <Button type="button" size="sm" variant="secondary" onClick={handleCreateNew}>
+              Add field
+            </Button>
+          )}
         </div>
         <div className="mt-4 space-y-3">
           {fields.length === 0 ? (
@@ -271,26 +277,28 @@ export default function CustomFieldsClient({ initialFields }: { initialFields: C
                         {field.businessCode ? `Business ${field.businessCode}` : 'All businesses'}
                       </p>
                     </button>
-                    <div className="flex flex-col gap-1 text-xs">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => moveField(field.id, 'up')}
-                      >
-                        ↑
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => moveField(field.id, 'down')}
-                      >
-                        ↓
-                      </Button>
-                    </div>
+                    {isAdmin && (
+                      <div className="flex flex-col gap-1 text-xs">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => moveField(field.id, 'up')}
+                        >
+                          ↑
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => moveField(field.id, 'down')}
+                        >
+                          ↓
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <div className="mt-2 text-xs text-muted-foreground">
                     {field.isRequired ? 'Required' : 'Optional'} ·{' '}
@@ -465,9 +473,11 @@ export default function CustomFieldsClient({ initialFields }: { initialFields: C
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label>Options</Label>
-                <Button type="button" size="sm" variant="secondary" onClick={addOption}>
-                  Add option
-                </Button>
+                {isAdmin && (
+                  <Button type="button" size="sm" variant="secondary" onClick={addOption}>
+                    Add option
+                  </Button>
+                )}
               </div>
               {form.options.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No options configured yet.</p>
@@ -498,14 +508,16 @@ export default function CustomFieldsClient({ initialFields }: { initialFields: C
                         />
                         Active
                       </label>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => removeOption(index)}
-                      >
-                        Remove
-                      </Button>
+                      {isAdmin && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => removeOption(index)}
+                        >
+                          Remove
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -514,14 +526,18 @@ export default function CustomFieldsClient({ initialFields }: { initialFields: C
           ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <Button type="button" onClick={handleSave}>
-              {form.id ? 'Save field' : 'Create field'}
-            </Button>
-            {form.id ? (
-              <Button type="button" variant="destructive" onClick={handleDelete}>
-                Delete
-              </Button>
-            ) : null}
+            {isAdmin && (
+              <>
+                <Button type="button" onClick={handleSave}>
+                  {form.id ? 'Save field' : 'Create field'}
+                </Button>
+                {form.id ? (
+                  <Button type="button" variant="destructive" onClick={handleDelete}>
+                    Delete
+                  </Button>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
       </div>

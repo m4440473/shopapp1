@@ -18,6 +18,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { fetchJson } from '@/lib/fetchJson';
+import { canAccessAdmin } from '@/lib/rbac';
+import { useCurrentUser } from '@/lib/use-current-user';
 import { AddonUpsert } from '@/lib/zod';
 
 interface Department {
@@ -67,6 +69,8 @@ export default function Client({ initial }: ClientProps) {
     departmentId: '',
   });
   const toast = useToast();
+  const user = useCurrentUser();
+  const isAdmin = canAccessAdmin(user ?? undefined);
 
   useEffect(() => {
     fetchJson<{ items: Department[] }>('/api/admin/departments')
@@ -215,10 +219,16 @@ export default function Client({ initial }: ClientProps) {
           Search
         </Button>
         <div className="flex-1" />
-        <Button onClick={() => setDialog({ mode: 'create' })}>New add-on</Button>
+        {isAdmin && <Button onClick={() => setDialog({ mode: 'create' })}>New add-on</Button>}
       </div>
 
-      <Table columns={columns as any} rows={items} onEdit={(row) => setDialog({ mode: 'edit', data: row })} onDelete={remove} />
+      <Table
+        columns={columns as any}
+        rows={items}
+        onEdit={(row) => setDialog({ mode: 'edit', data: row })}
+        onDelete={remove}
+        actionsEnabled={isAdmin}
+      />
 
       {nextCursor && (
         <div className="flex justify-center">

@@ -23,6 +23,8 @@ import { hexToHslCss, isValidHex, normalizeHex } from '@/lib/colors';
 import { getInitials } from '@/lib/get-initials';
 import { fetchJson } from '@/lib/fetchJson';
 import { DepartmentUpsert } from '@/lib/zod';
+import { canAccessAdmin } from '@/lib/rbac';
+import { useCurrentUser } from '@/lib/use-current-user';
 
 const TEMPLATE_OPTIONS = [
   {
@@ -134,6 +136,8 @@ export default function Client({ settings }: { settings: AppSettingsProps }) {
   const [deptSaving, setDeptSaving] = React.useState(false);
   const [deptMessage, setDeptMessage] = React.useState<string | null>(null);
   const [deptError, setDeptError] = React.useState<string | null>(null);
+  const user = useCurrentUser();
+  const isAdmin = canAccessAdmin(user ?? undefined);
 
   const logoUrl = logoPath ? `/branding/logo?v=${logoVersion}` : null;
   const initials = getInitials(companyName);
@@ -536,9 +540,11 @@ export default function Client({ settings }: { settings: AppSettingsProps }) {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap items-center gap-3">
-                <Button type="button" onClick={() => setDeptDialog({ mode: 'create' })}>
-                  New department
-                </Button>
+                {isAdmin && (
+                  <Button type="button" onClick={() => setDeptDialog({ mode: 'create' })}>
+                    New department
+                  </Button>
+                )}
                 {deptMessage && <p className="text-sm text-emerald-300">{deptMessage}</p>}
                 {deptError && <p className="text-sm text-destructive">{deptError}</p>}
               </div>
@@ -555,6 +561,7 @@ export default function Client({ settings }: { settings: AppSettingsProps }) {
                 rows={departments}
                 onEdit={(row) => setDeptDialog({ mode: 'edit', data: row })}
                 onDelete={removeDepartment}
+                actionsEnabled={isAdmin}
               />
             </CardContent>
           </Card>

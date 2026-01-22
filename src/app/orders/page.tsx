@@ -560,120 +560,180 @@ export default function OrdersPage() {
             </div>
           )}
 
-          <div className="overflow-x-auto rounded-xl border border-border/50 bg-background/60 shadow-lg shadow-primary/5">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border/60">
-                  <TableHead className="w-[140px]">
-                    <SortableHeader label="Order" column="receivedDate" current={sortKey} dir={sortDir} onChange={handleSortChange} />
-                  </TableHead>
-                  <TableHead>Business</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>
-                    <SortableHeader label="Status" column="status" current={sortKey} dir={sortDir} onChange={handleSortChange} />
-                  </TableHead>
-                  <TableHead>
-                    <SortableHeader label="Due" column="dueDate" current={sortKey} dir={sortDir} onChange={handleSortChange} />
-                  </TableHead>
-                  <TableHead>
-                    <SortableHeader label="Priority" column="priority" current={sortKey} dir={sortDir} onChange={handleSortChange} />
-                  </TableHead>
-                  <TableHead>
-                    <SortableHeader label="Qty" column="quantity" current={sortKey} dir={sortDir} onChange={handleSortChange} />
-                  </TableHead>
-                  <TableHead>
-                    <SortableHeader label="Last change" column="lastChange" current={sortKey} dir={sortDir} onChange={handleSortChange} />
-                  </TableHead>
-                  <TableHead>Machinist</TableHead>
-                  <TableHead>Addons</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((order) => (
-                  <TableRow key={order.id} className="border-border/60">
-                    <TableCell className="font-semibold text-primary">
-                      <Link href={`/orders/${order.id}`} className="hover:underline">
-                        #{order.orderNumber}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      {(() => {
-                        const option = BUSINESS_OPTIONS.find((item) => item.code === order.business);
-                        if (!option) {
-                          return <Badge variant="outline">{order.business ?? 'N/A'}</Badge>;
-                        }
-                        return (
-                          <div className="flex flex-col gap-1">
-                            <Badge variant="outline" className="w-fit font-mono text-xs uppercase">
-                              {option.prefix}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">{option.name}</span>
-                          </div>
-                        );
-                      })()}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {order.customer?.name ?? 'Unknown customer'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={`rounded-full px-3 py-1 text-[0.7rem] uppercase tracking-wide ${
-                          STATUS_STYLES[order.status] ?? 'border-border/60 bg-secondary/40 text-foreground'
-                        }`}
-                      >
-                        {formatStatusLabel(order.status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDate(order.dueDate)}</TableCell>
-                    <TableCell className="text-sm font-semibold uppercase text-muted-foreground">
-                      {order.priority}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{order.totalQuantity ?? 0}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {order.lastStatusChange ? formatDate(order.lastStatusChange) : '—'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+          <div className="space-y-4 md:hidden">
+            {filtered.map((order) => (
+              <Card key={order.id} className="border-border/50 bg-background/60">
+                <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Order</p>
+                    <Link href={`/orders/${order.id}`} className="text-lg font-semibold text-primary hover:underline">
+                      #{order.orderNumber}
+                    </Link>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={`rounded-full px-3 py-1 text-[0.7rem] uppercase tracking-wide ${
+                      STATUS_STYLES[order.status] ?? 'border-border/60 bg-secondary/40 text-foreground'
+                    }`}
+                  >
+                    {formatStatusLabel(order.status)}
+                  </Badge>
+                </CardHeader>
+                <CardContent className="grid gap-2 text-sm text-muted-foreground">
+                  <div className="flex items-center justify-between gap-4">
+                    <span>Customer</span>
+                    <span className="text-right text-foreground">{order.customer?.name ?? 'Unknown'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span>Due</span>
+                    <span className="text-foreground">{formatDate(order.dueDate)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span>Priority</span>
+                    <span className="text-foreground">{order.priority}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span>Machinist</span>
+                    <span className="text-right text-foreground">
                       {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {order.checklist?.length ? (
-                        <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-foreground">
-                            {order.checklist.length - (order.openAddonCount ?? 0)}/{order.checklist.length} done
-                          </span>
-                          {order.openAddonCount ? (
-                            <span className="text-xs text-amber-500">
-                              {order.openAddonCount} addon{order.openAddonCount === 1 ? '' : 's'} open
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">All clear</span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">None</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button asChild size="sm" variant="ghost" className="text-primary hover:text-primary">
-                        <Link href={`/orders/${order.id}`}>View</Link>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </span>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button asChild className="h-11 w-full">
+                    <Link href={`/orders/${order.id}`}>View</Link>
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
             {loading && (
-              <div className="flex items-center justify-center gap-2 border-t border-border/60 py-4 text-sm text-muted-foreground">
+              <div className="flex items-center justify-center gap-2 rounded-lg border border-border/60 py-4 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading orders…
               </div>
             )}
             {!loading && !filtered.length && !error && (
-              <div className="border-t border-border/60 py-6 text-center text-sm text-muted-foreground">
+              <div className="rounded-lg border border-border/60 py-6 text-center text-sm text-muted-foreground">
                 No orders match the current filters.
               </div>
             )}
+          </div>
+
+          <div className="hidden md:block">
+            <div className="overflow-x-auto rounded-xl border border-border/50 bg-background/60 shadow-lg shadow-primary/5">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-border/60">
+                    <TableHead className="w-[140px]">
+                      <SortableHeader label="Order" column="receivedDate" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                    </TableHead>
+                    <TableHead>Business</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>
+                      <SortableHeader label="Status" column="status" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                    </TableHead>
+                    <TableHead>
+                      <SortableHeader label="Due" column="dueDate" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                    </TableHead>
+                    <TableHead>
+                      <SortableHeader label="Priority" column="priority" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                    </TableHead>
+                    <TableHead>
+                      <SortableHeader label="Qty" column="quantity" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                    </TableHead>
+                    <TableHead>
+                      <SortableHeader label="Last change" column="lastChange" current={sortKey} dir={sortDir} onChange={handleSortChange} />
+                    </TableHead>
+                    <TableHead>Machinist</TableHead>
+                    <TableHead>Addons</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((order) => (
+                    <TableRow key={order.id} className="border-border/60">
+                      <TableCell className="font-semibold text-primary">
+                        <Link href={`/orders/${order.id}`} className="hover:underline">
+                          #{order.orderNumber}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const option = BUSINESS_OPTIONS.find((item) => item.code === order.business);
+                          if (!option) {
+                            return <Badge variant="outline">{order.business ?? 'N/A'}</Badge>;
+                          }
+                          return (
+                            <div className="flex flex-col gap-1">
+                              <Badge variant="outline" className="w-fit font-mono text-xs uppercase">
+                                {option.prefix}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">{option.name}</span>
+                            </div>
+                          );
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {order.customer?.name ?? 'Unknown customer'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={`rounded-full px-3 py-1 text-[0.7rem] uppercase tracking-wide ${
+                            STATUS_STYLES[order.status] ?? 'border-border/60 bg-secondary/40 text-foreground'
+                          }`}
+                        >
+                          {formatStatusLabel(order.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(order.dueDate)}</TableCell>
+                      <TableCell className="text-sm font-semibold uppercase text-muted-foreground">
+                        {order.priority}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{order.totalQuantity ?? 0}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {order.lastStatusChange ? formatDate(order.lastStatusChange) : '—'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {order.checklist?.length ? (
+                          <div className="flex flex-col gap-1">
+                            <span className="font-semibold text-foreground">
+                              {order.checklist.length - (order.openAddonCount ?? 0)}/{order.checklist.length} done
+                            </span>
+                            {order.openAddonCount ? (
+                              <span className="text-xs text-amber-500">
+                                {order.openAddonCount} addon{order.openAddonCount === 1 ? '' : 's'} open
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">All clear</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">None</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button asChild size="sm" variant="ghost" className="text-primary hover:text-primary">
+                          <Link href={`/orders/${order.id}`}>View</Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {loading && (
+                <div className="flex items-center justify-center gap-2 border-t border-border/60 py-4 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading orders…
+                </div>
+              )}
+              {!loading && !filtered.length && !error && (
+                <div className="border-t border-border/60 py-6 text-center text-sm text-muted-foreground">
+                  No orders match the current filters.
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
         <CardFooter className="border-t border-border/60 bg-card/80 backdrop-blur">

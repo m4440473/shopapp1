@@ -1,3 +1,5 @@
+"use client";
+
 import React from 'react';
 
 import {
@@ -10,6 +12,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/Button';
 import ConfirmButton from './ConfirmButton';
+import { cn } from '@/lib/utils';
 
 interface Column {
   key: string;
@@ -22,37 +25,62 @@ interface TableProps {
   rows: any[];
   onEdit?: (row: any) => void;
   onDelete?: (row: any) => void;
+  actionsEnabled?: boolean;
 }
 
-export default function Table({ columns = [], rows = [], onEdit, onDelete }: TableProps) {
+export default function Table({
+  columns = [],
+  rows = [],
+  onEdit,
+  onDelete,
+  actionsEnabled = true,
+}: TableProps) {
+  const showActions = actionsEnabled && (onEdit || onDelete);
   return (
     <div className="rounded-lg border border-border/60 bg-card/60">
-      <UITable>
+      <UITable className="min-w-[720px]">
         <TableHeader>
           <TableRow>
-            {columns.map((column) => (
-              <TableHead key={column.key}>{column.header}</TableHead>
+            {columns.map((column, index) => (
+              <TableHead
+                key={column.key}
+                className={cn(index === 0 && 'sticky left-0 z-10 bg-card/90 backdrop-blur')}
+              >
+                {column.header}
+              </TableHead>
             ))}
-            {(onEdit || onDelete) && <TableHead className="text-right">Actions</TableHead>}
+            {showActions && <TableHead className="text-right">Actions</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.map((row) => (
             <TableRow key={row.id} className="bg-card/60">
-              {columns.map((column) => (
-                <TableCell key={column.key} className="align-middle">
+              {columns.map((column, index) => (
+                <TableCell
+                  key={column.key}
+                  className={cn(
+                    'align-middle',
+                    index === 0 && 'sticky left-0 z-10 bg-card/90 backdrop-blur'
+                  )}
+                >
                   {column.render ? column.render(row[column.key], row) : String(row[column.key] ?? '')}
                 </TableCell>
               ))}
-              {(onEdit || onDelete) && (
+              {showActions && (
                 <TableCell className="flex items-center justify-end gap-2">
                   {onEdit && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(row)}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="min-h-[44px] px-3"
+                      onClick={() => onEdit(row)}
+                    >
                       Edit
                     </Button>
                   )}
                   {onDelete && (
-                    <ConfirmButton onConfirm={() => onDelete(row)}>
+                    <ConfirmButton onConfirm={() => onDelete(row)} buttonClassName="min-h-[44px] px-3">
                       Delete
                     </ConfirmButton>
                   )}

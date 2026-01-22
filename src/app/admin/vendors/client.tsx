@@ -7,6 +7,8 @@ import { VendorUpsert } from '@/lib/zod';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
+import { canAccessAdmin } from '@/lib/rbac';
+import { useCurrentUser } from '@/lib/use-current-user';
 import {
   Dialog,
   DialogContent,
@@ -34,6 +36,8 @@ export default function Client({ initial }: { initial: any }) {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [form, setForm] = useState({ name: '', url: '', phone: '', notes: '' });
   const toast = useToast();
+  const user = useCurrentUser();
+  const isAdmin = canAccessAdmin(user ?? undefined);
 
   useEffect(() => {
     if (dialog?.mode === 'edit' && dialog.data) {
@@ -118,7 +122,7 @@ export default function Client({ initial }: { initial: any }) {
           Search
         </Button>
         <div className="flex-1" />
-        <Button onClick={() => setDialog({ mode: 'create' })}>New vendor</Button>
+        {isAdmin && <Button onClick={() => setDialog({ mode: 'create' })}>New vendor</Button>}
       </div>
 
       <Table
@@ -126,6 +130,7 @@ export default function Client({ initial }: { initial: any }) {
         rows={items}
         onEdit={(row) => setDialog({ mode: 'edit', data: row })}
         onDelete={remove}
+        actionsEnabled={isAdmin}
       />
 
       {nextCursor && (
