@@ -42,6 +42,15 @@ const applyTokenToSessionUser = (sessionUser: SessionUser, token: JWT): SessionU
   };
 };
 
+const resolveAuthBaseUrl = (fallback: string) => {
+  const envBase =
+    process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_BASE_URL ?? process.env.APP_BASE_URL;
+  if (envBase && envBase.length > 0) {
+    return envBase;
+  }
+  return fallback;
+};
+
 export const authOptions: NextAuthOptions & { trustHost?: boolean } = {
   trustHost: true,
   session: { strategy: 'jwt' },
@@ -87,6 +96,22 @@ export const authOptions: NextAuthOptions & { trustHost?: boolean } = {
         session.user = applyTokenToSessionUser(session.user, token);
       }
       return session;
+    },
+    async redirect({ url, baseUrl }) {
+      const resolvedBaseUrl = resolveAuthBaseUrl(baseUrl);
+      if (url.startsWith('/')) {
+        return `${resolvedBaseUrl}${url}`;
+      }
+      try {
+        const targetUrl = new URL(url);
+        const allowedOrigin = new URL(resolvedBaseUrl).origin;
+        if (targetUrl.origin === allowedOrigin) {
+          return targetUrl.toString();
+        }
+      } catch {
+        return resolvedBaseUrl;
+      }
+      return resolvedBaseUrl;
     },
   },
 };

@@ -1,20 +1,30 @@
-import { withAuth } from 'next-auth/middleware';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 
-export default withAuth({
-  pages: { signIn: '/auth/signin' },
-  callbacks: {
-    authorized: ({ token, req }) => {
-      if (!token) return false;
-      const pathname = req.nextUrl.pathname;
-      const isAdminPath = pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
-      if (isAdminPath) {
-        return Boolean((token as any).admin || (token as any).role === 'ADMIN');
-      }
-      return true;
-    },
-  },
-});
+export async function middleware(request: NextRequest) {
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  const pathname = request.nextUrl.pathname;
+
+  if (!token) {
+    const signInUrl = new URL('/auth/signin', request.url);
+    signInUrl.searchParams.set('callbackUrl', `${pathname}${request.nextUrl.search}`);
+    return NextResponse.redirect(signInUrl);
+  }
+
+  const isAdmin = Boolean((token as { admin?: boolean }).admin) || (token as { role?: string }).role === 'ADMIN';
+  if (!isAdmin) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/403';
+    url.search = '';
+    const response = NextResponse.rewrite(url);
+    response.status = 403;
+    return response;
+  }
+
+  return NextResponse.next();
+}
 
 export const config = {
-  matcher: ['/((?!api/auth|auth/signin|_next|favicon.ico|public).*)'],
+  matcher: ['/admin/:path*'],
 };

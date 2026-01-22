@@ -2,6 +2,10 @@
 
 This package contains the Prisma schema and seed for the Shop Orders app.
 
+## Replit deployment playbook
+
+See [`REPLIT_AGENT_PLAYBOOK.md`](./REPLIT_AGENT_PLAYBOOK.md) for Replit environment variables, build/start steps, and troubleshooting tips.
+
 ## Prerequisites
 
 1. Install **Node.js 18** or newer. The easiest cross-platform approach is to

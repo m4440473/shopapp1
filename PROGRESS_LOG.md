@@ -1,6 +1,10 @@
 # Progress Log
 
 ## 2026-01-22
+- Summary: Added Replit deployment playbook, fixed admin access handling, improved mobile navigation and orders list, and ensured standalone asset copying for Replit deployments.
+- Tests run: `npm run lint`
+
+## 2026-01-22
 - Summary: Simplified NextAuth credential handling by removing debug logs and centralizing role/admin normalization helpers for cleaner session/token mapping.
 - Tests run: `npm run lint`
 
