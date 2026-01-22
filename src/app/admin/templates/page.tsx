@@ -1,4 +1,5 @@
 import NavTabs from '@/components/Admin/NavTabs';
+import { normalizeTemplateLayout } from '@/lib/document-template-layout';
 import { prisma } from '@/lib/prisma';
 import TemplatesClient from './TemplatesClient';
 
@@ -12,13 +13,7 @@ export default async function Page() {
 
   const normalized = templates.map((template) => ({
     ...template,
-    layoutJson: (() => {
-      try {
-        return JSON.parse(template.layoutJson);
-      } catch {
-        return { sections: [] };
-      }
-    })(),
+    layoutJson: normalizeTemplateLayout(template.layoutJson),
   }));
 
   return (
