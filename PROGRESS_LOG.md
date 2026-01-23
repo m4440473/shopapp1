@@ -1,5 +1,9 @@
 # Progress Log
 
+## 2026-01-23
+- Summary: Expanded the Replit agent playbook with publishing rules, debugging checklist, and deployment templates.
+- Tests run: `npm run lint`
+
 ## 2026-01-22
 - Summary: Normalized template section data for the admin template designer and restored the Shop Floor Intelligence nav link.
 - Tests run: `npm run lint`
