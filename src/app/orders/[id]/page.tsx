@@ -32,6 +32,17 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -40,6 +51,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Select,
   SelectContent,
@@ -106,6 +118,15 @@ type PendingAction =
   | { type: 'status'; status: string }
   | { type: 'checklist'; checklistId: string; checked: boolean };
 
+type PendingPartPayload = {
+  partNumber: string;
+  quantity: number;
+  materialId?: string;
+  stockSize?: string;
+  cutLength?: string;
+  notes?: string;
+};
+
 const statusColor = (status: string) =>
   ({
     NEW: 'bg-sky-500/20 text-sky-200',
@@ -162,6 +183,11 @@ export default function OrderDetailPage() {
   const [employeeDialogError, setEmployeeDialogError] = useState<string | null>(null);
   const [employeeSubmitting, setEmployeeSubmitting] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [canEditParts, setCanEditParts] = useState(false);
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [pendingPartPayload, setPendingPartPayload] = useState<PendingPartPayload | null>(null);
+  const [invoiceAction, setInvoiceAction] = useState<'new' | 'update'>('new');
+  const [copyChargesFromPartId, setCopyChargesFromPartId] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
@@ -207,6 +233,7 @@ export default function OrderDetailPage() {
       if (!res.ok) throw res;
       const data = await res.json();
       setItem(data.item);
+      setCanEditParts(Boolean(data?.permissions?.canEditParts));
       nextItem = data.item;
       setError(null);
     } catch (err: any) {
@@ -249,6 +276,16 @@ export default function OrderDetailPage() {
     });
     setPartEdits(next);
   }, [item?.parts]);
+
+  useEffect(() => {
+    if (!copyChargesFromPartId) return;
+    const stillExists = Array.isArray(item?.parts)
+      ? item.parts.some((part: any) => part?.id === copyChargesFromPartId)
+      : false;
+    if (!stillExists) {
+      setCopyChargesFromPartId('');
+    }
+  }, [item?.parts, copyChargesFromPartId]);
 
   useEffect(() => {
     if (item?.attachments?.length) {
@@ -409,7 +446,7 @@ export default function OrderDetailPage() {
 
   async function handleAddPart(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!id) return;
+    if (!id || !canEditParts) return;
     const trimmedPartNumber = partForm.partNumber.trim();
     if (!trimmedPartNumber) {
       setPartError('Part number is required');
@@ -420,17 +457,30 @@ export default function OrderDetailPage() {
       setPartError('Quantity must be at least 1');
       return;
     }
+    setPartError(null);
+    const payload: PendingPartPayload = {
+      partNumber: trimmedPartNumber,
+      quantity: quantityValue,
+    };
+    if (partForm.stockSize.trim()) payload.stockSize = partForm.stockSize.trim();
+    if (partForm.cutLength.trim()) payload.cutLength = partForm.cutLength.trim();
+    if (partForm.materialId) payload.materialId = partForm.materialId;
+    if (partForm.notes.trim()) payload.notes = partForm.notes.trim();
+
+    setPendingPartPayload(payload);
+    setInvoiceDialogOpen(true);
+  }
+
+  async function confirmAddPart() {
+    if (!id || !pendingPartPayload) return;
     setPartSaving(true);
     setPartError(null);
     try {
       const payload: Record<string, unknown> = {
-        partNumber: trimmedPartNumber,
-        quantity: quantityValue,
+        ...pendingPartPayload,
+        invoiceAction,
       };
-      if (partForm.stockSize.trim()) payload.stockSize = partForm.stockSize.trim();
-      if (partForm.cutLength.trim()) payload.cutLength = partForm.cutLength.trim();
-      if (partForm.materialId) payload.materialId = partForm.materialId;
-      if (partForm.notes.trim()) payload.notes = partForm.notes.trim();
+      if (copyChargesFromPartId) payload.copyChargesFromPartId = copyChargesFromPartId;
 
       const res = await fetch(`/api/orders/${id}/parts`, {
         method: 'POST',
@@ -466,6 +516,10 @@ export default function OrderDetailPage() {
       }
 
       setPartForm({ partNumber: '', quantity: '1', materialId: '', stockSize: '', cutLength: '', notes: '' });
+      setCopyChargesFromPartId('');
+      setInvoiceAction('new');
+      setPendingPartPayload(null);
+      setInvoiceDialogOpen(false);
       const updated = await load();
       if (createdPartId) {
         setExpandedParts((prev) => ({ ...prev, [createdPartId]: true }));
@@ -564,6 +618,40 @@ export default function OrderDetailPage() {
       await load();
     } catch (error: any) {
       setPartEditErrors((prev) => ({ ...prev, [partId]: error?.message || 'Failed to update part' }));
+    } finally {
+      setPartSavingIds((prev) => ({ ...prev, [partId]: false }));
+    }
+  }
+
+  async function handleRemovePart(part: any) {
+    const partId = part?.id;
+    if (!id || !partId) return;
+    setPartSavingIds((prev) => ({ ...prev, [partId]: true }));
+    setPartEditErrors((prev) => ({ ...prev, [partId]: null }));
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/${partId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const raw = await res.text();
+      if (!res.ok) {
+        let message = 'Failed to remove part';
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            message =
+              typeof parsed?.error === 'string'
+                ? parsed.error
+                : parsed?.message || JSON.stringify(parsed?.error ?? parsed);
+          } catch {
+            message = raw;
+          }
+        }
+        throw new Error(message);
+      }
+      await load();
+    } catch (error: any) {
+      setPartEditErrors((prev) => ({ ...prev, [partId]: error?.message || 'Failed to remove part' }));
     } finally {
       setPartSavingIds((prev) => ({ ...prev, [partId]: false }));
     }
@@ -899,6 +987,77 @@ export default function OrderDetailPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={invoiceDialogOpen}
+        onOpenChange={(open) => {
+          setInvoiceDialogOpen(open);
+          if (!open) {
+            setPendingPartPayload(null);
+            setInvoiceAction('new');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invoice handling for the new part</DialogTitle>
+            <DialogDescription>
+              Choose how this added part should be invoiced before we save it to the order.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 text-sm">
+            <RadioGroup
+              value={invoiceAction}
+              onValueChange={(value) => setInvoiceAction(value as 'new' | 'update')}
+              className="gap-3"
+            >
+              <label className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/10 p-3">
+                <RadioGroupItem value="new" className="mt-1" />
+                <div className="space-y-1">
+                  <div className="font-medium text-foreground">Create a separate invoice (default)</div>
+                  <p className="text-xs text-muted-foreground">
+                    Keeps the original invoice and PO intact while billing only this added part.
+                  </p>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/10 p-3">
+                <RadioGroupItem value="update" className="mt-1" />
+                <div className="space-y-1">
+                  <div className="font-medium text-foreground">Update the existing invoice</div>
+                  <p className="text-xs text-muted-foreground">
+                    Regenerates the original invoice to include this part and invalidates the previous PO.
+                  </p>
+                </div>
+              </label>
+            </RadioGroup>
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700">
+              Updating the existing invoice invalidates the previous PO. The prior invoice and PO remain available in
+              attachments and notes for reference.
+            </div>
+            {partError ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {partError}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setInvoiceDialogOpen(false);
+                setPendingPartPayload(null);
+                setInvoiceAction('new');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={confirmAddPart} disabled={partSaving}>
+              {partSaving ? 'Adding…' : 'Confirm & add part'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1263,6 +1422,7 @@ export default function OrderDetailPage() {
                       <Input
                         id={`part-number-${primaryPart.id}`}
                         value={getPartEditState(primaryPart).partNumber}
+                        disabled={!canEditParts}
                         onChange={(e) => {
                           setPartEdits((prev) => ({
                             ...prev,
@@ -1283,6 +1443,7 @@ export default function OrderDetailPage() {
                         type="number"
                         min={1}
                         value={getPartEditState(primaryPart).quantity}
+                        disabled={!canEditParts}
                         onChange={(e) => {
                           setPartEdits((prev) => ({
                             ...prev,
@@ -1297,10 +1458,11 @@ export default function OrderDetailPage() {
                     </div>
                     <div className="grid gap-1.5">
                       <Label htmlFor={`part-material-${primaryPart.id}`}>Material</Label>
-                      <Select
-                        value={getPartEditState(primaryPart).materialId || NONE_VALUE}
-                        onValueChange={(value) => {
-                          setPartEdits((prev) => ({
+                    <Select
+                      value={getPartEditState(primaryPart).materialId || NONE_VALUE}
+                      disabled={!canEditParts}
+                      onValueChange={(value) => {
+                        setPartEdits((prev) => ({
                             ...prev,
                             [primaryPart.id]: {
                               ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
@@ -1331,6 +1493,7 @@ export default function OrderDetailPage() {
                       <Input
                         id={`part-stock-${primaryPart.id}`}
                         value={getPartEditState(primaryPart).stockSize}
+                        disabled={!canEditParts}
                         onChange={(e) => {
                           setPartEdits((prev) => ({
                             ...prev,
@@ -1349,6 +1512,7 @@ export default function OrderDetailPage() {
                       <Input
                         id={`part-cut-${primaryPart.id}`}
                         value={getPartEditState(primaryPart).cutLength}
+                        disabled={!canEditParts}
                         onChange={(e) => {
                           setPartEdits((prev) => ({
                             ...prev,
@@ -1367,6 +1531,7 @@ export default function OrderDetailPage() {
                       <Textarea
                         id={`part-notes-${primaryPart.id}`}
                         value={getPartEditState(primaryPart).notes}
+                        disabled={!canEditParts}
                         onChange={(e) => {
                           setPartEdits((prev) => ({
                             ...prev,
@@ -1400,15 +1565,43 @@ export default function OrderDetailPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => resetPartEdit(primaryPart)}
-                        disabled={partSavingIds[primaryPart.id]}
+                        disabled={!canEditParts || partSavingIds[primaryPart.id]}
                       >
                         Reset
                       </Button>
+                      {canEditParts && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={partSavingIds[primaryPart.id] || parts.length <= 1}
+                            >
+                              Remove
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remove this part?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will remove the part, its attachments, and associated add-ons/labor charges.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleRemovePart(primaryPart)}>
+                                Remove part
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                       <Button
                         type="button"
                         size="sm"
                         onClick={() => handleUpdatePart(primaryPart)}
-                        disabled={partSavingIds[primaryPart.id]}
+                        disabled={!canEditParts || partSavingIds[primaryPart.id]}
                         className="rounded-full"
                       >
                         {partSavingIds[primaryPart.id] ? 'Saving…' : 'Save part'}
@@ -1465,6 +1658,7 @@ export default function OrderDetailPage() {
                               <Input
                                 id={`part-number-${part.id}`}
                                 value={getPartEditState(part).partNumber}
+                                disabled={!canEditParts}
                                 onChange={(e) => {
                                   setPartEdits((prev) => ({
                                     ...prev,
@@ -1485,6 +1679,7 @@ export default function OrderDetailPage() {
                                 type="number"
                                 min={1}
                                 value={getPartEditState(part).quantity}
+                                disabled={!canEditParts}
                                 onChange={(e) => {
                                   setPartEdits((prev) => ({
                                     ...prev,
@@ -1501,6 +1696,7 @@ export default function OrderDetailPage() {
                               <Label htmlFor={`part-material-${part.id}`}>Material</Label>
                               <Select
                                 value={getPartEditState(part).materialId || NONE_VALUE}
+                                disabled={!canEditParts}
                                 onValueChange={(value) => {
                                   setPartEdits((prev) => ({
                                     ...prev,
@@ -1533,6 +1729,7 @@ export default function OrderDetailPage() {
                               <Input
                                 id={`part-stock-${part.id}`}
                                 value={getPartEditState(part).stockSize}
+                                disabled={!canEditParts}
                                 onChange={(e) => {
                                   setPartEdits((prev) => ({
                                     ...prev,
@@ -1551,6 +1748,7 @@ export default function OrderDetailPage() {
                               <Input
                                 id={`part-cut-${part.id}`}
                                 value={getPartEditState(part).cutLength}
+                                disabled={!canEditParts}
                                 onChange={(e) => {
                                   setPartEdits((prev) => ({
                                     ...prev,
@@ -1569,6 +1767,7 @@ export default function OrderDetailPage() {
                               <Textarea
                                 id={`part-notes-${part.id}`}
                                 value={getPartEditState(part).notes}
+                                disabled={!canEditParts}
                                 onChange={(e) => {
                                   setPartEdits((prev) => ({
                                     ...prev,
@@ -1602,15 +1801,44 @@ export default function OrderDetailPage() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => resetPartEdit(part)}
-                                disabled={partSavingIds[part.id]}
+                                disabled={!canEditParts || partSavingIds[part.id]}
                               >
                                 Reset
                               </Button>
+                              {canEditParts && (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={partSavingIds[part.id]}
+                                    >
+                                      Remove
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Remove this part?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        This will remove the part, its attachments, and associated add-ons/labor
+                                        charges.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleRemovePart(part)}>
+                                        Remove part
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
                               <Button
                                 type="button"
                                 size="sm"
                                 onClick={() => handleUpdatePart(part)}
-                                disabled={partSavingIds[part.id]}
+                                disabled={!canEditParts || partSavingIds[part.id]}
                                 className="rounded-full"
                               >
                                 {partSavingIds[part.id] ? 'Saving…' : 'Save part'}
@@ -1634,98 +1862,128 @@ export default function OrderDetailPage() {
               <CardDescription>Extend this order with additional line items.</CardDescription>
             </CardHeader>
             <CardContent>
-              <form className="space-y-4" onSubmit={handleAddPart}>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label htmlFor="new-part-number">Part number</Label>
-                    <Input
-                      id="new-part-number"
-                      value={partForm.partNumber}
-                      onChange={(e) => {
-                        setPartForm((prev) => ({ ...prev, partNumber: e.target.value }));
-                        setPartError(null);
-                      }}
-                      placeholder="e.g. SP-1024"
-                      required
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="new-part-quantity">Quantity</Label>
-                    <Input
-                      id="new-part-quantity"
-                      type="number"
-                      min={1}
-                      value={partForm.quantity}
-                      onChange={(e) => {
-                        setPartForm((prev) => ({ ...prev, quantity: e.target.value }));
-                        setPartError(null);
-                      }}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="new-part-stock">Stock size</Label>
-                    <Input
-                      id="new-part-stock"
-                      value={partForm.stockSize}
-                      onChange={(e) => setPartForm((prev) => ({ ...prev, stockSize: e.target.value }))}
-                      placeholder="Optional (e.g. 2in x 12in bar)"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="new-part-cut">Cut length</Label>
-                    <Input
-                      id="new-part-cut"
-                      value={partForm.cutLength}
-                      onChange={(e) => setPartForm((prev) => ({ ...prev, cutLength: e.target.value }))}
-                      placeholder="Optional (e.g. 6.5 in)"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="new-part-material">Material</Label>
-                    <Select
-                      value={partForm.materialId || NONE_VALUE}
-                      onValueChange={(value) => {
-                        setPartForm((prev) => ({ ...prev, materialId: value === NONE_VALUE ? '' : value }));
-                      }}
-                    >
-                      <SelectTrigger id="new-part-material" className="border-border/60 bg-background/80 text-left">
-                        <SelectValue placeholder="Optional" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NONE_VALUE}>TBD</SelectItem>
-                        {materials.map((material) => (
-                          <SelectItem key={material.id} value={material.id}>
-                            {material.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2 sm:col-span-2">
-                    <Label htmlFor="new-part-notes">Notes</Label>
-                    <Textarea
-                      id="new-part-notes"
-                      value={partForm.notes}
-                      onChange={(e) => {
-                        setPartForm((prev) => ({ ...prev, notes: e.target.value }));
-                        setPartError(null);
-                      }}
-                      placeholder="Surface finish, tolerances, tooling, etc."
-                      className="min-h-[100px]"
-                    />
-                  </div>
+              {!canEditParts ? (
+                <div className="rounded-lg border border-border/60 bg-muted/10 px-4 py-3 text-sm text-muted-foreground">
+                  Only admins can add or remove customer parts.
                 </div>
-                {partError && (
-                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {partError}
+              ) : (
+                <form className="space-y-4" onSubmit={handleAddPart}>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label htmlFor="new-part-number">Part number</Label>
+                      <Input
+                        id="new-part-number"
+                        value={partForm.partNumber}
+                        onChange={(e) => {
+                          setPartForm((prev) => ({ ...prev, partNumber: e.target.value }));
+                          setPartError(null);
+                        }}
+                        placeholder="e.g. SP-1024"
+                        required
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="new-part-quantity">Quantity</Label>
+                      <Input
+                        id="new-part-quantity"
+                        type="number"
+                        min={1}
+                        value={partForm.quantity}
+                        onChange={(e) => {
+                          setPartForm((prev) => ({ ...prev, quantity: e.target.value }));
+                          setPartError(null);
+                        }}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="new-part-stock">Stock size</Label>
+                      <Input
+                        id="new-part-stock"
+                        value={partForm.stockSize}
+                        onChange={(e) => setPartForm((prev) => ({ ...prev, stockSize: e.target.value }))}
+                        placeholder="Optional (e.g. 2in x 12in bar)"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="new-part-cut">Cut length</Label>
+                      <Input
+                        id="new-part-cut"
+                        value={partForm.cutLength}
+                        onChange={(e) => setPartForm((prev) => ({ ...prev, cutLength: e.target.value }))}
+                        placeholder="Optional (e.g. 6.5 in)"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="new-part-material">Material</Label>
+                      <Select
+                        value={partForm.materialId || NONE_VALUE}
+                        onValueChange={(value) => {
+                          setPartForm((prev) => ({ ...prev, materialId: value === NONE_VALUE ? '' : value }));
+                        }}
+                      >
+                        <SelectTrigger id="new-part-material" className="border-border/60 bg-background/80 text-left">
+                          <SelectValue placeholder="Optional" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_VALUE}>TBD</SelectItem>
+                          {materials.map((material) => (
+                            <SelectItem key={material.id} value={material.id}>
+                              {material.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="new-part-copy">Add-ons &amp; labor</Label>
+                      <Select
+                        value={copyChargesFromPartId || NONE_VALUE}
+                        onValueChange={(value) => {
+                          setCopyChargesFromPartId(value === NONE_VALUE ? '' : value);
+                        }}
+                      >
+                        <SelectTrigger id="new-part-copy" className="border-border/60 bg-background/80 text-left">
+                          <SelectValue placeholder="Copy from existing part" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_VALUE}>Do not copy add-ons/labor</SelectItem>
+                          {parts.map((part: any, index: number) => (
+                            <SelectItem key={part.id} value={part.id}>
+                              {part.partNumber || `Part ${index + 1}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Copies existing add-ons and labor charges from a selected part on this order.
+                      </p>
+                    </div>
+                    <div className="grid gap-2 sm:col-span-2">
+                      <Label htmlFor="new-part-notes">Notes</Label>
+                      <Textarea
+                        id="new-part-notes"
+                        value={partForm.notes}
+                        onChange={(e) => {
+                          setPartForm((prev) => ({ ...prev, notes: e.target.value }));
+                          setPartError(null);
+                        }}
+                        placeholder="Surface finish, tolerances, tooling, etc."
+                        className="min-h-[100px]"
+                      />
+                    </div>
                   </div>
-                )}
-                <div className="flex justify-end">
-                  <Button type="submit" disabled={partSaving} className="rounded-full">
-                    {partSaving ? 'Adding…' : 'Add part'}
-                  </Button>
-                </div>
-              </form>
+                  {partError && (
+                    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      {partError}
+                    </div>
+                  )}
+                  <div className="flex justify-end">
+                    <Button type="submit" disabled={partSaving} className="rounded-full">
+                      {partSaving ? 'Adding…' : 'Add part'}
+                    </Button>
+                  </div>
+                </form>
+              )}
             </CardContent>
           </Card>
 

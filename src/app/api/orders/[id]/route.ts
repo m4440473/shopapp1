@@ -33,7 +33,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   });
 
   if (!order) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json({ item: sanitizePricingForNonAdmin(order, isAdmin) });
+  return NextResponse.json({
+    item: sanitizePricingForNonAdmin(order, isAdmin),
+    permissions: {
+      canEditParts: isAdmin,
+    },
+  });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {

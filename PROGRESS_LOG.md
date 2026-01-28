@@ -1,5 +1,9 @@
 # Progress Log
 
+## 2026-01-28
+- Summary: Added admin-only part management controls with invoice handling prompts, add-on/labor charge copying, and server-side logging for part changes.
+- Tests run: `npm run lint`
+
 ## 2026-01-23
 - Summary: Expanded the Replit agent playbook with publishing rules, debugging checklist, and deployment templates.
 - Tests run: `npm run lint`
