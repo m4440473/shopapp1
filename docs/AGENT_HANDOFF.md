@@ -1,25 +1,28 @@
 # Agent Handoff (Update Every Session)
 
-Date: 2026-01-29
+Date: 2026-01-30
 Agent: Codex
-Goal (1 sentence): Fix the middleware response status typing error and re-run the build.
+Goal (1 sentence): Create a canonical project document to preserve the product vision and update continuity docs.
 
 ## What I changed
-- Summary: Updated middleware to set status via NextResponse.rewrite init options.
+- Summary: Added CANON.md and logged the decision, plus updated continuity docs.
 
 ## Files touched
-- middleware.ts — set status via rewrite init to avoid read-only status assignment.
-- PROGRESS_LOG.md — session entry with test results.
+- CANON.md — new canonical product and UX constitution.
+- docs/AGENT_CONTEXT.md — Decision Log entry for CANON.md.
+- PROGRESS_LOG.md — session entry.
 - docs/AGENT_HANDOFF.md — updated handoff.
 
 ## Commands run
+- ls
+- cat AGENTS.md
 - cat docs/AGENT_CONTEXT.md
 - cat PROGRESS_LOG.md
 - cat docs/AGENT_HANDOFF.md
-- npm run build
 
 ## Notes / gotchas
-- `npm run build` failed due to Orders assign route type narrowing (`result.data` on ServiceResult).
+- No tests run (per request).
 
 ## Next steps
-- [ ] If permitted, update Orders assign route to properly narrow ServiceResult before accessing data.
+- [ ] Review CANON.md for accuracy and adjust wording as needed.
+- [ ] Continue P0 stabilization work once the canon is approved.

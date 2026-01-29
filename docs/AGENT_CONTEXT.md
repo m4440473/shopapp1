@@ -59,6 +59,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-01-30 — Add CANON.md as project constitution
+Decision: Introduce CANON.md as the single source of truth for product intent, mental model, and UX principles.
+Reason: Prevent context drift across chats/agents and make project direction explicit.
+
 ### 2026-01-28 — Clarify charge model
 Decision: Document that LABOR/ADDON are already per-part; other charge kinds can be order-level.
 Reason: Prevent agents from redoing already-solved work.
