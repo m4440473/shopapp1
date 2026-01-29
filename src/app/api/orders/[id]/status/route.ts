@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin, isMachinist } from '@/lib/rbac';
+import { updateOrderStatusForEmployee } from '@/modules/orders/orders.service';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -13,22 +13,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const json = await req.json().catch(() => null);
   const { status } = json ?? {};
   const employeeName = typeof json?.employeeName === 'string' ? json.employeeName.trim() : '';
-  const allowed = ['NEW','PROGRAMMING','RUNNING','INSPECTING','READY_FOR_ADDONS','COMPLETE','CLOSED'];
-  if (!status || !allowed.includes(status)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
-  if (!employeeName) return NextResponse.json({ error: 'Employee name is required' }, { status: 400 });
-
-  const existingOrder = await prisma.order.findUnique({ where: { id: params.id }, select: { status: true } });
-  if (!existingOrder) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-
-  const updatedOrder = await prisma.order.update({ where: { id: params.id }, data: { status } });
-  await prisma.statusHistory.create({
-    data: {
-      orderId: params.id,
-      from: existingOrder.status,
-      to: status,
-      userId: (session.user as any).id,
-      reason: `Status changed by ${employeeName}`,
-    },
+  const result = await updateOrderStatusForEmployee({
+    orderId: params.id,
+    status,
+    employeeName,
+    userId: (session.user as any).id,
   });
-  return NextResponse.json({ ok: true, order: updatedOrder });
+
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
+
+  return NextResponse.json({ ok: true, order: result.data.order });
 }
