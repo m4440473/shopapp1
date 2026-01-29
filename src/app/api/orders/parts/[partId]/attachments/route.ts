@@ -28,11 +28,12 @@ export async function GET(req: NextRequest, { params }: { params: { partId: stri
   if (!partId) return NextResponse.json({ error: 'Missing part id' }, { status: 400 });
 
   const result = await listAttachmentsForPart(partId);
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ attachments: result.data.attachments });
+  const { attachments } = result.data as { attachments: unknown };
+  return NextResponse.json({ attachments });
 }
 
 export async function POST(req: NextRequest, { params }: { params: { partId: string } }) {
@@ -49,9 +50,10 @@ export async function POST(req: NextRequest, { params }: { params: { partId: str
   }
 
   const result = await createAttachmentForPart({ partId, payload: parsed.data });
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ attachment: result.data.attachment }, { status: 201 });
+  const { attachment } = result.data as { attachment: unknown };
+  return NextResponse.json({ attachment }, { status: 201 });
 }

@@ -20,9 +20,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     userId: (session.user as any).id,
   });
 
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ ok: true, order: result.data.order });
+  const { order } = result.data as { order: unknown };
+  return NextResponse.json({ ok: true, order });
 }

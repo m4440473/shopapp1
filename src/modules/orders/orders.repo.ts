@@ -174,7 +174,7 @@ export async function createOrderWithCustomFields({
   orderData,
   customFieldValues,
 }: {
-  orderData: Parameters<typeof prisma.order.create>[0];
+  orderData: Record<string, unknown>;
   customFieldValues: { fieldId: string; value: string }[];
 }) {
   return prisma.$transaction(async (tx) => {
@@ -234,7 +234,7 @@ export async function updateOrderStatus(id: string, status: string) {
   return prisma.order.update({ where: { id }, data: { status } });
 }
 
-export async function createStatusHistoryEntry(data: Parameters<typeof prisma.statusHistory.create>[0]['data']) {
+export async function createStatusHistoryEntry(data: Record<string, unknown>) {
   return prisma.statusHistory.create({ data });
 }
 
@@ -515,7 +515,7 @@ export async function findAddonDepartment(addonId: string) {
   });
 }
 
-export async function createOrderCharge(data: Parameters<typeof prisma.orderCharge.create>[0]) {
+export async function createOrderCharge(data: Record<string, unknown>) {
   return prisma.orderCharge.create(data);
 }
 
@@ -544,7 +544,7 @@ export async function deleteOrderChargeWithChecklist(chargeId: string) {
   ]);
 }
 
-export async function createOrderAttachment(data: Parameters<typeof prisma.attachment.create>[0]) {
+export async function createOrderAttachment(data: Record<string, unknown>) {
   return prisma.attachment.create(data);
 }
 
@@ -576,7 +576,7 @@ export async function findPartWithOrderInfo(partId: string) {
   });
 }
 
-export async function createPartAttachment(data: Parameters<typeof prisma.partAttachment.create>[0]) {
+export async function createPartAttachment(data: Record<string, unknown>) {
   return prisma.partAttachment.create(data);
 }
 

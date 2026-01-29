@@ -5,8 +5,9 @@ import { Readable } from 'node:stream';
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAppSettings } from '@/lib/app-settings';
 import { ensureAttachmentRoot } from '@/lib/storage';
+
+export const dynamic = 'force-dynamic';
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   '.png': 'image/png',
@@ -17,6 +18,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 };
 
 export async function GET(_req: NextRequest) {
+  const { getAppSettings } = await import('@/lib/app-settings');
   const settings = await getAppSettings();
   if (!settings.logoPath) {
     return new NextResponse('Not found', { status: 404 });

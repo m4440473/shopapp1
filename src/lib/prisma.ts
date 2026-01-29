@@ -2,10 +2,23 @@ import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-  });
+const getPrismaClient = () => {
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = new PrismaClient({
+      log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    });
+  }
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+  return globalForPrisma.prisma;
+};
+
+export const prisma = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      const client = getPrismaClient();
+      const value = (client as any)[prop];
+      return typeof value === 'function' ? value.bind(client) : value;
+    },
+  }
+) as PrismaClient;

@@ -1,3 +1,5 @@
+**Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
+
 # Agent Context — ShopApp1 (Single Source of Truth)
 
 Shared brain for multiple agents.

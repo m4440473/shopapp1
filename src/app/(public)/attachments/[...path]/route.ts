@@ -5,10 +5,12 @@ import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 
 import { ensureAttachmentRoot } from '@/lib/storage';
-import { getAppSettings } from '@/lib/app-settings';
-import { prisma } from '@/lib/prisma';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest, { params }: { params: { path: string[] } }) {
+  const { prisma } = await import('@/lib/prisma');
+  const { getAppSettings } = await import('@/lib/app-settings');
   const segments = Array.isArray(params.path) ? params.path : [];
   if (segments.length === 0) {
     return new NextResponse('Not found', { status: 404 });

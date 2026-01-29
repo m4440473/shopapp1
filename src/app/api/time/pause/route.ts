@@ -13,9 +13,10 @@ export async function POST() {
   if (!userId) return new NextResponse('Unauthorized', { status: 401 });
 
   const result = await pauseActiveTimeEntry(userId);
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ entry: result.data.entry });
+  const { entry } = result.data as { entry: unknown };
+  return NextResponse.json({ entry });
 }
