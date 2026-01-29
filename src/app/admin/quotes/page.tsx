@@ -23,7 +23,7 @@ export default async function Page() {
     redirect('/');
   }
 
-  const isAdmin = true;
+  const isAdmin = canAccessAdmin(user ?? role);
 
   const headerStore = headers();
   const host = headerStore.get('x-forwarded-host') ?? headerStore.get('host');

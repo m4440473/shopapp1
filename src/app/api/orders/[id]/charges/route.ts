@@ -22,11 +22,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   if (!orderId) return NextResponse.json({ error: 'Missing order id' }, { status: 400 });
 
   const result = await listChargesForOrder(orderId);
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ charges: result.data.charges });
+  const { charges } = result.data as { charges: unknown };
+  return NextResponse.json({ charges });
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -43,9 +44,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const result = await createChargeForOrder({ orderId, payload: parsed.data });
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ charge: result.data.charge }, { status: 201 });
+  const { charge } = result.data as { charge: unknown };
+  return NextResponse.json({ charge }, { status: 201 });
 }

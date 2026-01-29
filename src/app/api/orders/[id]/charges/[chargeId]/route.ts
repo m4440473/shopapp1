@@ -30,11 +30,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const result = await updateChargeForOrder({ orderId, chargeId, payload: parsed.data });
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ charge: result.data.charge });
+  const { charge } = result.data as { charge: unknown };
+  return NextResponse.json({ charge });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string; chargeId: string } }) {
@@ -47,7 +48,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   }
 
   const result = await deleteChargeForOrder({ orderId, chargeId });
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 

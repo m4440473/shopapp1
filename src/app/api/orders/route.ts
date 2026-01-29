@@ -30,6 +30,9 @@ export async function GET(req: NextRequest) {
     take,
     cursor,
   });
+  if (result.ok === false) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
   return NextResponse.json(result.data);
 }
 
@@ -48,9 +51,10 @@ export async function POST(req: NextRequest) {
   const body = parsed.data;
   const userId = (session.user as any)?.id as string | undefined;
   const result = await createOrderFromPayload(body, userId);
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ id: result.data.id }, { status: 201 });
+  const { id } = result.data as { id: unknown };
+  return NextResponse.json({ id }, { status: 201 });
 }

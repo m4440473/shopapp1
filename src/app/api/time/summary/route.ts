@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     .filter(Boolean);
 
   const result = await getTimeEntrySummary(userId, orderId, partIds);
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 

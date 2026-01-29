@@ -28,11 +28,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     payload: parsed.data,
     userId,
   });
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ part: result.data.part });
+  const { part } = result.data as { part: unknown };
+  return NextResponse.json({ part });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string; partId: string } }) {
@@ -46,7 +47,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   if (!id || !partId) return NextResponse.json({ error: 'Missing id or partId' }, { status: 400 });
 
   const result = await deleteOrderPartDetails({ orderId: id, partId, userId });
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 

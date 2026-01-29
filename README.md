@@ -1,10 +1,12 @@
 # Shop Orders — Database Layer
 
+npm is the canonical install path (package-lock.json is authoritative).
+
 This package contains the Prisma schema and seed for the Shop Orders app.
 
 ## Replit deployment playbook
 
-See [`REPLIT_AGENT_PLAYBOOK.md`](./REPLIT_AGENT_PLAYBOOK.md) for Replit environment variables, build/start steps, and troubleshooting tips.
+See [`docs/archive/REPLIT_AGENT_PLAYBOOK.md`](./docs/archive/REPLIT_AGENT_PLAYBOOK.md) for historical Replit environment variables, build/start steps, and troubleshooting tips.
 
 ## Prerequisites
 
@@ -18,41 +20,28 @@ See [`REPLIT_AGENT_PLAYBOOK.md`](./REPLIT_AGENT_PLAYBOOK.md) for Replit environm
    ```
 
    This installs Node.js and its accompanying `npm` CLI.
-2. Enable [Corepack](https://nodejs.org/api/corepack.html) so you can use the
-   project’s preferred package manager (`pnpm`):
-
-   ```bash
-   corepack enable
-   ```
-
-   If Corepack is unavailable on your Node.js version, install pnpm globally
-   instead: `npm install -g pnpm`.
+2. Use the npm CLI that ships with Node.js for installs and scripts.
 
 After the prerequisites are in place, install dependencies from the repository
 root:
 
 ```bash
-pnpm install
+npm ci
 ```
 
 ## Quickstart (SQLite)
 
 ```bash
-pnpm add -D prisma
-pnpm add @prisma/client
+npm install -D prisma
+npm install @prisma/client
 cp .env.example .env
-pnpm prisma generate
-pnpm prisma migrate dev --name init
-pnpm ts-node ./prisma/seed.ts
-
-> **Using npm instead of pnpm?** Run the equivalent scripts with `npm run`, or
-> call the Prisma CLI directly: `npx prisma generate` and `npx prisma migrate
-> dev`. Note the space between `prisma` and the command (for example,
-> `prisma generate`) when using `npx`.
+npm run prisma:generate
+npm run prisma:migrate -- --name init
+npm run seed
 
 If ts-node isn’t available:
 
-pnpm add -D ts-node typescript
+npm install -D ts-node typescript
 
 What you get
 	•	Complete schema with enums and relations
@@ -69,7 +58,7 @@ What you get
 - Attachments are stored on disk underneath the directory defined by the
   `ATTACHMENTS_DIR` environment variable. If it is not set, the application
   defaults to a local `storage/` folder in the project root.
-- `npm install` / `pnpm install` automatically run `scripts/init-storage.cjs` to
+- `npm install` automatically runs `scripts/init-storage.cjs` to
   create the attachment root and top-level folders for each business (Sterling
   Tool and Die, C and R Machining, Powder Coating).
 - Attachments are saved using slugified directory names in the format
@@ -84,9 +73,9 @@ Switch to MySQL (optional)
 	1.	In datasource db set provider = "mysql" and set DATABASE_URL in .env.
 	2.	Run:
 
-pnpm prisma generate
-pnpm prisma migrate dev --name init_mysql
-pnpm ts-node ./prisma/seed.ts
+npm run prisma:generate
+npm run prisma:migrate -- --name init_mysql
+npm run seed
 
 Hand-off to Agent 2+
 	•	Agent 2 (Auth/RBAC) can rely on User.passwordHash being nullable.
@@ -96,8 +85,8 @@ Hand-off to Agent 2+
 
 ## Acceptance criteria (hard)
 - `grep -R "\.\.\."` matches **zero** files.
-- `prisma/schema.prisma` compiles; `pnpm prisma generate` succeeds.
-- `pnpm prisma migrate dev --name init` creates a valid SQLite DB.
-- `pnpm ts-node prisma/seed.ts` runs without error and creates at least 3 orders with child rows.
+- `prisma/schema.prisma` compiles; `npm run prisma:generate` succeeds.
+- `npm run prisma:migrate -- --name init` creates a valid SQLite DB.
+- `npm run seed` runs without error and creates at least 3 orders with child rows.
 - All relations enforce sensible `onDelete` behaviors (Orders cascade parts, notes, timelogs, attachments, checklist; Users set-null on history/notes/attachments; Materials/Vendors set-null on parts/orders).
 - Models and enums exactly cover: User, Customer, Material, Vendor, Addon, Order, OrderPart, OrderChecklist, TimeLog, StatusHistory, Attachment, Note; Role, Priority, Status, TimePhase.

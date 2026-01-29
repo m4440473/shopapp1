@@ -1,7 +1,6 @@
-import type { NextAuthOptions, User } from 'next-auth';
+import type { NextAuthOptions } from 'next-auth';
 import type { JWT } from 'next-auth/jwt';
 import Credentials from 'next-auth/providers/credentials';
-import type { User as PrismaUser } from '@prisma/client';
 import { prisma } from './prisma';
 import { compare } from 'bcryptjs';
 
@@ -11,7 +10,30 @@ const resolveRole = (role?: string | null) => role ?? DEFAULT_ROLE;
 
 const isAdminRole = (role?: string | null) => resolveRole(role) === 'ADMIN';
 
-type SessionUser = User & { role?: string; admin?: boolean; id?: string };
+type PrismaUser = {
+  id: string;
+  email: string;
+  name: string | null;
+  role?: string | null;
+};
+
+type SessionUser = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+  role?: string;
+  admin?: boolean;
+};
+
+type SessionUserInput = {
+  id?: string;
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+  role?: string;
+  admin?: boolean;
+};
 
 const buildAuthUser = (user: PrismaUser): SessionUser => ({
   id: user.id,
@@ -32,13 +54,14 @@ const applyUserToToken = (token: JWT, user: SessionUser) => {
   };
 };
 
-const applyTokenToSessionUser = (sessionUser: SessionUser, token: JWT): SessionUser => {
+const applyTokenToSessionUser = (sessionUser: SessionUserInput, token: JWT): SessionUser => {
   const tokenRole = (token as { role?: string }).role;
+  const id = (token as { id?: string }).id ?? token.sub ?? sessionUser.id ?? '';
   return {
     ...sessionUser,
     role: tokenRole ?? DEFAULT_ROLE,
     admin: (token as { admin?: boolean }).admin ?? isAdminRole(tokenRole),
-    id: (token as { id?: string }).id ?? token.sub ?? sessionUser.id,
+    id,
   };
 };
 

@@ -21,10 +21,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (guard instanceof NextResponse) return guard;
 
   const result = await getOrderPrintData(params.id);
-  if (!result.ok) {
+  if (result.ok === false) {
     return new NextResponse('Not found', { status: result.status });
   }
-  const { order, addons } = result.data;
+  const { order, addons } = result.data as { order: any; addons: any };
 
   const [activeTemplate, templates] = await Promise.all([
     getActiveDocumentTemplate({

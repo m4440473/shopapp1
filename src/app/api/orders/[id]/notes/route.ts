@@ -15,5 +15,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!content || !content.trim()) return NextResponse.json({ error: 'Empty note' }, { status: 400 });
 
   const result = await addOrderNote(params.id, (session.user as any).id, content);
-  return NextResponse.json({ ok: true, note: result.data.note });
+  if (result.ok === false) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
+  const { note } = result.data as { note: unknown };
+  return NextResponse.json({ ok: true, note });
 }

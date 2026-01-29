@@ -1,6 +1,14 @@
-import type { TimeEntry } from '@prisma/client';
-
-export type { TimeEntry };
+export type TimeEntry = {
+  id: string;
+  orderId: string;
+  partId: string | null;
+  userId: string;
+  operation: string;
+  startedAt: Date;
+  endedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 export type TimeEntryStartInput = {
   orderId: string;

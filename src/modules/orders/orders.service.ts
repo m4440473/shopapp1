@@ -58,6 +58,7 @@ import {
   updateOrderAssignee,
   updateOrderCharge,
   updateOrderPart,
+  updatePartAttachment,
   updateOrderStatus,
   generateNextOrderNumber,
   syncChecklistForOrder,

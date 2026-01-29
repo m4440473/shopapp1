@@ -39,9 +39,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     userId,
   });
 
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ part: result.data.part, copiedCharges: result.data.copiedCharges }, { status: 201 });
+  const { part, copiedCharges } = result.data as { part: unknown; copiedCharges?: unknown };
+  return NextResponse.json({ part, copiedCharges }, { status: 201 });
 }

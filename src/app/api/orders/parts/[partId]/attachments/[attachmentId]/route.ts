@@ -33,11 +33,12 @@ export async function PATCH(
   }
 
   const result = await updateAttachmentForPart({ partId, attachmentId, payload: parsed.data });
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ attachment: result.data.attachment });
+  const { attachment } = result.data as { attachment: unknown };
+  return NextResponse.json({ attachment });
 }
 
 export async function DELETE(
@@ -53,7 +54,7 @@ export async function DELETE(
   }
 
   const result = await deleteAttachmentForPart(partId, attachmentId);
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 

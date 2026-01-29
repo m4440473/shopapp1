@@ -1,3 +1,5 @@
+**Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
+
 # Progress Log
 
 # PROGRESS_LOG — ShopApp1
@@ -38,6 +40,30 @@ Agents MUST update this at the end of every session.
 - Order‑level charges are still allowed for non‑labor/addon kinds (e.g., shipping/fees/discounts) by design.
 
 ## Session Log (append newest at top)
+
+### 2026-02-02 — Lockdown pass cleanup + build hardening
+- Removed patch zip artifacts, archived process docs under docs/archive, and ignored future zip artifacts.
+- Added non-authoritative banners to continuity docs and aligned README to npm as the canonical install path.
+- Standardized admin quotes pages to use canAccessAdmin and adjusted API routes for consistent ServiceResult handling.
+- Converted admin API PrismaClient usage to the shared prisma proxy, added lazy prisma init, and deferred prisma imports in public attachment routes to reduce build-time initialization.
+- Removed pnpm-lock.yaml.
+
+Files changed:
+- AGENTS.md, PROGRESS_LOG.md, docs/AGENT_CONTEXT.md, docs/AGENT_HANDOFF.md
+- README.md, .gitignore, pnpm-lock.yaml (removed)
+- docs/archive/* (archived process/patch docs)
+- src/app/admin/quotes/[id]/page.tsx, src/app/admin/quotes/page.tsx
+- src/app/api/admin/*, src/app/api/orders/*, src/app/api/time/*
+- src/app/(public)/attachments/[...path]/route.ts, src/app/(public)/branding/logo/route.ts
+- src/lib/auth.ts, src/lib/prisma.ts
+- src/modules/orders/orders.repo.ts, src/modules/orders/orders.service.ts, src/modules/time/time.types.ts
+
+Commands run:
+- npm ci (succeeded; warnings about deprecated packages)
+- npm test (passed)
+- npm run lint (passed)
+- npm run prisma:generate (failed: Prisma schema validation error on TimeEntry.part relation)
+- npm run build (failed: Prisma client not initialized during prerender without generated client)
 
 ### 2026-02-01 — Prompt E time tracking UX in orders/parts
 - Added time tracking summary API plus repo/service helpers to surface active/last entries per order and part.
