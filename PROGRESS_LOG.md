@@ -39,6 +39,36 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-01-29 — Regenerated Prisma client for build
+- Ran `npx prisma generate` to fix the missing Prisma client artifacts.
+- Build now progresses further but fails due to a TypeScript error in middleware (no changes made per constraints).
+
+Tests run:
+- `npx prisma generate`
+- `npm run build` (failed: middleware.ts type error assigning to read-only status)
+
+### 2026-01-29 — Mark quotes routes server-only
+- Added `server-only` imports to all Quotes API routes.
+- Re-ran build; failure persists due to missing Prisma client browser artifacts in this environment.
+
+Tests run:
+- `npm run build` (failed: Module not found: Can't resolve '.prisma/client/index-browser')
+
+### 2026-01-29 — Add server-only to quotes repo
+- Added the server-only import to the Quotes repo module.
+- Re-ran build; failure persists due to missing Prisma client browser artifacts in this environment.
+
+Tests run:
+- `npm run build` (failed: Module not found: Can't resolve '.prisma/client/index-browser')
+
+### 2026-01-29 — Quotes API routes use quotes repo
+- Created src/modules/quotes/quotes.repo.ts and moved Quotes API Prisma queries into repo functions.
+- Updated Quotes API routes to use the repo, keeping runtime behavior the same while enforcing Prisma boundaries.
+- Build failed in this environment due to missing Prisma client build artifacts (see tests).
+
+Tests run:
+- `npm run build` (failed: Module not found: Can't resolve '.prisma/client/index-browser')
+
 ### 2026-01-30 — Orders API routes layered via repo/service
 - Moved all Orders API route Prisma access into src/modules/orders/orders.repo.ts and added service wrappers for each Orders route.
 - Updated Orders API routes to call orders.service.ts for data access and business rules, keeping routes thin.
