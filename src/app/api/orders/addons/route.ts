@@ -30,5 +30,8 @@ export async function GET(req: NextRequest) {
 
   const { q, cursor, take, active } = parsed.data;
   const result = await listAddonsForOrders({ q, cursor, take, active });
+  if (result.ok === false) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
   return NextResponse.json(result.data);
 }

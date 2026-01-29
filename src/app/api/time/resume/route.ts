@@ -20,9 +20,10 @@ export async function POST(req: Request) {
   }
 
   const result = await resumeTimeEntry(userId, parsed.data);
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ entry: result.data.entry }, { status: 201 });
+  const { entry } = result.data as { entry: unknown };
+  return NextResponse.json({ entry }, { status: 201 });
 }

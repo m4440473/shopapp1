@@ -37,7 +37,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     togglerId: (session.user as any)?.id as string | undefined,
   });
 
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
@@ -48,5 +48,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const session = await requireAuth();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const result = await listChecklistForOrder(params.id);
+  if (result.ok === false) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
   return NextResponse.json(result.data);
 }

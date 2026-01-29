@@ -1,3 +1,5 @@
+**Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
+
 # AGENTS.md — ShopApp1 Agent Charter (Read First)
 
 This file is the authoritative operating guide for any Codex/agent working on this repo.

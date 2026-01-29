@@ -3,6 +3,7 @@ node_modules/
 dist/
 storage/
 *.log
+*.zip
 /.env
 cookies.txt
 prisma/prisma/dev.db

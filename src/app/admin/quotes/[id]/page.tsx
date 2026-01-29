@@ -44,7 +44,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
     redirect('/');
   }
 
-  const isAdmin = true;
+  const isAdmin = canAccessAdmin(user ?? role);
   const initialRole = role;
 
   const headerStore = headers();

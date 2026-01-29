@@ -17,5 +17,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const machinistId = rawMachinistId ? rawMachinistId : null;
 
   const result = await assignMachinistToOrder(id, machinistId);
-  return NextResponse.json({ ok: true, item: result.data.item });
+  if (result.ok === false) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
+  const { item } = result.data as { item: unknown };
+  return NextResponse.json({ ok: true, item });
 }

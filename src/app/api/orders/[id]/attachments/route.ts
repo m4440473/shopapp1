@@ -25,9 +25,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const userId = (session as any).user?.id as string | undefined;
 
   const result = await createAttachmentForOrder({ orderId: id, payload, userId });
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ attachment: result.data.attachment }, { status: 201 });
+  const { attachment } = result.data as { attachment: unknown };
+  return NextResponse.json({ attachment }, { status: 201 });
 }

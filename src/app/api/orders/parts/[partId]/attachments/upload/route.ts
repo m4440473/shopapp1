@@ -30,8 +30,8 @@ export async function POST(req: NextRequest, { params }: { params: { partId: str
   if (!partId) return NextResponse.json({ error: 'Missing part id' }, { status: 400 });
 
   const result = await getPartUploadContext(partId);
-  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
-  const part = result.data.part;
+  if (result.ok === false) return NextResponse.json({ error: result.error }, { status: result.status });
+  const { part } = result.data as { part: any };
 
   const form = await req.formData();
   const file = form.get('file');

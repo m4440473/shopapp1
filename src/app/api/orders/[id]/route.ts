@@ -16,7 +16,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
   const result = await getOrderDetails(id, isAdmin);
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const result = await updateOrderDetails(id, parsed.data);
-  if (!result.ok) {
+  if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
