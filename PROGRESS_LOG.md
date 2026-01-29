@@ -39,6 +39,14 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-01 — Prompt E time tracking UX in orders/parts
+- Added time tracking summary API plus repo/service helpers to surface active/last entries per order and part.
+- Added order-level and part-level time tracking controls inside the order detail page with clear active/last status.
+- Kept UI time tracking calls routed through API to avoid Prisma usage in UI components.
+
+Tests run:
+- Not run (not requested).
+
 ### 2026-01-31 — Prompt D time tracking interval core
 - Added TimeEntry model and time tracking module with interval-based start/pause/stop/resume services.
 - Created API routes for time start/pause/stop/resume that enforce single active entry per user.

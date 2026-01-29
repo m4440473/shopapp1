@@ -7,6 +7,29 @@ export async function findActiveTimeEntryForUser(userId: string) {
   });
 }
 
+export async function findLatestTimeEntryForUserOrder(
+  userId: string,
+  orderId: string,
+  partId?: string | null
+) {
+  return prisma.timeEntry.findFirst({
+    where: {
+      userId,
+      orderId,
+      ...(partId !== undefined ? { partId } : {}),
+    },
+    orderBy: { startedAt: 'desc' },
+  });
+}
+
+export async function findLatestTimeEntriesForUserParts(userId: string, partIds: string[]) {
+  if (!partIds.length) return [];
+  return prisma.timeEntry.findMany({
+    where: { userId, partId: { in: partIds } },
+    orderBy: { startedAt: 'desc' },
+  });
+}
+
 export async function findTimeEntryById(id: string) {
   return prisma.timeEntry.findUnique({ where: { id } });
 }
