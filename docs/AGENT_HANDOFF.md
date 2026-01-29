@@ -1,28 +1,22 @@
 # Agent Handoff (Update Every Session)
 
-Date: 2026-01-30
+Date: 2026-01-31
 Agent: Codex
-Goal (1 sentence): Enforce Orders/Quotes module boundaries and remove Prisma usage from related UI pages per Prompt C.
+Goal (1 sentence): Implement interval-based time tracking core services and API routes per Prompt D.
 
 ## What I changed
-- Summary: Added quotes service/repo helpers, routed quotes APIs through services, and switched Orders/Quotes print/admin pages to fetch data via APIs (no Prisma imports).
+- Summary: Added TimeEntry schema/module plus time tracking services and API routes for interval-based start/pause/stop/resume with single active enforcement.
 
 ## Files touched
-- src/lib/document-templates.ts
-- src/modules/quotes/quotes.repo.ts
-- src/modules/quotes/quotes.service.ts
-- src/modules/orders/orders.service.ts
-- src/app/api/admin/quotes/route.ts
-- src/app/api/admin/quotes/[id]/route.ts
-- src/app/api/admin/quotes/[id]/convert/route.ts
-- src/app/api/admin/quotes/[id]/approval/route.ts
-- src/app/api/admin/quotes/[id]/print-data/route.ts
-- src/app/api/orders/[id]/print-data/route.ts
-- src/app/admin/quotes/page.tsx
-- src/app/admin/quotes/[id]/page.tsx
-- src/app/admin/quotes/[id]/edit/page.tsx
-- src/app/admin/quotes/[id]/print/page.tsx
-- src/app/orders/[id]/print/page.tsx
+- prisma/schema.prisma
+- src/modules/time/time.schema.ts
+- src/modules/time/time.types.ts
+- src/modules/time/time.repo.ts
+- src/modules/time/time.service.ts
+- src/app/api/time/start/route.ts
+- src/app/api/time/pause/route.ts
+- src/app/api/time/stop/route.ts
+- src/app/api/time/resume/route.ts
 - PROGRESS_LOG.md
 - docs/AGENT_HANDOFF.md
 
@@ -35,23 +29,24 @@ Goal (1 sentence): Enforce Orders/Quotes module boundaries and remove Prisma usa
 - cat CANON.md
 - cat AGENT_PROMPTS.md
 - cat ROADMAP.md
-- rg -n "prisma" src/modules src/app src/lib -g'*.ts' -g'*.tsx'
-- rg -n "quotes" src/app/api src/app/admin/quotes src/app/orders -g'*.ts' -g'*.tsx'
-- rg -n "findOrder" src/modules/orders/orders.repo.ts
-- rg -n "findOrderWithDetails" src/modules/orders/orders.service.ts
-- rg -n "prisma" src/app/admin/quotes src/app/orders/[id]/print -g'*.tsx'
-- sed -n '1,220p' src/lib/quotes.server.ts
-- sed -n '1,220p' src/modules/quotes/quotes.repo.ts
-- sed -n '1,220p' src/modules/quotes/quotes.service.ts
-- sed -n '1,220p' src/modules/orders/orders.service.ts
-- sed -n '1,200p' src/app/admin/quotes/page.tsx
-- sed -n '1,200p' src/app/admin/quotes/[id]/page.tsx
-- sed -n '1,200p' src/app/admin/quotes/[id]/edit/page.tsx
-- sed -n '1,200p' src/app/admin/quotes/[id]/print/page.tsx
-- sed -n '1,220p' src/app/orders/[id]/print/page.tsx
+- rg -n "TimeEntry|time entry|timeEntry|time_tracking|timer" src prisma
+- rg -n "Time|Entry|timer|interval" prisma src -g'*.prisma'
+- sed -n '120,220p' prisma/schema.prisma
+- rg -n "TimeLog|timelog|time log|timelog" src
+- rg -n "time" src/app src/modules src/lib -g'*.ts' -g'*.tsx'
+- rg -n "model User" prisma/schema.prisma
+- sed -n '1,60p' prisma/schema.prisma
+- rg -n "model OrderPart|model Part" prisma/schema.prisma
+- sed -n '90,160p' prisma/schema.prisma
+- rg -n "session\\.user\\.id" src/app/api -g'*.ts'
+- rg -n "session.*user" src/app/api -g'*.ts' | head
+- sed -n '1,80p' src/app/api/orders/route.ts
+- mkdir -p src/modules/time
+- mkdir -p src/app/api/time/start src/app/api/time/pause src/app/api/time/stop src/app/api/time/resume src/app/api/time/active
+- rmdir src/app/api/time/active
 
 ## Notes / gotchas
 - No tests run (not requested).
 
 ## Next steps
-- [ ] Consider adding lightweight error UI for admin quote fetch failures if needed.
+- [ ] Add UI controls that call the new time tracking APIs (Prompt E scope).

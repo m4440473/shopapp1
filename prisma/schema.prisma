@@ -20,6 +20,7 @@ model User {
   quotes           Quote[]
   notes            Note[]
   timeLogs         TimeLog[]
+  timeEntries      TimeEntry[]
   checklistToggles OrderChecklist[] @relation("ChecklistToggledBy")
   uploadedAttachments Attachment[] @relation("UserAttachments")
   statusHistories StatusHistory[] @relation("UserStatusHistory")
@@ -89,6 +90,7 @@ model Order {
   partAttachments  PartAttachment[]
   notes            Note[]
   timeLogs         TimeLog[]
+  timeEntries      TimeEntry[]
   statusHistory    StatusHistory[]
 }
 
@@ -150,6 +152,25 @@ model TimeLog {
   phase     String
   minutes   Int
   createdAt DateTime @default(now())
+}
+
+model TimeEntry {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  partId    String?
+  part      OrderPart? @relation(fields: [partId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  operation String
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, endedAt])
+  @@index([orderId])
+  @@index([partId])
 }
 
 model Attachment {
