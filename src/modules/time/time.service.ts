@@ -2,6 +2,8 @@ import {
   closeTimeEntryById,
   createTimeEntry,
   findActiveTimeEntryForUser,
+  findLatestTimeEntriesForUserParts,
+  findLatestTimeEntryForUserOrder,
   findTimeEntryById,
 } from './time.repo';
 import type { TimeEntry, TimeEntryResumeInput, TimeEntryStartInput } from './time.types';
@@ -21,6 +23,33 @@ function fail<T>(status: number, error: string): ServiceResult<T> {
 export async function getActiveTimeEntry(userId: string): Promise<ServiceResult<{ entry: TimeEntry | null }>> {
   const entry = await findActiveTimeEntryForUser(userId);
   return ok({ entry });
+}
+
+export async function getTimeEntrySummary(
+  userId: string,
+  orderId: string,
+  partIds: string[]
+): Promise<
+  ServiceResult<{
+    activeEntry: TimeEntry | null;
+    lastOrderEntry: TimeEntry | null;
+    lastPartEntries: Record<string, TimeEntry | null>;
+  }>
+> {
+  const [activeEntry, lastOrderEntry, partEntries] = await Promise.all([
+    findActiveTimeEntryForUser(userId),
+    findLatestTimeEntryForUserOrder(userId, orderId, null),
+    findLatestTimeEntriesForUserParts(userId, partIds),
+  ]);
+
+  const lastPartEntries: Record<string, TimeEntry | null> = {};
+  partEntries.forEach((entry) => {
+    if (!entry.partId) return;
+    if (lastPartEntries[entry.partId]) return;
+    lastPartEntries[entry.partId] = entry;
+  });
+
+  return ok({ activeEntry, lastOrderEntry, lastPartEntries });
 }
 
 export async function startTimeEntry(

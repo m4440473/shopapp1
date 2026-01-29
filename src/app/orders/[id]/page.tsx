@@ -15,6 +15,7 @@ import {
   PlusCircle,
   Paperclip,
   Upload,
+  Timer,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -80,6 +81,8 @@ const STATUS_OPTIONS: Array<[string, string]> = [
 const PRIORITY_OPTIONS = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 const NONE_VALUE = '__none__';
 const DEFAULT_BUSINESS = (BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die') as BusinessName;
+const DEFAULT_OPERATION = 'Machining';
+const OPERATION_OPTIONS = ['Machining', 'Setup', 'Inspection', 'Programming', 'Cleanup'];
 
 type Option = { id: string; name: string };
 
@@ -117,6 +120,21 @@ type AttachmentFormState = {
 type PendingAction =
   | { type: 'status'; status: string }
   | { type: 'checklist'; checklistId: string; checked: boolean };
+
+type TimeEntryRecord = {
+  id: string;
+  orderId: string;
+  partId: string | null;
+  operation: string;
+  startedAt: string;
+  endedAt: string | null;
+};
+
+type TimeSummary = {
+  activeEntry: TimeEntryRecord | null;
+  lastOrderEntry: TimeEntryRecord | null;
+  lastPartEntries: Record<string, TimeEntryRecord | null>;
+};
 
 type PendingPartPayload = {
   partNumber: string;
@@ -196,6 +214,13 @@ export default function OrderDetailPage() {
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerEmail, setNewCustomerEmail] = useState('');
   const [newCustomerAddress, setNewCustomerAddress] = useState('');
+  const [timeSummary, setTimeSummary] = useState<TimeSummary | null>(null);
+  const [timeLoading, setTimeLoading] = useState(false);
+  const [timeSaving, setTimeSaving] = useState(false);
+  const [timeError, setTimeError] = useState<string | null>(null);
+  const [operationByContext, setOperationByContext] = useState<Record<string, string>>({
+    order: DEFAULT_OPERATION,
+  });
   const [editForm, setEditForm] = useState<EditFormState>({
     business: BUSINESS_OPTIONS[0]?.code ?? 'STD',
     customerId: '',
@@ -286,6 +311,199 @@ export default function OrderDetailPage() {
       setCopyChargesFromPartId('');
     }
   }, [item?.parts, copyChargesFromPartId]);
+
+  useEffect(() => {
+    if (!Array.isArray(item?.parts)) return;
+    setOperationByContext((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      if (!next.order) {
+        next.order = DEFAULT_OPERATION;
+        changed = true;
+      }
+      item.parts.forEach((part: any) => {
+        if (part?.id && !next[part.id]) {
+          next[part.id] = DEFAULT_OPERATION;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [item?.parts]);
+
+  const partIdsParam = React.useMemo(() => {
+    if (!Array.isArray(item?.parts)) return '';
+    return item.parts
+      .map((part: any) => part?.id)
+      .filter(Boolean)
+      .join(',');
+  }, [item?.parts]);
+
+  const refreshTimeSummary = React.useCallback(async () => {
+    if (!id) return;
+    setTimeLoading(true);
+    try {
+      const params = new URLSearchParams({ orderId: id });
+      if (partIdsParam) {
+        params.set('partIds', partIdsParam);
+      }
+      const res = await fetch(`/api/time/summary?${params.toString()}`, { credentials: 'include' });
+      if (!res.ok) throw res;
+      const data = await res.json();
+      setTimeSummary(data);
+      setTimeError(null);
+    } catch (err: any) {
+      try {
+        const json = await err.json();
+        setTimeError(json?.error ?? 'Failed to load time tracking');
+      } catch {
+        setTimeError('Failed to load time tracking');
+      }
+    } finally {
+      setTimeLoading(false);
+    }
+  }, [id, partIdsParam]);
+
+  useEffect(() => {
+    refreshTimeSummary();
+  }, [refreshTimeSummary]);
+
+  const formatEntryTime = (value: string | null) => {
+    if (!value) return '—';
+    return new Date(value).toLocaleString();
+  };
+
+  const describeEntry = (entry: TimeEntryRecord | null) => {
+    if (!entry) return 'No time recorded yet.';
+    const label = entry.endedAt ? 'Stopped' : 'Started';
+    const timeValue = entry.endedAt ?? entry.startedAt;
+    return `${label} ${entry.operation} · ${formatEntryTime(timeValue)}`;
+  };
+
+  const getOperationValue = (key: string) => operationByContext[key] ?? DEFAULT_OPERATION;
+
+  const setOperationValue = (key: string, value: string) => {
+    setOperationByContext((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const submitTimeAction = async (url: string, payload?: Record<string, any>) => {
+    setTimeSaving(true);
+    setTimeError(null);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload ? JSON.stringify(payload) : undefined,
+        credentials: 'include',
+      });
+      if (!res.ok) throw res;
+      await refreshTimeSummary();
+    } catch (err: any) {
+      try {
+        const json = await err.json();
+        setTimeError(json?.error ?? 'Failed to update time tracking');
+      } catch {
+        setTimeError('Failed to update time tracking');
+      }
+    } finally {
+      setTimeSaving(false);
+    }
+  };
+
+  const activeEntry = timeSummary?.activeEntry ?? null;
+  const isActiveOnOrder = Boolean(activeEntry && activeEntry.orderId === id && !activeEntry.partId);
+
+  const renderPartTimeTracking = (part: any) => {
+    if (!part?.id) return null;
+    const lastEntry = timeSummary?.lastPartEntries?.[part.id] ?? null;
+    const isActiveOnPart = Boolean(activeEntry && activeEntry.partId === part.id);
+    return (
+      <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Time tracking</div>
+            <div className="text-foreground">{describeEntry(lastEntry)}</div>
+            {isActiveOnPart ? (
+              <div className="text-xs text-emerald-700">
+                Active now · Started {formatEntryTime(activeEntry?.startedAt ?? null)}
+              </div>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={timeSaving || isActiveOnPart}
+              onClick={() =>
+                submitTimeAction('/api/time/start', {
+                  orderId: id,
+                  partId: part.id,
+                  operation: getOperationValue(part.id),
+                })
+              }
+              className="rounded-full"
+            >
+              {timeSaving ? 'Starting…' : 'Start'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!lastEntry?.endedAt || timeSaving}
+              onClick={() => submitTimeAction('/api/time/resume', { entryId: lastEntry?.id })}
+            >
+              Resume
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={!isActiveOnPart || timeSaving}
+              onClick={() => submitTimeAction('/api/time/pause')}
+            >
+              Pause
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={!isActiveOnPart || timeSaving}
+              onClick={() => submitTimeAction('/api/time/stop')}
+            >
+              Stop
+            </Button>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-2">
+          <Label htmlFor={`part-operation-${part.id}`} className="text-xs uppercase text-muted-foreground">
+            Operation
+          </Label>
+          <Select
+            value={getOperationValue(part.id)}
+            onValueChange={(value) => setOperationValue(part.id, value)}
+            disabled={timeSaving}
+          >
+            <SelectTrigger
+              id={`part-operation-${part.id}`}
+              className="border-border/60 bg-background/80 text-left"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {OPERATION_OPTIONS.map((operation) => (
+                <SelectItem key={operation} value={operation}>
+                  {operation}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          Starting or resuming pauses any active timer automatically.
+        </div>
+      </div>
+    );
+  };
 
   useEffect(() => {
     if (item?.attachments?.length) {
@@ -922,6 +1140,13 @@ export default function OrderDetailPage() {
   const parts: any[] = Array.isArray(item.parts) ? item.parts : [];
   const primaryPart = parts[0];
   const additionalParts = parts.slice(1);
+  const partLabelById = new Map<string, string>();
+  parts.forEach((part, index) => {
+    if (!part?.id) return;
+    const label = part.partNumber || `Part ${index + 1}`;
+    partLabelById.set(part.id, label);
+  });
+  const activePartLabel = activeEntry?.partId ? partLabelById.get(activeEntry.partId) ?? 'Part' : null;
   const attachments: any[] = Array.isArray(item.attachments) ? item.attachments : [];
   const businessOption = BUSINESS_OPTIONS.find((option) => option.code === item.business);
   const pendingStatusLabel =
@@ -1060,6 +1285,57 @@ export default function OrderDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Card className="border border-border/60 bg-muted/10">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Timer className="h-4 w-4 text-muted-foreground" /> Active time tracking
+          </CardTitle>
+          <CardDescription>Keep the current operation visible while you work.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          {activeEntry ? (
+            <div className="space-y-1">
+              <div className="font-medium text-foreground">
+                {activeEntry.operation} {activePartLabel ? `· ${activePartLabel}` : '· Order level'}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Started {formatEntryTime(activeEntry.startedAt)} · Switching operations auto-pauses this timer.
+              </div>
+            </div>
+          ) : (
+            <div className="text-muted-foreground">No active timer right now.</div>
+          )}
+          {timeError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {timeError}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={!activeEntry || timeSaving}
+              onClick={() => submitTimeAction('/api/time/pause')}
+            >
+              {timeSaving ? 'Pausing…' : 'Pause'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!activeEntry || timeSaving}
+              onClick={() => submitTimeAction('/api/time/stop')}
+            >
+              {timeSaving ? 'Stopping…' : 'Stop'}
+            </Button>
+            {timeLoading ? (
+              <span className="text-xs text-muted-foreground">Refreshing…</span>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
@@ -1409,6 +1685,81 @@ export default function OrderDetailPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
+                <Timer className="h-4 w-4 text-muted-foreground" /> Order time tracking
+              </CardTitle>
+              <CardDescription>Track overall order work when it is not part-specific.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Last action</div>
+                <div className="text-foreground">{describeEntry(timeSummary?.lastOrderEntry ?? null)}</div>
+              </div>
+              {isActiveOnOrder ? (
+                <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-700">
+                  Active now: {activeEntry?.operation} · Started {formatEntryTime(activeEntry?.startedAt ?? null)}
+                </div>
+              ) : null}
+              <div className="grid gap-2">
+                <Label htmlFor="order-operation" className="text-xs uppercase text-muted-foreground">
+                  Operation
+                </Label>
+                <Select
+                  value={getOperationValue('order')}
+                  onValueChange={(value) => setOperationValue('order', value)}
+                  disabled={timeSaving}
+                >
+                  <SelectTrigger id="order-operation" className="border-border/60 bg-background/80 text-left">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OPERATION_OPTIONS.map((operation) => (
+                      <SelectItem key={operation} value={operation}>
+                        {operation}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={timeSaving}
+                  onClick={() =>
+                    submitTimeAction('/api/time/start', {
+                      orderId: id,
+                      partId: null,
+                      operation: getOperationValue('order'),
+                    })
+                  }
+                  className="rounded-full"
+                >
+                  {timeSaving ? 'Starting…' : 'Start'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!timeSummary?.lastOrderEntry?.endedAt || timeSaving}
+                  onClick={() =>
+                    submitTimeAction('/api/time/resume', { entryId: timeSummary?.lastOrderEntry?.id })
+                  }
+                >
+                  Resume last
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Starting or resuming pauses any active timer automatically.
+              </div>
+              {timeLoading ? (
+                <div className="text-xs text-muted-foreground">Refreshing time status…</div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
                 <Package2 className="h-4 w-4 text-muted-foreground" /> Part overview
               </CardTitle>
               <CardDescription>Primary details for the first line item</CardDescription>
@@ -1547,6 +1898,7 @@ export default function OrderDetailPage() {
                       />
                     </div>
                   </div>
+                  {renderPartTimeTracking(primaryPart)}
                   {partEditErrors[primaryPart.id] && (
                     <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                       {partEditErrors[primaryPart.id]}
@@ -1783,6 +2135,7 @@ export default function OrderDetailPage() {
                               />
                             </div>
                           </div>
+                          {renderPartTimeTracking(part)}
                           {partEditErrors[part.id] && (
                             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                               {partEditErrors[part.id]}
