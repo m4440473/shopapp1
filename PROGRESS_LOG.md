@@ -39,6 +39,14 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-01-30 — Prompt C Orders/Quotes boundary cleanup
+- Moved quote preparation logic into quotes service/repo helpers and routed quotes API handlers through the service layer.
+- Removed Prisma usage from Orders/Quotes UI pages by fetching through new print-data endpoints and existing admin quote APIs.
+- Added print-data API routes for quotes and orders and centralized document template listing.
+
+Tests run:
+- Not run (not requested).
+
 ### 2026-01-30 — Prompt B steps 3-4 layout/nav stability review
 - Reviewed layout/provider tree for unstable conditionals; none found that would drop the shell or providers.
 - No layout/nav code changes needed for step 3-4; mobile nav already covers core pages.

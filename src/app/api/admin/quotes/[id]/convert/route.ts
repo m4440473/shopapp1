@@ -21,7 +21,7 @@ import { OrderPartCreate, PriorityEnum } from '@/modules/orders/orders.schema';
 import { getAppSettings } from '@/lib/app-settings';
 import { syncChecklistForOrder } from '@/modules/orders/orders.service';
 import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
-import { convertQuoteToOrder, findActiveOrderCustomFields, findQuoteForConversion } from '@/modules/quotes/quotes.repo';
+import { convertQuoteToOrder, findActiveOrderCustomFields, findQuoteForConversion } from '@/modules/quotes/quotes.service';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);

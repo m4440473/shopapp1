@@ -7,7 +7,6 @@ import { authOptions } from '@/lib/auth';
 import { DEFAULT_QUOTE_METADATA, parseQuoteMetadata } from '@/lib/quote-metadata';
 import { canAccessAdmin } from '@/lib/rbac';
 import { QuoteCreate } from '@/lib/zod-quotes';
-import { prepareQuoteComponents } from '@/lib/quotes.server';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 import { hasCustomFieldValue, parseCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 import {
@@ -16,8 +15,9 @@ import {
   findQuoteById,
   findQuoteForUpdate,
   listQuoteCustomFieldValues,
+  prepareQuoteComponents,
   updateQuoteWithDetails,
-} from '@/modules/quotes/quotes.repo';
+} from '@/modules/quotes/quotes.service';
 
 async function getSessionWithRole() {
   const session = await getServerSession(authOptions);

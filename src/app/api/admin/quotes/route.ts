@@ -9,10 +9,14 @@ import { parseQuoteMetadata } from '@/lib/quote-metadata';
 import { canAccessAdmin } from '@/lib/rbac';
 import { ListQuery } from '@/lib/zod';
 import { QuoteCreate } from '@/lib/zod-quotes';
-import { prepareQuoteComponents } from '@/lib/quotes.server';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
-import { createQuoteWithDetails, findActiveQuoteCustomFields, listQuotes } from '@/modules/quotes/quotes.repo';
+import {
+  createQuoteWithDetails,
+  findActiveQuoteCustomFields,
+  listQuotes,
+  prepareQuoteComponents,
+} from '@/modules/quotes/quotes.service';
 
 async function getSessionWithRole() {
   const session = await getServerSession(authOptions);

@@ -1,13 +1,13 @@
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 
 import NavTabs from '@/components/Admin/NavTabs';
 import { ToastProvider } from '@/components/ui/Toast';
-import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import Client from './client';
-import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
+import { mergeQuoteMetadata } from '@/lib/quote-metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,19 +25,26 @@ export default async function Page() {
 
   const isAdmin = true;
 
-  const rawItems = await prisma.quote.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: 20,
-    include: {
-      customer: { select: { id: true, name: true } },
-      createdBy: { select: { id: true, name: true, email: true } },
-    },
+  const headerStore = headers();
+  const host = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
+  const protocol = headerStore.get('x-forwarded-proto') ?? 'https';
+  const baseUrl = host ? `${protocol}://${host}` : '';
+  const cookie = headerStore.get('cookie') ?? '';
+
+  const response = await fetch(`${baseUrl}/api/admin/quotes?take=20`, {
+    headers: { cookie },
+    cache: 'no-store',
   });
+  if (!response.ok) {
+    throw new Error('Failed to load quotes');
+  }
+  const payload = await response.json();
+  const rawItems = (payload?.items ?? []) as any[];
 
   const items = rawItems.map((item) => {
     const enriched = {
       ...item,
-      metadata: mergeQuoteMetadata(parseQuoteMetadata(item.metadata)),
+      metadata: mergeQuoteMetadata(item.metadata),
     };
     return enriched;
   });

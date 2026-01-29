@@ -1,8 +1,8 @@
 import React from 'react';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 
-import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import {
@@ -10,7 +10,6 @@ import {
   normalizeSectionName,
   normalizeTemplateLayout,
 } from '@/lib/document-template-layout';
-import { getActiveDocumentTemplate } from '@/lib/document-templates';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
 
@@ -33,39 +32,27 @@ export default async function QuotePrintPage({
     redirect('/');
   }
 
-  const quote = await prisma.quote.findUnique({
-    where: { id: params.id },
-    include: {
-      customer: { select: { id: true, name: true } },
-      parts: {
-        include: {
-          material: true,
-          addonSelections: true,
-        },
-      },
-      vendorItems: true,
-      addonSelections: { include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true } } } },
-    },
+  const headerStore = headers();
+  const host = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
+  const protocol = headerStore.get('x-forwarded-proto') ?? 'https';
+  const baseUrl = host ? `${protocol}://${host}` : '';
+  const cookie = headerStore.get('cookie') ?? '';
+
+  const response = await fetch(`${baseUrl}/api/admin/quotes/${params.id}/print-data`, {
+    headers: { cookie },
+    cache: 'no-store',
   });
+  if (!response.ok) {
+    redirect('/admin/quotes');
+  }
+  const payload = await response.json();
+  const quote = payload?.quote ?? null;
+  const templates = payload?.templates ?? [];
+  const activeTemplate = payload?.activeTemplate ?? null;
 
   if (!quote) {
     redirect('/admin/quotes');
   }
-
-  const [activeTemplate, templates] = await Promise.all([
-    getActiveDocumentTemplate({
-      documentType: 'QUOTE',
-      businessCode: quote.business,
-    }),
-    prisma.documentTemplate.findMany({
-      where: {
-        documentType: 'QUOTE',
-        isActive: true,
-        OR: [{ businessCode: quote.business }, { businessCode: null }],
-      },
-      orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
-    }),
-  ]);
 
   const requestedTemplateId = searchParams?.templateId;
   const selectedTemplate =

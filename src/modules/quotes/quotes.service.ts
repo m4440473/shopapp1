@@ -1,6 +1,25 @@
-import { prisma } from '@/lib/prisma';
-import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from './businesses';
-import { QuoteCreateInput } from './zod-quotes';
+import 'server-only';
+
+import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
+import type { QuoteCreateInput } from '@/lib/zod-quotes';
+import type { QuoteApprovalMetadata } from '@/lib/quote-metadata';
+import {
+  createQuoteWithDetails,
+  deleteQuoteById,
+  findActiveOrderCustomFields,
+  findActiveQuoteCustomFields,
+  findQuoteById,
+  findQuoteByNumber,
+  findQuoteForConversion,
+  findQuoteForUpdate,
+  listAddonsByIds,
+  listQuoteCustomFieldValues,
+  listQuotes,
+  listVendorsByIds,
+  updateQuoteApproval,
+  updateQuoteWithDetails,
+  convertQuoteToOrder,
+} from './quotes.repo';
 
 function prefixForBusiness(business: BusinessCode): string {
   return BUSINESS_PREFIX_BY_CODE[business] ?? business;
@@ -14,7 +33,7 @@ export async function generateQuoteNumber(business: BusinessCode) {
     const candidate = `${prefix}-${stamp}-${Math.floor(Math.random() * 10000)
       .toString()
       .padStart(4, '0')}`;
-    const existing = await prisma.quote.findUnique({ where: { quoteNumber: candidate } });
+    const existing = await findQuoteByNumber(candidate);
     if (!existing) {
       return candidate;
     }
@@ -80,9 +99,7 @@ export async function prepareQuoteComponents(
     .map((item) => item.vendorId)
     .filter((value): value is string => typeof value === 'string' && value.length > 0);
   type VendorRecord = { id: string; name?: string | null };
-  const vendorRecords: VendorRecord[] = vendorIds.length
-    ? ((await prisma.vendor.findMany({ where: { id: { in: vendorIds } } })) as VendorRecord[])
-    : [];
+  const vendorRecords = (await listVendorsByIds(vendorIds)) as VendorRecord[];
   const vendorMap = new Map(vendorRecords.map((vendor) => [vendor.id, vendor]));
 
   type AddonRecord = { id: string; name: string; rateType: string; rateCents: number };
@@ -90,9 +107,7 @@ export async function prepareQuoteComponents(
     (part.addonSelections ?? []).map((item) => ({ partIndex, item }))
   );
   const addonIds = addonSelectionsInput.map(({ item }) => item.addonId);
-  const addonRecords: AddonRecord[] = addonIds.length
-    ? ((await prisma.addon.findMany({ where: { id: { in: addonIds } } })) as AddonRecord[])
-    : [];
+  const addonRecords = (await listAddonsByIds(addonIds)) as AddonRecord[];
   const addonMap = new Map(addonRecords.map((addon) => [addon.id, addon]));
 
   for (const selection of addonSelectionsInput) {
@@ -201,3 +216,20 @@ export async function prepareQuoteComponents(
     attachments,
   };
 }
+
+export {
+  createQuoteWithDetails,
+  deleteQuoteById,
+  findActiveOrderCustomFields,
+  findActiveQuoteCustomFields,
+  findQuoteById,
+  findQuoteForConversion,
+  findQuoteForUpdate,
+  listQuoteCustomFieldValues,
+  listQuotes,
+  updateQuoteApproval,
+  updateQuoteWithDetails,
+  convertQuoteToOrder,
+};
+
+export type { QuoteApprovalMetadata };
