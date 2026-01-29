@@ -39,6 +39,13 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-01-30 — Prompt B steps 3-4 layout/nav stability review
+- Reviewed layout/provider tree for unstable conditionals; none found that would drop the shell or providers.
+- No layout/nav code changes needed for step 3-4; mobile nav already covers core pages.
+
+Tests run:
+- Not run (review only).
+
 ### 2026-01-30 — Prompt A Step 3-5 auth guard alignment
 - Standardized admin checks in middleware and whoami to use shared RBAC helper for consistent session-based admin evaluation.
 - Reviewed layout/providers for duplication; no changes needed.
