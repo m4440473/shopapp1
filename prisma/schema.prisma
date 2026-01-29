@@ -108,6 +108,7 @@ model OrderPart {
   charges    OrderCharge[]
   attachments PartAttachment[]
   checklistItems OrderChecklist[]
+  timeEntries TimeEntry[]
 }
 
 model OrderChecklist {
