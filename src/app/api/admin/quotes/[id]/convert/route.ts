@@ -13,14 +13,14 @@ import {
   parseQuoteMetadata,
   stringifyQuoteMetadata,
 } from '@/lib/quote-metadata';
-import { generateNextOrderNumber } from '@/lib/orders.server';
+import { generateNextOrderNumber } from '@/modules/orders/orders.service';
 import { prisma } from '@/lib/prisma';
 import { canAccessAdmin } from '@/lib/rbac';
 import { businessNameFromCode, type BusinessCode, type BusinessName } from '@/lib/businesses';
 import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
-import { OrderPartCreate, PriorityEnum } from '@/lib/zod-orders';
+import { OrderPartCreate, PriorityEnum } from '@/modules/orders/orders.schema';
 import { getAppSettings } from '@/lib/app-settings';
-import { syncChecklistForOrder } from '@/lib/order-charges';
+import { syncChecklistForOrder } from '@/modules/orders/orders.service';
 import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 
 async function requireAdmin() {

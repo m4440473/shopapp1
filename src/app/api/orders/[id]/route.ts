@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
-import { OrderUpdate } from '@/lib/zod-orders';
+import { OrderUpdate } from '@/modules/orders/orders.schema';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {

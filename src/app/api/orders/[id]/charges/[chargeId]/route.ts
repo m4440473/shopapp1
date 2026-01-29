@@ -5,8 +5,8 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
-import { OrderChargeUpdate } from '@/lib/zod-charges';
-import { syncChecklistForOrder } from '@/lib/order-charges';
+import { OrderChargeUpdate } from '@/modules/orders/orders.schema';
+import { syncChecklistForOrder } from '@/modules/orders/orders.service';
 
 function toDecimal(value: string) {
   return new Prisma.Decimal(value);

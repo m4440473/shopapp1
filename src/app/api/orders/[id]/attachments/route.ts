@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
-import { OrderAttachmentCreate } from '@/lib/zod-orders';
+import { OrderAttachmentCreate } from '@/modules/orders/orders.schema';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions as any);

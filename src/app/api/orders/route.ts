@@ -4,8 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
-import { generateNextOrderNumber } from '@/lib/orders.server';
-import { OrderQuery, OrderCreate } from '@/lib/zod-orders';
+import { generateNextOrderNumber } from '@/modules/orders/orders.service';
+import { OrderQuery, OrderCreate } from '@/modules/orders/orders.schema';
 import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 // Status enum not used from prisma; statuses are strings in this schema
 
