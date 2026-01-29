@@ -39,6 +39,14 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-01-31 — Prompt D time tracking interval core
+- Added TimeEntry model and time tracking module with interval-based start/pause/stop/resume services.
+- Created API routes for time start/pause/stop/resume that enforce single active entry per user.
+- Added total computation helper from intervals (no stored totals).
+
+Tests run:
+- Not run (not requested).
+
 ### 2026-01-30 — Prompt C Orders/Quotes boundary cleanup
 - Moved quote preparation logic into quotes service/repo helpers and routed quotes API handlers through the service layer.
 - Removed Prisma usage from Orders/Quotes UI pages by fetching through new print-data endpoints and existing admin quote APIs.
