@@ -39,6 +39,15 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-01-28 — Architecture map + continuity docs alignment
+- Reviewed current app shell, domains, data flow, and charge model to establish a repo-backed architecture map.
+- Documented boundary violations and a plan-only Orders module extraction list (no code changes).
+- Added docs/ARCHITECTURE_MAP.md and created docs/AGENT_CONTEXT.md and docs/AGENT_HANDOFF.md (docs were missing in /docs).
+
+Next steps (immediate)
+- Decide whether to deprecate/remove root AGENT_CONTEXT.md and AGENTS_HANDOFF.md now that docs/ copies exist.
+- Begin Orders module extraction planning with repo/service/schema split.
+
 ### 2026-01-28 — Continuity spine created + corrected charge note
 - Added AGENTS.md (agent charter + architecture rules)
 - Added docs/AGENT_CONTEXT.md (priorities + invariants + decision log)
@@ -99,5 +108,4 @@ Next steps (immediate)
 ## 2026-01-21
 - Summary: Added template selection for order print previews and disabled webpack caching in dev to avoid missing .next cache warnings.
 - Tests run: `npm run lint`
-
 
