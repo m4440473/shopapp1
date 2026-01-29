@@ -39,6 +39,13 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-01-29 — Fix middleware response status typing
+- Updated middleware to set status via NextResponse.rewrite init to satisfy read-only typing.
+- Build now advances past middleware but fails in Orders assign route type narrowing (not modified).
+
+Tests run:
+- `npm run build` (failed: src/app/api/orders/[id]/assign/route.ts ServiceResult .data typing)
+
 ### 2026-01-29 — Regenerated Prisma client for build
 - Ran `npx prisma generate` to fix the missing Prisma client artifacts.
 - Build now progresses further but fails due to a TypeScript error in middleware (no changes made per constraints).

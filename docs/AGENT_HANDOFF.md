@@ -2,12 +2,13 @@
 
 Date: 2026-01-29
 Agent: Codex
-Goal (1 sentence): Regenerate Prisma client artifacts and re-run the build.
+Goal (1 sentence): Fix the middleware response status typing error and re-run the build.
 
 ## What I changed
-- Summary: Ran Prisma client generation and re-ran build; build now fails on middleware type error.
+- Summary: Updated middleware to set status via NextResponse.rewrite init options.
 
 ## Files touched
+- middleware.ts — set status via rewrite init to avoid read-only status assignment.
 - PROGRESS_LOG.md — session entry with test results.
 - docs/AGENT_HANDOFF.md — updated handoff.
 
@@ -15,11 +16,10 @@ Goal (1 sentence): Regenerate Prisma client artifacts and re-run the build.
 - cat docs/AGENT_CONTEXT.md
 - cat PROGRESS_LOG.md
 - cat docs/AGENT_HANDOFF.md
-- npx prisma generate
 - npm run build
 
 ## Notes / gotchas
-- `npm run build` failed due to `middleware.ts` type error assigning to read-only status.
+- `npm run build` failed due to Orders assign route type narrowing (`result.data` on ServiceResult).
 
 ## Next steps
-- [ ] Decide whether to adjust middleware typing/response handling to satisfy Next.js build constraints.
+- [ ] If permitted, update Orders assign route to properly narrow ServiceResult before accessing data.
