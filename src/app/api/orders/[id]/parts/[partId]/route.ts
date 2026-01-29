@@ -4,8 +4,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { canAccessAdmin } from '@/lib/rbac';
-import { syncChecklistForOrder } from '@/lib/order-charges';
-import { OrderPartUpdate } from '@/lib/zod-orders';
+import { syncChecklistForOrder } from '@/modules/orders/orders.service';
+import { OrderPartUpdate } from '@/modules/orders/orders.schema';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string; partId: string } }) {
   const session = await getServerSession(authOptions as any);

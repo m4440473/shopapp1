@@ -1,43 +1,26 @@
-import { ORDER_STATUS_LABELS } from '@/lib/order-status-labels';
+import type { OrderFilterState, OrderListItem, OrderWithMeta } from './orders.types';
+import { generateNextOrderNumber, syncChecklistForOrder } from './orders.repo';
+
+export { generateNextOrderNumber, syncChecklistForOrder };
+export type { OrderFilterState, OrderListItem, OrderWithMeta };
+
+export const ORDER_STATUS_LABELS: Record<string, string> = {
+  NEW: 'New',
+  RECEIVED: 'Received',
+  PROGRAMMING: 'Programming',
+  RUNNING: 'Running',
+  INSPECTING: 'Inspecting',
+  READY_FOR_ADDONS: 'Ready for addons',
+  COMPLETE: 'Complete',
+  CLOSED: 'Closed',
+  SETUP: 'Setup',
+  FINISHING: 'Finishing',
+  DONE_MACHINING: 'Machining Done',
+  INSPECTION: 'Inspection',
+  SHIPPING: 'Shipping',
+};
 
 export const STALE_STATUS_MS = 30 * 24 * 60 * 60 * 1000;
-
-export type OrderListItem = {
-  id: string;
-  orderNumber: string;
-  business: string;
-  status: string;
-  priority: string;
-  dueDate: string | Date | null;
-  receivedDate: string | Date | null;
-  customer?: { name?: string | null } | null;
-  assignedMachinist?: { id?: string; name?: string | null; email?: string | null } | null;
-  parts?: Array<{ quantity: number | null }>;
-  checklist?: Array<{ completed: boolean; addon?: { name?: string | null } | null }>;
-  statusHistory?: Array<{ createdAt: string | Date }>;
-};
-
-export type OrderWithMeta = OrderListItem & {
-  totalQuantity: number;
-  addonCount: number;
-  openAddonCount: number;
-  hasAddons: boolean;
-  lastStatusChange: Date | null;
-};
-
-export type OrderFilterState = {
-  statuses: string[];
-  priorities: string[];
-  machinistId: string;
-  createdFrom?: string;
-  createdTo?: string;
-  dueFrom?: string;
-  dueTo?: string;
-  minQty?: number;
-  maxQty?: number;
-  requiresAddons: boolean;
-  staleStatus: boolean;
-};
 
 export const DEFAULT_ORDER_FILTERS: OrderFilterState = {
   statuses: [],

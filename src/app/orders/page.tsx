@@ -44,7 +44,7 @@ import {
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BUSINESS_OPTIONS } from '@/lib/businesses';
-import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters } from '@/lib/order-filtering';
+import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters } from '@/modules/orders/orders.service';
 
 const SORT_KEYS = ['dueDate', 'receivedDate', 'priority', 'status', 'quantity', 'lastChange'] as const;
 const PRIORITY_FILTERS = ['all', 'HOT', 'RUSH', 'NORMAL', 'LOW'] as const;

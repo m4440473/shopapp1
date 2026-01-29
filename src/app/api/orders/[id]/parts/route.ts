@@ -5,8 +5,8 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
-import { OrderPartCreate } from '@/lib/zod-orders';
-import { syncChecklistForOrder } from '@/lib/order-charges';
+import { OrderPartCreate } from '@/modules/orders/orders.schema';
+import { syncChecklistForOrder } from '@/modules/orders/orders.service';
 
 const InvoiceAction = z.enum(['new', 'update']);
 const OrderPartCreateWithOptions = OrderPartCreate.extend({

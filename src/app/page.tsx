@@ -10,10 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { authOptions } from '@/lib/auth';
-import { decorateOrder } from '@/lib/order-filtering';
+import { decorateOrder, ORDER_STATUS_LABELS } from '@/modules/orders/orders.service';
 import { getInitials } from '@/lib/get-initials';
 import { prisma } from '@/lib/prisma';
-import { ORDER_STATUS_LABELS } from '@/lib/order-status-labels';
 import { cn } from '@/lib/utils';
 
 export default async function Home() {

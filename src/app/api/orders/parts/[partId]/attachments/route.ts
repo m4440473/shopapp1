@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
-import { PartAttachmentCreate } from '@/lib/zod-charges';
+import { PartAttachmentCreate } from '@/modules/orders/orders.schema';
 
 async function requireSession() {
   const session = await getServerSession(authOptions);

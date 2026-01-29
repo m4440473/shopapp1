@@ -39,6 +39,15 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-01-29 — Orders module extraction (repo/service/schema/types)
+- Moved Orders domain helpers out of src/lib into src/modules/orders (repo/service/schema/types).
+- Updated Orders-related API routes and UI imports to use the new module entry points.
+- Documented remaining boundary gap: Orders API routes still use Prisma directly and need repo/service extraction later.
+
+Next steps (immediate)
+- Move Prisma access from Orders API routes into src/modules/orders/orders.repo.ts with service wrappers.
+- Continue module extraction for the next domain (Quotes) after Orders routes are fully layered.
+
 ### 2026-01-28 — Architecture map + continuity docs alignment
 - Reviewed current app shell, domains, data flow, and charge model to establish a repo-backed architecture map.
 - Documented boundary violations and a plan-only Orders module extraction list (no code changes).
@@ -108,4 +117,3 @@ Next steps (immediate)
 ## 2026-01-21
 - Summary: Added template selection for order print previews and disabled webpack caching in dev to avoid missing .next cache warnings.
 - Tests run: `npm run lint`
-
