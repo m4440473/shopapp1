@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { getAppSettings } from '@/lib/app-settings';
-import { updateQuoteApproval } from '@/modules/quotes/quotes.repo';
+import { updateQuoteApproval } from '@/modules/quotes/quotes.service';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);

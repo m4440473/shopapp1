@@ -34,6 +34,25 @@ export async function getActiveDocumentTemplate({
   });
 }
 
+export async function listDocumentTemplates({
+  documentType,
+  businessCode,
+  activeOnly = true,
+}: {
+  documentType: DocumentTemplateType;
+  businessCode?: string | null;
+  activeOnly?: boolean;
+}) {
+  return prisma.documentTemplate.findMany({
+    where: {
+      documentType,
+      ...(activeOnly ? { isActive: true } : {}),
+      OR: [{ businessCode: businessCode ?? null }, { businessCode: null }],
+    },
+    orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
+  });
+}
+
 export function parseTemplateLayout(layoutJson: unknown) {
   return normalizeTemplateLayout(layoutJson);
 }

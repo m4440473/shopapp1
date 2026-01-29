@@ -34,6 +34,20 @@ export async function listQuotes({
   });
 }
 
+export async function findQuoteByNumber(quoteNumber: string) {
+  return prisma.quote.findUnique({ where: { quoteNumber } });
+}
+
+export async function listVendorsByIds(ids: string[]) {
+  if (!ids.length) return [];
+  return prisma.vendor.findMany({ where: { id: { in: ids } } });
+}
+
+export async function listAddonsByIds(ids: string[]) {
+  if (!ids.length) return [];
+  return prisma.addon.findMany({ where: { id: { in: ids } } });
+}
+
 export async function findActiveQuoteCustomFields({
   fieldIds,
   business,

@@ -1,5 +1,6 @@
 import React from 'react';
 import { format } from 'date-fns';
+import { headers } from 'next/headers';
 import { redirect, notFound } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 
@@ -9,8 +10,6 @@ import {
   normalizeSectionName,
   normalizeTemplateLayout,
 } from '@/lib/document-template-layout';
-import { getActiveDocumentTemplate } from '@/lib/document-templates';
-import { prisma } from '@/lib/prisma';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 import { PrintControls } from '@/components/print/PrintControls';
 
@@ -89,41 +88,31 @@ export default async function OrderPrintPage({
     redirect(`/auth/signin?callbackUrl=/orders/${params.id}/print`);
   }
 
-  const [order, activeAddons] = await Promise.all([
-    prisma.order.findUnique({
-      where: { id: params.id },
-      include: {
-        customer: true,
-        assignedMachinist: true,
-        vendor: true,
-        parts: { include: { material: true } },
-        checklist: { include: { addon: true } },
-        attachments: true,
-        notes: { include: { user: true }, orderBy: { createdAt: 'asc' } },
-        statusHistory: true,
-      },
-    }),
-    prisma.addon.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
-  ]);
+  const headerStore = headers();
+  const host = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
+  const protocol = headerStore.get('x-forwarded-proto') ?? 'https';
+  const baseUrl = host ? `${protocol}://${host}` : '';
+  const cookie = headerStore.get('cookie') ?? '';
+
+  const response = await fetch(`${baseUrl}/api/orders/${params.id}/print-data`, {
+    headers: { cookie },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    if (response.status === 404) {
+      notFound();
+    }
+    throw new Error('Failed to load order print data');
+  }
+  const payload = await response.json();
+  const order = payload?.order ?? null;
+  const activeAddons = payload?.addons ?? [];
+  const templates = payload?.templates ?? [];
+  const activeTemplate = payload?.activeTemplate ?? null;
 
   if (!order) {
     notFound();
   }
-
-  const [activeTemplate, templates] = await Promise.all([
-    getActiveDocumentTemplate({
-      documentType: 'ORDER_PRINT',
-      businessCode: order.business,
-    }),
-    prisma.documentTemplate.findMany({
-      where: {
-        documentType: 'ORDER_PRINT',
-        isActive: true,
-        OR: [{ businessCode: order.business }, { businessCode: null }],
-      },
-      orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
-    }),
-  ]);
 
   const requestedTemplateId = searchParams?.templateId;
   const selectedTemplate =

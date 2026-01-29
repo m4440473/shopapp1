@@ -882,3 +882,11 @@ export async function listAddonsForOrders({
   const sanitized = items.map(({ rateCents, ...rest }) => rest);
   return ok({ items: sanitized, nextCursor });
 }
+
+export async function getOrderPrintData(orderId: string) {
+  const order = await findOrderWithDetails(orderId);
+  if (!order) return fail(404, 'Not found');
+
+  const addons = await listAddons({ where: { active: true }, take: 200 });
+  return ok({ order, addons });
+}

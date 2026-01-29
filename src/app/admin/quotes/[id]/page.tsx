@@ -12,12 +12,11 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/Card';
-import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import AdminPricingGate from '@/components/Admin/AdminPricingGate';
 import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
-import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
+import { mergeQuoteMetadata } from '@/lib/quote-metadata';
 import QuoteWorkflowControls from '../QuoteWorkflowControls';
 import { canAccessAdmin } from '@/lib/rbac';
 
@@ -52,26 +51,21 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
   const fallbackHost = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
   const fallbackProtocol = headerStore.get('x-forwarded-proto') ?? 'https';
   const runtimeBase = fallbackHost ? `${fallbackProtocol}://${fallbackHost}` : '';
+  const baseUrl = fallbackHost ? `${fallbackProtocol}://${fallbackHost}` : '';
+  const cookie = headerStore.get('cookie') ?? '';
 
-  const quoteRecord = await prisma.quote.findUnique({
-    where: { id: params.id },
-    include: {
-      customer: { select: { id: true, name: true } },
-      createdBy: { select: { id: true, name: true, email: true } },
-      parts: {
-        include: {
-          addonSelections: {
-            include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true } } },
-          },
-        },
-      },
-      vendorItems: true,
-      addonSelections: {
-        include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true } } },
-      },
-      attachments: true,
-    },
+  const response = await fetch(`${baseUrl}/api/admin/quotes/${params.id}`, {
+    headers: { cookie },
+    cache: 'no-store',
   });
+  if (!response.ok) {
+    if (response.status === 404) {
+      notFound();
+    }
+    throw new Error('Failed to load quote');
+  }
+  const payload = await response.json();
+  const quoteRecord = payload?.item ?? null;
 
   if (!quoteRecord) {
     notFound();
@@ -80,7 +74,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
   const quote = quoteRecord;
 
   const businessOption = BUSINESS_OPTIONS.find((option) => option.code === quote.business);
-  const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata));
+  const metadata = mergeQuoteMetadata(quote.metadata);
 
   const statusLabel = STATUS_LABELS[quote.status] ?? quote.status;
   const legacyAddonSelections = quote.addonSelections.filter((selection) => !selection.quotePartId);
