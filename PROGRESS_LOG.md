@@ -39,6 +39,23 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-01-30 — Add roadmap and mechanical agent prompts
+- Added ROADMAP.md with gate-based phases and exit criteria.
+- Added AGENT_PROMPTS.md with strict, rule-driven agent instructions.
+- Logged the decision in docs/AGENT_CONTEXT.md.
+- Updated handoff notes for continuity.
+
+Tests run:
+- Not run (not requested).
+
+### 2026-01-30 — Add canonical project document
+- Created CANON.md to define the product purpose, mental model, UX principles, and roadmap.
+- Logged the new canon file in the Decision Log to prevent context drift.
+- Updated handoff notes for continuity.
+
+Tests run:
+- Not run (per request).
+
 ### 2026-01-29 — Fix middleware response status typing
 - Updated middleware to set status via NextResponse.rewrite init to satisfy read-only typing.
 - Build now advances past middleware but fails in Orders assign route type narrowing (not modified).
