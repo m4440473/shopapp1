@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 
-import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { businessNameFromCode, type BusinessName } from '@/lib/businesses';
 import { getAppSettings } from '@/lib/app-settings';
 import { storeAttachmentFile } from '@/lib/storage';
+import { getPartUploadContext } from '@/modules/orders/orders.service';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -29,20 +29,9 @@ export async function POST(req: NextRequest, { params }: { params: { partId: str
   const { partId } = params;
   if (!partId) return NextResponse.json({ error: 'Missing part id' }, { status: 400 });
 
-  const part = await prisma.orderPart.findUnique({
-    where: { id: partId },
-    select: {
-      id: true,
-      order: {
-        select: {
-          orderNumber: true,
-          business: true,
-          customer: { select: { name: true } },
-        },
-      },
-    },
-  });
-  if (!part) return NextResponse.json({ error: 'Part not found' }, { status: 404 });
+  const result = await getPartUploadContext(partId);
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+  const part = result.data.part;
 
   const form = await req.formData();
   const file = form.get('file');

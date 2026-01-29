@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
+import { assignMachinistToOrder } from '@/modules/orders/orders.service';
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions as any);
@@ -16,14 +16,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     typeof json?.machinistId === 'string' ? json.machinistId.trim() : undefined;
   const machinistId = rawMachinistId ? rawMachinistId : null;
 
-  const order = await prisma.order.update({
-    where: { id },
-    data: { assignedMachinistId: machinistId },
-    select: {
-      id: true,
-      assignedMachinistId: true,
-      assignedMachinist: { select: { id: true, name: true, email: true } },
-    },
-  });
-  return NextResponse.json({ ok: true, item: order });
+  const result = await assignMachinistToOrder(id, machinistId);
+  return NextResponse.json({ ok: true, item: result.data.item });
 }

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 
-import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { PartAttachmentCreate } from '@/modules/orders/orders.schema';
+import { createAttachmentForPart, listAttachmentsForPart } from '@/modules/orders/orders.service';
 
 async function requireSession() {
   const session = await getServerSession(authOptions);
@@ -27,15 +27,12 @@ export async function GET(req: NextRequest, { params }: { params: { partId: stri
   const { partId } = params;
   if (!partId) return NextResponse.json({ error: 'Missing part id' }, { status: 400 });
 
-  const part = await prisma.orderPart.findUnique({ where: { id: partId }, select: { id: true } });
-  if (!part) return NextResponse.json({ error: 'Part not found' }, { status: 404 });
+  const result = await listAttachmentsForPart(partId);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
 
-  const attachments = await prisma.partAttachment.findMany({
-    where: { partId },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  return NextResponse.json({ attachments });
+  return NextResponse.json({ attachments: result.data.attachments });
 }
 
 export async function POST(req: NextRequest, { params }: { params: { partId: string } }) {
@@ -45,30 +42,16 @@ export async function POST(req: NextRequest, { params }: { params: { partId: str
   const { partId } = params;
   if (!partId) return NextResponse.json({ error: 'Missing part id' }, { status: 400 });
 
-  const part = await prisma.orderPart.findUnique({
-    where: { id: partId },
-    select: { id: true, orderId: true },
-  });
-  if (!part) return NextResponse.json({ error: 'Part not found' }, { status: 404 });
-
   const json = await req.json().catch(() => null);
   const parsed = PartAttachmentCreate.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const payload = parsed.data;
-  const attachment = await prisma.partAttachment.create({
-    data: {
-      orderId: part.orderId,
-      partId,
-      kind: payload.kind,
-      url: payload.url ?? null,
-      storagePath: payload.storagePath ?? null,
-      label: payload.label ?? null,
-      mimeType: payload.mimeType ?? null,
-    },
-  });
+  const result = await createAttachmentForPart({ partId, payload: parsed.data });
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
 
-  return NextResponse.json({ attachment }, { status: 201 });
+  return NextResponse.json({ attachment: result.data.attachment }, { status: 201 });
 }

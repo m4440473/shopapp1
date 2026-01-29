@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { isMachinist } from '@/lib/rbac';
+import { addOrderNote } from '@/modules/orders/orders.service';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -14,6 +14,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const { content } = json ?? {};
   if (!content || !content.trim()) return NextResponse.json({ error: 'Empty note' }, { status: 400 });
 
-  const note = await prisma.note.create({ data: { orderId: params.id, userId: (session.user as any).id, content: content.trim() } });
-  return NextResponse.json({ ok: true, note });
+  const result = await addOrderNote(params.id, (session.user as any).id, content);
+  return NextResponse.json({ ok: true, note: result.data.note });
 }

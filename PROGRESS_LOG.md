@@ -39,6 +39,14 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-01-30 — Orders API routes layered via repo/service
+- Moved all Orders API route Prisma access into src/modules/orders/orders.repo.ts and added service wrappers for each Orders route.
+- Updated Orders API routes to call orders.service.ts for data access and business rules, keeping routes thin.
+- Orders routes no longer import Prisma directly, enforcing the Orders module boundary.
+
+Next steps (immediate)
+- Continue module extraction for the next domain (Quotes) following the Orders repo/service pattern.
+
 ### 2026-01-29 — Orders module extraction (repo/service/schema/types)
 - Moved Orders domain helpers out of src/lib into src/modules/orders (repo/service/schema/types).
 - Updated Orders-related API routes and UI imports to use the new module entry points.
