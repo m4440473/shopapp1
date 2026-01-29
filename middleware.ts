@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { canAccessAdmin } from '@/lib/rbac';
 
 export async function middleware(request: NextRequest) {
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
@@ -12,8 +13,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(signInUrl);
   }
 
-  const isAdmin = Boolean((token as { admin?: boolean }).admin) || (token as { role?: string }).role === 'ADMIN';
-  if (!isAdmin) {
+  if (!canAccessAdmin(token as { role?: string; admin?: boolean })) {
     const url = request.nextUrl.clone();
     url.pathname = '/403';
     url.search = '';

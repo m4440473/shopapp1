@@ -2,44 +2,44 @@
 
 Date: 2026-01-30
 Agent: Codex
-Goal (1 sentence): Add a gate-based roadmap and mechanical agent prompts, then update continuity docs.
+Goal (1 sentence): Align auth guard admin checks to a single RBAC source and confirm layout/provider stability.
 
 ## What I changed
-- Summary: Added ROADMAP.md and AGENT_PROMPTS.md, updated Decision Log and continuity notes.
+- Summary: Updated middleware and whoami admin checks to use the shared RBAC helper for consistent auth evaluation.
 
 ## Files touched
-- ROADMAP.md — gate-based roadmap with exit criteria.
-- AGENT_PROMPTS.md — strict, rule-based prompts for agents.
-- docs/AGENT_CONTEXT.md — Decision Log entry for the new planning docs.
-Goal (1 sentence): Create a canonical project document to preserve the product vision and update continuity docs.
-
-## What I changed
-- Summary: Added CANON.md and logged the decision, plus updated continuity docs.
-
-## Files touched
-- CANON.md — new canonical product and UX constitution.
-- docs/AGENT_CONTEXT.md — Decision Log entry for CANON.md.
+- middleware.ts — use canAccessAdmin for admin guard checks.
+- src/app/api/whoami/route.ts — compute admin via canAccessAdmin.
 - PROGRESS_LOG.md — session entry.
-- docs/AGENT_HANDOFF.md — updated handoff.
+- docs/AGENT_HANDOFF.md — updated handoff notes.
 
 ## Commands run
-- rg --files -g 'AGENTS.md' -g 'SKILL.md'
+- rg --files -g 'AGENTS_EXECUTION.md'
+- rg --files -g '*EXECUTION*'
+- cat CANON.md
+- cat ROADMAP.md
+- cat AGENT_PROMPTS.md
+- cat docs/AGENT_CONTEXT.md
+- cat PROGRESS_LOG.md
+- cat docs/AGENT_HANDOFF.md
+- rg -n "auth|session" middleware.ts src -g'*.ts' -g'*.tsx'
+- rg -n "requireAuth|requireSession|getServerSession|SessionProvider|useSession|authOptions|getToken" src middleware.ts
+- cat src/lib/auth.ts
+- cat middleware.ts
+- cat src/components/Providers.tsx
+- cat src/components/Admin/AdminPricingGate.tsx
+- cat src/app/api/auth/[...nextauth]/route.ts
+- cat "src/app/(public)/auth/signin/page.tsx"
+- cat "src/app/(public)/auth/signout/route.ts"
+- cat src/app/api/orders/[id]/checklist/route.ts
+- rg -n "Providers" src/app -g'*.tsx'
+- cat src/app/layout.tsx
+- cat src/lib/rbac.ts
+- rg -n "role === 'ADMIN'|role === \"ADMIN\"|admin\\)" src/middleware.ts src -g'*.ts' -g'*.tsx'
+- rg -n "canAccessAdmin|role === 'ADMIN'|role === \"ADMIN\"" src/app -g'*.ts' -g'*.tsx'
 
 ## Notes / gotchas
 - No tests run (not requested).
 
 ## Next steps
-- [ ] Review ROADMAP.md and AGENT_PROMPTS.md for wording accuracy.
-- [ ] Execute Phase 1 (P0) tasks using the mechanical prompts only.
-- ls
-- cat AGENTS.md
-- cat docs/AGENT_CONTEXT.md
-- cat PROGRESS_LOG.md
-- cat docs/AGENT_HANDOFF.md
-
-## Notes / gotchas
-- No tests run (per request).
-
-## Next steps
-- [ ] Review CANON.md for accuracy and adjust wording as needed.
-- [ ] Continue P0 stabilization work once the canon is approved.
+- [ ] Continue Prompt A steps if further session-source consolidation is required.

@@ -39,6 +39,13 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-01-30 — Prompt A Step 3-5 auth guard alignment
+- Standardized admin checks in middleware and whoami to use shared RBAC helper for consistent session-based admin evaluation.
+- Reviewed layout/providers for duplication; no changes needed.
+
+Tests run:
+- Not run (not requested).
+
 ### 2026-01-30 — Add roadmap and mechanical agent prompts
 - Added ROADMAP.md with gate-based phases and exit criteria.
 - Added AGENT_PROMPTS.md with strict, rule-driven agent instructions.
