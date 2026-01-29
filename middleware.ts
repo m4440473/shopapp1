@@ -17,9 +17,7 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = '/403';
     url.search = '';
-    const response = NextResponse.rewrite(url);
-    response.status = 403;
-    return response;
+    return NextResponse.rewrite(url, { status: 403 });
   }
 
   return NextResponse.next();

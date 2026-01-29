@@ -1,18 +1,13 @@
+import 'server-only';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { z } from 'zod';
 
 import { authOptions } from '@/lib/auth';
-import {
-  DEFAULT_QUOTE_METADATA,
-  mergeQuoteMetadata,
-  parseQuoteMetadata,
-  stringifyQuoteMetadata,
-  type QuoteApprovalMetadata,
-} from '@/lib/quote-metadata';
 import { canAccessAdmin } from '@/lib/rbac';
-import { prisma } from '@/lib/prisma';
 import { getAppSettings } from '@/lib/app-settings';
+import { updateQuoteApproval } from '@/modules/quotes/quotes.repo';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -59,86 +54,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const settings = await getAppSettings();
 
-  return prisma.$transaction(async (tx) => {
-    const quote = await tx.quote.findUnique({
-      where: { id: params.id },
-      include: { attachments: true },
-    });
+  const result = await updateQuoteApproval({
+    quoteId: params.id,
+    received,
+    attachment,
+    requireAttachment: settings.requirePOForQuoteApproval,
+  });
 
-    if (!quote) {
-      return new NextResponse('Not found', { status: 404 });
-    }
+  if (result.status === 404) {
+    return new NextResponse('Not found', { status: 404 });
+  }
 
-    const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata) ?? DEFAULT_QUOTE_METADATA);
+  if (result.status === 400) {
+    return NextResponse.json({ error: result.error }, { status: 400 });
+  }
 
-    if (settings.requirePOForQuoteApproval && received && !attachment && !metadata.approval?.attachmentId) {
-      return NextResponse.json(
-        { error: 'An approval document must be uploaded before marking as received.' },
-        { status: 400 },
-      );
-    }
-
-    let createdAttachmentId: string | null = null;
-    let createdAttachmentLabel: string | null = null;
-    let createdAttachmentStoragePath: string | null = null;
-    let createdAttachmentUrl: string | null = null;
-    let uploadedAt: string | null = null;
-
-    if (received && attachment) {
-      const created = await tx.quoteAttachment.create({
-        data: {
-          quoteId: quote.id,
-          url: attachment.url ?? null,
-          storagePath: attachment.storagePath ?? null,
-          label: attachment.label ?? null,
-          mimeType: attachment.mimeType ?? null,
-        },
-      });
-      createdAttachmentId = created.id;
-      createdAttachmentLabel = created.label ?? attachment.label ?? null;
-      createdAttachmentStoragePath = created.storagePath ?? attachment.storagePath ?? null;
-      createdAttachmentUrl = created.url ?? attachment.url ?? null;
-      uploadedAt = created.createdAt.toISOString();
-    }
-
-    const approval: QuoteApprovalMetadata = {
-      ...metadata.approval,
-      received,
-      attachmentId:
-        received && (createdAttachmentId || metadata.approval?.attachmentId)
-          ? createdAttachmentId ?? metadata.approval?.attachmentId ?? null
-          : null,
-      attachmentLabel:
-        received && (createdAttachmentLabel || metadata.approval?.attachmentLabel)
-          ? createdAttachmentLabel ?? metadata.approval?.attachmentLabel ?? null
-          : null,
-      attachmentStoragePath:
-        received && (createdAttachmentStoragePath || metadata.approval?.attachmentStoragePath)
-          ? createdAttachmentStoragePath ?? metadata.approval?.attachmentStoragePath ?? null
-          : null,
-      attachmentUrl:
-        received && (createdAttachmentUrl || metadata.approval?.attachmentUrl)
-          ? createdAttachmentUrl ?? metadata.approval?.attachmentUrl ?? null
-          : null,
-      uploadedAt: received ? uploadedAt ?? metadata.approval?.uploadedAt ?? null : null,
-    };
-
-    const updatedMetadata = mergeQuoteMetadata({
-      ...metadata,
-      approval,
-    });
-
-    const updatedQuote = await tx.quote.update({
-      where: { id: quote.id },
-      data: { metadata: stringifyQuoteMetadata(updatedMetadata) },
-      include: { attachments: true },
-    });
-
-    return NextResponse.json({
-      ok: true,
-      approval,
-      metadata: mergeQuoteMetadata(parseQuoteMetadata(updatedQuote.metadata) ?? DEFAULT_QUOTE_METADATA),
-      attachments: updatedQuote.attachments,
-    });
+  return NextResponse.json({
+    ok: true,
+    approval: result.approval,
+    metadata: result.metadata,
+    attachments: result.attachments,
   });
 }

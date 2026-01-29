@@ -1,20 +1,19 @@
+import 'server-only';
+
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 
 import { authOptions } from '@/lib/auth';
 import {
   DEFAULT_QUOTE_METADATA,
   mergeQuoteMetadata,
   parseQuoteMetadata,
-  stringifyQuoteMetadata,
 } from '@/lib/quote-metadata';
 import { generateNextOrderNumber } from '@/modules/orders/orders.service';
-import { prisma } from '@/lib/prisma';
 import { canAccessAdmin } from '@/lib/rbac';
 import { businessNameFromCode, type BusinessCode, type BusinessName } from '@/lib/businesses';
 import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
@@ -22,6 +21,7 @@ import { OrderPartCreate, PriorityEnum } from '@/modules/orders/orders.schema';
 import { getAppSettings } from '@/lib/app-settings';
 import { syncChecklistForOrder } from '@/modules/orders/orders.service';
 import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
+import { convertQuoteToOrder, findActiveOrderCustomFields, findQuoteForConversion } from '@/modules/quotes/quotes.repo';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -188,22 +188,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
   }
 
-  const quote = await prisma.quote.findUnique({
-    where: { id: params.id },
-    include: {
-      customer: { select: { id: true, name: true } },
-      parts: {
-        include: {
-          material: true,
-          addonSelections: {
-            include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true, departmentId: true } } },
-          },
-        },
-      },
-      addonSelections: { include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true, departmentId: true } } } },
-      attachments: true,
-    },
-  });
+  const quote = await findQuoteForConversion(params.id);
 
   if (!quote) {
     return new NextResponse('Not found', { status: 404 });
@@ -301,14 +286,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const materialOrdered = overrides?.materialOrdered ?? false;
   const customFieldValues = overrides?.customFieldValues ?? [];
   const validCustomFieldValues = customFieldValues.length
-    ? await prisma.customField.findMany({
-        where: {
-          id: { in: customFieldValues.map((value) => value.fieldId) },
-          entityType: 'ORDER',
-          isActive: true,
-          OR: [{ businessCode }, { businessCode: null }],
-        },
-        select: { id: true },
+    ? await findActiveOrderCustomFields({
+        fieldIds: customFieldValues.map((value) => value.fieldId),
+        business: businessCode,
       })
     : [];
   const allowedFieldIds = new Set(validCustomFieldValues.map((field) => field.id));
@@ -320,146 +300,24 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }))
     .filter((value) => value.value !== null);
 
-  const result = await prisma.$transaction(async (tx) => {
-    const order = await tx.order.create({
-      data: {
-        orderNumber,
-        business: quote.business,
-        customerId: quote.customerId,
-        modelIncluded,
-        receivedDate: now,
-        dueDate,
-        priority,
-        status: 'RECEIVED',
-        materialNeeded,
-        materialOrdered,
-        vendorId: overrides?.vendorId ?? null,
-        poNumber: overrides?.poNumber ?? null,
-        assignedMachinistId: overrides?.assignedMachinistId ?? null,
-      },
-      select: { id: true },
-    });
-
-    if (normalizedCustomFieldValues.length) {
-      await tx.customFieldValue.createMany({
-        data: normalizedCustomFieldValues.map((value) => ({
-          fieldId: value.fieldId,
-          entityId: order.id,
-          value: value.value,
-        })),
-      });
-    }
-
-    const orderParts = await Promise.all(
-      partsData.map((part) =>
-        tx.orderPart.create({
-          data: {
-            orderId: order.id,
-            partNumber: part.partNumber,
-            quantity: part.quantity,
-            materialId: part.materialId,
-            stockSize: part.stockSize ?? null,
-            cutLength: part.cutLength ?? null,
-            notes: part.notes ?? undefined,
-          },
-          select: { id: true },
-        })
-      )
-    );
-
-    if (orderAttachments.length) {
-      await tx.attachment.createMany({
-        data: orderAttachments.map((attachment) => ({
-          orderId: order.id,
-          url: attachment.url,
-          storagePath: attachment.storagePath,
-          label: attachment.label,
-          mimeType: attachment.mimeType,
-          uploadedById: userId ?? null,
-        })),
-      });
-    }
-
-    if (noteContent && userId) {
-      await tx.note.create({
-        data: {
-          orderId: order.id,
-          content: noteContent,
-          userId,
-        },
-      });
-    }
-
-    await tx.statusHistory.create({
-      data: {
-        orderId: order.id,
-        from: 'RECEIVED',
-        to: 'RECEIVED',
-        userId,
-        reason: `Converted from quote ${quote.quoteNumber}`,
-      },
-    });
-
-    const quotePartSelections = quote.parts.flatMap((part, index) => {
-      const orderPartId = orderParts[index]?.id;
-      if (!orderPartId) return [];
-      return (part.addonSelections ?? []).map((selection) => ({
-        selection,
-        orderPartId,
-      }));
-    });
-
-    const legacySelections =
-      quote.addonSelections
-        ?.filter((selection) => !selection.quotePartId)
-        .map((selection) => ({
-          selection,
-          orderPartId: orderParts[0]?.id ?? null,
-        })) ?? [];
-
-    const chargeSelections = [...quotePartSelections, ...legacySelections].filter(
-      (entry) => entry.orderPartId && entry.selection.addon?.departmentId
-    );
-
-    if (chargeSelections.length) {
-      await Promise.all(
-        chargeSelections.map(({ selection, orderPartId }, index) =>
-          tx.orderCharge.create({
-            data: {
-              orderId: order.id,
-              partId: orderPartId!,
-              departmentId: selection.addon?.departmentId ?? '',
-              addonId: selection.addonId,
-              kind: 'ADDON',
-              name: selection.addon?.name ?? 'Add-on',
-              description: selection.notes ?? null,
-              quantity: new Prisma.Decimal(selection.units ?? 0),
-              unitPrice: new Prisma.Decimal(selection.rateCents ?? 0),
-              sortOrder: index,
-            },
-          })
-        )
-      );
-    }
-
-    const updatedMetadata = mergeQuoteMetadata({
-      ...metadata,
-      conversion: {
-        orderId: order.id,
-        orderNumber,
-        convertedAt: now.toISOString(),
-      },
-      approval: metadata.approval,
-    });
-
-    await tx.quote.update({
-      where: { id: quote.id },
-      data: {
-        metadata: stringifyQuoteMetadata(updatedMetadata),
-      },
-    });
-
-    return { orderId: order.id, metadata: updatedMetadata };
+  const result = await convertQuoteToOrder({
+    quote,
+    metadata,
+    orderNumber,
+    now,
+    dueDate,
+    priority,
+    modelIncluded,
+    materialNeeded,
+    materialOrdered,
+    vendorId: overrides?.vendorId ?? null,
+    poNumber: overrides?.poNumber ?? null,
+    assignedMachinistId: overrides?.assignedMachinistId ?? null,
+    partsData,
+    orderAttachments,
+    noteContent,
+    userId,
+    normalizedCustomFieldValues,
   });
 
   await syncChecklistForOrder(result.orderId);
