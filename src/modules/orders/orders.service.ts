@@ -16,6 +16,7 @@ import {
   PartAttachmentUpdate,
 } from './orders.schema';
 import type { OrderFilterState, OrderListItem, OrderWithMeta } from './orders.types';
+import { isPartReadyForDepartment } from './department-routing';
 import {
   createOrderAttachment,
   createOrderCharge,
@@ -35,6 +36,7 @@ import {
   findChecklistByAddon,
   findChecklistByCharge,
   findChecklistById,
+  findActiveDepartmentById,
   findDepartmentById,
   findOrderById,
   findOrderCharge,
@@ -50,9 +52,13 @@ import {
   findUserById,
   listAddons,
   listChecklistItems,
+  listDepartmentsOrdered,
   listOrderCharges,
   listOrders,
+  listOrderPartsByIds,
+  listReadyOrderPartsForDepartment,
   listPartAttachments,
+  moveOrderPartsToDepartment,
   updateChecklistCompletion,
   updateOrder,
   updateOrderAssignee,
@@ -66,6 +72,19 @@ import {
 
 export { generateNextOrderNumber, syncChecklistForOrder };
 export type { OrderFilterState, OrderListItem, OrderWithMeta };
+export { isPartReadyForDepartment };
+
+export type DepartmentFeedPart = { id: string; partNumber: string | null; quantity: number | null };
+export type DepartmentFeedOrder = {
+  orderId: string;
+  orderNumber: string;
+  customerName: string | null;
+  dueDate: Date | string | null;
+  status: string;
+  totalParts: number;
+  readyParts: DepartmentFeedPart[];
+  readyPartsCount: number;
+};
 
 type OrderCreateInput = z.infer<typeof OrderCreate>;
 type OrderUpdateInput = z.infer<typeof OrderUpdate>;
@@ -882,6 +901,103 @@ export async function listAddonsForOrders({
 
   const sanitized = items.map(({ rateCents, ...rest }) => rest);
   return ok({ items: sanitized, nextCursor });
+}
+
+export async function getDepartmentsOrdered() {
+  const items = await listDepartmentsOrdered();
+  return ok({ items });
+}
+
+export async function getOrderDepartmentFeed(
+  departmentId: string,
+): Promise<ServiceResult<{ items: DepartmentFeedOrder[] }>> {
+  if (!departmentId) return fail(400, 'Department is required');
+  const readyParts = await listReadyOrderPartsForDepartment(departmentId);
+  const orders = new Map<string, DepartmentFeedOrder>();
+
+  readyParts.forEach((part) => {
+    const order = part.order;
+    if (!order) return;
+    const existing =
+      orders.get(order.id) ??
+      {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        customerName: order.customer?.name ?? null,
+        dueDate: order.dueDate ?? null,
+        status: order.status,
+        totalParts: order.parts?.length ?? 0,
+        readyParts: [],
+        readyPartsCount: 0,
+      };
+    existing.readyParts.push({
+      id: part.id,
+      partNumber: part.partNumber ?? null,
+      quantity: part.quantity ?? null,
+    });
+    existing.readyPartsCount += 1;
+    orders.set(order.id, existing);
+  });
+
+  const items = Array.from(orders.values()).sort((a, b) => {
+    const aDue = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+    const bDue = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+    return aDue - bDue;
+  });
+
+  return ok({ items });
+}
+
+export async function transitionPartsDepartment({
+  orderId,
+  fromDepartmentId,
+  toDepartmentId,
+  partIds,
+  employeeName,
+  togglerId,
+}: {
+  orderId: string;
+  fromDepartmentId: string;
+  toDepartmentId: string;
+  partIds: string[];
+  employeeName: string;
+  togglerId?: string;
+}) {
+  if (!orderId) return fail(400, 'Order is required');
+  if (!fromDepartmentId) return fail(400, 'Missing fromDepartmentId');
+  if (!toDepartmentId) return fail(400, 'Missing toDepartmentId');
+  if (!Array.isArray(partIds) || partIds.length === 0) return fail(400, 'No parts selected');
+  if (!employeeName) return fail(400, 'Employee name is required');
+
+  const orderExists = await findOrderById(orderId);
+  if (!orderExists) return fail(404, 'Order not found');
+
+  const targetDepartment = await findActiveDepartmentById(toDepartmentId);
+  if (!targetDepartment) return fail(400, 'Target department not found');
+
+  const parts = await listOrderPartsByIds(orderId, partIds);
+  if (parts.length !== partIds.length) return fail(404, 'Part not found in order');
+
+  const invalidPart = parts.find((part) => part.currentDepartmentId !== fromDepartmentId);
+  if (invalidPart) return fail(400, 'Part is not in the expected department');
+
+  const fromDepartment = await findDepartmentById(fromDepartmentId);
+  const fromLabel = fromDepartment?.name ?? fromDepartmentId;
+  const toLabel = targetDepartment.name ?? toDepartmentId;
+
+  await moveOrderPartsToDepartment({
+    orderId,
+    partIds,
+    toDepartmentId,
+    statusHistory: {
+      from: `Department ${fromLabel}`,
+      to: `Department ${toLabel}`,
+      userId: togglerId ?? null,
+      reason: `Moved ${partIds.length} part${partIds.length === 1 ? '' : 's'} from ${fromLabel} to ${toLabel} by ${employeeName}`,
+    },
+  });
+
+  return ok({ ok: true });
 }
 
 export async function getOrderPrintData(orderId: string) {

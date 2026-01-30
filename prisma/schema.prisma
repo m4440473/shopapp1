@@ -95,20 +95,22 @@ model Order {
 }
 
 model OrderPart {
-  id         String   @id @default(cuid())
-  orderId    String
-  order      Order    @relation(fields: [orderId], references: [id])
-  partNumber String
-  quantity   Int
-  materialId String?
-  material   Material? @relation(fields: [materialId], references: [id])
-  notes      String?
-  stockSize  String?
-  cutLength  String?
-  charges    OrderCharge[]
-  attachments PartAttachment[]
-  checklistItems OrderChecklist[]
-  timeEntries TimeEntry[]
+  id                  String      @id @default(cuid())
+  orderId             String
+  order               Order       @relation(fields: [orderId], references: [id])
+  partNumber          String
+  quantity            Int
+  materialId          String?
+  material            Material?   @relation(fields: [materialId], references: [id])
+  currentDepartmentId String?
+  currentDepartment   Department? @relation(fields: [currentDepartmentId], references: [id])
+  notes               String?
+  stockSize           String?
+  cutLength           String?
+  charges             OrderCharge[]
+  attachments         PartAttachment[]
+  checklistItems      OrderChecklist[]
+  timeEntries         TimeEntry[]
 }
 
 model OrderChecklist {
@@ -231,6 +233,7 @@ model Department {
   addons    Addon[]
   charges   OrderCharge[]
   checklistItems OrderChecklist[]
+  currentParts OrderPart[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

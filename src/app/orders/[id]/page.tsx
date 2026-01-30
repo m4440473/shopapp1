@@ -84,6 +84,51 @@ const DEFAULT_BUSINESS = (BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die') 
 const DEFAULT_OPERATION = 'Machining';
 const OPERATION_OPTIONS = ['Machining', 'Setup', 'Inspection', 'Programming', 'Cleanup'];
 
+const getActiveChecklistItems = (orderItem: any) => {
+  const checklist = Array.isArray(orderItem?.checklist) ? orderItem.checklist : [];
+  return checklist.filter((entry: any) => entry.isActive !== false);
+};
+
+const getChecklistEntryPartId = (entry: any) => entry.part?.id ?? entry.charge?.partId ?? entry.partId ?? null;
+
+const getPartChecklistItems = (orderItem: any, partId: string) =>
+  getActiveChecklistItems(orderItem).filter((entry: any) => getChecklistEntryPartId(entry) === partId);
+
+const isPartCompleteForDepartment = (orderItem: any, partId: string, departmentId: string) => {
+  const entries = getPartChecklistItems(orderItem, partId).filter((entry: any) => entry.departmentId === departmentId);
+  if (!entries.length) return false;
+  return entries.every((entry: any) => entry.completed);
+};
+
+const getIncompleteDepartmentsForPart = (orderItem: any, partId: string) => {
+  const entries = getPartChecklistItems(orderItem, partId).filter(
+    (entry: any) => entry.departmentId && entry.completed === false && entry.isActive !== false,
+  );
+  const byDepartment = new Map<string, { id: string; name: string; sortOrder: number }>();
+  entries.forEach((entry: any) => {
+    const department = entry.department;
+    if (!department?.id) return;
+    if (!byDepartment.has(department.id)) {
+      byDepartment.set(department.id, {
+        id: department.id,
+        name: department.name ?? 'Department',
+        sortOrder: department.sortOrder ?? 0,
+      });
+    }
+  });
+  return Array.from(byDepartment.values()).sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return a.name.localeCompare(b.name);
+  });
+};
+
+const pickNextDepartmentId = (options: Array<{ id: string; sortOrder: number }>, currentSortOrder: number | null) => {
+  if (!options.length) return '';
+  if (currentSortOrder === null) return options[0].id;
+  const next = options.find((option) => option.sortOrder > currentSortOrder);
+  return (next ?? options[0]).id;
+};
+
 type Option = { id: string; name: string };
 
 type EditFormState = {
@@ -120,6 +165,12 @@ type AttachmentFormState = {
 type PendingAction =
   | { type: 'status'; status: string }
   | { type: 'checklist'; checklistId: string; checked: boolean };
+
+type ChecklistToggleContext = {
+  partId: string | null;
+  departmentId: string | null;
+  checked: boolean;
+};
 
 type TimeEntryRecord = {
   id: string;
@@ -201,6 +252,15 @@ export default function OrderDetailPage() {
   const [employeeDialogError, setEmployeeDialogError] = useState<string | null>(null);
   const [employeeSubmitting, setEmployeeSubmitting] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [pendingChecklistContext, setPendingChecklistContext] = useState<ChecklistToggleContext | null>(null);
+  const [lastEmployeeName, setLastEmployeeName] = useState('');
+  const [routingDialogOpen, setRoutingDialogOpen] = useState(false);
+  const [routingPartId, setRoutingPartId] = useState<string | null>(null);
+  const [routingFromDepartmentId, setRoutingFromDepartmentId] = useState<string | null>(null);
+  const [routingToDepartmentId, setRoutingToDepartmentId] = useState('');
+  const [routingBulkMove, setRoutingBulkMove] = useState(false);
+  const [routingError, setRoutingError] = useState<string | null>(null);
+  const [routingSaving, setRoutingSaving] = useState(false);
   const [canEditParts, setCanEditParts] = useState(false);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [pendingPartPayload, setPendingPartPayload] = useState<PendingPartPayload | null>(null);
@@ -338,6 +398,30 @@ export default function OrderDetailPage() {
       .filter(Boolean)
       .join(',');
   }, [item?.parts]);
+
+  const routingOptions = React.useMemo(() => {
+    if (!item || !routingPartId) return [];
+    return getIncompleteDepartmentsForPart(item, routingPartId);
+  }, [item, routingPartId]);
+
+  const routingCurrentSortOrder = React.useMemo(() => {
+    if (!item || !routingPartId || !routingFromDepartmentId) return null;
+    const entries = getPartChecklistItems(item, routingPartId).filter(
+      (entry: any) => entry.departmentId === routingFromDepartmentId,
+    );
+    const current = entries.find((entry: any) => entry.department?.sortOrder !== undefined);
+    return current?.department?.sortOrder ?? null;
+  }, [item, routingPartId, routingFromDepartmentId]);
+
+  useEffect(() => {
+    if (!routingDialogOpen) return;
+    if (!routingOptions.length) {
+      setRoutingToDepartmentId('');
+      return;
+    }
+    if (routingToDepartmentId && routingOptions.some((option) => option.id === routingToDepartmentId)) return;
+    setRoutingToDepartmentId(pickNextDepartmentId(routingOptions, routingCurrentSortOrder));
+  }, [routingDialogOpen, routingOptions, routingToDepartmentId, routingCurrentSortOrder]);
 
   const refreshTimeSummary = React.useCallback(async () => {
     if (!id) return;
@@ -622,8 +706,9 @@ export default function OrderDetailPage() {
     }
   }
 
-  function openEmployeeDialog(action: PendingAction) {
+  function openEmployeeDialog(action: PendingAction, context?: ChecklistToggleContext) {
     setPendingAction(action);
+    setPendingChecklistContext(context ?? null);
     setEmployeeName('');
     setEmployeeDialogError(null);
     setEmployeeDialogOpen(true);
@@ -633,6 +718,7 @@ export default function OrderDetailPage() {
     setEmployeeDialogOpen(false);
     setEmployeeDialogError(null);
     setPendingAction(null);
+    setPendingChecklistContext(null);
   }
 
   async function toggleChecklist(checklistId: string, checked: boolean, employee: string) {
@@ -653,7 +739,8 @@ export default function OrderDetailPage() {
           throw new Error(message || 'Failed to update checklist');
         }
       }
-      await load();
+      const updated = await load();
+      return updated;
     } catch (e) {
       console.error(e);
       throw e;
@@ -661,6 +748,95 @@ export default function OrderDetailPage() {
       setToggling(null);
     }
   }
+
+  const maybeOpenRoutingDialog = (orderItem: any, context: ChecklistToggleContext) => {
+    if (!context.partId || !context.departmentId) return;
+    const part = Array.isArray(orderItem?.parts)
+      ? orderItem.parts.find((entry: any) => entry?.id === context.partId)
+      : null;
+    if (!part || part.currentDepartmentId !== context.departmentId) return;
+
+    const partChecklist = getPartChecklistItems(orderItem, context.partId);
+    const deptEntries = partChecklist.filter((entry: any) => entry.departmentId === context.departmentId);
+    if (!deptEntries.length) return;
+    const hasIncomplete = deptEntries.some((entry: any) => entry.completed === false);
+    if (hasIncomplete) return;
+
+    const nextDepartments = getIncompleteDepartmentsForPart(orderItem, context.partId);
+    if (!nextDepartments.length) return;
+
+    const currentSortOrder = deptEntries.find((entry: any) => entry.department?.sortOrder !== undefined)?.department?.sortOrder ?? null;
+    const defaultNextId = pickNextDepartmentId(nextDepartments, currentSortOrder);
+
+    setRoutingPartId(context.partId);
+    setRoutingFromDepartmentId(context.departmentId);
+    setRoutingToDepartmentId(defaultNextId);
+    setRoutingBulkMove(false);
+    setRoutingError(null);
+    setRoutingDialogOpen(true);
+  };
+
+  const resetRoutingDialog = () => {
+    setRoutingDialogOpen(false);
+    setRoutingPartId(null);
+    setRoutingFromDepartmentId(null);
+    setRoutingToDepartmentId('');
+    setRoutingBulkMove(false);
+    setRoutingError(null);
+    setRoutingSaving(false);
+  };
+
+  const submitRoutingTransition = async () => {
+    if (!id || !routingPartId || !routingFromDepartmentId || !routingToDepartmentId) return;
+    const employee = lastEmployeeName.trim();
+    if (!employee) {
+      setRoutingError('Employee name is required to move departments.');
+      return;
+    }
+
+    const partIds = new Set<string>([routingPartId]);
+    if (routingBulkMove && item) {
+      const additional = Array.isArray(item.parts)
+        ? item.parts
+            .filter((part: any) => part?.id && part.currentDepartmentId === routingFromDepartmentId)
+            .filter((part: any) => part.id !== routingPartId)
+            .filter((part: any) => isPartCompleteForDepartment(item, part.id, routingFromDepartmentId))
+            .map((part: any) => part.id)
+        : [];
+      additional.forEach((partId) => partIds.add(partId));
+    }
+
+    setRoutingSaving(true);
+    setRoutingError(null);
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromDepartmentId: routingFromDepartmentId,
+          toDepartmentId: routingToDepartmentId,
+          partIds: Array.from(partIds),
+          employeeName: employee,
+        }),
+        credentials: 'include',
+      });
+      const message = await res.text();
+      if (!res.ok) {
+        try {
+          const parsed = JSON.parse(message);
+          throw new Error(parsed?.error || 'Failed to move departments');
+        } catch {
+          throw new Error(message || 'Failed to move departments');
+        }
+      }
+      await load();
+      resetRoutingDialog();
+    } catch (err: any) {
+      setRoutingError(err?.message || 'Failed to move departments');
+    } finally {
+      setRoutingSaving(false);
+    }
+  };
 
   async function handleAddPart(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1094,10 +1270,14 @@ export default function OrderDetailPage() {
     setEmployeeSubmitting(true);
     setEmployeeDialogError(null);
     try {
+      setLastEmployeeName(trimmedName);
       if (pendingAction.type === 'status') {
         await changeStatus(pendingAction.status, trimmedName);
       } else {
-        await toggleChecklist(pendingAction.checklistId, pendingAction.checked, trimmedName);
+        const updated = await toggleChecklist(pendingAction.checklistId, pendingAction.checked, trimmedName);
+        if (pendingChecklistContext?.checked && updated) {
+          maybeOpenRoutingDialog(updated, pendingChecklistContext);
+        }
       }
       closeEmployeeDialog();
     } catch (err: any) {
@@ -1158,6 +1338,10 @@ export default function OrderDetailPage() {
       ? checklistItems.find((c: any) => c.id === pendingAction.checklistId)
       : null;
   const pendingChecklistName = pendingChecklistItem?.charge?.name ?? pendingChecklistItem?.addon?.name ?? null;
+  const routingPartLabel = routingPartId ? partLabelById.get(routingPartId) ?? 'Part' : null;
+  const routingFromDepartmentName = routingFromDepartmentId
+    ? activeChecklistItems.find((entry: any) => entry.departmentId === routingFromDepartmentId)?.department?.name ?? null
+    : null;
 
   return (
     <div className="space-y-6">
@@ -1212,6 +1396,77 @@ export default function OrderDetailPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={routingDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetRoutingDialog();
+          } else {
+            setRoutingDialogOpen(true);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Department complete for this part. Move to next department?</DialogTitle>
+            <DialogDescription className="space-y-1">
+              <p>
+                {routingPartLabel ? `${routingPartLabel} ` : 'This part '}
+                {routingFromDepartmentName ? `finished ${routingFromDepartmentName}.` : 'finished its department.'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Select the next department that still has open checklist items.
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            <div className="space-y-2">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">Next department</Label>
+              <Select
+                value={routingToDepartmentId}
+                onValueChange={(value) => setRoutingToDepartmentId(value)}
+                disabled={!routingOptions.length || routingSaving}
+              >
+                <SelectTrigger className="border-border/60 bg-background/80 text-left">
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {routingOptions.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="bulk-move-parts"
+                checked={routingBulkMove}
+                onCheckedChange={(checked) => setRoutingBulkMove(Boolean(checked))}
+                disabled={routingSaving}
+              />
+              <Label htmlFor="bulk-move-parts" className="text-sm text-muted-foreground">
+                Also move other parts that are complete for this department
+              </Label>
+            </div>
+            {routingError ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {routingError}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={resetRoutingDialog} disabled={routingSaving}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={submitRoutingTransition} disabled={routingSaving || !routingToDepartmentId}>
+              {routingSaving ? 'Moving…' : 'Move part(s)'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -2374,6 +2629,10 @@ export default function OrderDetailPage() {
                                   type: 'checklist',
                                   checklistId: c.id,
                                   checked: value === true,
+                                }, {
+                                  partId: part.id ?? null,
+                                  departmentId: c.departmentId ?? c.department?.id ?? null,
+                                  checked: value === true,
                                 });
                               }}
                             />
@@ -2417,6 +2676,10 @@ export default function OrderDetailPage() {
                               openEmployeeDialog({
                                 type: 'checklist',
                                 checklistId: c.id,
+                                checked: value === true,
+                              }, {
+                                partId: null,
+                                departmentId: c.departmentId ?? c.department?.id ?? null,
                                 checked: value === true,
                               });
                             }}
