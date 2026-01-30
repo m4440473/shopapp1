@@ -29,6 +29,13 @@ root:
 npm ci
 ```
 
+## Domain glossary
+
+- **Addon** = template/catalog item.
+- **OrderCharge** = billable instance line item applied to a part or order.
+- **OrderChecklist** = task instance (department checklist items must be per-part).
+- Routing + intelligence queues use `OrderPart.currentDepartmentId` and per-part department checklist items.
+
 ## Quickstart (SQLite)
 
 ```bash
