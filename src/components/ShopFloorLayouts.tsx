@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpDown, LayoutGrid, LayoutList, MonitorPlay, SlidersHorizontal } from 'lucide-react';
 
@@ -32,6 +32,18 @@ type LayoutOption = 'grid' | 'handoff' | 'machinist';
 type Props = {
   orders: OrderWithMeta[];
   machinists: Array<{ id: string | null; name?: string | null; email?: string | null }>;
+  departments: Array<{ id: string; name: string; sortOrder?: number | null }>;
+  initialDepartmentId: string | null;
+  initialDepartmentFeed: Array<{
+    orderId: string;
+    orderNumber: string;
+    customerName: string | null;
+    dueDate: string | Date | null;
+    status: string;
+    totalParts: number;
+    readyParts: Array<{ id: string; partNumber: string | null; quantity: number | null }>;
+    readyPartsCount: number;
+  }>;
 };
 
 const SORT_KEYS = ['dueDate', 'priority', 'status', 'quantity'] as const;
@@ -61,7 +73,13 @@ function SortButton({
   );
 }
 
-export function ShopFloorLayouts({ orders, machinists }: Props) {
+export function ShopFloorLayouts({
+  orders,
+  machinists,
+  departments,
+  initialDepartmentId,
+  initialDepartmentFeed,
+}: Props) {
   const [layout, setLayout] = useState<LayoutOption>('grid');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'closed'>('active');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'HOT' | 'RUSH' | 'NORMAL' | 'LOW'>('all');
@@ -69,6 +87,51 @@ export function ShopFloorLayouts({ orders, machinists }: Props) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sortKey, setSortKey] = useState<(typeof SORT_KEYS)[number]>('dueDate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [departmentId, setDepartmentId] = useState(initialDepartmentId ?? '');
+  const [departmentFeed, setDepartmentFeed] = useState(initialDepartmentFeed ?? []);
+  const [departmentLoading, setDepartmentLoading] = useState(false);
+  const [departmentError, setDepartmentError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDepartmentId(initialDepartmentId ?? '');
+    setDepartmentFeed(initialDepartmentFeed ?? []);
+  }, [initialDepartmentId, initialDepartmentFeed]);
+
+  const loadDepartmentFeed = useCallback(async (nextDepartmentId: string) => {
+    if (!nextDepartmentId) return;
+    setDepartmentLoading(true);
+    setDepartmentError(null);
+    try {
+      const res = await fetch(`/api/intelligence/department-feed?departmentId=${encodeURIComponent(nextDepartmentId)}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || 'Failed to load department feed');
+      }
+      const data = await res.json();
+      setDepartmentFeed(Array.isArray(data?.items) ? data.items : []);
+    } catch (err: any) {
+      setDepartmentError(err?.message ?? 'Failed to load department feed');
+      setDepartmentFeed([]);
+    } finally {
+      setDepartmentLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!departmentId) {
+      setDepartmentFeed([]);
+      setDepartmentError(null);
+      return;
+    }
+    if (departmentId === initialDepartmentId) {
+      setDepartmentFeed(initialDepartmentFeed ?? []);
+      setDepartmentError(null);
+      return;
+    }
+    loadDepartmentFeed(departmentId);
+  }, [departmentId, initialDepartmentId, initialDepartmentFeed, loadDepartmentFeed]);
 
   const filtered = useMemo(() => {
     const decoratedOrders = orders.map((order) => decorateOrder(order));
@@ -114,6 +177,12 @@ export function ShopFloorLayouts({ orders, machinists }: Props) {
       setSortDir('asc');
       return column;
     });
+  };
+
+  const formatReadyPartLabel = (part: { id: string; partNumber: string | null }) => {
+    const partNumber = part.partNumber?.trim();
+    if (partNumber) return partNumber;
+    return `#${part.id.slice(0, 6)}`;
   };
 
   return (
@@ -303,6 +372,85 @@ export function ShopFloorLayouts({ orders, machinists }: Props) {
             </DialogContent>
           </Dialog>
         </div>
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-border/60 bg-background/70 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Department feed</p>
+            <p className="text-sm text-foreground">Focus the shop queue by the department in charge.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Department</Label>
+            <Select
+              value={departmentId}
+              onValueChange={(value) => setDepartmentId(value)}
+              disabled={!departments.length}
+            >
+              <SelectTrigger className="w-[200px] border-border/60 bg-background/80">
+                <SelectValue placeholder="Select department" />
+              </SelectTrigger>
+              <SelectContent>
+                {departments.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>
+                    {department.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {departmentError ? (
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {departmentError}
+          </div>
+        ) : null}
+        {departmentLoading ? (
+          <p className="text-sm text-muted-foreground">Loading department feed…</p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {departmentFeed.map((order) => {
+              const preview = order.readyParts.slice(0, 3);
+              const remaining = Math.max(order.readyPartsCount - preview.length, 0);
+              return (
+                <div
+                  key={order.orderId}
+                  className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/10 p-4"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <Link href={`/orders/${order.orderId}`} className="text-base font-semibold text-primary hover:underline">
+                      #{order.orderNumber}
+                    </Link>
+                    <Badge variant="outline" className="rounded-full px-3 py-1 text-[0.7rem] uppercase tracking-wide">
+                      {formatStatusLabel(order.status)}
+                    </Badge>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {order.customerName ?? 'Unknown customer'} •{' '}
+                    {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : 'No due date'}
+                  </div>
+                  <div className="grid gap-1 text-xs uppercase tracking-wide text-muted-foreground">
+                    <span>Contains {order.totalParts} parts</span>
+                    <span className="text-foreground">Ready now: {order.readyPartsCount} parts</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    {preview.map((part) => (
+                      <span key={part.id} className="rounded-full border border-border/60 bg-background/70 px-2 py-1">
+                        {formatReadyPartLabel(part)}
+                      </span>
+                    ))}
+                    {remaining > 0 ? <span className="text-xs text-muted-foreground">+{remaining} more</span> : null}
+                  </div>
+                </div>
+              );
+            })}
+            {!departmentFeed.length && !departmentError && (
+              <p className="col-span-full text-sm text-muted-foreground">
+                No parts are ready for the selected department.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
