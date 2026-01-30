@@ -57,52 +57,67 @@ async function main() {
     departmentRecords.push(record);
   }
 
-  const machiningDepartment = departmentRecords.find((department) => department.name === 'Machining');
-  if (!machiningDepartment) {
-    throw new Error('Missing Machining department seed');
-  }
+  const departmentByName = new Map(departmentRecords.map((department) => [department.name, department]));
 
   const addonSeeds = [
-    { name: 'Saw', rateType: 'HOURLY', rateCents: 7500, description: 'Saw cutting time per hour.' },
-    { name: 'Weld', rateType: 'HOURLY', rateCents: 9000, description: 'Welding labor per hour.' },
-    { name: 'Program Time', rateType: 'HOURLY', rateCents: 8500, description: 'CAM and CNC programming time.' },
-    { name: 'Setup Time', rateType: 'HOURLY', rateCents: 7000, description: 'Machine setup labor per hour.' },
-    { name: 'Mill Time', rateType: 'HOURLY', rateCents: 8200, description: 'Mill runtime per hour.' },
-    { name: 'Lathe Time', rateType: 'HOURLY', rateCents: 7800, description: 'Lathe runtime per hour.' },
-    { name: 'Flat Rate Handling', rateType: 'FLAT', rateCents: 2500, description: 'Fixed charge for handling or packaging.' },
-    { name: 'Deburr', rateType: 'FLAT', rateCents: 0, description: 'Standard deburring process.' },
-    { name: 'Heat Treat', rateType: 'FLAT', rateCents: 0, description: 'External heat treat service required.' },
-    { name: 'Grind', rateType: 'FLAT', rateCents: 0, description: 'Grinding or surface finishing required.' },
-    { name: 'Inspect', rateType: 'FLAT', rateCents: 0, description: 'Special inspection prior to shipment.' },
-    { name: 'Paint', rateType: 'FLAT', rateCents: 0, description: 'Painting or coating service.' },
-    { name: 'Anodize', rateType: 'FLAT', rateCents: 0, description: 'External anodizing service.' },
-    { name: 'Program / Setup', rateType: 'FLAT', rateCents: 0, description: 'Combined programming and setup time.' },
-    { name: 'CNC Lathe', rateType: 'FLAT', rateCents: 0, description: 'CNC lathe operation planned.' },
-    { name: 'CNC Mill', rateType: 'FLAT', rateCents: 0, description: 'CNC mill operation planned.' },
-    { name: 'Manual Lathe', rateType: 'FLAT', rateCents: 0, description: 'Manual lathe operation planned.' },
-    { name: 'Manual Mill', rateType: 'FLAT', rateCents: 0, description: 'Manual mill operation planned.' },
-    { name: 'Weld / Fabricate', rateType: 'FLAT', rateCents: 0, description: 'Welding or fabrication required.' },
-    { name: 'Stamp', rateType: 'FLAT', rateCents: 0, description: 'Stamping operation required.' },
-    { name: 'Black Oxide', rateType: 'FLAT', rateCents: 0, description: 'Black oxide finish required.' },
-    { name: 'Shop', rateType: 'FLAT', rateCents: 0, description: 'General shop work placeholder.' },
-    { name: 'Scrap', rateType: 'FLAT', rateCents: 0, description: 'Scrap handling or recording.' },
-    { name: 'Plating', rateType: 'FLAT', rateCents: 0, description: 'External plating service.' },
-    { name: 'Powder Coating', rateType: 'FLAT', rateCents: 0, description: 'Powder coating service required.' },
-    { name: 'Wet Paint', rateType: 'FLAT', rateCents: 0, description: 'Wet paint finish required.' },
-    { name: 'Zinc', rateType: 'FLAT', rateCents: 0, description: 'Zinc finish required.' },
+    { name: 'Program Time', rateType: 'HOURLY', rateCents: 8500, departmentName: 'Machining' },
+    { name: 'Setup Time', rateType: 'HOURLY', rateCents: 7000, departmentName: 'Machining' },
+    { name: 'Mill Time', rateType: 'HOURLY', rateCents: 8200, departmentName: 'Machining' },
+    { name: 'Lathe Time', rateType: 'HOURLY', rateCents: 7800, departmentName: 'Machining' },
+    { name: 'Saw Cut', rateType: 'HOURLY', rateCents: 7500, departmentName: 'Machining' },
+    { name: 'Deburr', rateType: 'FLAT', rateCents: 0, departmentName: 'Machining' },
+    { name: 'Break edges / chamfer', rateType: 'FLAT', rateCents: 0, departmentName: 'Machining' },
+    { name: 'Verify critical dims', rateType: 'FLAT', rateCents: 0, departmentName: 'Machining' },
+    { name: 'In-process inspection', rateType: 'FLAT', rateCents: 0, departmentName: 'Machining' },
+    { name: 'Final inspection', rateType: 'FLAT', rateCents: 0, departmentName: 'Machining' },
+    { name: 'Clean part', rateType: 'FLAT', rateCents: 0, departmentName: 'Machining' },
+    { name: 'Weld Time', rateType: 'HOURLY', rateCents: 9000, departmentName: 'Fab' },
+    { name: 'Fit-up / Tack', rateType: 'HOURLY', rateCents: 8500, departmentName: 'Fab' },
+    { name: 'Grind/Blend', rateType: 'HOURLY', rateCents: 8000, departmentName: 'Fab' },
+    { name: 'Cut stock for fab', rateType: 'FLAT', rateCents: 0, departmentName: 'Fab' },
+    { name: 'Prep joints', rateType: 'FLAT', rateCents: 0, departmentName: 'Fab' },
+    { name: 'Weld complete', rateType: 'FLAT', rateCents: 0, departmentName: 'Fab' },
+    { name: 'Blend/finish welds', rateType: 'FLAT', rateCents: 0, departmentName: 'Fab' },
+    { name: 'Powder Coat', rateType: 'FLAT', rateCents: 0, departmentName: 'Paint' },
+    { name: 'Wet Paint', rateType: 'FLAT', rateCents: 0, departmentName: 'Paint' },
+    { name: 'Anodize', rateType: 'FLAT', rateCents: 0, departmentName: 'Paint' },
+    { name: 'Black Oxide', rateType: 'FLAT', rateCents: 0, departmentName: 'Paint' },
+    { name: 'Plating', rateType: 'FLAT', rateCents: 0, departmentName: 'Paint' },
+    { name: 'Zinc', rateType: 'FLAT', rateCents: 0, departmentName: 'Paint' },
+    { name: 'Masking', rateType: 'FLAT', rateCents: 0, departmentName: 'Paint' },
+    { name: 'Surface prep / scuff', rateType: 'FLAT', rateCents: 0, departmentName: 'Paint' },
+    { name: 'Cure complete', rateType: 'FLAT', rateCents: 0, departmentName: 'Paint' },
+    { name: 'Color match verified', rateType: 'FLAT', rateCents: 0, departmentName: 'Paint' },
+    { name: 'Flat Rate Handling', rateType: 'FLAT', rateCents: 0, departmentName: 'Shipping' },
+    { name: 'Packaging', rateType: 'FLAT', rateCents: 0, departmentName: 'Shipping' },
+    { name: 'Palletize', rateType: 'FLAT', rateCents: 0, departmentName: 'Shipping' },
+    { name: 'Bag & tag', rateType: 'FLAT', rateCents: 0, departmentName: 'Shipping' },
+    { name: 'Label parts', rateType: 'FLAT', rateCents: 0, departmentName: 'Shipping' },
+    { name: 'Include paperwork', rateType: 'FLAT', rateCents: 0, departmentName: 'Shipping' },
+    { name: 'Verify quantity', rateType: 'FLAT', rateCents: 0, departmentName: 'Shipping' },
+    { name: 'Ship complete', rateType: 'FLAT', rateCents: 0, departmentName: 'Shipping' },
   ];
   const addonRecords = [] as Awaited<ReturnType<typeof prisma.addon.upsert>>[];
   for (const addon of addonSeeds) {
+    const department = departmentByName.get(addon.departmentName);
+    if (!department) {
+      throw new Error(`Missing ${addon.departmentName} department seed`);
+    }
     const record = await prisma.addon.upsert({
       where: { name: addon.name },
       update: {
-        description: addon.description,
         rateType: addon.rateType,
         rateCents: addon.rateCents,
         active: true,
-        departmentId: machiningDepartment.id,
+        departmentId: department.id,
       },
-      create: { ...addon, departmentId: machiningDepartment.id },
+      create: {
+        name: addon.name,
+        rateType: addon.rateType,
+        rateCents: addon.rateCents,
+        active: true,
+        departmentId: department.id,
+      },
     });
     addonRecords.push(record);
   }
@@ -444,8 +459,8 @@ async function main() {
   await seedOrder(7, wayne.id, mach1.id, 'PC');
   await seedOrder(8, wayne.id, mach2.id, 'PC');
 
-  const sawAddon = addonRecords.find((a) => a.name === 'Saw');
-  const weldAddon = addonRecords.find((a) => a.name === 'Weld');
+  const sawAddon = addonRecords.find((a) => a.name === 'Saw Cut');
+  const weldAddon = addonRecords.find((a) => a.name === 'Weld Time');
   const setupAddon = addonRecords.find((a) => a.name === 'Setup Time');
   const millAddon = addonRecords.find((a) => a.name === 'Mill Time');
   const mcmaster = vendorRecords.find((v) => v.name === 'McMaster-Carr');

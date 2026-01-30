@@ -17,10 +17,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!canAccessMachinist(role)) return new NextResponse('Forbidden', { status: 403 });
 
   const json = await req.json().catch(() => null);
-  const { checklistId, chargeId, addonId, partId, checked } = json ?? {};
+  const { checklistId, chargeId, addonId, partId, departmentId, checked } = json ?? {};
   const employeeName = typeof json?.employeeName === 'string' ? json.employeeName.trim() : '';
   if (!checklistId && !chargeId && !addonId) {
     return NextResponse.json({ error: 'Missing checklistId' }, { status: 400 });
+  }
+  if (departmentId && !partId) {
+    return NextResponse.json(
+      { error: 'Department checklist items require a partId.' },
+      { status: 400 }
+    );
   }
   if (typeof checked !== 'boolean') return NextResponse.json({ error: 'Missing checked state' }, { status: 400 });
   if (!employeeName) return NextResponse.json({ error: 'Employee name is required' }, { status: 400 });
