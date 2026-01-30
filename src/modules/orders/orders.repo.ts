@@ -428,6 +428,44 @@ export async function findOrderPart(orderId: string, partId: string) {
   return prisma.orderPart.findFirst({ where: { id: partId, orderId } });
 }
 
+export async function listOrderPartsByIds(orderId: string, partIds: string[]) {
+  return prisma.orderPart.findMany({
+    where: { orderId, id: { in: partIds } },
+    select: { id: true, currentDepartmentId: true },
+  });
+}
+
+export async function moveOrderPartsToDepartment({
+  orderId,
+  partIds,
+  toDepartmentId,
+  statusHistory,
+}: {
+  orderId: string;
+  partIds: string[];
+  toDepartmentId: string;
+  statusHistory: { from: string; to: string; userId?: string | null; reason?: string | null };
+}) {
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.orderPart.updateMany({
+      where: { orderId, id: { in: partIds } },
+      data: { currentDepartmentId: toDepartmentId },
+    });
+
+    await tx.statusHistory.create({
+      data: {
+        orderId,
+        from: statusHistory.from,
+        to: statusHistory.to,
+        userId: statusHistory.userId ?? null,
+        reason: statusHistory.reason ?? null,
+      },
+    });
+
+    return updated;
+  });
+}
+
 export async function updateOrderPart(partId: string, data: Record<string, unknown>) {
   return prisma.orderPart.update({ where: { id: partId }, data });
 }
@@ -504,7 +542,22 @@ export async function findOrderPartForCharge(orderId: string, partId: string) {
 export async function findDepartmentById(departmentId: string) {
   return prisma.department.findUnique({
     where: { id: departmentId },
-    select: { id: true },
+    select: { id: true, name: true, sortOrder: true, isActive: true },
+  });
+}
+
+export async function findActiveDepartmentById(departmentId: string) {
+  return prisma.department.findFirst({
+    where: { id: departmentId, isActive: true },
+    select: { id: true, name: true, sortOrder: true },
+  });
+}
+
+export async function listDepartmentsOrdered() {
+  return prisma.department.findMany({
+    where: { isActive: true },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    select: { id: true, name: true, slug: true, sortOrder: true, isActive: true },
   });
 }
 
@@ -612,5 +665,36 @@ export async function listAddons({
     orderBy: { name: 'asc' },
     take: take + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  });
+}
+
+export async function listReadyOrderPartsForDepartment(departmentId: string) {
+  return prisma.orderPart.findMany({
+    where: {
+      currentDepartmentId: departmentId,
+      checklistItems: {
+        some: {
+          departmentId,
+          isActive: true,
+          completed: false,
+        },
+      },
+    },
+    select: {
+      id: true,
+      partNumber: true,
+      quantity: true,
+      orderId: true,
+      order: {
+        select: {
+          id: true,
+          orderNumber: true,
+          dueDate: true,
+          status: true,
+          customer: { select: { name: true } },
+          parts: { select: { id: true } },
+        },
+      },
+    },
   });
 }

@@ -10,7 +10,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { authOptions } from '@/lib/auth';
-import { decorateOrder, ORDER_STATUS_LABELS } from '@/modules/orders/orders.service';
+import {
+  decorateOrder,
+  getDepartmentsOrdered,
+  getOrderDepartmentFeed,
+  ORDER_STATUS_LABELS,
+  type DepartmentFeedOrder,
+} from '@/modules/orders/orders.service';
 import { getInitials } from '@/lib/get-initials';
 import { prisma } from '@/lib/prisma';
 import { cn } from '@/lib/utils';
@@ -48,6 +54,11 @@ export default async function Home() {
       take: 8,
     }),
   ]);
+  const departmentsResult = await getDepartmentsOrdered();
+  const departments = departmentsResult.ok ? departmentsResult.data.items : [];
+  const initialDepartmentId = departments[0]?.id ?? null;
+  const departmentFeedResult = initialDepartmentId ? await getOrderDepartmentFeed(initialDepartmentId) : null;
+  const departmentFeedItems: DepartmentFeedOrder[] = departmentFeedResult?.ok ? departmentFeedResult.data.items : [];
 
   const dueSoon = activeOrders.filter((order) => {
     const due = new Date(order.dueDate).getTime();
@@ -151,7 +162,13 @@ export default async function Home() {
         </Card>
       </div>
 
-      <ShopFloorLayouts orders={decoratedActiveOrders} machinists={machinistList} />
+      <ShopFloorLayouts
+        orders={decoratedActiveOrders}
+        machinists={machinistList}
+        departments={departments}
+        initialDepartmentId={initialDepartmentId}
+        initialDepartmentFeed={departmentFeedItems}
+      />
 
       <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <Card className="xl:col-span-2">

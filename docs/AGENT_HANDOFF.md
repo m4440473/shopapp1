@@ -2,45 +2,38 @@
 
 # Agent Handoff (Update Every Session)
 
-Date: 2026-02-02
+Date: 2026-02-03
 Agent: Codex
-Goal (1 sentence): Complete the lockdown pass cleanup (patch artifacts removal, doc authority banners, admin check consistency, and npm canonical updates) while attempting required build/test commands.
+Goal (1 sentence): Implement department routing, department feed cards, and routing transitions with migrations, API, UI, and tests.
 
 ## What I changed
-- Summary: Archived patch/process docs, removed zip artifacts, aligned admin checks and ServiceResult handling, updated npm documentation, and added lazy Prisma initialization to reduce build-time Prisma errors.
+- Summary: Added OrderPart.currentDepartmentId with migration, department feed and routing transition services/routes, Shop Intelligence department feed + filter UI, order detail routing dialog with bulk moves, and readiness unit test.
 
 ## Files touched
-- .gitignore
-- AGENTS.md
-- PROGRESS_LOG.md
-- README.md
-- docs/AGENT_CONTEXT.md
-- docs/AGENT_HANDOFF.md
-- docs/archive/* (moved historical docs)
-- src/app/admin/quotes/[id]/page.tsx
-- src/app/admin/quotes/page.tsx
-- src/app/(public)/attachments/[...path]/route.ts
-- src/app/(public)/branding/logo/route.ts
-- src/app/api/admin/*
-- src/app/api/orders/*
-- src/app/api/time/*
-- src/lib/auth.ts
-- src/lib/prisma.ts
+- prisma/schema.prisma
+- prisma/migrations/20260130175735_part_current_department/migration.sql
+- src/modules/orders/department-routing.ts
 - src/modules/orders/orders.repo.ts
 - src/modules/orders/orders.service.ts
-- src/modules/time/time.types.ts
+- src/modules/orders/__tests__/department-routing.test.ts
+- src/app/api/intelligence/department-feed/route.ts
+- src/app/api/orders/[id]/parts/transition/route.ts
+- src/app/page.tsx
+- src/components/ShopFloorLayouts.tsx
+- src/app/orders/[id]/page.tsx
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
 
 ## Commands run
+- npx prisma migrate dev --name part-current-department
 - npm ci
 - npm test
 - npm run lint
-- npm run prisma:generate (failed: Prisma schema validation error on TimeEntry.part relation)
-- npm run build (failed: Prisma client not initialized during prerender without generated client)
+- npm run build (failed: Prisma unique constraint error during prerender on AppSettings)
+- npm run set-demo-passwords
 
 ## Notes / gotchas
-- Prisma client generation fails due to schema validation error on TimeEntry.part relation (see npm run prisma:generate output).
-- Next.js build fails during prerender because Prisma client cannot initialize without a generated client.
+- Next.js build fails during prerender because AppSettings creation hits a unique constraint (P2002) in this environment.
 
 ## Next steps
-- [ ] Resolve Prisma schema validation error (TimeEntry.part relation) so prisma generate succeeds and build can complete.
-- [ ] Re-run npm run build after Prisma client generation is fixed.
+- [ ] Resolve AppSettings unique constraint error in prerender so `npm run build` completes.

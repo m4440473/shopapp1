@@ -41,6 +41,28 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-03 — Department routing + feed + transitions
+- Added OrderPart.currentDepartmentId with migration plus routing service helpers, feed queries, and transition API routes.
+- Implemented department feed cards + filter on Shop Floor Intelligence and added routing dialog for checklist completion with bulk moves.
+- Added department readiness unit test and adjusted supporting module helpers.
+
+Files changed:
+- prisma/schema.prisma, prisma/migrations/20260130175735_part_current_department/migration.sql
+- src/modules/orders/department-routing.ts, src/modules/orders/orders.repo.ts, src/modules/orders/orders.service.ts
+- src/modules/orders/__tests__/department-routing.test.ts
+- src/app/api/intelligence/department-feed/route.ts
+- src/app/api/orders/[id]/parts/transition/route.ts
+- src/app/page.tsx, src/components/ShopFloorLayouts.tsx
+- src/app/orders/[id]/page.tsx
+
+Commands run:
+- npx prisma migrate dev --name part-current-department
+- npm ci
+- npm test
+- npm run lint
+- npm run build (failed: Prisma unique constraint error during prerender on AppSettings)
+- npm run set-demo-passwords
+
 ### 2026-02-02 — Lockdown pass cleanup + build hardening
 - Removed patch zip artifacts, archived process docs under docs/archive, and ignored future zip artifacts.
 - Added non-authoritative banners to continuity docs and aligned README to npm as the canonical install path.
