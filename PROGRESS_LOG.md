@@ -41,6 +41,31 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-04 — Department initialization, checklist enforcement, and seed corrections
+- Added currentDepartmentId backfill + migration scripts for order-level department checklists, plus service helpers to initialize parts after checklist sync.
+- Enforced per-part department checklist rules in checklist toggle handling and added an assign-department API + UI safety net for unassigned parts.
+- Updated department addon seed data to match department-specific defaults and documented charge/checklist glossary.
+
+Files changed:
+- src/modules/orders/orders.repo.ts, src/modules/orders/orders.service.ts
+- src/app/api/orders/[id]/checklist/route.ts
+- src/app/api/orders/[id]/parts/assign-department/route.ts
+- src/app/orders/[id]/page.tsx
+- scripts/backfill-current-department.ts
+- scripts/migrate-orderlevel-dept-checklists-to-parts.ts
+- prisma/seed.ts, prisma/seed.js
+- README.md
+- PROGRESS_LOG.md, docs/AGENT_HANDOFF.md
+
+Commands run:
+- npm ci
+- npm test
+- npm run lint
+- npm run build (failed: Prisma unable to open database file during prerender)
+- DATABASE_URL="file:./dev.db" npx prisma migrate deploy
+- DATABASE_URL="file:./dev.db" npm run seed
+- DATABASE_URL="file:./dev.db" npm run set-demo-passwords
+
 ### 2026-02-03 — Department routing + feed + transitions
 - Added OrderPart.currentDepartmentId with migration plus routing service helpers, feed queries, and transition API routes.
 - Implemented department feed cards + filter on Shop Floor Intelligence and added routing dialog for checklist completion with bulk moves.

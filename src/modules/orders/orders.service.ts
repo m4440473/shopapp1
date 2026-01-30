@@ -43,6 +43,7 @@ import {
   findOrderPart,
   findOrderPartSummary,
   findOrderPartWithCharges,
+  findChecklistByOrderPartDepartment,
   findOrderStatus,
   findOrderSummary,
   findOrderWithDetails,
@@ -53,13 +54,18 @@ import {
   listAddons,
   listChecklistItems,
   listDepartmentsOrdered,
+  listOrderLevelDepartmentChecklistItems,
   listOrderCharges,
+  listOrderPartsMissingCurrentDepartment,
   listOrders,
   listOrderPartsByIds,
   listReadyOrderPartsForDepartment,
   listPartAttachments,
   moveOrderPartsToDepartment,
+  createOrderChecklistItem,
   updateChecklistCompletion,
+  updateOrderChecklistItem,
+  deleteOrderChecklistItem,
   updateOrder,
   updateOrderAssignee,
   updateOrderCharge,
@@ -126,6 +132,28 @@ function parseDate(value: string | Date | null | undefined) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+type DepartmentSortEntry = { id: string; name?: string | null; sortOrder: number };
+
+function selectDepartmentForPart(
+  checklistItems: Array<{
+    departmentId?: string | null;
+    isActive?: boolean | null;
+    completed?: boolean | null;
+  }>,
+  departments: DepartmentSortEntry[],
+) {
+  if (!checklistItems.length) return null;
+  for (const department of departments) {
+    const entries = checklistItems.filter(
+      (item) => item.departmentId === department.id && item.isActive !== false,
+    );
+    if (!entries.length) continue;
+    const hasIncomplete = entries.some((item) => item.completed === false);
+    if (hasIncomplete) return department.id;
+  }
+  return null;
 }
 
 export function decorateOrder(order: OrderListItem): OrderWithMeta {
@@ -474,6 +502,9 @@ export async function toggleChecklistItem({
   if (!existingChecklist || existingChecklist.orderId !== orderId) {
     return fail(404, 'Checklist item not found');
   }
+  if (existingChecklist.departmentId && !existingChecklist.partId) {
+    return fail(400, 'Department checklist items must be tied to a part.');
+  }
 
   const charge = existingChecklist.chargeId ? await findChargeById(existingChecklist.chargeId) : null;
 
@@ -518,6 +549,107 @@ export async function listChecklistForOrder(orderId: string) {
     addon: addon ? (({ rateCents: _, ...rest }) => rest)(addon) : addon,
   }));
   return ok({ items: sanitized });
+}
+
+async function initializeCurrentDepartmentForParts({ orderId }: { orderId?: string } = {}) {
+  const departments = await listDepartmentsOrdered();
+  if (!departments.length) return { updatedCount: 0 };
+
+  const parts = await listOrderPartsMissingCurrentDepartment(orderId);
+  let updatedCount = 0;
+
+  for (const part of parts) {
+    const targetDepartmentId = selectDepartmentForPart(part.checklistItems ?? [], departments);
+    if (!targetDepartmentId) continue;
+    await updateOrderPart(part.id, { currentDepartmentId: targetDepartmentId });
+    updatedCount += 1;
+  }
+
+  return { updatedCount };
+}
+
+export async function backfillCurrentDepartmentIds() {
+  const result = await initializeCurrentDepartmentForParts();
+  return ok({ updatedCount: result.updatedCount });
+}
+
+export async function migrateOrderLevelDepartmentChecklistsToParts() {
+  const items = await listOrderLevelDepartmentChecklistItems();
+  let createdCount = 0;
+  let updatedCount = 0;
+  let deletedCount = 0;
+
+  for (const item of items) {
+    const departmentId = item.departmentId;
+    if (!departmentId) continue;
+
+    if (item.chargeId) {
+      const chargePartId = item.charge?.partId ?? null;
+      if (chargePartId) {
+        if (item.partId !== chargePartId) {
+          await updateOrderChecklistItem(item.id, { partId: chargePartId });
+          updatedCount += 1;
+        }
+      } else {
+        await deleteOrderChecklistItem(item.id);
+        deletedCount += 1;
+      }
+      continue;
+    }
+
+    const partIds = item.order?.parts?.map((part) => part.id) ?? [];
+    for (const partId of partIds) {
+      const existing = await findChecklistByOrderPartDepartment({
+        orderId: item.orderId,
+        partId,
+        departmentId,
+        addonId: item.addonId ?? null,
+        chargeId: null,
+      });
+      if (existing) continue;
+      await createOrderChecklistItem({
+        orderId: item.orderId,
+        partId,
+        departmentId,
+        addonId: item.addonId ?? null,
+        chargeId: null,
+        completed: false,
+        isActive: item.isActive,
+      });
+      createdCount += 1;
+    }
+
+    await deleteOrderChecklistItem(item.id);
+    deletedCount += 1;
+  }
+
+  return ok({ createdCount, updatedCount, deletedCount });
+}
+
+export async function assignPartDepartment({
+  orderId,
+  partId,
+  departmentId,
+}: {
+  orderId: string;
+  partId: string;
+  departmentId: string;
+}) {
+  if (!orderId) return fail(400, 'Order is required');
+  if (!partId) return fail(400, 'Part is required');
+  if (!departmentId) return fail(400, 'Department is required');
+
+  const order = await findOrderById(orderId);
+  if (!order) return fail(404, 'Order not found');
+
+  const part = await findOrderPart(orderId, partId);
+  if (!part) return fail(404, 'Part not found for this order');
+
+  const department = await findActiveDepartmentById(departmentId);
+  if (!department) return fail(400, 'Department not found');
+
+  await updateOrderPart(part.id, { currentDepartmentId: departmentId });
+  return ok({ ok: true });
 }
 
 export async function addOrderPart({
@@ -585,6 +717,7 @@ export async function addOrderPart({
 
   if (sourcePart) {
     await syncChecklistForOrder(orderId);
+    await initializeCurrentDepartmentForParts({ orderId });
   }
 
   return ok({ part: result.part, copiedCharges: result.copiedCharges });
@@ -706,6 +839,7 @@ export async function createChargeForOrder({
   });
 
   await syncChecklistForOrder(orderId);
+  await initializeCurrentDepartmentForParts({ orderId });
   return ok({ charge: serializeCharge(charge) });
 }
 
@@ -760,6 +894,7 @@ export async function updateChargeForOrder({
 
   const updated = await updateOrderCharge(chargeId, data);
   await syncChecklistForOrder(orderId);
+  await initializeCurrentDepartmentForParts({ orderId });
   return ok({ charge: serializeCharge(updated) });
 }
 

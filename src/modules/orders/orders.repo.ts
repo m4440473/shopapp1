@@ -37,7 +37,7 @@ export async function syncChecklistForOrder(orderId: string) {
     }),
     prisma.orderChecklist.findMany({
       where: { orderId, chargeId: { not: null } },
-      select: { id: true, chargeId: true, isActive: true, completed: true },
+      select: { id: true, chargeId: true, isActive: true, completed: true, partId: true, departmentId: true },
     }),
   ]);
 
@@ -67,6 +67,15 @@ export async function syncChecklistForOrder(orderId: string) {
     if (item.completed === completed) return [];
     return [{ id: item.id, completed }];
   });
+  const toSyncAssignment = checklist.flatMap((item) => {
+    if (!item.chargeId) return [];
+    const charge = chargeById.get(item.chargeId);
+    if (!charge) return [];
+    const desiredPartId = charge.partId ?? null;
+    const desiredDepartmentId = charge.partId ? charge.departmentId : null;
+    if (item.partId === desiredPartId && item.departmentId === desiredDepartmentId) return [];
+    return [{ id: item.id, partId: desiredPartId, departmentId: desiredDepartmentId }];
+  });
 
   await prisma.$transaction([
     ...(toCreate.length
@@ -76,7 +85,7 @@ export async function syncChecklistForOrder(orderId: string) {
               orderId,
               partId: charge.partId ?? null,
               chargeId: charge.id,
-              departmentId: charge.departmentId,
+              departmentId: charge.partId ? charge.departmentId : null,
               addonId: charge.addonId ?? null,
               completed: Boolean(charge.completedAt),
               isActive: true,
@@ -104,6 +113,12 @@ export async function syncChecklistForOrder(orderId: string) {
       prisma.orderChecklist.update({
         where: { id: entry.id },
         data: { completed: entry.completed },
+      })
+    ),
+    ...toSyncAssignment.map((entry) =>
+      prisma.orderChecklist.update({
+        where: { id: entry.id },
+        data: { partId: entry.partId, departmentId: entry.departmentId },
       })
     ),
   ]);
@@ -435,6 +450,30 @@ export async function listOrderPartsByIds(orderId: string, partIds: string[]) {
   });
 }
 
+export async function listOrderPartsMissingCurrentDepartment(orderId?: string) {
+  return prisma.orderPart.findMany({
+    where: {
+      currentDepartmentId: null,
+      ...(orderId ? { orderId } : {}),
+    },
+    select: {
+      id: true,
+      orderId: true,
+      currentDepartmentId: true,
+      checklistItems: {
+        where: { isActive: true, departmentId: { not: null } },
+        select: {
+          id: true,
+          departmentId: true,
+          isActive: true,
+          completed: true,
+          department: { select: { id: true, name: true, sortOrder: true, isActive: true } },
+        },
+      },
+    },
+  });
+}
+
 export async function moveOrderPartsToDepartment({
   orderId,
   partIds,
@@ -530,6 +569,52 @@ export async function listOrderCharges(orderId: string) {
     include: { department: true, part: true },
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
   });
+}
+
+export async function listOrderLevelDepartmentChecklistItems() {
+  return prisma.orderChecklist.findMany({
+    where: { departmentId: { not: null }, partId: null },
+    include: {
+      order: { select: { parts: { select: { id: true } } } },
+      charge: { select: { id: true, partId: true } },
+    },
+  });
+}
+
+export async function findChecklistByOrderPartDepartment({
+  orderId,
+  partId,
+  departmentId,
+  addonId,
+  chargeId,
+}: {
+  orderId: string;
+  partId: string;
+  departmentId: string;
+  addonId?: string | null;
+  chargeId?: string | null;
+}) {
+  return prisma.orderChecklist.findFirst({
+    where: {
+      orderId,
+      partId,
+      departmentId,
+      addonId: addonId ?? null,
+      chargeId: chargeId ?? null,
+    },
+  });
+}
+
+export async function createOrderChecklistItem(data: Record<string, unknown>) {
+  return prisma.orderChecklist.create({ data });
+}
+
+export async function updateOrderChecklistItem(id: string, data: Record<string, unknown>) {
+  return prisma.orderChecklist.update({ where: { id }, data });
+}
+
+export async function deleteOrderChecklistItem(id: string) {
+  return prisma.orderChecklist.delete({ where: { id } });
 }
 
 export async function findOrderPartForCharge(orderId: string, partId: string) {

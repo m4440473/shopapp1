@@ -122,6 +122,31 @@ const getIncompleteDepartmentsForPart = (orderItem: any, partId: string) => {
   });
 };
 
+const getActiveDepartmentsForPart = (orderItem: any, partId: string) => {
+  const entries = getPartChecklistItems(orderItem, partId).filter(
+    (entry: any) =>
+      entry.department?.id &&
+      entry.isActive !== false &&
+      entry.department?.isActive !== false,
+  );
+  const byDepartment = new Map<string, { id: string; name: string; sortOrder: number }>();
+  entries.forEach((entry: any) => {
+    const department = entry.department;
+    if (!department?.id) return;
+    if (!byDepartment.has(department.id)) {
+      byDepartment.set(department.id, {
+        id: department.id,
+        name: department.name ?? 'Department',
+        sortOrder: department.sortOrder ?? 0,
+      });
+    }
+  });
+  return Array.from(byDepartment.values()).sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return a.name.localeCompare(b.name);
+  });
+};
+
 const pickNextDepartmentId = (options: Array<{ id: string; sortOrder: number }>, currentSortOrder: number | null) => {
   if (!options.length) return '';
   if (currentSortOrder === null) return options[0].id;
@@ -261,6 +286,8 @@ export default function OrderDetailPage() {
   const [routingBulkMove, setRoutingBulkMove] = useState(false);
   const [routingError, setRoutingError] = useState<string | null>(null);
   const [routingSaving, setRoutingSaving] = useState(false);
+  const [assigningPartId, setAssigningPartId] = useState<string | null>(null);
+  const [assignErrors, setAssignErrors] = useState<Record<string, string | null>>({});
   const [canEditParts, setCanEditParts] = useState(false);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [pendingPartPayload, setPendingPartPayload] = useState<PendingPartPayload | null>(null);
@@ -589,6 +616,51 @@ export default function OrderDetailPage() {
     );
   };
 
+  const renderPartDepartmentAssignment = (part: any) => {
+    if (!part?.id || !item) return null;
+    if (part.currentDepartmentId) return null;
+    const departments = getActiveDepartmentsForPart(item, part.id);
+    if (!departments.length) return null;
+
+    const assignError = assignErrors[part.id];
+    return (
+      <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Department</div>
+            <Badge variant="secondary" className="text-xs">
+              Unassigned
+            </Badge>
+          </div>
+          <div className="grid gap-2">
+            <Label className="text-xs uppercase text-muted-foreground">Assign department</Label>
+            <Select
+              value=""
+              onValueChange={(value) => assignDepartment(part.id, value)}
+              disabled={assigningPartId === part.id}
+            >
+              <SelectTrigger className="border-border/60 bg-background/80 text-left">
+                <SelectValue placeholder="Assign department" />
+              </SelectTrigger>
+              <SelectContent>
+                {departments.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>
+                    {department.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {assignError ? (
+          <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {assignError}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   useEffect(() => {
     if (item?.attachments?.length) {
       const stored = item.attachments.find((attachment: any) => attachment.storagePath);
@@ -835,6 +907,33 @@ export default function OrderDetailPage() {
       setRoutingError(err?.message || 'Failed to move departments');
     } finally {
       setRoutingSaving(false);
+    }
+  };
+
+  const assignDepartment = async (partId: string, departmentId: string) => {
+    setAssigningPartId(partId);
+    setAssignErrors((prev) => ({ ...prev, [partId]: null }));
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/assign-department`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partId, departmentId }),
+        credentials: 'include',
+      });
+      const message = await res.text();
+      if (!res.ok) {
+        try {
+          const parsed = JSON.parse(message);
+          throw new Error(parsed?.error || 'Failed to assign department');
+        } catch {
+          throw new Error(message || 'Failed to assign department');
+        }
+      }
+      await load();
+    } catch (err: any) {
+      setAssignErrors((prev) => ({ ...prev, [partId]: err?.message || 'Failed to assign department' }));
+    } finally {
+      setAssigningPartId(null);
     }
   };
 
@@ -2154,6 +2253,7 @@ export default function OrderDetailPage() {
                     </div>
                   </div>
                   {renderPartTimeTracking(primaryPart)}
+                  {renderPartDepartmentAssignment(primaryPart)}
                   {partEditErrors[primaryPart.id] && (
                     <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                       {partEditErrors[primaryPart.id]}
@@ -2391,6 +2491,7 @@ export default function OrderDetailPage() {
                             </div>
                           </div>
                           {renderPartTimeTracking(part)}
+                          {renderPartDepartmentAssignment(part)}
                           {partEditErrors[part.id] && (
                             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                               {partEditErrors[part.id]}
