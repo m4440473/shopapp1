@@ -61,6 +61,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-02-05 — Add PartEvent logging + part status for order detail workflow
+Decision: Introduce PartEvent records (with OrderPart.status) to capture part-level activity (timers, notes, files, checklist).
+Reason: The two-card order workspace needs a dedicated part log and a completion marker for finish events.
+
 ### 2026-01-30 — Add roadmap and mechanical agent prompts
 Decision: Add ROADMAP.md and AGENT_PROMPTS.md to enforce gate-based planning and strict, rule-based agent execution.
 Reason: Keep work sequenced and prevent agents from taking initiative or expanding scope.

@@ -5,6 +5,7 @@ import {
   findLatestTimeEntriesForUserParts,
   findLatestTimeEntryForUserOrder,
   findTimeEntryById,
+  listTimeEntriesForOrderParts,
 } from './time.repo';
 import type { TimeEntry, TimeEntryResumeInput, TimeEntryStartInput } from './time.types';
 
@@ -72,6 +73,26 @@ export async function startTimeEntry(
     partId: input.partId ?? null,
     operation: input.operation,
     startedAt: now,
+  });
+
+  return ok({ entry });
+}
+
+export async function startTimeEntryWithConflict(
+  userId: string,
+  input: TimeEntryStartInput
+): Promise<ServiceResult<{ entry: TimeEntry }>> {
+  const active = await findActiveTimeEntryForUser(userId);
+  if (active) {
+    return fail(409, 'Active time entry already running.');
+  }
+
+  const entry = await createTimeEntry({
+    userId,
+    orderId: input.orderId,
+    partId: input.partId ?? null,
+    operation: input.operation,
+    startedAt: new Date(),
   });
 
   return ok({ entry });
@@ -146,6 +167,25 @@ export async function resumeTimeEntry(
   });
 
   return ok({ entry });
+}
+
+export async function getOrderPartTimeTotals(
+  orderId: string,
+  partIds: string[]
+): Promise<ServiceResult<{ totals: Record<string, number> }>> {
+  if (!partIds.length) return ok({ totals: {} });
+  const entries = await listTimeEntriesForOrderParts(orderId, partIds);
+
+  const totals: Record<string, number> = {};
+  entries.forEach((entry) => {
+    if (!entry.partId || !entry.endedAt) return;
+    const diffMs = entry.endedAt.getTime() - entry.startedAt.getTime();
+    if (diffMs <= 0) return;
+    const minutes = Math.round(diffMs / 60000);
+    totals[entry.partId] = (totals[entry.partId] ?? 0) + minutes;
+  });
+
+  return ok({ totals });
 }
 
 export function computeEntryMinutes(entries: Array<Pick<TimeEntry, 'startedAt' | 'endedAt'>>) {

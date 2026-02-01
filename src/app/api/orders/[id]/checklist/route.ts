@@ -18,7 +18,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const json = await req.json().catch(() => null);
   const { checklistId, chargeId, addonId, partId, departmentId, checked } = json ?? {};
-  const employeeName = typeof json?.employeeName === 'string' ? json.employeeName.trim() : '';
+  const employeeNameInput = typeof json?.employeeName === 'string' ? json.employeeName.trim() : '';
+  const fallbackName = (session.user as any)?.name || (session.user as any)?.email || '';
+  const employeeName = employeeNameInput || fallbackName;
   if (!checklistId && !chargeId && !addonId) {
     return NextResponse.json({ error: 'Missing checklistId' }, { status: 400 });
   }

@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
 import { prisma } from '@/lib/prisma';
 
@@ -216,6 +217,13 @@ export async function findOrderById(id: string) {
   });
 }
 
+export async function findOrderHeader(id: string) {
+  return prisma.order.findUnique({
+    where: { id },
+    select: { id: true, orderNumber: true, customer: { select: { name: true } } },
+  });
+}
+
 export async function findOrderWithDetails(id: string) {
   return prisma.order.findUnique({
     where: { id },
@@ -351,6 +359,34 @@ export async function findOrderPartSummary(orderId: string, partId: string) {
   return prisma.orderPart.findFirst({
     where: { id: partId, orderId },
     select: { id: true, partNumber: true },
+  });
+}
+
+export async function createPartEvent(data: {
+  orderId: string;
+  partId: string;
+  userId?: string | null;
+  type: string;
+  message: string;
+  meta?: Prisma.JsonValue | null;
+}) {
+  return prisma.partEvent.create({
+    data: {
+      orderId: data.orderId,
+      partId: data.partId,
+      userId: data.userId ?? null,
+      type: data.type,
+      message: data.message,
+      meta: data.meta ?? null,
+    },
+  });
+}
+
+export async function listPartEventsForPart(orderId: string, partId: string) {
+  return prisma.partEvent.findMany({
+    where: { orderId, partId },
+    orderBy: { createdAt: 'desc' },
+    include: { user: { select: { id: true, name: true, email: true } } },
   });
 }
 

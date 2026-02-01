@@ -41,6 +41,33 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-05 — Two-card order workspace, part events, and timer conflict handling
+- Refactored the order detail view into a two-card workspace with a sticky active-work timer header, parts list, and tabbed part details (overview, notes/files, checklist, log).
+- Added PartEvent + OrderPart.status to track part completion and activity logs, plus new timer API endpoints with conflict handling.
+- Logged checklist toggles, notes, file uploads, part updates, timer start/pause/finish, and part completion into the part event log.
+
+Files changed:
+- prisma/schema.prisma
+- prisma/migrations/20260205123000_part_events_and_status/migration.sql
+- src/modules/orders/orders.repo.ts
+- src/modules/orders/orders.service.ts
+- src/modules/time/time.repo.ts
+- src/modules/time/time.service.ts
+- src/app/api/timer/active/route.ts
+- src/app/api/timer/start/route.ts
+- src/app/api/timer/pause/route.ts
+- src/app/api/timer/finish/route.ts
+- src/app/api/orders/[id]/notes/route.ts
+- src/app/api/orders/[id]/checklist/route.ts
+- src/app/api/orders/parts/[partId]/attachments/route.ts
+- src/app/api/orders/[id]/parts/[partId]/events/route.ts
+- src/app/orders/[id]/page.tsx
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+Commands run:
+- None
+
 ### 2026-02-04 — Department initialization, checklist enforcement, and seed corrections
 - Added currentDepartmentId backfill + migration scripts for order-level department checklists, plus service helpers to initialize parts after checklist sync.
 - Enforced per-part department checklist rules in checklist toggle handling and added an assign-department API + UI safety net for unassigned parts.
