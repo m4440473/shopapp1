@@ -23,6 +23,7 @@ import {
   createOrderNote,
   createOrderPartWithCharges,
   createOrderWithCustomFields,
+  createPartEvent,
   countOrderParts,
   createPartAttachment,
   createStatusHistoryEntry,
@@ -39,6 +40,7 @@ import {
   findActiveDepartmentById,
   findDepartmentById,
   findOrderById,
+  findOrderHeader,
   findOrderCharge,
   findOrderPart,
   findOrderPartSummary,
@@ -51,6 +53,7 @@ import {
   findPartById,
   findPartWithOrderInfo,
   findUserById,
+  listPartEventsForPart,
   listAddons,
   listChecklistItems,
   listDepartmentsOrdered,
@@ -101,6 +104,14 @@ type OrderPartUpdateInput = z.infer<typeof OrderPartUpdate>;
 type OrderAttachmentCreateInput = z.infer<typeof OrderAttachmentCreate>;
 type PartAttachmentCreateInput = z.infer<typeof PartAttachmentCreate>;
 type PartAttachmentUpdateInput = z.infer<typeof PartAttachmentUpdate>;
+type PartEventInput = {
+  orderId: string;
+  partId: string;
+  userId?: string | null;
+  type: string;
+  message: string;
+  meta?: Prisma.JsonValue | null;
+};
 
 export const ORDER_STATUS_LABELS: Record<string, string> = {
   NEW: 'New',
@@ -127,6 +138,17 @@ export const DEFAULT_ORDER_FILTERS: OrderFilterState = {
   requiresAddons: false,
   staleStatus: false,
 };
+
+async function recordPartEvent({ orderId, partId, userId, type, message, meta }: PartEventInput) {
+  return createPartEvent({
+    orderId,
+    partId,
+    userId: userId ?? null,
+    type,
+    message,
+    meta: meta ?? null,
+  });
+}
 
 function parseDate(value: string | Date | null | undefined) {
   if (!value) return null;
@@ -461,8 +483,30 @@ export async function assignMachinistToOrder(orderId: string, machinistId: strin
   return ok({ item: order });
 }
 
-export async function addOrderNote(orderId: string, userId: string, content: string) {
+export async function addOrderNote(
+  orderId: string,
+  userId: string,
+  content: string,
+  partId?: string | null
+) {
+  if (partId) {
+    const part = await findOrderPart(orderId, partId);
+    if (!part) {
+      return fail(404, 'Part not found');
+    }
+  }
+
   const note = await createOrderNote(orderId, userId, content.trim());
+  if (partId) {
+    await recordPartEvent({
+      orderId,
+      partId,
+      userId,
+      type: 'NOTE_ADDED',
+      message: 'Note added.',
+      meta: { noteId: note.id },
+    });
+  }
   return ok({ note });
 }
 
@@ -538,6 +582,17 @@ export async function toggleChecklistItem({
     userId: toggledById ?? undefined,
     reason: `Checklist "${label}" ${checked ? 'checked' : 'unchecked'} by ${employeeName}`,
   });
+
+  if (existingChecklist.partId) {
+    await recordPartEvent({
+      orderId,
+      partId: existingChecklist.partId,
+      userId: toggledById ?? undefined,
+      type: 'CHECKLIST_TOGGLED',
+      message: `${label} ${checked ? 'checked' : 'unchecked'}.`,
+      meta: { checklistId: existingChecklist.id, checked },
+    });
+  }
 
   return ok({ ok: true });
 }
@@ -751,6 +806,13 @@ export async function updateOrderPartDetails({
 
   if (userId) {
     await createOrderNote(orderId, userId, `Updated part ${part.partNumber}.`);
+    await recordPartEvent({
+      orderId,
+      partId: part.id,
+      userId,
+      type: 'PART_UPDATED',
+      message: `Updated ${part.partNumber}.`,
+    });
   }
 
   return ok({ part });
@@ -944,9 +1006,11 @@ export async function listAttachmentsForPart(partId: string) {
 export async function createAttachmentForPart({
   partId,
   payload,
+  userId,
 }: {
   partId: string;
   payload: PartAttachmentCreateInput;
+  userId?: string;
 }) {
   const part = await findPartWithOrderInfo(partId);
   if (!part) return fail(404, 'Part not found');
@@ -962,6 +1026,18 @@ export async function createAttachmentForPart({
       mimeType: payload.mimeType ?? null,
     },
   });
+
+  if (userId) {
+    const label = attachment.label || attachment.storagePath || attachment.url || 'File';
+    await recordPartEvent({
+      orderId: part.orderId,
+      partId,
+      userId,
+      type: 'FILE_UPLOADED',
+      message: `File uploaded: ${label}.`,
+      meta: { attachmentId: attachment.id, kind: attachment.kind },
+    });
+  }
 
   return ok({ attachment });
 }
@@ -1001,6 +1077,62 @@ export async function deleteAttachmentForPart(partId: string, attachmentId: stri
 
   await deletePartAttachment(attachmentId);
   return ok({ ok: true });
+}
+
+export async function completeOrderPart({
+  orderId,
+  partId,
+  userId,
+}: {
+  orderId: string;
+  partId: string;
+  userId?: string | null;
+}) {
+  const part = await findOrderPart(orderId, partId);
+  if (!part) return fail(404, 'Part not found');
+
+  const updated = await updateOrderPart(partId, { status: 'COMPLETE' });
+
+  await recordPartEvent({
+    orderId,
+    partId,
+    userId: userId ?? null,
+    type: 'PART_COMPLETED',
+    message: 'Part marked complete.',
+  });
+
+  return ok({ part: updated });
+}
+
+export async function listPartEvents({
+  orderId,
+  partId,
+}: {
+  orderId: string;
+  partId: string;
+}) {
+  const part = await findOrderPart(orderId, partId);
+  if (!part) return fail(404, 'Part not found');
+
+  const events = await listPartEventsForPart(orderId, partId);
+  return ok({ events });
+}
+
+export async function getOrderHeaderInfo(orderId: string) {
+  const order = await findOrderHeader(orderId);
+  if (!order) return fail(404, 'Order not found');
+  return ok({ order });
+}
+
+export async function getOrderPartSummary(orderId: string, partId: string) {
+  const part = await findOrderPartSummary(orderId, partId);
+  if (!part) return fail(404, 'Part not found');
+  return ok({ part });
+}
+
+export async function logPartEvent(input: PartEventInput) {
+  const event = await recordPartEvent(input);
+  return ok({ event });
 }
 
 export async function listAddonsForOrders({

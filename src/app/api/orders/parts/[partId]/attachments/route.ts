@@ -39,6 +39,7 @@ export async function GET(req: NextRequest, { params }: { params: { partId: stri
 export async function POST(req: NextRequest, { params }: { params: { partId: string } }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
+  const userId = (guard.session.user as any)?.id as string | undefined;
 
   const { partId } = params;
   if (!partId) return NextResponse.json({ error: 'Missing part id' }, { status: 400 });
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: { partId: str
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const result = await createAttachmentForPart({ partId, payload: parsed.data });
+  const result = await createAttachmentForPart({ partId, payload: parsed.data, userId });
   if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

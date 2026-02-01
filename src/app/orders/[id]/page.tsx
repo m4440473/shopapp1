@@ -1,236 +1,69 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  ArrowRight,
-  BadgeCheck,
-  Building2,
   ClipboardList,
-  Package2,
-  Printer,
-  StickyNote,
-  ChevronDown,
-  PlusCircle,
-  Paperclip,
-  Upload,
+  FileText,
+  ListChecks,
   Timer,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Textarea } from '@/components/ui/Textarea';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  BUSINESS_OPTIONS,
-  getBusinessOptionByCode,
-  slugifyName,
-  type BusinessCode,
-  type BusinessName,
-} from '@/lib/businesses';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/Textarea';
 
-const STATUS_OPTIONS: Array<[string, string]> = [
-  ['NEW', 'New'],
-  ['PROGRAMMING', 'Programming'],
-  ['RUNNING', 'Running'],
-  ['INSPECTING', 'Inspecting'],
-  ['READY_FOR_ADDONS', 'Ready for addons'],
-  ['COMPLETE', 'Complete'],
-  ['CLOSED', 'Closed'],
-];
+const PART_TABS = ['overview', 'notes', 'checklist', 'log'] as const;
+const PART_ATTACHMENT_KINDS = ['DWG', 'STEP', 'PDF', 'PO', 'IMAGE', 'OTHER'] as const;
 
-const PRIORITY_OPTIONS = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
-const NONE_VALUE = '__none__';
-const DEFAULT_BUSINESS = (BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die') as BusinessName;
-const DEFAULT_OPERATION = 'Machining';
-const OPERATION_OPTIONS = ['Machining', 'Setup', 'Inspection', 'Programming', 'Cleanup'];
-
-const getActiveChecklistItems = (orderItem: any) => {
-  const checklist = Array.isArray(orderItem?.checklist) ? orderItem.checklist : [];
-  return checklist.filter((entry: any) => entry.isActive !== false);
-};
-
-const getChecklistEntryPartId = (entry: any) => entry.part?.id ?? entry.charge?.partId ?? entry.partId ?? null;
-
-const getPartChecklistItems = (orderItem: any, partId: string) =>
-  getActiveChecklistItems(orderItem).filter((entry: any) => getChecklistEntryPartId(entry) === partId);
-
-const isPartCompleteForDepartment = (orderItem: any, partId: string, departmentId: string) => {
-  const entries = getPartChecklistItems(orderItem, partId).filter((entry: any) => entry.departmentId === departmentId);
-  if (!entries.length) return false;
-  return entries.every((entry: any) => entry.completed);
-};
-
-const getIncompleteDepartmentsForPart = (orderItem: any, partId: string) => {
-  const entries = getPartChecklistItems(orderItem, partId).filter(
-    (entry: any) => entry.departmentId && entry.completed === false && entry.isActive !== false,
-  );
-  const byDepartment = new Map<string, { id: string; name: string; sortOrder: number }>();
-  entries.forEach((entry: any) => {
-    const department = entry.department;
-    if (!department?.id) return;
-    if (!byDepartment.has(department.id)) {
-      byDepartment.set(department.id, {
-        id: department.id,
-        name: department.name ?? 'Department',
-        sortOrder: department.sortOrder ?? 0,
-      });
-    }
-  });
-  return Array.from(byDepartment.values()).sort((a, b) => {
-    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
-    return a.name.localeCompare(b.name);
-  });
-};
-
-const getActiveDepartmentsForPart = (orderItem: any, partId: string) => {
-  const entries = getPartChecklistItems(orderItem, partId).filter(
-    (entry: any) =>
-      entry.department?.id &&
-      entry.isActive !== false &&
-      entry.department?.isActive !== false,
-  );
-  const byDepartment = new Map<string, { id: string; name: string; sortOrder: number }>();
-  entries.forEach((entry: any) => {
-    const department = entry.department;
-    if (!department?.id) return;
-    if (!byDepartment.has(department.id)) {
-      byDepartment.set(department.id, {
-        id: department.id,
-        name: department.name ?? 'Department',
-        sortOrder: department.sortOrder ?? 0,
-      });
-    }
-  });
-  return Array.from(byDepartment.values()).sort((a, b) => {
-    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
-    return a.name.localeCompare(b.name);
-  });
-};
-
-const pickNextDepartmentId = (options: Array<{ id: string; sortOrder: number }>, currentSortOrder: number | null) => {
-  if (!options.length) return '';
-  if (currentSortOrder === null) return options[0].id;
-  const next = options.find((option) => option.sortOrder > currentSortOrder);
-  return (next ?? options[0]).id;
-};
-
-type Option = { id: string; name: string };
-
-type EditFormState = {
-  business: BusinessCode;
-  customerId: string;
-  receivedDate: string;
-  dueDate: string;
-  priority: string;
-  vendorId: string;
-  poNumber: string;
-  materialNeeded: boolean;
-  materialOrdered: boolean;
-  modelIncluded: boolean;
-  assignedMachinistId: string;
-};
-
-type PartFormState = {
-  partNumber: string;
-  quantity: string;
-  materialId: string;
-  stockSize: string;
-  cutLength: string;
-  notes: string;
-};
+type PartTab = (typeof PART_TABS)[number];
 
 type AttachmentFormState = {
   label: string;
   url: string;
   mimeType: string;
   storagePath: string;
+  kind: (typeof PART_ATTACHMENT_KINDS)[number];
   uploading: boolean;
 };
 
-type PendingAction =
-  | { type: 'status'; status: string }
-  | { type: 'checklist'; checklistId: string; checked: boolean };
-
-type ChecklistToggleContext = {
-  partId: string | null;
-  departmentId: string | null;
-  checked: boolean;
+type ConflictState = {
+  open: boolean;
+  activeEntry: any | null;
+  activeOrder: any | null;
+  activePart: any | null;
+  elapsedSeconds: number;
 };
 
-type TimeEntryRecord = {
-  id: string;
-  orderId: string;
-  partId: string | null;
-  operation: string;
-  startedAt: string;
-  endedAt: string | null;
+const formatDuration = (seconds: number) => {
+  const clamped = Math.max(0, seconds);
+  const hours = Math.floor(clamped / 3600);
+  const minutes = Math.floor((clamped % 3600) / 60);
+  const secs = clamped % 60;
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
 };
 
-type TimeSummary = {
-  activeEntry: TimeEntryRecord | null;
-  lastOrderEntry: TimeEntryRecord | null;
-  lastPartEntries: Record<string, TimeEntryRecord | null>;
+const formatMinutes = (minutes: number) => {
+  if (!Number.isFinite(minutes)) return '—';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remaining = minutes % 60;
+  return `${hours}h ${remaining}m`;
 };
 
-type PendingPartPayload = {
-  partNumber: string;
-  quantity: number;
-  materialId?: string;
-  stockSize?: string;
-  cutLength?: string;
-  notes?: string;
+const statusBadgeStyles: Record<string, string> = {
+  COMPLETE: 'bg-emerald-500/15 text-emerald-200',
+  IN_PROGRESS: 'bg-blue-500/15 text-blue-200',
 };
-
-const statusColor = (status: string) =>
-  ({
-    NEW: 'bg-sky-500/20 text-sky-200',
-    PROGRAMMING: 'bg-blue-500/20 text-blue-200',
-    RUNNING: 'bg-emerald-500/20 text-emerald-200',
-    INSPECTING: 'bg-amber-500/20 text-amber-200',
-    READY_FOR_ADDONS: 'bg-purple-500/20 text-purple-200',
-    COMPLETE: 'bg-teal-500/20 text-teal-200',
-    CLOSED: 'bg-zinc-500/20 text-zinc-200',
-  }[status] ?? 'bg-muted text-foreground');
 
 export default function OrderDetailPage() {
   const pathname = usePathname();
@@ -238,116 +71,81 @@ export default function OrderDetailPage() {
   const [item, setItem] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [toggling, setToggling] = useState<string | null>(null);
-  const [statusSaving, setStatusSaving] = useState<string | null>(null);
+  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<PartTab>('overview');
   const [noteText, setNoteText] = useState('');
-  const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({});
-  const [vendors, setVendors] = useState<Option[]>([]);
-  const [customers, setCustomers] = useState<Option[]>([]);
-  const [machinists, setMachinists] = useState<Option[]>([]);
-  const [materials, setMaterials] = useState<Option[]>([]);
-  const [partForm, setPartForm] = useState<PartFormState>({
-    partNumber: '',
-    quantity: '1',
-    materialId: '',
-    stockSize: '',
-    cutLength: '',
-    notes: '',
+  const [canEditParts, setCanEditParts] = useState(false);
+  const [partEvents, setPartEvents] = useState<any[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [timerError, setTimerError] = useState<string | null>(null);
+  const [timerLoading, setTimerLoading] = useState(false);
+  const [timerSaving, setTimerSaving] = useState(false);
+  const [activeEntry, setActiveEntry] = useState<any | null>(null);
+  const [activePart, setActivePart] = useState<any | null>(null);
+  const [partTotals, setPartTotals] = useState<Record<string, number>>({});
+  const [tick, setTick] = useState(0);
+  const [conflictState, setConflictState] = useState<ConflictState>({
+    open: false,
+    activeEntry: null,
+    activeOrder: null,
+    activePart: null,
+    elapsedSeconds: 0,
   });
-  const [partEdits, setPartEdits] = useState<Record<string, PartFormState>>({});
-  const [partEditErrors, setPartEditErrors] = useState<Record<string, string | null>>({});
-  const [partSavingIds, setPartSavingIds] = useState<Record<string, boolean>>({});
-  const [partSaving, setPartSaving] = useState(false);
-  const [partError, setPartError] = useState<string | null>(null);
   const [attachmentForm, setAttachmentForm] = useState<AttachmentFormState>({
     label: '',
     url: '',
     mimeType: '',
     storagePath: '',
+    kind: 'STEP',
     uploading: false,
   });
   const [attachmentSaving, setAttachmentSaving] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [attachmentFileKey, setAttachmentFileKey] = useState(0);
   const [attachmentFileName, setAttachmentFileName] = useState<string | null>(null);
-  const [attachmentBusiness, setAttachmentBusiness] = useState<BusinessName>(DEFAULT_BUSINESS);
-  const [editOpen, setEditOpen] = useState(false);
-  const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
-  const [employeeName, setEmployeeName] = useState('');
-  const [employeeDialogError, setEmployeeDialogError] = useState<string | null>(null);
-  const [employeeSubmitting, setEmployeeSubmitting] = useState(false);
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [pendingChecklistContext, setPendingChecklistContext] = useState<ChecklistToggleContext | null>(null);
-  const [lastEmployeeName, setLastEmployeeName] = useState('');
-  const [routingDialogOpen, setRoutingDialogOpen] = useState(false);
-  const [routingPartId, setRoutingPartId] = useState<string | null>(null);
-  const [routingFromDepartmentId, setRoutingFromDepartmentId] = useState<string | null>(null);
-  const [routingToDepartmentId, setRoutingToDepartmentId] = useState('');
-  const [routingBulkMove, setRoutingBulkMove] = useState(false);
-  const [routingError, setRoutingError] = useState<string | null>(null);
-  const [routingSaving, setRoutingSaving] = useState(false);
-  const [assigningPartId, setAssigningPartId] = useState<string | null>(null);
-  const [assignErrors, setAssignErrors] = useState<Record<string, string | null>>({});
-  const [canEditParts, setCanEditParts] = useState(false);
-  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
-  const [pendingPartPayload, setPendingPartPayload] = useState<PendingPartPayload | null>(null);
-  const [invoiceAction, setInvoiceAction] = useState<'new' | 'update'>('new');
-  const [copyChargesFromPartId, setCopyChargesFromPartId] = useState('');
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
-  const [newCustomerName, setNewCustomerName] = useState('');
-  const [newCustomerContact, setNewCustomerContact] = useState('');
-  const [newCustomerPhone, setNewCustomerPhone] = useState('');
-  const [newCustomerEmail, setNewCustomerEmail] = useState('');
-  const [newCustomerAddress, setNewCustomerAddress] = useState('');
-  const [timeSummary, setTimeSummary] = useState<TimeSummary | null>(null);
-  const [timeLoading, setTimeLoading] = useState(false);
-  const [timeSaving, setTimeSaving] = useState(false);
-  const [timeError, setTimeError] = useState<string | null>(null);
-  const [operationByContext, setOperationByContext] = useState<Record<string, string>>({
-    order: DEFAULT_OPERATION,
-  });
-  const [editForm, setEditForm] = useState<EditFormState>({
-    business: BUSINESS_OPTIONS[0]?.code ?? 'STD',
-    customerId: '',
-    receivedDate: '',
-    dueDate: '',
-    priority: 'NORMAL',
-    vendorId: '',
-    poNumber: '',
-    materialNeeded: false,
-    materialOrdered: false,
-    modelIncluded: false,
-    assignedMachinistId: '',
-  });
-  const openPrint = React.useCallback(() => {
-    if (!id) return;
-    window.open(`/orders/${id}/print`, '_blank', 'noopener,noreferrer');
-  }, [id]);
 
-  const attachmentPathPreview = React.useMemo(() => {
-    const selectedBusiness = BUSINESS_OPTIONS.find((option) => option.name === attachmentBusiness);
-    const businessSlug = selectedBusiness?.slug ?? (BUSINESS_OPTIONS[0]?.slug ?? 'business');
-    const customerName = item?.customer?.name ?? '';
-    const customerSlug = slugifyName(customerName, 'customer') || 'customer';
-    const referenceValue = item?.orderNumber ?? id;
-    const referenceSlug = slugifyName(referenceValue, 'order');
-    return `${businessSlug}/${customerSlug || 'customer'}/${referenceSlug}`;
-  }, [attachmentBusiness, id, item?.customer?.name, item?.orderNumber]);
+  const parts = Array.isArray(item?.parts) ? item.parts : [];
+  const partIdsParam = useMemo(() => parts.map((part: any) => part.id).filter(Boolean).join(','), [parts]);
+  const selectedPart = useMemo(
+    () => parts.find((part: any) => part?.id === selectedPartId) ?? null,
+    [parts, selectedPartId]
+  );
+  const selectedChecklist = useMemo(() => {
+    if (!selectedPartId) return [];
+    const items = Array.isArray(item?.checklist) ? item.checklist : [];
+    return items.filter((entry: any) => entry.isActive !== false && entry.partId === selectedPartId);
+  }, [item?.checklist, selectedPartId]);
+
+  const selectedAttachments = useMemo(() => {
+    if (!selectedPartId) return [];
+    const attachments = Array.isArray(item?.partAttachments) ? item.partAttachments : [];
+    return attachments.filter((attachment: any) => attachment.partId === selectedPartId);
+  }, [item?.partAttachments, selectedPartId]);
+
+  const activeElapsedSeconds = useMemo(() => {
+    if (!activeEntry?.startedAt) return 0;
+    const started = new Date(activeEntry.startedAt).getTime();
+    return Math.max(0, Math.floor((Date.now() - started) / 1000));
+  }, [activeEntry?.startedAt, tick]);
+
+  useEffect(() => {
+    const interval = activeEntry ? window.setInterval(() => setTick((prev) => prev + 1), 1000) : null;
+    return () => {
+      if (interval) window.clearInterval(interval);
+    };
+  }, [activeEntry]);
 
   const load = React.useCallback(async () => {
     if (!id) return null;
     setLoading(true);
-    let nextItem: any | null = null;
     try {
       const res = await fetch(`/api/orders/${id}`, { credentials: 'include' });
       if (!res.ok) throw res;
       const data = await res.json();
       setItem(data.item);
       setCanEditParts(Boolean(data?.permissions?.canEditParts));
-      nextItem = data.item;
       setError(null);
+      return data.item;
     } catch (err: any) {
       try {
         const json = await err.json();
@@ -358,869 +156,198 @@ export default function OrderDetailPage() {
     } finally {
       setLoading(false);
     }
-    return nextItem;
+    return null;
   }, [id]);
+
+  const loadPartEvents = React.useCallback(async () => {
+    if (!id || !selectedPartId) return;
+    setEventsLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/events`, { credentials: 'include' });
+      if (!res.ok) throw res;
+      const data = await res.json();
+      setPartEvents(Array.isArray(data?.events) ? data.events : []);
+    } catch {
+      setPartEvents([]);
+    } finally {
+      setEventsLoading(false);
+    }
+  }, [id, selectedPartId]);
+
+  const refreshTimerSummary = React.useCallback(async () => {
+    if (!id) return;
+    setTimerLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (partIdsParam) {
+        params.set('orderId', id);
+        params.set('partIds', partIdsParam);
+      }
+      const res = await fetch(`/api/timer/active?${params.toString()}`, { credentials: 'include' });
+      if (!res.ok) throw res;
+      const data = await res.json();
+      setActiveEntry(data.activeEntry ?? null);
+      setActivePart(data.activePart ?? null);
+      setPartTotals(data.totals ?? {});
+      setTimerError(null);
+    } catch {
+      setTimerError('Failed to load timer status.');
+    } finally {
+      setTimerLoading(false);
+    }
+  }, [id, partIdsParam]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   useEffect(() => {
-    setExpandedParts({});
-  }, [item?.id]);
-
-  useEffect(() => {
-    if (!Array.isArray(item?.parts)) {
-      setPartEdits({});
+    if (!parts.length) {
+      setSelectedPartId(null);
       return;
     }
-    const next: Record<string, PartFormState> = {};
-    item.parts.forEach((part: any) => {
-      if (!part?.id) return;
-      next[part.id] = {
-        partNumber: part.partNumber ?? '',
-        quantity: String(part.quantity ?? 1),
-        materialId: part.materialId ?? '',
-        stockSize: part.stockSize ?? '',
-        cutLength: part.cutLength ?? '',
-        notes: part.notes ?? '',
-      };
-    });
-    setPartEdits(next);
-  }, [item?.parts]);
-
-  useEffect(() => {
-    if (!copyChargesFromPartId) return;
-    const stillExists = Array.isArray(item?.parts)
-      ? item.parts.some((part: any) => part?.id === copyChargesFromPartId)
-      : false;
-    if (!stillExists) {
-      setCopyChargesFromPartId('');
+    if (!selectedPartId || !parts.some((part: any) => part.id === selectedPartId)) {
+      setSelectedPartId(parts[0].id);
     }
-  }, [item?.parts, copyChargesFromPartId]);
+  }, [parts, selectedPartId]);
 
   useEffect(() => {
-    if (!Array.isArray(item?.parts)) return;
-    setOperationByContext((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      if (!next.order) {
-        next.order = DEFAULT_OPERATION;
-        changed = true;
-      }
-      item.parts.forEach((part: any) => {
-        if (part?.id && !next[part.id]) {
-          next[part.id] = DEFAULT_OPERATION;
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-  }, [item?.parts]);
-
-  const partIdsParam = React.useMemo(() => {
-    if (!Array.isArray(item?.parts)) return '';
-    return item.parts
-      .map((part: any) => part?.id)
-      .filter(Boolean)
-      .join(',');
-  }, [item?.parts]);
-
-  const routingOptions = React.useMemo(() => {
-    if (!item || !routingPartId) return [];
-    return getIncompleteDepartmentsForPart(item, routingPartId);
-  }, [item, routingPartId]);
-
-  const routingCurrentSortOrder = React.useMemo(() => {
-    if (!item || !routingPartId || !routingFromDepartmentId) return null;
-    const entries = getPartChecklistItems(item, routingPartId).filter(
-      (entry: any) => entry.departmentId === routingFromDepartmentId,
-    );
-    const current = entries.find((entry: any) => entry.department?.sortOrder !== undefined);
-    return current?.department?.sortOrder ?? null;
-  }, [item, routingPartId, routingFromDepartmentId]);
+    refreshTimerSummary();
+  }, [refreshTimerSummary]);
 
   useEffect(() => {
-    if (!routingDialogOpen) return;
-    if (!routingOptions.length) {
-      setRoutingToDepartmentId('');
-      return;
-    }
-    if (routingToDepartmentId && routingOptions.some((option) => option.id === routingToDepartmentId)) return;
-    setRoutingToDepartmentId(pickNextDepartmentId(routingOptions, routingCurrentSortOrder));
-  }, [routingDialogOpen, routingOptions, routingToDepartmentId, routingCurrentSortOrder]);
+    loadPartEvents();
+  }, [loadPartEvents]);
 
-  const refreshTimeSummary = React.useCallback(async () => {
-    if (!id) return;
-    setTimeLoading(true);
+  const handleStart = async () => {
+    if (!id || !selectedPartId) return;
+    setTimerSaving(true);
+    setTimerError(null);
     try {
-      const params = new URLSearchParams({ orderId: id });
-      if (partIdsParam) {
-        params.set('partIds', partIdsParam);
-      }
-      const res = await fetch(`/api/time/summary?${params.toString()}`, { credentials: 'include' });
-      if (!res.ok) throw res;
-      const data = await res.json();
-      setTimeSummary(data);
-      setTimeError(null);
-    } catch (err: any) {
-      try {
-        const json = await err.json();
-        setTimeError(json?.error ?? 'Failed to load time tracking');
-      } catch {
-        setTimeError('Failed to load time tracking');
-      }
-    } finally {
-      setTimeLoading(false);
-    }
-  }, [id, partIdsParam]);
-
-  useEffect(() => {
-    refreshTimeSummary();
-  }, [refreshTimeSummary]);
-
-  const formatEntryTime = (value: string | null) => {
-    if (!value) return '—';
-    return new Date(value).toLocaleString();
-  };
-
-  const describeEntry = (entry: TimeEntryRecord | null) => {
-    if (!entry) return 'No time recorded yet.';
-    const label = entry.endedAt ? 'Stopped' : 'Started';
-    const timeValue = entry.endedAt ?? entry.startedAt;
-    return `${label} ${entry.operation} · ${formatEntryTime(timeValue)}`;
-  };
-
-  const getOperationValue = (key: string) => operationByContext[key] ?? DEFAULT_OPERATION;
-
-  const setOperationValue = (key: string, value: string) => {
-    setOperationByContext((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const submitTimeAction = async (url: string, payload?: Record<string, any>) => {
-    setTimeSaving(true);
-    setTimeError(null);
-    try {
-      const res = await fetch(url, {
+      const res = await fetch('/api/timer/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: payload ? JSON.stringify(payload) : undefined,
+        body: JSON.stringify({ orderId: id, partId: selectedPartId }),
+        credentials: 'include',
+      });
+      if (res.status === 409) {
+        const data = await res.json();
+        setConflictState({
+          open: true,
+          activeEntry: data.activeEntry ?? null,
+          activeOrder: data.activeOrder ?? null,
+          activePart: data.activePart ?? null,
+          elapsedSeconds: data.elapsedSeconds ?? 0,
+        });
+        return;
+      }
+      if (!res.ok) throw res;
+      await refreshTimerSummary();
+      await loadPartEvents();
+    } catch {
+      setTimerError('Failed to start timer.');
+    } finally {
+      setTimerSaving(false);
+    }
+  };
+
+  const handlePause = async () => {
+    setTimerSaving(true);
+    setTimerError(null);
+    try {
+      const res = await fetch('/api/timer/pause', { method: 'POST', credentials: 'include' });
+      if (!res.ok) throw res;
+      await refreshTimerSummary();
+      await loadPartEvents();
+    } catch {
+      setTimerError('Failed to pause timer.');
+    } finally {
+      setTimerSaving(false);
+    }
+  };
+
+  const handleFinish = async () => {
+    setTimerSaving(true);
+    setTimerError(null);
+    try {
+      const res = await fetch('/api/timer/finish', { method: 'POST', credentials: 'include' });
+      if (!res.ok) throw res;
+      await load();
+      await refreshTimerSummary();
+      await loadPartEvents();
+    } catch {
+      setTimerError('Failed to finish timer.');
+    } finally {
+      setTimerSaving(false);
+    }
+  };
+
+  const handleConflictAction = async (action: 'pause' | 'finish') => {
+    setConflictState((prev) => ({ ...prev, open: false }));
+    if (action === 'pause') {
+      await handlePause();
+    } else {
+      await handleFinish();
+    }
+    await handleStart();
+  };
+
+  const handleAddNote = async () => {
+    if (!noteText.trim() || !selectedPartId) return;
+    try {
+      const res = await fetch(`/api/orders/${id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: noteText.trim(), partId: selectedPartId }),
         credentials: 'include',
       });
       if (!res.ok) throw res;
-      await refreshTimeSummary();
-    } catch (err: any) {
-      try {
-        const json = await err.json();
-        setTimeError(json?.error ?? 'Failed to update time tracking');
-      } catch {
-        setTimeError('Failed to update time tracking');
-      }
-    } finally {
-      setTimeSaving(false);
-    }
-  };
-
-  const activeEntry = timeSummary?.activeEntry ?? null;
-  const isActiveOnOrder = Boolean(activeEntry && activeEntry.orderId === id && !activeEntry.partId);
-
-  const renderPartTimeTracking = (part: any) => {
-    if (!part?.id) return null;
-    const lastEntry = timeSummary?.lastPartEntries?.[part.id] ?? null;
-    const isActiveOnPart = Boolean(activeEntry && activeEntry.partId === part.id);
-    return (
-      <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Time tracking</div>
-            <div className="text-foreground">{describeEntry(lastEntry)}</div>
-            {isActiveOnPart ? (
-              <div className="text-xs text-emerald-700">
-                Active now · Started {formatEntryTime(activeEntry?.startedAt ?? null)}
-              </div>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              disabled={timeSaving || isActiveOnPart}
-              onClick={() =>
-                submitTimeAction('/api/time/start', {
-                  orderId: id,
-                  partId: part.id,
-                  operation: getOperationValue(part.id),
-                })
-              }
-              className="rounded-full"
-            >
-              {timeSaving ? 'Starting…' : 'Start'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!lastEntry?.endedAt || timeSaving}
-              onClick={() => submitTimeAction('/api/time/resume', { entryId: lastEntry?.id })}
-            >
-              Resume
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={!isActiveOnPart || timeSaving}
-              onClick={() => submitTimeAction('/api/time/pause')}
-            >
-              Pause
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={!isActiveOnPart || timeSaving}
-              onClick={() => submitTimeAction('/api/time/stop')}
-            >
-              Stop
-            </Button>
-          </div>
-        </div>
-        <div className="mt-3 grid gap-2">
-          <Label htmlFor={`part-operation-${part.id}`} className="text-xs uppercase text-muted-foreground">
-            Operation
-          </Label>
-          <Select
-            value={getOperationValue(part.id)}
-            onValueChange={(value) => setOperationValue(part.id, value)}
-            disabled={timeSaving}
-          >
-            <SelectTrigger
-              id={`part-operation-${part.id}`}
-              className="border-border/60 bg-background/80 text-left"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {OPERATION_OPTIONS.map((operation) => (
-                <SelectItem key={operation} value={operation}>
-                  {operation}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="mt-2 text-xs text-muted-foreground">
-          Starting or resuming pauses any active timer automatically.
-        </div>
-      </div>
-    );
-  };
-
-  const renderPartDepartmentAssignment = (part: any) => {
-    if (!part?.id || !item) return null;
-    if (part.currentDepartmentId) return null;
-    const departments = getActiveDepartmentsForPart(item, part.id);
-    if (!departments.length) return null;
-
-    const assignError = assignErrors[part.id];
-    return (
-      <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Department</div>
-            <Badge variant="secondary" className="text-xs">
-              Unassigned
-            </Badge>
-          </div>
-          <div className="grid gap-2">
-            <Label className="text-xs uppercase text-muted-foreground">Assign department</Label>
-            <Select
-              value=""
-              onValueChange={(value) => assignDepartment(part.id, value)}
-              disabled={assigningPartId === part.id}
-            >
-              <SelectTrigger className="border-border/60 bg-background/80 text-left">
-                <SelectValue placeholder="Assign department" />
-              </SelectTrigger>
-              <SelectContent>
-                {departments.map((department) => (
-                  <SelectItem key={department.id} value={department.id}>
-                    {department.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        {assignError ? (
-          <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {assignError}
-          </div>
-        ) : null}
-      </div>
-    );
-  };
-
-  useEffect(() => {
-    if (item?.attachments?.length) {
-      const stored = item.attachments.find((attachment: any) => attachment.storagePath);
-      if (stored?.storagePath) {
-        const [businessSlug] = stored.storagePath.split('/');
-        const match = BUSINESS_OPTIONS.find((option) => option.slug === businessSlug);
-        if (match) {
-          setAttachmentBusiness(match.name as BusinessName);
-          return;
-        }
-      }
-    }
-    if (item?.business) {
-      const option = getBusinessOptionByCode(item.business);
-      if (option) {
-        setAttachmentBusiness(option.name as BusinessName);
-      }
-    }
-  }, [item?.attachments, item?.business]);
-
-  useEffect(() => {
-    fetch('/api/admin/vendors?take=100', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => {
-        const list = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-        setVendors(list.map((vendor: any) => ({ id: vendor.id, name: vendor.name })));
-      })
-      .catch(() => setVendors([]));
-
-    fetch('/api/admin/customers?take=200', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => {
-        const list = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-        setCustomers(list.map((customer: any) => ({ id: customer.id, name: customer.name })));
-      })
-      .catch(() => setCustomers([]));
-
-    fetch('/api/admin/materials?take=100', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => {
-        const list = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-        setMaterials(list.map((material: any) => ({ id: material.id, name: material.name })));
-      })
-      .catch(() => setMaterials([]));
-
-    fetch('/api/admin/users?role=MACHINIST&take=100', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => {
-        const raw = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-        setMachinists(
-          raw.map((m: any) => ({
-            id: m.id,
-            name: m.name || m.email || 'Unnamed machinist',
-          }))
-        );
-      })
-      .catch(() => setMachinists([]));
-  }, []);
-
-  useEffect(() => {
-    if (!item) return;
-    const received = item.receivedDate ? new Date(item.receivedDate) : null;
-    const due = item.dueDate ? new Date(item.dueDate) : null;
-    setEditForm({
-      business: item.business ?? (BUSINESS_OPTIONS[0]?.code as BusinessCode),
-      customerId: item.customerId ?? '',
-      receivedDate: received && !Number.isNaN(received.getTime()) ? received.toISOString().slice(0, 10) : '',
-      dueDate: due && !Number.isNaN(due.getTime()) ? due.toISOString().slice(0, 10) : '',
-      priority: item.priority ?? 'NORMAL',
-      vendorId: item.vendorId ?? '',
-      poNumber: item.poNumber ?? '',
-      materialNeeded: !!item.materialNeeded,
-      materialOrdered: !!item.materialOrdered,
-      modelIncluded: !!item.modelIncluded,
-      assignedMachinistId: item.assignedMachinistId ?? '',
-    });
-  }, [item]);
-
-  useEffect(() => {
-    if (!editOpen) {
-      setEditError(null);
-    }
-  }, [editOpen]);
-
-  async function createCustomer() {
-    if (!newCustomerName.trim()) return;
-    const payload = {
-      name: newCustomerName,
-      contact: newCustomerContact || undefined,
-      phone: newCustomerPhone || undefined,
-      email: newCustomerEmail || undefined,
-      address: newCustomerAddress || undefined,
-    };
-    try {
-      const res = await fetch('/api/admin/customers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to create customer');
-      const data = await res.json();
-      if (data?.item?.id) {
-        setCustomers((prev) => [data.item, ...prev]);
-        setEditForm((prev) => ({ ...prev, customerId: data.item.id }));
-      }
-      setCustomerDialogOpen(false);
-      setNewCustomerName('');
-      setNewCustomerContact('');
-      setNewCustomerPhone('');
-      setNewCustomerEmail('');
-      setNewCustomerAddress('');
-    } catch (error) {
-      setEditError((error as Error).message || 'Failed to create customer');
-    }
-  }
-
-  function openEmployeeDialog(action: PendingAction, context?: ChecklistToggleContext) {
-    setPendingAction(action);
-    setPendingChecklistContext(context ?? null);
-    setEmployeeName('');
-    setEmployeeDialogError(null);
-    setEmployeeDialogOpen(true);
-  }
-
-  function closeEmployeeDialog() {
-    setEmployeeDialogOpen(false);
-    setEmployeeDialogError(null);
-    setPendingAction(null);
-    setPendingChecklistContext(null);
-  }
-
-  async function toggleChecklist(checklistId: string, checked: boolean, employee: string) {
-    setToggling(checklistId);
-    try {
-      const res = await fetch(`/api/orders/${id}/checklist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ checklistId, checked, employeeName: employee }),
-        credentials: 'include',
-      });
-      const message = await res.text();
-      if (!res.ok) {
-        try {
-          const parsed = JSON.parse(message);
-          throw new Error(parsed?.error || 'Failed to update checklist');
-        } catch {
-          throw new Error(message || 'Failed to update checklist');
-        }
-      }
-      const updated = await load();
-      return updated;
-    } catch (e) {
-      console.error(e);
-      throw e;
-    } finally {
-      setToggling(null);
-    }
-  }
-
-  const maybeOpenRoutingDialog = (orderItem: any, context: ChecklistToggleContext) => {
-    if (!context.partId || !context.departmentId) return;
-    const part = Array.isArray(orderItem?.parts)
-      ? orderItem.parts.find((entry: any) => entry?.id === context.partId)
-      : null;
-    if (!part || part.currentDepartmentId !== context.departmentId) return;
-
-    const partChecklist = getPartChecklistItems(orderItem, context.partId);
-    const deptEntries = partChecklist.filter((entry: any) => entry.departmentId === context.departmentId);
-    if (!deptEntries.length) return;
-    const hasIncomplete = deptEntries.some((entry: any) => entry.completed === false);
-    if (hasIncomplete) return;
-
-    const nextDepartments = getIncompleteDepartmentsForPart(orderItem, context.partId);
-    if (!nextDepartments.length) return;
-
-    const currentSortOrder = deptEntries.find((entry: any) => entry.department?.sortOrder !== undefined)?.department?.sortOrder ?? null;
-    const defaultNextId = pickNextDepartmentId(nextDepartments, currentSortOrder);
-
-    setRoutingPartId(context.partId);
-    setRoutingFromDepartmentId(context.departmentId);
-    setRoutingToDepartmentId(defaultNextId);
-    setRoutingBulkMove(false);
-    setRoutingError(null);
-    setRoutingDialogOpen(true);
-  };
-
-  const resetRoutingDialog = () => {
-    setRoutingDialogOpen(false);
-    setRoutingPartId(null);
-    setRoutingFromDepartmentId(null);
-    setRoutingToDepartmentId('');
-    setRoutingBulkMove(false);
-    setRoutingError(null);
-    setRoutingSaving(false);
-  };
-
-  const submitRoutingTransition = async () => {
-    if (!id || !routingPartId || !routingFromDepartmentId || !routingToDepartmentId) return;
-    const employee = lastEmployeeName.trim();
-    if (!employee) {
-      setRoutingError('Employee name is required to move departments.');
-      return;
-    }
-
-    const partIds = new Set<string>([routingPartId]);
-    if (routingBulkMove && item) {
-      const additional = Array.isArray(item.parts)
-        ? item.parts
-            .filter((part: any) => part?.id && part.currentDepartmentId === routingFromDepartmentId)
-            .filter((part: any) => part.id !== routingPartId)
-            .filter((part: any) => isPartCompleteForDepartment(item, part.id, routingFromDepartmentId))
-            .map((part: any) => part.id)
-        : [];
-      additional.forEach((partId) => partIds.add(partId));
-    }
-
-    setRoutingSaving(true);
-    setRoutingError(null);
-    try {
-      const res = await fetch(`/api/orders/${id}/parts/transition`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fromDepartmentId: routingFromDepartmentId,
-          toDepartmentId: routingToDepartmentId,
-          partIds: Array.from(partIds),
-          employeeName: employee,
-        }),
-        credentials: 'include',
-      });
-      const message = await res.text();
-      if (!res.ok) {
-        try {
-          const parsed = JSON.parse(message);
-          throw new Error(parsed?.error || 'Failed to move departments');
-        } catch {
-          throw new Error(message || 'Failed to move departments');
-        }
-      }
+      setNoteText('');
       await load();
-      resetRoutingDialog();
-    } catch (err: any) {
-      setRoutingError(err?.message || 'Failed to move departments');
-    } finally {
-      setRoutingSaving(false);
+      await loadPartEvents();
+    } catch {
+      // ignore
     }
   };
 
-  const assignDepartment = async (partId: string, departmentId: string) => {
-    setAssigningPartId(partId);
-    setAssignErrors((prev) => ({ ...prev, [partId]: null }));
-    try {
-      const res = await fetch(`/api/orders/${id}/parts/assign-department`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partId, departmentId }),
-        credentials: 'include',
-      });
-      const message = await res.text();
-      if (!res.ok) {
-        try {
-          const parsed = JSON.parse(message);
-          throw new Error(parsed?.error || 'Failed to assign department');
-        } catch {
-          throw new Error(message || 'Failed to assign department');
-        }
-      }
-      await load();
-    } catch (err: any) {
-      setAssignErrors((prev) => ({ ...prev, [partId]: err?.message || 'Failed to assign department' }));
-    } finally {
-      setAssigningPartId(null);
-    }
-  };
-
-  async function handleAddPart(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!id || !canEditParts) return;
-    const trimmedPartNumber = partForm.partNumber.trim();
-    if (!trimmedPartNumber) {
-      setPartError('Part number is required');
-      return;
-    }
-    const quantityValue = Number.parseInt(partForm.quantity, 10);
-    if (!Number.isFinite(quantityValue) || quantityValue < 1) {
-      setPartError('Quantity must be at least 1');
-      return;
-    }
-    setPartError(null);
-    const payload: PendingPartPayload = {
-      partNumber: trimmedPartNumber,
-      quantity: quantityValue,
-    };
-    if (partForm.stockSize.trim()) payload.stockSize = partForm.stockSize.trim();
-    if (partForm.cutLength.trim()) payload.cutLength = partForm.cutLength.trim();
-    if (partForm.materialId) payload.materialId = partForm.materialId;
-    if (partForm.notes.trim()) payload.notes = partForm.notes.trim();
-
-    setPendingPartPayload(payload);
-    setInvoiceDialogOpen(true);
-  }
-
-  async function confirmAddPart() {
-    if (!id || !pendingPartPayload) return;
-    setPartSaving(true);
-    setPartError(null);
-    try {
-      const payload: Record<string, unknown> = {
-        ...pendingPartPayload,
-        invoiceAction,
-      };
-      if (copyChargesFromPartId) payload.copyChargesFromPartId = copyChargesFromPartId;
-
-      const res = await fetch(`/api/orders/${id}/parts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        credentials: 'include',
-      });
-      const raw = await res.text();
-      if (!res.ok) {
-        let message = 'Failed to add part';
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            message =
-              typeof parsed?.error === 'string'
-                ? parsed.error
-                : parsed?.message || JSON.stringify(parsed?.error ?? parsed);
-          } catch {
-            message = raw;
-          }
-        }
-        throw new Error(message || 'Failed to add part');
-      }
-
-      let createdPartId: string | undefined;
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          createdPartId = parsed?.part?.id as string | undefined;
-        } catch {
-          createdPartId = undefined;
-        }
-      }
-
-      setPartForm({ partNumber: '', quantity: '1', materialId: '', stockSize: '', cutLength: '', notes: '' });
-      setCopyChargesFromPartId('');
-      setInvoiceAction('new');
-      setPendingPartPayload(null);
-      setInvoiceDialogOpen(false);
-      const updated = await load();
-      if (createdPartId) {
-        setExpandedParts((prev) => ({ ...prev, [createdPartId]: true }));
-      } else if (Array.isArray(updated?.parts) && updated.parts.length) {
-        const latest = updated.parts[updated.parts.length - 1];
-        if (latest?.id) {
-          setExpandedParts((prev) => ({ ...prev, [latest.id]: true }));
-        }
-      }
-    } catch (err: any) {
-      setPartError(err.message || 'Failed to add part');
-    } finally {
-      setPartSaving(false);
-    }
-  }
-
-  const getPartEditState = (part: any): PartFormState => {
-    if (part?.id && partEdits[part.id]) return partEdits[part.id];
-    return {
-      partNumber: part?.partNumber ?? '',
-      quantity: String(part?.quantity ?? 1),
-      materialId: part?.materialId ?? '',
-      stockSize: part?.stockSize ?? '',
-      cutLength: part?.cutLength ?? '',
-      notes: part?.notes ?? '',
-    };
-  };
-
-  function resetPartEdit(part: any) {
-    if (!part?.id) return;
-    setPartEdits((prev) => ({
-      ...prev,
-      [part.id]: {
-        partNumber: part.partNumber ?? '',
-        quantity: String(part.quantity ?? 1),
-        materialId: part.materialId ?? '',
-        stockSize: part.stockSize ?? '',
-        cutLength: part.cutLength ?? '',
-        notes: part.notes ?? '',
-      },
-    }));
-    setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
-  }
-
-  async function handleUpdatePart(part: any) {
-    const partId = part?.id;
-    if (!id || !partId) return;
-    const current = getPartEditState(part);
-    const trimmedPartNumber = current.partNumber.trim();
-    if (!trimmedPartNumber) {
-      setPartEditErrors((prev) => ({ ...prev, [partId]: 'Part number is required' }));
-      return;
-    }
-    const quantityValue = Number.parseInt(current.quantity, 10);
-    if (!Number.isFinite(quantityValue) || quantityValue < 1) {
-      setPartEditErrors((prev) => ({ ...prev, [partId]: 'Quantity must be at least 1' }));
-      return;
-    }
-
-    setPartSavingIds((prev) => ({ ...prev, [partId]: true }));
-    setPartEditErrors((prev) => ({ ...prev, [partId]: null }));
-    try {
-    const payload: Record<string, unknown> = {
-      partNumber: trimmedPartNumber,
-      quantity: quantityValue,
-      materialId: current.materialId || null,
-      stockSize: current.stockSize?.trim() ? current.stockSize.trim() : null,
-      cutLength: current.cutLength?.trim() ? current.cutLength.trim() : null,
-      notes: current.notes.trim() ? current.notes.trim() : null,
-    };
-
-      const res = await fetch(`/api/orders/${id}/parts/${partId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        credentials: 'include',
-      });
-
-      const raw = await res.text();
-      if (!res.ok) {
-        let message = 'Failed to update part';
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            message =
-              typeof parsed?.error === 'string'
-                ? parsed.error
-                : parsed?.message || JSON.stringify(parsed?.error ?? parsed);
-          } catch {
-            message = raw;
-          }
-        }
-        throw new Error(message);
-      }
-
-      await load();
-    } catch (error: any) {
-      setPartEditErrors((prev) => ({ ...prev, [partId]: error?.message || 'Failed to update part' }));
-    } finally {
-      setPartSavingIds((prev) => ({ ...prev, [partId]: false }));
-    }
-  }
-
-  async function handleRemovePart(part: any) {
-    const partId = part?.id;
-    if (!id || !partId) return;
-    setPartSavingIds((prev) => ({ ...prev, [partId]: true }));
-    setPartEditErrors((prev) => ({ ...prev, [partId]: null }));
-    try {
-      const res = await fetch(`/api/orders/${id}/parts/${partId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      const raw = await res.text();
-      if (!res.ok) {
-        let message = 'Failed to remove part';
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            message =
-              typeof parsed?.error === 'string'
-                ? parsed.error
-                : parsed?.message || JSON.stringify(parsed?.error ?? parsed);
-          } catch {
-            message = raw;
-          }
-        }
-        throw new Error(message);
-      }
-      await load();
-    } catch (error: any) {
-      setPartEditErrors((prev) => ({ ...prev, [partId]: error?.message || 'Failed to remove part' }));
-    } finally {
-      setPartSavingIds((prev) => ({ ...prev, [partId]: false }));
-    }
-  }
-
-  async function handleAttachmentFile(fileList: FileList | null) {
+  const handleAttachmentFile = async (fileList: FileList | null) => {
     const file = fileList?.[0];
-    if (!file || !item) return;
-
-    const customerName = item.customer?.name?.trim() ?? '';
-    if (!customerName) {
-      setAttachmentError('Customer information is required before uploading attachments.');
-      return;
-    }
-
-    const orderReference = (item.orderNumber || '').trim() || id;
+    if (!file || !selectedPartId) return;
 
     setAttachmentForm((prev) => ({ ...prev, uploading: true }));
     setAttachmentError(null);
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('business', attachmentBusiness);
-    formData.append('customerName', customerName);
-    formData.append('orderReference', orderReference);
 
     try {
-      const res = await fetch('/api/orders/attachments/upload', {
+      const res = await fetch(`/api/orders/parts/${selectedPartId}/attachments/upload`, {
         method: 'POST',
         body: formData,
         credentials: 'include',
       });
 
-      if (!res.ok) {
-        let message = 'Failed to upload attachment';
-        try {
-          const payload = await res.json();
-          if (payload?.error) message = payload.error;
-        } catch {
-          // ignore JSON parse errors
-        }
-        throw new Error(message);
-      }
-
+      if (!res.ok) throw res;
       const result = await res.json().catch(() => ({}));
 
-      setAttachmentForm((prev) => {
-        const storagePath = typeof result?.storagePath === 'string' ? result.storagePath : '';
-        const url = storagePath ? `/attachments/${storagePath}` : prev.url;
-        const label = prev.label || (typeof result?.label === 'string' && result.label) || file.name;
-        const mimeType =
-          prev.mimeType ||
-          (typeof result?.mimeType === 'string' && result.mimeType) ||
-          file.type ||
-          '';
-
-        return {
-          ...prev,
-          storagePath,
-          url,
-          label,
-          mimeType,
-          uploading: false,
-        };
-      });
+      setAttachmentForm((prev) => ({
+        ...prev,
+        storagePath: typeof result?.storagePath === 'string' ? result.storagePath : '',
+        url: '',
+        label: prev.label || result?.label || file.name,
+        mimeType: prev.mimeType || result?.mimeType || file.type || '',
+        uploading: false,
+      }));
       setAttachmentFileName(file.name);
-    } catch (error: any) {
-      const message = typeof error?.message === 'string' ? error.message : 'Failed to upload attachment';
-      setAttachmentError(message);
+    } catch {
+      setAttachmentError('Failed to upload attachment.');
       setAttachmentForm((prev) => ({ ...prev, uploading: false }));
     }
-  }
+  };
 
-  async function handleAddAttachment(event: React.FormEvent<HTMLFormElement>) {
+  const handleAddAttachment = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!id) return;
+    if (!selectedPartId) return;
     if (attachmentForm.uploading) {
       setAttachmentError('Wait for the file upload to finish.');
       return;
@@ -1228,163 +355,70 @@ export default function OrderDetailPage() {
     const url = attachmentForm.url.trim();
     const storagePath = attachmentForm.storagePath.trim();
     if (!url && !storagePath) {
-      setAttachmentError('Add a link or upload a file to attach.');
+      setAttachmentError('Add a link or upload a file.');
       return;
     }
     setAttachmentSaving(true);
     setAttachmentError(null);
     try {
-      const payload: Record<string, unknown> = {};
+      const payload: Record<string, unknown> = {
+        kind: attachmentForm.kind,
+        label: attachmentForm.label.trim() || undefined,
+        mimeType: attachmentForm.mimeType.trim() || undefined,
+      };
       if (storagePath) {
         payload.storagePath = storagePath;
-      } else if (url) {
+      } else {
         payload.url = url;
       }
-      if (attachmentForm.label.trim()) payload.label = attachmentForm.label.trim();
-      if (attachmentForm.mimeType.trim()) payload.mimeType = attachmentForm.mimeType.trim();
 
-      const res = await fetch(`/api/orders/${id}/attachments`, {
+      const res = await fetch(`/api/orders/parts/${selectedPartId}/attachments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        credentials: 'include',
-      });
-      const raw = await res.text();
-      if (!res.ok) {
-        let message = 'Failed to add attachment';
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            message =
-              typeof parsed?.error === 'string'
-                ? parsed.error
-                : parsed?.message || JSON.stringify(parsed?.error ?? parsed);
-          } catch {
-            message = raw;
-          }
-        }
-        throw new Error(message || 'Failed to add attachment');
-      }
-
-      setAttachmentForm({ label: '', url: '', mimeType: '', storagePath: '', uploading: false });
-      setAttachmentFileName(null);
-      setAttachmentFileKey((prev) => prev + 1);
-      await load();
-    } catch (err: any) {
-      setAttachmentError(err.message || 'Failed to add attachment');
-    } finally {
-      setAttachmentSaving(false);
-    }
-  }
-
-  async function addNote() {
-    if (!noteText.trim()) return;
-    try {
-      const res = await fetch(`/api/orders/${id}/notes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: noteText.trim() }),
         credentials: 'include',
       });
       if (!res.ok) throw res;
-      setNoteText('');
-      await load();
-    } catch (e) {
-      console.error(e);
-    }
-  }
 
-  async function handleEditSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!id) return;
-    if (!editForm.customerId) {
-      setEditError('Please select a customer');
-      return;
-    }
-    setEditSaving(true);
-    setEditError(null);
-    try {
-      const payload = {
-        business: editForm.business,
-        customerId: editForm.customerId,
-        receivedDate: editForm.receivedDate,
-        dueDate: editForm.dueDate,
-        priority: editForm.priority,
-        vendorId: editForm.vendorId,
-        poNumber: editForm.poNumber,
-        materialNeeded: editForm.materialNeeded,
-        materialOrdered: editForm.materialOrdered,
-        modelIncluded: editForm.modelIncluded,
-        assignedMachinistId: editForm.assignedMachinistId,
-      };
-      const res = await fetch(`/api/orders/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        credentials: 'include',
+      setAttachmentForm({
+        label: '',
+        url: '',
+        mimeType: '',
+        storagePath: '',
+        kind: 'STEP',
+        uploading: false,
       });
-      if (!res.ok) {
-        const message = await res.text();
-        throw new Error(message || 'Failed to update order');
-      }
-      setEditOpen(false);
+      setAttachmentFileKey((prev) => prev + 1);
+      setAttachmentFileName(null);
       await load();
-    } catch (err: any) {
-      setEditError(err.message || 'Failed to update order');
+      await loadPartEvents();
+    } catch {
+      setAttachmentError('Failed to attach file.');
     } finally {
-      setEditSaving(false);
+      setAttachmentSaving(false);
     }
-  }
+  };
 
-  async function changeStatus(newStatus: string, employee: string) {
-    setStatusSaving(newStatus);
+  const handleChecklistToggle = async (entry: any, checked: boolean) => {
+    if (!selectedPartId) return;
     try {
-      const res = await fetch(`/api/orders/${id}/status`, {
+      const res = await fetch(`/api/orders/${id}/checklist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, employeeName: employee }),
+        body: JSON.stringify({
+          checklistId: entry.id,
+          checked,
+          partId: selectedPartId,
+        }),
         credentials: 'include',
       });
-      const message = await res.text();
-      if (!res.ok) {
-        throw new Error(message || 'Failed to update status');
-      }
+      if (!res.ok) throw res;
       await load();
-    } catch (e) {
-      console.error(e);
-      throw e;
-    } finally {
-      setStatusSaving(null);
+      await loadPartEvents();
+    } catch {
+      // ignore
     }
-  }
-
-  async function handleEmployeeSubmit(event?: React.FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
-    if (!pendingAction) return;
-    const trimmedName = employeeName.trim();
-    if (!trimmedName) {
-      setEmployeeDialogError('Please enter your name to record this update.');
-      return;
-    }
-    setEmployeeSubmitting(true);
-    setEmployeeDialogError(null);
-    try {
-      setLastEmployeeName(trimmedName);
-      if (pendingAction.type === 'status') {
-        await changeStatus(pendingAction.status, trimmedName);
-      } else {
-        const updated = await toggleChecklist(pendingAction.checklistId, pendingAction.checked, trimmedName);
-        if (pendingChecklistContext?.checked && updated) {
-          maybeOpenRoutingDialog(updated, pendingChecklistContext);
-        }
-      }
-      closeEmployeeDialog();
-    } catch (err: any) {
-      setEmployeeDialogError(err?.message || 'Failed to record update. Please try again.');
-    } finally {
-      setEmployeeSubmitting(false);
-    }
-  }
+  };
 
   if (loading) {
     return <div className="text-muted-foreground">Loading…</div>;
@@ -1402,1693 +436,447 @@ export default function OrderDetailPage() {
     return <div className="text-muted-foreground">Order not found.</div>;
   }
 
-  const checklistItems = Array.isArray(item.checklist) ? item.checklist : [];
-  const activeChecklistItems = checklistItems.filter((entry: any) => entry.isActive !== false);
-  const checklistByPartId = new Map<string, any[]>();
-  const legacyChecklistItems: any[] = [];
-  activeChecklistItems.forEach((entry: any) => {
-    const partId = entry.part?.id ?? entry.charge?.partId ?? entry.partId ?? null;
-    if (partId) {
-      const existing = checklistByPartId.get(partId) ?? [];
-      existing.push(entry);
-      checklistByPartId.set(partId, existing);
-    } else {
-      legacyChecklistItems.push(entry);
-    }
-  });
-  const parts: any[] = Array.isArray(item.parts) ? item.parts : [];
-  const primaryPart = parts[0];
-  const additionalParts = parts.slice(1);
-  const partLabelById = new Map<string, string>();
-  parts.forEach((part, index) => {
-    if (!part?.id) return;
-    const label = part.partNumber || `Part ${index + 1}`;
-    partLabelById.set(part.id, label);
-  });
-  const activePartLabel = activeEntry?.partId ? partLabelById.get(activeEntry.partId) ?? 'Part' : null;
-  const attachments: any[] = Array.isArray(item.attachments) ? item.attachments : [];
-  const businessOption = BUSINESS_OPTIONS.find((option) => option.code === item.business);
-  const pendingStatusLabel =
-    pendingAction?.type === 'status'
-      ? STATUS_OPTIONS.find(([value]) => value === pendingAction.status)?.[1] ?? pendingAction.status
-      : null;
-  const pendingChecklistItem =
-    pendingAction?.type === 'checklist'
-      ? checklistItems.find((c: any) => c.id === pendingAction.checklistId)
-      : null;
-  const pendingChecklistName = pendingChecklistItem?.charge?.name ?? pendingChecklistItem?.addon?.name ?? null;
-  const routingPartLabel = routingPartId ? partLabelById.get(routingPartId) ?? 'Part' : null;
-  const routingFromDepartmentName = routingFromDepartmentId
-    ? activeChecklistItems.find((entry: any) => entry.departmentId === routingFromDepartmentId)?.department?.name ?? null
-    : null;
+  const orderTitle = `Order ${item.orderNumber}`;
+  const dueDateLabel = item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'TBD';
+  const statusLabel = item.status?.replace(/_/g, ' ') ?? 'Unknown';
+  const activeOnSelected = Boolean(activeEntry?.partId && activeEntry.partId === selectedPartId);
 
   return (
     <div className="space-y-6">
-      <Dialog
-        open={employeeDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeEmployeeDialog();
-          } else {
-            setEmployeeDialogOpen(true);
-          }
-        }}
-      >
+      <Dialog open={conflictState.open} onOpenChange={(open) => setConflictState((prev) => ({ ...prev, open }))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {pendingAction?.type === 'status' ? 'Confirm status update' : 'Confirm checklist update'}
-            </DialogTitle>
-            <DialogDescription className="space-y-1">
-              <p>Please enter your name to record this update.</p>
-              {pendingAction?.type === 'status' && pendingStatusLabel ? (
-                <p className="text-xs text-muted-foreground">New status: {pendingStatusLabel}</p>
-              ) : null}
-              {pendingAction?.type === 'checklist' && pendingChecklistName ? (
-                <p className="text-xs text-muted-foreground">
-                  Checklist item: {pendingChecklistName} ({pendingAction.checked ? 'check' : 'uncheck'})
-                </p>
-              ) : null}
-            </DialogDescription>
+            <DialogTitle>Active timer already running</DialogTitle>
           </DialogHeader>
-          <form className="space-y-4" onSubmit={handleEmployeeSubmit}>
-            <div className="space-y-1">
-              <Label htmlFor="employee-name">Employee name</Label>
-              <Input
-                id="employee-name"
-                value={employeeName}
-                onChange={(e) => setEmployeeName(e.target.value)}
-                placeholder="Enter your name"
-              />
-            </div>
-            {employeeDialogError ? (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {employeeDialogError}
-              </div>
-            ) : null}
-            <DialogFooter className="gap-2">
-              <Button type="button" variant="outline" onClick={closeEmployeeDialog} disabled={employeeSubmitting}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={employeeSubmitting}>
-                {employeeSubmitting ? 'Submitting…' : 'Submit'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={routingDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            resetRoutingDialog();
-          } else {
-            setRoutingDialogOpen(true);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Department complete for this part. Move to next department?</DialogTitle>
-            <DialogDescription className="space-y-1">
-              <p>
-                {routingPartLabel ? `${routingPartLabel} ` : 'This part '}
-                {routingFromDepartmentName ? `finished ${routingFromDepartmentName}.` : 'finished its department.'}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Select the next department that still has open checklist items.
-              </p>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 text-sm">
-            <div className="space-y-2">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">Next department</Label>
-              <Select
-                value={routingToDepartmentId}
-                onValueChange={(value) => setRoutingToDepartmentId(value)}
-                disabled={!routingOptions.length || routingSaving}
-              >
-                <SelectTrigger className="border-border/60 bg-background/80 text-left">
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {routingOptions.map((department) => (
-                    <SelectItem key={department.id} value={department.id}>
-                      {department.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="bulk-move-parts"
-                checked={routingBulkMove}
-                onCheckedChange={(checked) => setRoutingBulkMove(Boolean(checked))}
-                disabled={routingSaving}
-              />
-              <Label htmlFor="bulk-move-parts" className="text-sm text-muted-foreground">
-                Also move other parts that are complete for this department
-              </Label>
-            </div>
-            {routingError ? (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {routingError}
-              </div>
-            ) : null}
+          <div className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              You already have an active timer for{' '}
+              <span className="font-medium text-foreground">
+                {conflictState.activeOrder?.orderNumber || 'another order'}
+              </span>
+              {conflictState.activePart?.partNumber
+                ? ` · ${conflictState.activePart.partNumber}`
+                : ''}
+              .
+            </p>
+            <p>Elapsed: {formatDuration(conflictState.elapsedSeconds)}</p>
           </div>
           <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={resetRoutingDialog} disabled={routingSaving}>
+            <Button type="button" variant="outline" onClick={() => setConflictState((prev) => ({ ...prev, open: false }))}>
               Cancel
             </Button>
-            <Button type="button" onClick={submitRoutingTransition} disabled={routingSaving || !routingToDepartmentId}>
-              {routingSaving ? 'Moving…' : 'Move part(s)'}
+            <Button type="button" variant="secondary" onClick={() => void handleConflictAction('pause')}>
+              Pause &amp; Switch
+            </Button>
+            <Button type="button" onClick={() => void handleConflictAction('finish')}>
+              Finish &amp; Switch
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={invoiceDialogOpen}
-        onOpenChange={(open) => {
-          setInvoiceDialogOpen(open);
-          if (!open) {
-            setPendingPartPayload(null);
-            setInvoiceAction('new');
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Invoice handling for the new part</DialogTitle>
-            <DialogDescription>
-              Choose how this added part should be invoiced before we save it to the order.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 text-sm">
-            <RadioGroup
-              value={invoiceAction}
-              onValueChange={(value) => setInvoiceAction(value as 'new' | 'update')}
-              className="gap-3"
-            >
-              <label className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/10 p-3">
-                <RadioGroupItem value="new" className="mt-1" />
-                <div className="space-y-1">
-                  <div className="font-medium text-foreground">Create a separate invoice (default)</div>
-                  <p className="text-xs text-muted-foreground">
-                    Keeps the original invoice and PO intact while billing only this added part.
-                  </p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 rounded-md border border-border/60 bg-muted/10 p-3">
-                <RadioGroupItem value="update" className="mt-1" />
-                <div className="space-y-1">
-                  <div className="font-medium text-foreground">Update the existing invoice</div>
-                  <p className="text-xs text-muted-foreground">
-                    Regenerates the original invoice to include this part and invalidates the previous PO.
-                  </p>
-                </div>
-              </label>
-            </RadioGroup>
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700">
-              Updating the existing invoice invalidates the previous PO. The prior invoice and PO remain available in
-              attachments and notes for reference.
-            </div>
-            {partError ? (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {partError}
-              </div>
-            ) : null}
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setInvoiceDialogOpen(false);
-                setPendingPartPayload(null);
-                setInvoiceAction('new');
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="button" onClick={confirmAddPart} disabled={partSaving}>
-              {partSaving ? 'Adding…' : 'Confirm & add part'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Card className="border border-border/60 bg-muted/10">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Timer className="h-4 w-4 text-muted-foreground" /> Active time tracking
-          </CardTitle>
-          <CardDescription>Keep the current operation visible while you work.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm">
-          {activeEntry ? (
-            <div className="space-y-1">
-              <div className="font-medium text-foreground">
-                {activeEntry.operation} {activePartLabel ? `· ${activePartLabel}` : '· Order level'}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Started {formatEntryTime(activeEntry.startedAt)} · Switching operations auto-pauses this timer.
-              </div>
-            </div>
-          ) : (
-            <div className="text-muted-foreground">No active timer right now.</div>
-          )}
-          {timeError ? (
-            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {timeError}
-            </div>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={!activeEntry || timeSaving}
-              onClick={() => submitTimeAction('/api/time/pause')}
-            >
-              {timeSaving ? 'Pausing…' : 'Pause'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!activeEntry || timeSaving}
-              onClick={() => submitTimeAction('/api/time/stop')}
-            >
-              {timeSaving ? 'Stopping…' : 'Stop'}
-            </Button>
-            {timeLoading ? (
-              <span className="text-xs text-muted-foreground">Refreshing…</span>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-3xl font-semibold tracking-tight">Order {item.orderNumber}</h1>
-            <Badge variant="outline" className="font-mono text-xs uppercase">
-              {businessOption?.prefix ?? item.business}
-            </Badge>
-            <span className="text-sm text-muted-foreground">
-              {businessOption?.name ?? 'Unknown business'}
-            </span>
-          </div>
-          <p className="text-muted-foreground">
-            Customer-facing details, shop routing, and production notes for this work order.
-          </p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Dialog open={editOpen} onOpenChange={setEditOpen}>
-            <DialogTrigger asChild>
-              <Button
-                type="button"
-                variant="secondary"
-                className="rounded-full border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-              >
-                Edit order
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Edit order details</DialogTitle>
-                <DialogDescription>Update scheduling, assignments, and material status.</DialogDescription>
-              </DialogHeader>
-              <form className="space-y-4" onSubmit={handleEditSubmit}>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-business">Business</Label>
-                    <Select
-                      value={editForm.business}
-                      onValueChange={(value) =>
-                        setEditForm((prev) => ({ ...prev, business: value as BusinessCode }))
-                      }
-                    >
-                      <SelectTrigger id="edit-business" className="border-border/60 bg-background/80 text-left">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {BUSINESS_OPTIONS.map((option) => (
-                          <SelectItem key={option.code} value={option.code}>
-                            {option.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Customer</Label>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={editForm.customerId || NONE_VALUE}
-                        onValueChange={(value) =>
-                          setEditForm((prev) => ({ ...prev, customerId: value === NONE_VALUE ? '' : value }))
-                        }
-                      >
-                        <SelectTrigger className="w-full border-border/60 bg-background/80 text-left">
-                          <SelectValue placeholder="Select customer" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE_VALUE}>Select customer</SelectItem>
-                          {customers.map((customer) => (
-                            <SelectItem key={customer.id} value={customer.id}>
-                              {customer.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
-                        <DialogTrigger asChild>
-                          <Button type="button" variant="outline" className="shrink-0">
-                            New
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Add customer</DialogTitle>
-                            <DialogDescription>Create a new customer record for this order.</DialogDescription>
-                          </DialogHeader>
-                          <div className="grid gap-3">
-                            <div className="grid gap-1.5">
-                              <Label htmlFor="newCustomerName">Name</Label>
-                              <Input
-                                id="newCustomerName"
-                                value={newCustomerName}
-                                onChange={(e) => setNewCustomerName(e.target.value)}
-                                placeholder="Customer name"
-                              />
-                            </div>
-                            <div className="grid gap-1.5">
-                              <Label htmlFor="newCustomerContact">Contact</Label>
-                              <Input
-                                id="newCustomerContact"
-                                value={newCustomerContact}
-                                onChange={(e) => setNewCustomerContact(e.target.value)}
-                                placeholder="Contact name"
-                              />
-                            </div>
-                            <div className="grid gap-1.5">
-                              <Label htmlFor="newCustomerPhone">Phone</Label>
-                              <Input
-                                id="newCustomerPhone"
-                                value={newCustomerPhone}
-                                onChange={(e) => setNewCustomerPhone(e.target.value)}
-                                placeholder="555-123-4567"
-                              />
-                            </div>
-                            <div className="grid gap-1.5">
-                              <Label htmlFor="newCustomerEmail">Email</Label>
-                              <Input
-                                id="newCustomerEmail"
-                                type="email"
-                                value={newCustomerEmail}
-                                onChange={(e) => setNewCustomerEmail(e.target.value)}
-                                placeholder="name@example.com"
-                              />
-                            </div>
-                            <div className="grid gap-1.5">
-                              <Label htmlFor="newCustomerAddress">Address</Label>
-                              <Textarea
-                                id="newCustomerAddress"
-                                value={newCustomerAddress}
-                                onChange={(e) => setNewCustomerAddress(e.target.value)}
-                                placeholder="Shipping address"
-                              />
-                            </div>
-                            <DialogFooter>
-                              <Button type="button" variant="ghost" onClick={() => setCustomerDialogOpen(false)}>
-                                Cancel
-                              </Button>
-                              <Button type="button" onClick={createCustomer} disabled={!newCustomerName.trim()}>
-                                Add customer
-                              </Button>
-                            </DialogFooter>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-received">Received date</Label>
-                    <Input
-                      id="edit-received"
-                      type="date"
-                      value={editForm.receivedDate}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, receivedDate: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-due">Due date</Label>
-                    <Input
-                      id="edit-due"
-                      type="date"
-                      value={editForm.dueDate}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, dueDate: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-priority">Priority</Label>
-                    <Select
-                      value={editForm.priority}
-                      onValueChange={(value) => setEditForm((prev) => ({ ...prev, priority: value }))}
-                    >
-                      <SelectTrigger id="edit-priority" className="border-border/60 bg-background/80">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PRIORITY_OPTIONS.map((priority) => (
-                          <SelectItem key={priority} value={priority}>
-                            {priority}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-machinist">Machinist</Label>
-                    <Select
-                      value={editForm.assignedMachinistId || NONE_VALUE}
-                      onValueChange={(value) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          assignedMachinistId: value === NONE_VALUE ? '' : value,
-                        }))
-                      }
-                    >
-                      <SelectTrigger id="edit-machinist" className="border-border/60 bg-background/80 text-left">
-                        <SelectValue placeholder="Unassigned" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NONE_VALUE}>Unassigned</SelectItem>
-                        {machinists.map((machinist) => (
-                          <SelectItem key={machinist.id} value={machinist.id}>
-                            {machinist.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-vendor">Vendor</Label>
-                    <Select
-                      value={editForm.vendorId || NONE_VALUE}
-                      onValueChange={(value) =>
-                        setEditForm((prev) => ({ ...prev, vendorId: value === NONE_VALUE ? '' : value }))
-                      }
-                    >
-                      <SelectTrigger id="edit-vendor" className="border-border/60 bg-background/80 text-left">
-                        <SelectValue placeholder="No vendor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NONE_VALUE}>No vendor</SelectItem>
-                        {vendors.map((vendor) => (
-                          <SelectItem key={vendor.id} value={vendor.id}>
-                            {vendor.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-po">PO number</Label>
-                    <Input
-                      id="edit-po"
-                      value={editForm.poNumber}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, poNumber: e.target.value }))}
-                      placeholder="Optional"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Material &amp; model
-                  </Label>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm text-foreground">
-                      <Checkbox
-                        id="edit-material-needed"
-                        checked={editForm.materialNeeded}
-                        onCheckedChange={(checked) =>
-                          setEditForm((prev) => ({
-                            ...prev,
-                            materialNeeded: checked === true,
-                            materialOrdered: checked === true ? prev.materialOrdered : false,
-                          }))
-                        }
-                      />
-                      <span>Material needed</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm text-foreground">
-                      <Checkbox
-                        id="edit-material-ordered"
-                        checked={editForm.materialOrdered}
-                        disabled={!editForm.materialNeeded}
-                        onCheckedChange={(checked) =>
-                          setEditForm((prev) => ({
-                            ...prev,
-                            materialOrdered: checked === true,
-                          }))
-                        }
-                      />
-                      <span>Material ordered / on hand</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm text-foreground">
-                      <Checkbox
-                        id="edit-model"
-                        checked={editForm.modelIncluded}
-                        onCheckedChange={(checked) =>
-                          setEditForm((prev) => ({ ...prev, modelIncluded: checked === true }))
-                        }
-                      />
-                      <span>Model provided by customer</span>
-                    </label>
-                  </div>
-                </div>
-                {editError && (
-                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {editError}
-                  </div>
-                )}
-                <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                  <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={editSaving} className="rounded-full">
-                    {editSaving ? 'Saving…' : 'Save changes'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-          <Button
-            type="button"
-            onClick={openPrint}
-            className="rounded-full bg-primary/90 text-primary-foreground shadow-md shadow-primary/30 hover:bg-primary"
-          >
-            <Printer className="mr-2 h-4 w-4" /> Print
-          </Button>
-          <Badge className={statusColor(item.status)}>{item.status.replace(/_/g, ' ')}</Badge>
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Building2 className="h-4 w-4 text-muted-foreground" /> Customer
-              </CardTitle>
-              <CardDescription>Contact and shipping details</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 text-sm">
+      <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
+        <Card className="flex flex-col">
+          <div className="sticky top-0 z-10 border-b border-border/60 bg-background/95 p-4">
+            <div className="flex items-center justify-between gap-4">
               <div>
-                <span className="font-medium text-foreground">Name</span>
-                <div className="text-muted-foreground">{item.customer?.name ?? '-'}</div>
-              </div>
-              <div>
-                <span className="font-medium text-foreground">Contact</span>
-                <div className="text-muted-foreground">{item.customer?.contact ?? '-'}</div>
-              </div>
-              <div>
-                <span className="font-medium text-foreground">Phone</span>
-                <div className="text-muted-foreground">{item.customer?.phone ?? '-'}</div>
-              </div>
-              <div>
-                <span className="font-medium text-foreground">Email</span>
-                <div className="text-muted-foreground">{item.customer?.email ?? '-'}</div>
-              </div>
-              <div>
-                <span className="font-medium text-foreground">Address</span>
-                <div className="text-muted-foreground whitespace-pre-line">
-                  {item.customer?.address ?? '-'}
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Active Work</div>
+                <div className="text-sm font-medium text-foreground">
+                  {selectedPart?.partNumber || 'No part selected'}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Timer className="h-4 w-4 text-muted-foreground" /> Order time tracking
-              </CardTitle>
-              <CardDescription>Track overall order work when it is not part-specific.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">Last action</div>
-                <div className="text-foreground">{describeEntry(timeSummary?.lastOrderEntry ?? null)}</div>
-              </div>
-              {isActiveOnOrder ? (
-                <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-700">
-                  Active now: {activeEntry?.operation} · Started {formatEntryTime(activeEntry?.startedAt ?? null)}
+                <div className="text-xs text-muted-foreground">
+                  {activeEntry
+                    ? `Elapsed ${formatDuration(activeElapsedSeconds)}`
+                    : 'No active timer'}
                 </div>
-              ) : null}
-              <div className="grid gap-2">
-                <Label htmlFor="order-operation" className="text-xs uppercase text-muted-foreground">
-                  Operation
-                </Label>
-                <Select
-                  value={getOperationValue('order')}
-                  onValueChange={(value) => setOperationValue('order', value)}
-                  disabled={timeSaving}
-                >
-                  <SelectTrigger id="order-operation" className="border-border/60 bg-background/80 text-left">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {OPERATION_OPTIONS.map((operation) => (
-                      <SelectItem key={operation} value={operation}>
-                        {operation}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {activeEntry && activeEntry.partId !== selectedPartId ? (
+                  <div className="text-xs text-amber-600">
+                    Active on {activePart?.partNumber || 'another part'}
+                  </div>
+                ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   size="sm"
-                  disabled={timeSaving}
-                  onClick={() =>
-                    submitTimeAction('/api/time/start', {
-                      orderId: id,
-                      partId: null,
-                      operation: getOperationValue('order'),
-                    })
-                  }
-                  className="rounded-full"
+                  disabled={!selectedPartId || timerSaving || activeOnSelected}
+                  onClick={handleStart}
                 >
-                  {timeSaving ? 'Starting…' : 'Start'}
+                  Start
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={!timeSummary?.lastOrderEntry?.endedAt || timeSaving}
-                  onClick={() =>
-                    submitTimeAction('/api/time/resume', { entryId: timeSummary?.lastOrderEntry?.id })
-                  }
-                >
-                  Resume last
+                <Button type="button" size="sm" variant="outline" disabled={!activeEntry || timerSaving} onClick={handlePause}>
+                  Pause
+                </Button>
+                <Button type="button" size="sm" variant="secondary" disabled={!activeEntry || timerSaving} onClick={handleFinish}>
+                  Finish
                 </Button>
               </div>
-              <div className="text-xs text-muted-foreground">
-                Starting or resuming pauses any active timer automatically.
+            </div>
+            {timerError ? (
+              <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {timerError}
               </div>
-              {timeLoading ? (
-                <div className="text-xs text-muted-foreground">Refreshing time status…</div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Package2 className="h-4 w-4 text-muted-foreground" /> Part overview
-              </CardTitle>
-              <CardDescription>Primary details for the first line item</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 text-sm">
-              {primaryPart ? (
-                <>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="grid gap-1.5">
-                      <Label htmlFor={`part-number-${primaryPart.id}`}>Part number</Label>
-                      <Input
-                        id={`part-number-${primaryPart.id}`}
-                        value={getPartEditState(primaryPart).partNumber}
-                        disabled={!canEditParts}
-                        onChange={(e) => {
-                          setPartEdits((prev) => ({
-                            ...prev,
-                            [primaryPart.id]: {
-                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
-                              partNumber: e.target.value,
-                            },
-                          }));
-                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
-                        }}
-                        placeholder="Enter part number"
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor={`part-qty-${primaryPart.id}`}>Quantity</Label>
-                      <Input
-                        id={`part-qty-${primaryPart.id}`}
-                        type="number"
-                        min={1}
-                        value={getPartEditState(primaryPart).quantity}
-                        disabled={!canEditParts}
-                        onChange={(e) => {
-                          setPartEdits((prev) => ({
-                            ...prev,
-                            [primaryPart.id]: {
-                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
-                              quantity: e.target.value,
-                            },
-                          }));
-                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
-                        }}
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor={`part-material-${primaryPart.id}`}>Material</Label>
-                    <Select
-                      value={getPartEditState(primaryPart).materialId || NONE_VALUE}
-                      disabled={!canEditParts}
-                      onValueChange={(value) => {
-                        setPartEdits((prev) => ({
-                            ...prev,
-                            [primaryPart.id]: {
-                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
-                              materialId: value === NONE_VALUE ? '' : value,
-                            },
-                          }));
-                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
-                        }}
-                      >
-                        <SelectTrigger
-                          id={`part-material-${primaryPart.id}`}
-                          className="border-border/60 bg-background/80 text-left"
-                        >
-                          <SelectValue placeholder="Select material" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE_VALUE}>TBD</SelectItem>
-                          {materials.map((material) => (
-                            <SelectItem key={material.id} value={material.id}>
-                              {material.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor={`part-stock-${primaryPart.id}`}>Stock size</Label>
-                      <Input
-                        id={`part-stock-${primaryPart.id}`}
-                        value={getPartEditState(primaryPart).stockSize}
-                        disabled={!canEditParts}
-                        onChange={(e) => {
-                          setPartEdits((prev) => ({
-                            ...prev,
-                            [primaryPart.id]: {
-                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
-                              stockSize: e.target.value,
-                            },
-                          }));
-                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
-                        }}
-                        placeholder="Optional (e.g. 2in x 12in bar)"
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor={`part-cut-${primaryPart.id}`}>Cut length</Label>
-                      <Input
-                        id={`part-cut-${primaryPart.id}`}
-                        value={getPartEditState(primaryPart).cutLength}
-                        disabled={!canEditParts}
-                        onChange={(e) => {
-                          setPartEdits((prev) => ({
-                            ...prev,
-                            [primaryPart.id]: {
-                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
-                              cutLength: e.target.value,
-                            },
-                          }));
-                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
-                        }}
-                        placeholder="Optional (e.g. 6.5 in)"
-                      />
-                    </div>
-                    <div className="grid gap-1.5 sm:col-span-2">
-                      <Label htmlFor={`part-notes-${primaryPart.id}`}>Notes</Label>
-                      <Textarea
-                        id={`part-notes-${primaryPart.id}`}
-                        value={getPartEditState(primaryPart).notes}
-                        disabled={!canEditParts}
-                        onChange={(e) => {
-                          setPartEdits((prev) => ({
-                            ...prev,
-                            [primaryPart.id]: {
-                              ...(prev[primaryPart.id] ?? getPartEditState(primaryPart)),
-                              notes: e.target.value,
-                            },
-                          }));
-                          setPartEditErrors((prev) => ({ ...prev, [primaryPart.id]: null }));
-                        }}
-                        placeholder="Surface finish, tolerances, tooling, etc."
-                        className="min-h-[90px]"
-                      />
-                    </div>
-                  </div>
-                  {renderPartTimeTracking(primaryPart)}
-                  {renderPartDepartmentAssignment(primaryPart)}
-                  {partEditErrors[primaryPart.id] && (
-                    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      {partEditErrors[primaryPart.id]}
-                    </div>
-                  )}
-                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-                    <div className="space-y-1">
-                      <div>Due {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'TBD'}</div>
+            ) : null}
+          </div>
+          <CardContent className="flex-1 space-y-3 p-4">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Parts</span>
+              {timerLoading ? <span>Refreshing…</span> : null}
+            </div>
+            <div className="space-y-2">
+              {parts.map((part: any, index: number) => {
+                const isSelected = part.id === selectedPartId;
+                const partLabel = part.partNumber || `Part ${index + 1}`;
+                const totalMinutes = partTotals[part.id];
+                const status = part.status || 'IN_PROGRESS';
+                return (
+                  <button
+                    key={part.id}
+                    type="button"
+                    onClick={() => setSelectedPartId(part.id)}
+                    className={`w-full rounded-lg border px-3 py-3 text-left transition ${
+                      isSelected
+                        ? 'border-primary/60 bg-primary/10'
+                        : 'border-border/60 bg-muted/10 hover:bg-muted/20'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
                       <div>
-                        Machinist {item.assignedMachinist?.name ?? item.assignedMachinist?.email ?? 'Unassigned'}
+                        <div className="text-sm font-medium text-foreground">{partLabel}</div>
+                        <div className="text-xs text-muted-foreground">Qty {part.quantity ?? 1}</div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge className={statusBadgeStyles[status] || 'bg-muted text-foreground'}>{status}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {Number.isFinite(totalMinutes) ? formatMinutes(totalMinutes) : '—'}
+                        </span>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => resetPartEdit(primaryPart)}
-                        disabled={!canEditParts || partSavingIds[primaryPart.id]}
-                      >
-                        Reset
-                      </Button>
-                      {canEditParts && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={partSavingIds[primaryPart.id] || parts.length <= 1}
-                            >
-                              Remove
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Remove this part?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will remove the part, its attachments, and associated add-ons/labor charges.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleRemovePart(primaryPart)}>
-                                Remove part
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => handleUpdatePart(primaryPart)}
-                        disabled={!canEditParts || partSavingIds[primaryPart.id]}
-                        className="rounded-full"
-                      >
-                        {partSavingIds[primaryPart.id] ? 'Saving…' : 'Save part'}
-                      </Button>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">No part details yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {additionalParts.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <ClipboardList className="h-4 w-4 text-muted-foreground" /> Additional parts
-                </CardTitle>
-                <CardDescription>Expand each part number to view its full details.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {additionalParts.map((part, index) => {
-                  const key = part.id ?? `part-${index + 1}`;
-                  const isOpen = expandedParts[key] ?? false;
-                  const contentId = `part-details-${key}`;
-                  const togglePart = () =>
-                    setExpandedParts((prev) => ({ ...prev, [key]: !isOpen }));
-                  return (
-                    <div
-                      key={key}
-                      className="overflow-hidden rounded-lg border border-border/60 bg-muted/10"
-                    >
-                      <button
-                        type="button"
-                        onClick={togglePart}
-                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium text-foreground transition hover:bg-muted/20"
-                        aria-expanded={isOpen}
-                        aria-controls={contentId}
-                      >
-                        <span>{part.partNumber || `Part ${index + 2}`}</span>
-                        <ChevronDown
-                          className={`h-4 w-4 transition-transform ${isOpen ? '-rotate-180' : 'rotate-0'}`}
-                        />
-                      </button>
-                      {isOpen && (
-                        <div
-                          id={contentId}
-                          className="grid gap-4 border-t border-border/60 bg-background/70 px-3 py-3 text-sm"
-                        >
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="grid gap-1.5">
-                              <Label htmlFor={`part-number-${part.id}`}>Part number</Label>
-                              <Input
-                                id={`part-number-${part.id}`}
-                                value={getPartEditState(part).partNumber}
-                                disabled={!canEditParts}
-                                onChange={(e) => {
-                                  setPartEdits((prev) => ({
-                                    ...prev,
-                                    [part.id]: {
-                                      ...(prev[part.id] ?? getPartEditState(part)),
-                                      partNumber: e.target.value,
-                                    },
-                                  }));
-                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
-                                }}
-                                placeholder="Enter part number"
-                              />
-                            </div>
-                            <div className="grid gap-1.5">
-                              <Label htmlFor={`part-qty-${part.id}`}>Quantity</Label>
-                              <Input
-                                id={`part-qty-${part.id}`}
-                                type="number"
-                                min={1}
-                                value={getPartEditState(part).quantity}
-                                disabled={!canEditParts}
-                                onChange={(e) => {
-                                  setPartEdits((prev) => ({
-                                    ...prev,
-                                    [part.id]: {
-                                      ...(prev[part.id] ?? getPartEditState(part)),
-                                      quantity: e.target.value,
-                                    },
-                                  }));
-                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
-                                }}
-                              />
-                            </div>
-                            <div className="grid gap-1.5">
-                              <Label htmlFor={`part-material-${part.id}`}>Material</Label>
-                              <Select
-                                value={getPartEditState(part).materialId || NONE_VALUE}
-                                disabled={!canEditParts}
-                                onValueChange={(value) => {
-                                  setPartEdits((prev) => ({
-                                    ...prev,
-                                    [part.id]: {
-                                      ...(prev[part.id] ?? getPartEditState(part)),
-                                      materialId: value === NONE_VALUE ? '' : value,
-                                    },
-                                  }));
-                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
-                                }}
-                              >
-                                <SelectTrigger
-                                  id={`part-material-${part.id}`}
-                                  className="border-border/60 bg-background/80 text-left"
-                                >
-                                  <SelectValue placeholder="Select material" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value={NONE_VALUE}>TBD</SelectItem>
-                                  {materials.map((material) => (
-                                    <SelectItem key={material.id} value={material.id}>
-                                      {material.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="grid gap-1.5">
-                              <Label htmlFor={`part-stock-${part.id}`}>Stock size</Label>
-                              <Input
-                                id={`part-stock-${part.id}`}
-                                value={getPartEditState(part).stockSize}
-                                disabled={!canEditParts}
-                                onChange={(e) => {
-                                  setPartEdits((prev) => ({
-                                    ...prev,
-                                    [part.id]: {
-                                      ...(prev[part.id] ?? getPartEditState(part)),
-                                      stockSize: e.target.value,
-                                    },
-                                  }));
-                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
-                                }}
-                                placeholder="Optional (e.g. 2in x 12in bar)"
-                              />
-                            </div>
-                            <div className="grid gap-1.5">
-                              <Label htmlFor={`part-cut-${part.id}`}>Cut length</Label>
-                              <Input
-                                id={`part-cut-${part.id}`}
-                                value={getPartEditState(part).cutLength}
-                                disabled={!canEditParts}
-                                onChange={(e) => {
-                                  setPartEdits((prev) => ({
-                                    ...prev,
-                                    [part.id]: {
-                                      ...(prev[part.id] ?? getPartEditState(part)),
-                                      cutLength: e.target.value,
-                                    },
-                                  }));
-                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
-                                }}
-                                placeholder="Optional (e.g. 6.5 in)"
-                              />
-                            </div>
-                            <div className="grid gap-1.5 sm:col-span-2">
-                              <Label htmlFor={`part-notes-${part.id}`}>Notes</Label>
-                              <Textarea
-                                id={`part-notes-${part.id}`}
-                                value={getPartEditState(part).notes}
-                                disabled={!canEditParts}
-                                onChange={(e) => {
-                                  setPartEdits((prev) => ({
-                                    ...prev,
-                                    [part.id]: {
-                                      ...(prev[part.id] ?? getPartEditState(part)),
-                                      notes: e.target.value,
-                                    },
-                                  }));
-                                  setPartEditErrors((prev) => ({ ...prev, [part.id]: null }));
-                                }}
-                                placeholder="Surface finish, tolerances, tooling, etc."
-                                className="min-h-[90px]"
-                              />
-                            </div>
-                          </div>
-                          {renderPartTimeTracking(part)}
-                          {renderPartDepartmentAssignment(part)}
-                          {partEditErrors[part.id] && (
-                            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                              {partEditErrors[part.id]}
-                            </div>
-                          )}
-                          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-                            <div className="space-y-1">
-                              <div>Due {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'TBD'}</div>
-                              <div>
-                                Machinist {item.assignedMachinist?.name ?? item.assignedMachinist?.email ?? 'Unassigned'}
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => resetPartEdit(part)}
-                                disabled={!canEditParts || partSavingIds[part.id]}
-                              >
-                                Reset
-                              </Button>
-                              {canEditParts && (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={partSavingIds[part.id]}
-                                    >
-                                      Remove
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Remove this part?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will remove the part, its attachments, and associated add-ons/labor
-                                        charges.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleRemovePart(part)}>
-                                        Remove part
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              )}
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => handleUpdatePart(part)}
-                                disabled={!canEditParts || partSavingIds[part.id]}
-                                className="rounded-full"
-                              >
-                                {partSavingIds[part.id] ? 'Saving…' : 'Save part'}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <PlusCircle className="h-4 w-4 text-muted-foreground" /> Add another part
-              </CardTitle>
-              <CardDescription>Extend this order with additional line items.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!canEditParts ? (
-                <div className="rounded-lg border border-border/60 bg-muted/10 px-4 py-3 text-sm text-muted-foreground">
-                  Only admins can add or remove customer parts.
-                </div>
-              ) : (
-                <form className="space-y-4" onSubmit={handleAddPart}>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label htmlFor="new-part-number">Part number</Label>
-                      <Input
-                        id="new-part-number"
-                        value={partForm.partNumber}
-                        onChange={(e) => {
-                          setPartForm((prev) => ({ ...prev, partNumber: e.target.value }));
-                          setPartError(null);
-                        }}
-                        placeholder="e.g. SP-1024"
-                        required
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="new-part-quantity">Quantity</Label>
-                      <Input
-                        id="new-part-quantity"
-                        type="number"
-                        min={1}
-                        value={partForm.quantity}
-                        onChange={(e) => {
-                          setPartForm((prev) => ({ ...prev, quantity: e.target.value }));
-                          setPartError(null);
-                        }}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="new-part-stock">Stock size</Label>
-                      <Input
-                        id="new-part-stock"
-                        value={partForm.stockSize}
-                        onChange={(e) => setPartForm((prev) => ({ ...prev, stockSize: e.target.value }))}
-                        placeholder="Optional (e.g. 2in x 12in bar)"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="new-part-cut">Cut length</Label>
-                      <Input
-                        id="new-part-cut"
-                        value={partForm.cutLength}
-                        onChange={(e) => setPartForm((prev) => ({ ...prev, cutLength: e.target.value }))}
-                        placeholder="Optional (e.g. 6.5 in)"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="new-part-material">Material</Label>
-                      <Select
-                        value={partForm.materialId || NONE_VALUE}
-                        onValueChange={(value) => {
-                          setPartForm((prev) => ({ ...prev, materialId: value === NONE_VALUE ? '' : value }));
-                        }}
-                      >
-                        <SelectTrigger id="new-part-material" className="border-border/60 bg-background/80 text-left">
-                          <SelectValue placeholder="Optional" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE_VALUE}>TBD</SelectItem>
-                          {materials.map((material) => (
-                            <SelectItem key={material.id} value={material.id}>
-                              {material.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="new-part-copy">Add-ons &amp; labor</Label>
-                      <Select
-                        value={copyChargesFromPartId || NONE_VALUE}
-                        onValueChange={(value) => {
-                          setCopyChargesFromPartId(value === NONE_VALUE ? '' : value);
-                        }}
-                      >
-                        <SelectTrigger id="new-part-copy" className="border-border/60 bg-background/80 text-left">
-                          <SelectValue placeholder="Copy from existing part" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE_VALUE}>Do not copy add-ons/labor</SelectItem>
-                          {parts.map((part: any, index: number) => (
-                            <SelectItem key={part.id} value={part.id}>
-                              {part.partNumber || `Part ${index + 1}`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Copies existing add-ons and labor charges from a selected part on this order.
-                      </p>
-                    </div>
-                    <div className="grid gap-2 sm:col-span-2">
-                      <Label htmlFor="new-part-notes">Notes</Label>
-                      <Textarea
-                        id="new-part-notes"
-                        value={partForm.notes}
-                        onChange={(e) => {
-                          setPartForm((prev) => ({ ...prev, notes: e.target.value }));
-                          setPartError(null);
-                        }}
-                        placeholder="Surface finish, tolerances, tooling, etc."
-                        className="min-h-[100px]"
-                      />
-                    </div>
-                  </div>
-                  {partError && (
-                    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      {partError}
-                    </div>
-                  )}
-                  <div className="flex justify-end">
-                    <Button type="submit" disabled={partSaving} className="rounded-full">
-                      {partSaving ? 'Adding…' : 'Add part'}
-                    </Button>
-                  </div>
-                </form>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <ClipboardList className="h-4 w-4 text-muted-foreground" /> Checklist
-              </CardTitle>
-              <CardDescription>Track downstream processes and finishing services.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              {parts.map((part: any, index: number) => {
-                const partChecklist = checklistByPartId.get(part.id) ?? [];
-                if (!partChecklist.length) return null;
-                const partLabel = part.partNumber || part.name || `Part ${index + 1}`;
-                return (
-                  <div key={part.id} className="space-y-2">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {partLabel}
-                    </div>
-                    {partChecklist.map((c: any) => {
-                      const label = c.charge?.name ?? c.addon?.name ?? 'Checklist item';
-                      const description = c.addon?.description ?? null;
-                      return (
-                        <label
-                          key={c.id}
-                          className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
-                        >
-                          <div className="flex items-start gap-3">
-                            <Checkbox
-                              checked={!!c.completed}
-                              disabled={!!toggling || employeeSubmitting || !!pendingAction}
-                              onCheckedChange={(value) => {
-                                openEmployeeDialog({
-                                  type: 'checklist',
-                                  checklistId: c.id,
-                                  checked: value === true,
-                                }, {
-                                  partId: part.id ?? null,
-                                  departmentId: c.departmentId ?? c.department?.id ?? null,
-                                  checked: value === true,
-                                });
-                              }}
-                            />
-                            <div>
-                              <div className="font-medium text-foreground">{label}</div>
-                              {description ? (
-                                <div className="text-xs text-muted-foreground">{description}</div>
-                              ) : null}
-                              <div className="text-xs text-muted-foreground">
-                                Updated {new Date(c.updatedAt).toLocaleString()}
-                              </div>
-                            </div>
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            Pricing available in Admin Portal
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  </button>
                 );
               })}
-              {legacyChecklistItems.length > 0 && (
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Legacy order-level add-ons
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col">
+          <CardHeader className="space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">{orderTitle}</div>
+                <div className="text-2xl font-semibold text-foreground">{item.customer?.name ?? 'Customer'}</div>
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/orders">Exit Order</Link>
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge className="bg-primary/10 text-primary">{statusLabel}</Badge>
+              <span className="text-sm text-muted-foreground">Due {dueDateLabel}</span>
+            </div>
+            <div className="flex flex-wrap gap-4 border-b border-border/60 pb-2 text-sm">
+              {PART_TABS.map((tab) => {
+                const label =
+                  tab === 'overview'
+                    ? 'Overview'
+                    : tab === 'notes'
+                      ? 'Notes & Files'
+                      : tab === 'checklist'
+                        ? 'To-do / Checklist'
+                        : 'Log';
+                const isActive = activeTab === tab;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    className={`pb-2 transition ${
+                      isActive
+                        ? 'border-b-2 border-primary text-foreground shadow-[0_0_12px_rgba(59,130,246,0.45)]'
+                        : 'border-b-2 border-transparent text-muted-foreground hover:text-foreground hover:shadow-[0_0_10px_rgba(59,130,246,0.3)]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {activeTab === 'overview' && (
+              <div className="space-y-4 text-sm">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Part</div>
+                    <div className="text-base font-medium text-foreground">
+                      {selectedPart?.partNumber || 'Select a part'}
+                    </div>
                   </div>
-                  {legacyChecklistItems.map((c: any) => {
-                    const label = c.charge?.name ?? c.addon?.name ?? 'Checklist item';
-                    const description = c.addon?.description ?? null;
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Description</div>
+                    <div className="text-foreground">{selectedPart?.notes || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Customer</div>
+                    <div className="text-foreground">{item.customer?.name ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Quantity</div>
+                    <div className="text-foreground">{selectedPart?.quantity ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Stock length</div>
+                    <div className="text-foreground">{selectedPart?.stockSize || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Cut length</div>
+                    <div className="text-foreground">{selectedPart?.cutLength || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Material</div>
+                    <div className="text-foreground">{selectedPart?.material?.name || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Priority</div>
+                    <div className="text-foreground">{item.priority ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Due date</div>
+                    <div className="text-foreground">{dueDateLabel}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'notes' && (
+              <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <ClipboardList className="h-4 w-4 text-muted-foreground" /> Notes
+                  </div>
+                  <div className="max-h-72 space-y-3 overflow-auto rounded-lg border border-border/60 bg-muted/10 p-3">
+                    {item.notes?.length ? (
+                      item.notes.map((note: any) => (
+                        <div key={note.id} className="space-y-1 text-sm">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>{note.user?.name ?? 'Unknown'}</span>
+                            <span>{new Date(note.createdAt).toLocaleString()}</span>
+                          </div>
+                          <p className="text-foreground">{note.content}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No notes yet.</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Textarea
+                      rows={3}
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      placeholder="Add a shop note or inspection comment"
+                    />
+                    <div className="flex justify-end">
+                      <Button onClick={handleAddNote}>Add note</Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <FileText className="h-4 w-4 text-muted-foreground" /> Files
+                  </div>
+                  <div className="space-y-3">
+                    {selectedAttachments.length ? (
+                      selectedAttachments.map((attachment: any) => {
+                        const openHref = attachment.storagePath
+                          ? `/attachments/${attachment.storagePath}`
+                          : attachment.url;
+                        return (
+                          <div
+                            key={attachment.id}
+                            className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
+                          >
+                            <div className="font-medium text-foreground">{attachment.label || 'Attachment'}</div>
+                            <div className="text-xs text-muted-foreground">{attachment.mimeType || 'Unknown type'}</div>
+                            {openHref ? (
+                              <a
+                                href={openHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-2 inline-flex text-xs font-medium text-primary hover:underline"
+                              >
+                                Open file
+                              </a>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No files yet for this part.</p>
+                    )}
+                  </div>
+                  <Separator />
+                  {canEditParts ? (
+                    <form className="space-y-3" onSubmit={handleAddAttachment}>
+                      <div className="grid gap-2">
+                        <Label htmlFor="attachment-kind">File type</Label>
+                        <Select
+                          value={attachmentForm.kind}
+                          onValueChange={(value) =>
+                            setAttachmentForm((prev) => ({
+                              ...prev,
+                              kind: value as AttachmentFormState['kind'],
+                            }))
+                          }
+                        >
+                          <SelectTrigger id="attachment-kind" className="border-border/60 bg-background/80 text-left">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PART_ATTACHMENT_KINDS.map((kind) => (
+                              <SelectItem key={kind} value={kind}>
+                                {kind}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="attachment-label">Label</Label>
+                        <Input
+                          id="attachment-label"
+                          value={attachmentForm.label}
+                          onChange={(e) => {
+                            setAttachmentForm((prev) => ({ ...prev, label: e.target.value }));
+                            setAttachmentError(null);
+                          }}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="attachment-mime">Mime type</Label>
+                        <Input
+                          id="attachment-mime"
+                          value={attachmentForm.mimeType}
+                          onChange={(e) => {
+                            setAttachmentForm((prev) => ({ ...prev, mimeType: e.target.value }));
+                            setAttachmentError(null);
+                          }}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="attachment-url">External link</Label>
+                        <Input
+                          id="attachment-url"
+                          value={attachmentForm.url}
+                          onChange={(e) => {
+                            setAttachmentForm((prev) => ({
+                              ...prev,
+                              url: e.target.value,
+                              storagePath: e.target.value.trim().length ? '' : prev.storagePath,
+                            }));
+                            setAttachmentError(null);
+                          }}
+                          placeholder="Paste a shared link"
+                          disabled={attachmentForm.uploading}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="attachment-file">Upload file</Label>
+                        <Input
+                          key={attachmentFileKey}
+                          id="attachment-file"
+                          type="file"
+                          className="bg-background/80"
+                          onChange={(e) => void handleAttachmentFile(e.target.files)}
+                          disabled={attachmentForm.uploading}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {attachmentForm.uploading ? 'Uploading…' : attachmentFileName ? `Selected: ${attachmentFileName}` : 'Drop a file to upload.'}
+                        </p>
+                      </div>
+                      {attachmentError ? (
+                        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                          {attachmentError}
+                        </div>
+                      ) : null}
+                      <div className="flex justify-end">
+                        <Button type="submit" disabled={attachmentSaving || attachmentForm.uploading}>
+                          {attachmentSaving ? 'Attaching…' : 'Add file'}
+                        </Button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+                      Admin access required to upload files.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'checklist' && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <ListChecks className="h-4 w-4 text-muted-foreground" /> To-do / Checklist
+                </div>
+                {selectedChecklist.length ? (
+                  selectedChecklist.map((entry: any) => {
+                    const label = entry.charge?.name ?? entry.addon?.name ?? 'Checklist item';
                     return (
                       <label
-                        key={c.id}
+                        key={entry.id}
                         className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
                       >
                         <div className="flex items-start gap-3">
                           <Checkbox
-                            checked={!!c.completed}
-                            disabled={!!toggling || employeeSubmitting || !!pendingAction}
-                            onCheckedChange={(value) => {
-                              openEmployeeDialog({
-                                type: 'checklist',
-                                checklistId: c.id,
-                                checked: value === true,
-                              }, {
-                                partId: null,
-                                departmentId: c.departmentId ?? c.department?.id ?? null,
-                                checked: value === true,
-                              });
-                            }}
+                            checked={Boolean(entry.completed)}
+                            onCheckedChange={(checked) => handleChecklistToggle(entry, checked === true)}
                           />
                           <div>
                             <div className="font-medium text-foreground">{label}</div>
-                            {description ? (
-                              <div className="text-xs text-muted-foreground">{description}</div>
+                            {entry.addon?.description ? (
+                              <div className="text-xs text-muted-foreground">{entry.addon.description}</div>
                             ) : null}
-                            <div className="text-xs text-muted-foreground">
-                              Updated {new Date(c.updatedAt).toLocaleString()}
-                            </div>
                           </div>
                         </div>
                         <span className="text-xs text-muted-foreground">
-                          Pricing available in Admin Portal
+                          {entry.completed ? 'Done' : 'Open'}
                         </span>
                       </label>
                     );
-                  })}
-                </div>
-              )}
-              {activeChecklistItems.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No services assigned. Manage add-ons from the admin dashboard.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <BadgeCheck className="h-4 w-4 text-muted-foreground" /> Status management
-              </CardTitle>
-              <CardDescription>Update the workflow stage for this order.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-2 sm:grid-cols-2">
-              {STATUS_OPTIONS.map(([value, label]) => (
-                <Button
-                  key={value}
-                  variant={item.status === value ? 'default' : 'outline'}
-                  onClick={() => openEmployeeDialog({ type: 'status', status: value })}
-                  className="justify-between"
-                  disabled={!!statusSaving || employeeSubmitting}
-                >
-                  <span>{statusSaving === value ? 'Updating…' : label}</span>
-                  <ArrowRight className="h-4 w-4 opacity-70" />
-                </Button>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Paperclip className="h-4 w-4 text-muted-foreground" /> Attachments
-              </CardTitle>
-              <CardDescription>Link drawings or upload reference files shared with the team.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                {attachments.length ? (
-                  attachments.map((att: any, index: number) => {
-                    const key = att.id ?? `attachment-${index + 1}`;
-                    const uploadedLabel = att.uploadedBy?.name || att.uploadedBy?.email || '';
-                    const openHref = att.storagePath ? `/attachments/${att.storagePath}` : att.url;
-                    const hasLink = typeof openHref === 'string' && openHref.length > 0;
-                    return (
-                      <div
-                        key={key}
-                        className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
-                      >
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <div className="font-medium text-foreground">{att.label || 'Attachment'}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {att.mimeType || 'Unknown type'}
-                              {att.storagePath ? (
-                                <span className="ml-2 inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-[11px] text-foreground">
-                                  Stored
-                                </span>
-                              ) : null}
-                            </div>
-                            {att.storagePath ? (
-                              <div className="text-xs text-muted-foreground">
-                                Path:{' '}
-                                <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{att.storagePath}</code>
-                              </div>
-                            ) : null}
-                          </div>
-                          {hasLink ? (
-                            <a
-                              href={openHref}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm font-medium text-primary hover:underline"
-                            >
-                              Open
-                            </a>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">No link</span>
-                          )}
-                        </div>
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          Uploaded {att.createdAt ? new Date(att.createdAt).toLocaleString() : 'recently'}
-                          {uploadedLabel ? ` by ${uploadedLabel}` : ''}
-                        </div>
-                      </div>
-                    );
                   })
                 ) : (
-                  <p className="text-sm text-muted-foreground">No attachments yet. Add links or upload files below.</p>
+                  <p className="text-sm text-muted-foreground">No checklist items for this part.</p>
                 )}
               </div>
-              <form className="space-y-3" onSubmit={handleAddAttachment}>
-                <div className="grid gap-2 sm:max-w-md">
-                  <Label>Storage business</Label>
-                  <Select value={attachmentBusiness} onValueChange={(value) => setAttachmentBusiness(value as BusinessName)}>
-                    <SelectTrigger className="border-border/60 bg-background/80">
-                      <SelectValue placeholder="Select a business" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {BUSINESS_OPTIONS.map((option) => (
-                        <SelectItem key={option.slug} value={option.name}>
-                          {option.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Files upload to{' '}
-                    <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{attachmentPathPreview}</code>
-                  </p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label htmlFor="attachment-label">Label</Label>
-                    <Input
-                      id="attachment-label"
-                      value={attachmentForm.label}
-                      onChange={(e) => {
-                        setAttachmentForm((prev) => ({ ...prev, label: e.target.value }));
-                        setAttachmentError(null);
-                      }}
-                      placeholder="e.g. REV B STEP"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="attachment-mime">Mime type</Label>
-                    <Input
-                      id="attachment-mime"
-                      value={attachmentForm.mimeType}
-                      onChange={(e) => {
-                        setAttachmentForm((prev) => ({ ...prev, mimeType: e.target.value }));
-                        setAttachmentError(null);
-                      }}
-                      placeholder="application/step"
-                    />
-                  </div>
-                  <div className="grid gap-2 sm:col-span-2">
-                    <Label htmlFor="attachment-url">External link</Label>
-                    <Input
-                      id="attachment-url"
-                      value={attachmentForm.url}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setAttachmentForm((prev) => ({
-                          ...prev,
-                          url: value,
-                          storagePath: value.trim().length ? '' : prev.storagePath,
-                        }));
-                        setAttachmentError(null);
-                      }}
-                      placeholder="Paste a shared link or upload a file to populate this field"
-                      disabled={attachmentForm.uploading}
-                    />
-                  </div>
-                  <div className="grid gap-2 sm:col-span-2">
-                    <Label htmlFor="attachment-file">Upload file</Label>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <Input
-                        key={attachmentFileKey}
-                        id="attachment-file"
-                        type="file"
-                        className="bg-background/80"
-                        onChange={(e) => void handleAttachmentFile(e.target.files)}
-                        disabled={attachmentForm.uploading}
-                      />
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Upload className="h-4 w-4 text-muted-foreground" />
-                        {attachmentForm.uploading ? 'Uploading…' : 'Drop a file to upload'}
-                      </div>
-                    </div>
-                    <div className="space-y-1 text-xs text-muted-foreground">
-                      <p>Uploads are written to the shared storage above for easy access.</p>
-                      {attachmentForm.storagePath ? (
-                        <p className="flex flex-wrap items-center gap-1">
-                          Stored file:
-                          <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{attachmentForm.storagePath}</code>
-                          <a
-                            href={`/attachments/${attachmentForm.storagePath}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium text-primary hover:underline"
-                          >
-                            Open stored copy
-                          </a>
-                        </p>
-                      ) : (
-                        <p>{attachmentForm.uploading ? 'Uploading…' : 'Add a file to copy it into shared storage.'}</p>
-                      )}
-                      {attachmentFileName ? <p>Selected: {attachmentFileName}</p> : null}
-                    </div>
-                  </div>
-                </div>
-                {attachmentError && (
-                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {attachmentError}
-                  </div>
-                )}
-                <div className="flex justify-end">
-                  <Button
-                    type="submit"
-                    disabled={attachmentSaving || attachmentForm.uploading}
-                    className="rounded-full"
-                  >
-                    {attachmentSaving ? 'Attaching…' : 'Add attachment'}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+            )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <StickyNote className="h-4 w-4 text-muted-foreground" /> Notes
-              </CardTitle>
-              <CardDescription>Chronological log of updates from the team.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="max-h-72 space-y-3 overflow-auto rounded-lg border border-border/60 bg-muted/10 p-3">
-                {item.notes?.length ? (
-                  item.notes.map((note: any) => (
-                    <div key={note.id} className="space-y-1 text-sm">
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{note.user?.name ?? 'Unknown'}</span>
-                        <span>{new Date(note.createdAt).toLocaleString()}</span>
+            {activeTab === 'log' && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Timer className="h-4 w-4 text-muted-foreground" /> Part log
+                </div>
+                {eventsLoading ? (
+                  <div className="text-xs text-muted-foreground">Loading log…</div>
+                ) : partEvents.length ? (
+                  partEvents.map((event) => (
+                    <div key={event.id} className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span>{event.user?.name || event.user?.email || 'System'}</span>
+                        <span>{new Date(event.createdAt).toLocaleString()}</span>
                       </div>
-                      <p className="text-foreground">{note.content}</p>
+                      <div className="mt-1 font-medium text-foreground">{event.message}</div>
+                      <div className="text-xs text-muted-foreground">{event.type}</div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">No notes yet.</p>
+                  <p className="text-sm text-muted-foreground">No events yet for this part.</p>
                 )}
               </div>
-              <div className="space-y-2">
-                <Textarea
-                  rows={3}
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                  placeholder="Add a shop note or inspection comment"
-                />
-                <div className="flex justify-end">
-                  <Button onClick={addNote}>Add note</Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Status history</CardTitle>
-              <CardDescription>Every transition is logged for traceability.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-muted-foreground">
-              {item.statusHistory?.length ? (
-                item.statusHistory.map((s: any) => (
-                  <div key={s.id} className="rounded-lg border border-border/60 bg-muted/10 p-3">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center justify-between gap-2 text-foreground">
-                        <div className="font-medium">
-                          {s.from ? `${s.from} → ${s.to}` : s.to}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {new Date(s.createdAt).toLocaleString()}
-                        </div>
-                      </div>
-                      {s.reason ? (
-                        <div className="text-xs text-muted-foreground">{s.reason}</div>
-                      ) : null}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p>No status changes recorded yet.</p>
-              )}
-            </CardContent>
-            <CardFooter className="text-xs text-muted-foreground">
-              <Link href="/orders" className="hover:underline">
-                Back to orders
-              </Link>
-            </CardFooter>
-          </Card>
-        </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

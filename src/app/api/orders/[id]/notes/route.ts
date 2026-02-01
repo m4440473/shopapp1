@@ -11,10 +11,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!isMachinist(role)) return new NextResponse('Forbidden', { status: 403 });
 
   const json = await req.json().catch(() => null);
-  const { content } = json ?? {};
+  const { content, partId } = json ?? {};
   if (!content || !content.trim()) return NextResponse.json({ error: 'Empty note' }, { status: 400 });
 
-  const result = await addOrderNote(params.id, (session.user as any).id, content);
+  const result = await addOrderNote(
+    params.id,
+    (session.user as any).id,
+    content,
+    typeof partId === 'string' ? partId : null
+  );
   if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
