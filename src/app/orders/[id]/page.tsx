@@ -574,7 +574,7 @@ export default function OrderDetailPage() {
               <Badge className="bg-primary/10 text-primary">{statusLabel}</Badge>
               <span className="text-sm text-muted-foreground">Due {dueDateLabel}</span>
             </div>
-            <div className="flex flex-wrap gap-4 border-b border-border/60 pb-2 text-sm">
+            <div className="flex flex-wrap gap-3 border-b border-border/60 pb-2 text-sm">
               {PART_TABS.map((tab) => {
                 const label =
                   tab === 'overview'
@@ -590,7 +590,7 @@ export default function OrderDetailPage() {
                     key={tab}
                     type="button"
                     onClick={() => setActiveTab(tab)}
-                    className={`pb-2 transition ${
+                    className={`inline-flex items-center px-2 pb-2 text-sm font-medium transition ${
                       isActive
                         ? 'border-b-2 border-primary text-foreground shadow-[0_0_12px_rgba(59,130,246,0.45)]'
                         : 'border-b-2 border-transparent text-muted-foreground hover:text-foreground hover:shadow-[0_0_10px_rgba(59,130,246,0.3)]'
@@ -677,7 +677,9 @@ export default function OrderDetailPage() {
                       placeholder="Add a shop note or inspection comment"
                     />
                     <div className="flex justify-end">
-                      <Button onClick={handleAddNote}>Add note</Button>
+                      <Button size="sm" onClick={handleAddNote}>
+                        Add note
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -801,7 +803,7 @@ export default function OrderDetailPage() {
                         </div>
                       ) : null}
                       <div className="flex justify-end">
-                        <Button type="submit" disabled={attachmentSaving || attachmentForm.uploading}>
+                        <Button size="sm" type="submit" disabled={attachmentSaving || attachmentForm.uploading}>
                           {attachmentSaving ? 'Attaching…' : 'Add file'}
                         </Button>
                       </div>

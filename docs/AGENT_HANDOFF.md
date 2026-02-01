@@ -2,37 +2,27 @@
 
 # Agent Handoff (Update Every Session)
 
-Date: 2026-02-05
+Date: 2026-02-06
 Agent: Codex
-Goal (1 sentence): Implement the two-card order workspace with part-level time tracking, notes/files/checklist tabs, and part event logging.
+Goal (1 sentence): Clean up the order detail buttons and expand seed data with realistic multi-part orders and quotes.
 
 ## What I changed
-- Summary: Rebuilt the order detail view into the two-card workspace (parts list + time tracking header on the left, tabbed part details on the right) and added part event logging with new timer endpoints, part completion status, and event writes for notes/files/checklists/timers.
+- Summary: Polished the part detail tab/button spacing on the order view and expanded seed data to include 10 orders with per-part addons/checklists/time entries plus 10 realistic quotes for demos.
 
 ## Files touched
-- prisma/schema.prisma
-- prisma/migrations/20260205123000_part_events_and_status/migration.sql
-- src/modules/orders/orders.repo.ts
-- src/modules/orders/orders.service.ts
-- src/modules/time/time.repo.ts
-- src/modules/time/time.service.ts
-- src/app/api/timer/active/route.ts
-- src/app/api/timer/start/route.ts
-- src/app/api/timer/pause/route.ts
-- src/app/api/timer/finish/route.ts
-- src/app/api/orders/[id]/notes/route.ts
-- src/app/api/orders/[id]/checklist/route.ts
-- src/app/api/orders/parts/[partId]/attachments/route.ts
-- src/app/api/orders/[id]/parts/[partId]/events/route.ts
+- prisma/seed.ts
+- prisma/seed.js
 - src/app/orders/[id]/page.tsx
 - PROGRESS_LOG.md
 - docs/AGENT_HANDOFF.md
 
 ## Commands run
-- None
+- npm run dev (failed: Prisma client not initialized for AppSettings)
+- npm run seed (failed: Prisma client not initialized)
+- npx prisma generate (failed: Json field unsupported by current connector)
 
 ## Notes / gotchas
-- New PartEvent and OrderPart.status columns were added; migrations should be applied before relying on event logs or part completion status.
+- Prisma client generation fails in this environment due to Json field support on the current connector.
 
 ## Next steps
-- [ ] Run migrations and sanity-check the order detail view layout against real data.
+- [ ] Run prisma generate/seed in a fully configured environment and verify order detail tabs with seeded checklist/addon data.

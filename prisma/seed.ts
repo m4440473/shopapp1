@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 import { DEFAULT_QUOTE_METADATA, stringifyQuoteMetadata } from '../src/lib/quote-metadata';
 import { BUSINESS_CODE_VALUES, slugifyName } from '../src/lib/businesses';
@@ -396,7 +396,26 @@ async function main() {
   ]);
 
   const mats = await prisma.material.findMany();
-  const checklistAddons = addonRecords.slice(0, 5);
+  const addonByName = new Map(addonRecords.map((addon) => [addon.name, addon]));
+  const addonGroups = [
+    ['Program Time', 'Setup Time', 'Mill Time'],
+    ['Saw Cut', 'Deburr', 'Verify critical dims'],
+    ['Weld Time', 'Fit-up / Tack', 'Grind/Blend'],
+    ['Powder Coat', 'Masking', 'Cure complete'],
+    ['Packaging', 'Label parts', 'Verify quantity'],
+  ];
+  const partTemplates = [
+    { suffix: 'A', notes: 'Critical surface finish on datum face.', stockSize: '1/2" plate', cutLength: '10 in' },
+    { suffix: 'B', notes: 'Drill/tap pattern per print.', stockSize: '1" bar', cutLength: '6 in' },
+    { suffix: 'C', notes: 'Weldment requires alignment check.', stockSize: '2x2 tube', cutLength: '18 in' },
+  ];
+
+  function buildAddonsForPart(partIndex: number) {
+    const names = addonGroups[partIndex % addonGroups.length] ?? [];
+    return names
+      .map((name) => addonByName.get(name))
+      .filter((addon): addon is (typeof addonRecords)[number] => Boolean(addon));
+  }
 
   async function seedOrder(
     idx: number,
@@ -405,6 +424,19 @@ async function main() {
     business: 'STD' | 'CRM' | 'PC',
   ) {
     const orderNumber = `${business}-${1000 + idx}`;
+    const partCount = 2 + (idx % 2);
+    const partSeeds = Array.from({ length: partCount }).map((_, partIndex) => {
+      const template = partTemplates[partIndex % partTemplates.length];
+      return {
+        partNumber: `P-${idx}-${template.suffix}`,
+        quantity: 2 + ((idx + partIndex) % 3),
+        materialId: mats[(idx + partIndex) % mats.length]?.id,
+        notes: template.notes,
+        stockSize: template.stockSize,
+        cutLength: template.cutLength,
+      };
+    });
+
     const ord = await prisma.order.create({
       data: {
         orderNumber,
@@ -413,70 +445,123 @@ async function main() {
         modelIncluded: idx % 2 === 0,
         receivedDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * (7 - idx)),
         dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * (idx + 2)),
-  priority: ["NORMAL", "RUSH", "HOT"][idx % 3],
-  status: "RECEIVED",
+        priority: ['NORMAL', 'RUSH', 'HOT'][idx % 3],
+        status: 'RECEIVED',
         assignedMachinistId: assigned ?? null,
         materialNeeded: idx % 2 === 1,
         materialOrdered: idx % 3 === 0,
         poNumber: idx % 2 === 0 ? `PO-${5000 + idx}` : null,
         parts: {
-          create: [
-            {
-              partNumber: `P-${idx}-A`,
-              quantity: 2 + (idx % 3),
-              materialId: mats[idx % mats.length]?.id,
-              notes: idx % 2 === 0 ? 'Critical surface finish' : null,
-            },
-          ],
+          create: partSeeds,
         },
-        checklist: {
-          create: checklistAddons.slice(0, 3).map((addon) => ({ addonId: addon.id })),
+        statusHistory: {
+          create: { from: 'RECEIVED', to: 'RECEIVED', userId: admin.id, reason: 'Seed' },
         },
-  statusHistory: { create: { from: "RECEIVED", to: "RECEIVED", userId: admin.id, reason: 'Seed' } },
       },
+      include: { parts: true },
     });
 
-    // sample timelog
+    const checklistData: Prisma.OrderChecklistCreateManyInput[] = [];
+    const chargeData: Prisma.OrderChargeCreateManyInput[] = [];
+    ord.parts.forEach((part, partIndex) => {
+      const addons = buildAddonsForPart(partIndex);
+      addons.forEach((addon, addonIndex) => {
+        checklistData.push({
+          orderId: ord.id,
+          partId: part.id,
+          addonId: addon.id,
+          departmentId: addon.departmentId,
+          completed: addonIndex === 0 && idx % 3 === 0,
+        });
+        chargeData.push({
+          orderId: ord.id,
+          partId: part.id,
+          departmentId: addon.departmentId,
+          addonId: addon.id,
+          kind: 'ADDON',
+          name: addon.name,
+          description: `Seeded ${addon.name.toLowerCase()} charge.`,
+          quantity: new Prisma.Decimal(1),
+          unitPrice: new Prisma.Decimal(addon.rateCents / 100),
+          sortOrder: addonIndex,
+        });
+      });
+    });
+
+    if (checklistData.length) {
+      await prisma.orderChecklist.createMany({ data: checklistData });
+    }
+    if (chargeData.length) {
+      await prisma.orderCharge.createMany({ data: chargeData });
+    }
+
     await prisma.timeLog.createMany({
       data: [
-        { orderId: ord.id, userId: assigned ?? mach1.id, phase: "PROGRAMMING", minutes: 30 },
-        { orderId: ord.id, userId: assigned ?? mach1.id, phase: "SETUP", minutes: 20 },
+        { orderId: ord.id, userId: assigned ?? mach1.id, phase: 'PROGRAMMING', minutes: 30 },
+        { orderId: ord.id, userId: assigned ?? mach1.id, phase: 'SETUP', minutes: 20 },
       ],
     });
 
-    // sample note
+    const timeEntryData: Prisma.TimeEntryCreateManyInput[] = [];
+    const timeBase = Date.now() - 1000 * 60 * 60 * 24 * idx;
+    ord.parts.forEach((part, partIndex) => {
+      const firstStart = new Date(timeBase + 1000 * 60 * (30 + partIndex * 15));
+      const firstEnd = new Date(firstStart.getTime() + 1000 * 60 * (18 + partIndex * 4));
+      const secondStart = new Date(firstEnd.getTime() + 1000 * 60 * 12);
+      const secondEnd = new Date(secondStart.getTime() + 1000 * 60 * (22 + partIndex * 3));
+      timeEntryData.push(
+        {
+          orderId: ord.id,
+          partId: part.id,
+          userId: assigned ?? mach1.id,
+          operation: 'Machining',
+          startedAt: firstStart,
+          endedAt: firstEnd,
+        },
+        {
+          orderId: ord.id,
+          partId: part.id,
+          userId: assigned ?? mach1.id,
+          operation: 'Inspection',
+          startedAt: secondStart,
+          endedAt: secondEnd,
+        },
+      );
+    });
+
+    await prisma.timeEntry.createMany({ data: timeEntryData });
+
     await prisma.note.create({
       data: { orderId: ord.id, userId: admin.id, content: 'Kickoff created.' },
     });
   }
 
-  await seedOrder(1, acme.id, mach1.id, 'STD');
-  await seedOrder(2, acme.id, mach2.id, 'STD');
-  await seedOrder(3, wayne.id, mach1.id, 'CRM');
-  await seedOrder(4, wayne.id, mach2.id, 'CRM');
-  await seedOrder(5, acme.id, null, 'STD');
-  await seedOrder(6, acme.id, null, 'STD');
-  await seedOrder(7, wayne.id, mach1.id, 'PC');
-  await seedOrder(8, wayne.id, mach2.id, 'PC');
+  const orderSeeds = [
+    { idx: 1, customerId: acme.id, assigned: mach1.id, business: 'STD' },
+    { idx: 2, customerId: acme.id, assigned: mach2.id, business: 'STD' },
+    { idx: 3, customerId: wayne.id, assigned: mach1.id, business: 'CRM' },
+    { idx: 4, customerId: wayne.id, assigned: mach2.id, business: 'CRM' },
+    { idx: 5, customerId: acme.id, assigned: null, business: 'STD' },
+    { idx: 6, customerId: acme.id, assigned: null, business: 'STD' },
+    { idx: 7, customerId: wayne.id, assigned: mach1.id, business: 'PC' },
+    { idx: 8, customerId: wayne.id, assigned: mach2.id, business: 'PC' },
+    { idx: 9, customerId: acme.id, assigned: mach1.id, business: 'CRM' },
+    { idx: 10, customerId: wayne.id, assigned: mach2.id, business: 'STD' },
+  ];
 
-  const sawAddon = addonRecords.find((a) => a.name === 'Saw Cut');
-  const weldAddon = addonRecords.find((a) => a.name === 'Weld Time');
-  const setupAddon = addonRecords.find((a) => a.name === 'Setup Time');
-  const millAddon = addonRecords.find((a) => a.name === 'Mill Time');
+  for (const seed of orderSeeds) {
+    await seedOrder(seed.idx, seed.customerId, seed.assigned, seed.business);
+  }
+
   const mcmaster = vendorRecords.find((v) => v.name === 'McMaster-Carr');
+  const grainger = vendorRecords.find((v) => v.name === 'Grainger');
+  const quoteAddons = addonRecords.filter((addon) =>
+    ['Setup Time', 'Mill Time', 'Weld Time', 'Powder Coat', 'Packaging'].includes(addon.name),
+  );
 
-  if (sawAddon && weldAddon && setupAddon && millAddon && mcmaster) {
-    const sawTotal = Math.round(sawAddon.rateCents * 1.5);
-    const weldTotal = Math.round(weldAddon.rateCents * 2.0);
-    const setupTotal = Math.round(setupAddon.rateCents * 1.25);
-    const millTotal = Math.round(millAddon.rateCents * 2.5);
-    const addonsTotal = sawTotal + weldTotal + setupTotal + millTotal;
-    const basePrice = 245000;
-    const vendorPrice = Math.round(6800 * 1.2);
-    await prisma.quote.upsert({
-      where: { quoteNumber: 'Q-1001' },
-      update: {},
-      create: {
+  if (mcmaster && grainger && quoteAddons.length >= 3) {
+    const quoteSeeds = [
+      {
         quoteNumber: 'STD-20231015-0001',
         business: 'STD',
         companyName: 'ACME Corp',
@@ -488,88 +573,332 @@ async function main() {
         materialSummary: '6061-T6 plate and DOM tubing per print.',
         purchaseItems: 'Hardware kit, anchors, powder coat service TBD.',
         requirements: 'Tube welded to base, grind flush, powder coat black.',
-        basePriceCents: basePrice,
-        vendorTotalCents: vendorPrice,
-        addonsTotalCents: addonsTotal,
-        totalCents: basePrice + vendorPrice + addonsTotal,
-        multiPiece: true,
-        notes: 'Initial quote prepared from legacy spreadsheet.',
-        createdById: admin.id,
-        metadata: stringifyQuoteMetadata({
-          ...DEFAULT_QUOTE_METADATA,
-          markupNotes: 'Vendor markup applied at 20%. Labor captured via addons.',
-        }),
-        parts: {
-          create: [
-            {
-              name: 'Base and Tube Assembly',
-              description: 'Base plate with welded tube; machine critical faces after welding.',
-              quantity: 1,
-              pieceCount: 2,
-              notes: 'Includes weld prep and machining of finished assembly.',
-            },
-          ],
-        },
-        vendorItems: {
-          create: [
-            {
-              vendorId: mcmaster.id,
-              vendorName: mcmaster.name,
-              partNumber: '91251A289',
-              partUrl: 'https://www.mcmaster.com/91251A289/',
-              basePriceCents: 6800,
-              markupPercent: 20,
-              finalPriceCents: vendorPrice,
-              notes: 'Fastener kit per customer spec.',
-            },
-          ],
-        },
-        addonSelections: {
-          create: [
-            {
-              addonId: sawAddon.id,
-              units: 1.5,
-              rateTypeSnapshot: sawAddon.rateType,
-              rateCents: sawAddon.rateCents,
-              totalCents: sawTotal,
-              notes: 'Cut raw stock for base and tube.',
-            },
-            {
-              addonId: weldAddon.id,
-              units: 2.0,
-              rateTypeSnapshot: weldAddon.rateType,
-              rateCents: weldAddon.rateCents,
-              totalCents: weldTotal,
-              notes: 'Weld assembly with fixture.',
-            },
-            {
-              addonId: setupAddon.id,
-              units: 1.25,
-              rateTypeSnapshot: setupAddon.rateType,
-              rateCents: setupAddon.rateCents,
-              totalCents: setupTotal,
-              notes: 'Fixture and machine setup.',
-            },
-            {
-              addonId: millAddon.id,
-              units: 2.5,
-              rateTypeSnapshot: millAddon.rateType,
-              rateCents: millAddon.rateCents,
-              totalCents: millTotal,
-              notes: 'Finish mill passes on assembly.',
-            },
-          ],
-        },
-        attachments: {
-          create: [
-            {
-              url: 'https://example.com/quotes/STD-20231015-0001/customer-print.pdf',
-              label: 'Customer print',
-            },
-          ],
-        },
+        basePriceCents: 245000,
+        vendor: mcmaster,
+        vendorBasePrice: 6800,
+        vendorMarkup: 20,
+        parts: [
+          {
+            name: 'Base and Tube Assembly',
+            description: 'Base plate with welded tube; machine critical faces after welding.',
+            quantity: 1,
+            pieceCount: 2,
+            notes: 'Includes weld prep and machining of finished assembly.',
+          },
+        ],
       },
-    });
+      {
+        quoteNumber: 'CRM-20231020-0002',
+        business: 'CRM',
+        companyName: 'Wayne Industries',
+        contactName: 'Luke Fox',
+        contactEmail: 'luke.fox@wayne.example',
+        contactPhone: '555-0110',
+        customerId: wayne.id,
+        status: 'SENT',
+        materialSummary: '7075-T6 bar stock and powder coat finish.',
+        purchaseItems: 'COTS spacers, sealant.',
+        requirements: 'Machine, deburr, and powder coat per spec.',
+        basePriceCents: 178500,
+        vendor: grainger,
+        vendorBasePrice: 5400,
+        vendorMarkup: 15,
+        parts: [
+          {
+            name: 'Machined Bracket Set',
+            description: 'Three-axis machined brackets, powder coat black.',
+            quantity: 4,
+            pieceCount: 4,
+            notes: 'Hold +/-0.002 on mating surfaces.',
+          },
+          {
+            name: 'Spacer Kit',
+            description: 'Anodized spacers, include verification report.',
+            quantity: 1,
+            pieceCount: 6,
+            notes: 'Inspect OD and length before anodize.',
+          },
+        ],
+      },
+      {
+        quoteNumber: 'PC-20231025-0003',
+        business: 'PC',
+        companyName: 'ACME Corp',
+        contactName: 'Olivia Plant',
+        contactEmail: 'olivia.plant@acme.example',
+        contactPhone: '555-0123',
+        customerId: acme.id,
+        status: 'APPROVED',
+        materialSummary: '304SS tubing, TIG weld, polish.',
+        purchaseItems: 'Gasket kit.',
+        requirements: 'Polish to 180 grit, weld and leak test.',
+        basePriceCents: 312000,
+        vendor: mcmaster,
+        vendorBasePrice: 9600,
+        vendorMarkup: 18,
+        parts: [
+          {
+            name: 'Stainless Enclosure',
+            description: 'Welded enclosure with polished finish.',
+            quantity: 1,
+            pieceCount: 1,
+            notes: 'Leak test after welding.',
+          },
+        ],
+      },
+      {
+        quoteNumber: 'STD-20231102-0004',
+        business: 'STD',
+        companyName: 'Wayne Industries',
+        contactName: 'Harper Crane',
+        contactEmail: 'harper.crane@wayne.example',
+        contactPhone: '555-0128',
+        customerId: wayne.id,
+        status: 'DRAFT',
+        materialSummary: 'A2 tool steel, heat treat after machining.',
+        purchaseItems: 'Heat treat service, fastener kit.',
+        requirements: 'Hold true position on dowel holes.',
+        basePriceCents: 95000,
+        vendor: grainger,
+        vendorBasePrice: 4200,
+        vendorMarkup: 12,
+        parts: [
+          {
+            name: 'Fixture Plate',
+            description: 'Ground fixture plate with dowel pin pattern.',
+            quantity: 2,
+            pieceCount: 2,
+            notes: 'Heat treat after rough machining.',
+          },
+        ],
+      },
+      {
+        quoteNumber: 'CRM-20231108-0005',
+        business: 'CRM',
+        companyName: 'ACME Corp',
+        contactName: 'Ivy Planner',
+        contactEmail: 'ivy.planner@acme.example',
+        contactPhone: '555-0131',
+        customerId: acme.id,
+        status: 'SENT',
+        materialSummary: '6061 sheet metal, powder coat white.',
+        purchaseItems: 'PEM hardware and hinges.',
+        requirements: 'Formed and powder coat, inspect dimensions.',
+        basePriceCents: 128000,
+        vendor: mcmaster,
+        vendorBasePrice: 7500,
+        vendorMarkup: 10,
+        parts: [
+          {
+            name: 'Control Panel Cover',
+            description: 'Sheet metal panel with PEM inserts.',
+            quantity: 3,
+            pieceCount: 3,
+            notes: 'Check flatness after forming.',
+          },
+        ],
+      },
+      {
+        quoteNumber: 'PC-20231112-0006',
+        business: 'PC',
+        companyName: 'Wayne Industries',
+        contactName: 'Reese Allen',
+        contactEmail: 'reese.allen@wayne.example',
+        contactPhone: '555-0145',
+        customerId: wayne.id,
+        status: 'APPROVED',
+        materialSummary: '4140 pre-hard with black oxide finish.',
+        purchaseItems: 'Threaded inserts.',
+        requirements: 'Machine OD, deburr, black oxide.',
+        basePriceCents: 164000,
+        vendor: grainger,
+        vendorBasePrice: 6100,
+        vendorMarkup: 16,
+        parts: [
+          {
+            name: 'Drive Hub',
+            description: 'Turned hub with keyway.',
+            quantity: 2,
+            pieceCount: 2,
+            notes: 'Inspect runout after machining.',
+          },
+        ],
+      },
+      {
+        quoteNumber: 'STD-20231118-0007',
+        business: 'STD',
+        companyName: 'ACME Corp',
+        contactName: 'Noah Mills',
+        contactEmail: 'noah.mills@acme.example',
+        contactPhone: '555-0149',
+        customerId: acme.id,
+        status: 'SENT',
+        materialSummary: '7075-T6 billet and anodize.',
+        purchaseItems: 'Hardware kit and packaging.',
+        requirements: 'Anodize clear, inspect hole pattern.',
+        basePriceCents: 210000,
+        vendor: mcmaster,
+        vendorBasePrice: 8200,
+        vendorMarkup: 14,
+        parts: [
+          {
+            name: 'Machined Housing',
+            description: 'Pocketed housing with anodize finish.',
+            quantity: 1,
+            pieceCount: 1,
+            notes: 'Measure pocket depths before anodize.',
+          },
+        ],
+      },
+      {
+        quoteNumber: 'CRM-20231122-0008',
+        business: 'CRM',
+        companyName: 'Wayne Industries',
+        contactName: 'Avery Stone',
+        contactEmail: 'avery.stone@wayne.example',
+        contactPhone: '555-0152',
+        customerId: wayne.id,
+        status: 'DRAFT',
+        materialSummary: '1018 CRS and welded assembly.',
+        purchaseItems: 'Hardware kit, inspection report.',
+        requirements: 'Weld and grind flush, paint gray.',
+        basePriceCents: 98000,
+        vendor: grainger,
+        vendorBasePrice: 4300,
+        vendorMarkup: 12,
+        parts: [
+          {
+            name: 'Support Frame',
+            description: 'Welded frame, paint gray.',
+            quantity: 1,
+            pieceCount: 1,
+            notes: 'Verify squareness after welding.',
+          },
+        ],
+      },
+      {
+        quoteNumber: 'PC-20231128-0009',
+        business: 'PC',
+        companyName: 'ACME Corp',
+        contactName: 'Quinn Harper',
+        contactEmail: 'quinn.harper@acme.example',
+        contactPhone: '555-0161',
+        customerId: acme.id,
+        status: 'APPROVED',
+        materialSummary: 'Brass 360, polish finish.',
+        purchaseItems: 'Packaging inserts.',
+        requirements: 'Turned parts with polished finish.',
+        basePriceCents: 72000,
+        vendor: mcmaster,
+        vendorBasePrice: 3200,
+        vendorMarkup: 10,
+        parts: [
+          {
+            name: 'Brass Cap',
+            description: 'Turned cap with polished finish.',
+            quantity: 6,
+            pieceCount: 6,
+            notes: 'Inspect surface finish.',
+          },
+        ],
+      },
+      {
+        quoteNumber: 'STD-20231202-0010',
+        business: 'STD',
+        companyName: 'Wayne Industries',
+        contactName: 'Jordan Kent',
+        contactEmail: 'jordan.kent@wayne.example',
+        contactPhone: '555-0174',
+        customerId: wayne.id,
+        status: 'SENT',
+        materialSummary: '6061 plate with black anodize.',
+        purchaseItems: 'Fasteners, gasket kit.',
+        requirements: 'Machine and anodize, include inspection report.',
+        basePriceCents: 134000,
+        vendor: grainger,
+        vendorBasePrice: 5800,
+        vendorMarkup: 14,
+        parts: [
+          {
+            name: 'Machine Base',
+            description: 'Base plate with counterbores.',
+            quantity: 2,
+            pieceCount: 2,
+            notes: 'Inspect flatness before anodize.',
+          },
+        ],
+      },
+    ];
+
+    for (const seed of quoteSeeds) {
+      const addonSlice = quoteAddons.slice(0, 3);
+      const addonSelectionData = addonSlice.map((addon, index) => ({
+        addonId: addon.id,
+        units: 1 + index * 0.5,
+        rateTypeSnapshot: addon.rateType,
+        rateCents: addon.rateCents,
+        totalCents: Math.round(addon.rateCents * (1 + index * 0.5)),
+        notes: `Seeded ${addon.name.toLowerCase()} coverage.`,
+      }));
+      const addonsTotal = addonSelectionData.reduce((sum, addon) => sum + addon.totalCents, 0);
+      const vendorPrice = Math.round(seed.vendorBasePrice * (1 + seed.vendorMarkup / 100));
+      await prisma.quote.upsert({
+        where: { quoteNumber: seed.quoteNumber },
+        update: {},
+        create: {
+          quoteNumber: seed.quoteNumber,
+          business: seed.business,
+          companyName: seed.companyName,
+          contactName: seed.contactName,
+          contactEmail: seed.contactEmail,
+          contactPhone: seed.contactPhone,
+          customerId: seed.customerId,
+          status: seed.status,
+          materialSummary: seed.materialSummary,
+          purchaseItems: seed.purchaseItems,
+          requirements: seed.requirements,
+          basePriceCents: seed.basePriceCents,
+          vendorTotalCents: vendorPrice,
+          addonsTotalCents: addonsTotal,
+          totalCents: seed.basePriceCents + vendorPrice + addonsTotal,
+          multiPiece: seed.parts.length > 1,
+          notes: 'Seeded quote for demo workflow.',
+          createdById: admin.id,
+          metadata: stringifyQuoteMetadata({
+            ...DEFAULT_QUOTE_METADATA,
+            markupNotes: 'Seed data: vendor markup and addon labor captured.',
+          }),
+          parts: {
+            create: seed.parts,
+          },
+          vendorItems: {
+            create: [
+              {
+                vendorId: seed.vendor.id,
+                vendorName: seed.vendor.name,
+                partNumber: 'KIT-ASSY-001',
+                partUrl: 'https://www.mcmaster.com/',
+                basePriceCents: seed.vendorBasePrice,
+                markupPercent: seed.vendorMarkup,
+                finalPriceCents: vendorPrice,
+                notes: 'Seeded vendor package.',
+              },
+            ],
+          },
+          addonSelections: {
+            create: addonSelectionData,
+          },
+          attachments: {
+            create: [
+              {
+                url: `https://example.com/quotes/${seed.quoteNumber}/customer-print.pdf`,
+                label: 'Customer print',
+              },
+            ],
+          },
+        },
+      });
+    }
   }
 }
 
