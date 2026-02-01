@@ -34,6 +34,17 @@ export async function findTimeEntryById(id: string) {
   return prisma.timeEntry.findUnique({ where: { id } });
 }
 
+export async function listTimeEntriesForOrderParts(orderId: string, partIds: string[]) {
+  return prisma.timeEntry.findMany({
+    where: {
+      orderId,
+      partId: { in: partIds },
+      endedAt: { not: null },
+    },
+    select: { partId: true, startedAt: true, endedAt: true },
+  });
+}
+
 export async function createTimeEntry(data: {
   orderId: string;
   partId?: string | null;

@@ -24,6 +24,7 @@ model User {
   checklistToggles OrderChecklist[] @relation("ChecklistToggledBy")
   uploadedAttachments Attachment[] @relation("UserAttachments")
   statusHistories StatusHistory[] @relation("UserStatusHistory")
+  partEvents      PartEvent[]
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -92,6 +93,7 @@ model Order {
   timeLogs         TimeLog[]
   timeEntries      TimeEntry[]
   statusHistory    StatusHistory[]
+  partEvents       PartEvent[]
 }
 
 model OrderPart {
@@ -107,10 +109,12 @@ model OrderPart {
   notes               String?
   stockSize           String?
   cutLength           String?
+  status              String      @default("IN_PROGRESS")
   charges             OrderCharge[]
   attachments         PartAttachment[]
   checklistItems      OrderChecklist[]
   timeEntries         TimeEntry[]
+  partEvents          PartEvent[]
 }
 
 model OrderChecklist {
@@ -174,6 +178,24 @@ model TimeEntry {
   @@index([userId, endedAt])
   @@index([orderId])
   @@index([partId])
+}
+
+model PartEvent {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId    String
+  part      OrderPart @relation(fields: [partId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  type      String
+  message   String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([partId])
+  @@index([userId])
 }
 
 model Attachment {
