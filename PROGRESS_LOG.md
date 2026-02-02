@@ -41,6 +41,14 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-07 — Quote/order intake steppers and part-centric layouts
+- Added stepper-based navigation for quote creation and order creation to separate info, parts, build/review steps.
+- Restructured both flows to use a parts list + selected part editor layout for clearer part-centric editing.
+- Reorganized assembly-level notes, attachments, and review sections to keep all existing fields reachable.
+
+Commands run:
+- None
+
 ### 2026-02-06 — Seed data expansion + order detail button polish
 - Updated order detail tab and action button spacing to clean up the part details card layout.
 - Expanded seed data with 10 orders, per-part addons/checklists, per-part time entries, and 10 quotes to show realistic multi-part workflows.
