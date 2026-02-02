@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessAdmin } from '@/lib/rbac';
 import { createOrderFromPayload, listOrdersForQuery } from '@/modules/orders/orders.service';
 import { OrderQuery, OrderCreate } from '@/modules/orders/orders.schema';
@@ -8,7 +7,7 @@ import { OrderQuery, OrderCreate } from '@/modules/orders/orders.schema';
 
 /** GET /api/orders — list with filters & cursor pagination */
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
 
   const url = new URL(req.url);
@@ -38,7 +37,7 @@ export async function GET(req: NextRequest) {
 
 /** POST /api/orders — create order with parts, checklist, initial status */
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = session.user as any;
   if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });

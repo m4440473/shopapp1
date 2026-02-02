@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessMachinist } from '@/lib/rbac';
 import { listChecklistForOrder, toggleChecklistItem } from '@/modules/orders/orders.service';
 
 async function requireAuth() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return null;
   return session;
 }

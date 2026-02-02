@@ -41,6 +41,15 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-08 — Add TEST_MODE harness for mock auth + in-memory repos
+- Added TEST_MODE switch, centralized auth session helper, and middleware bypass in test mode.
+- Added repo factory with mock orders/time/users repos and seeded deterministic data for orders UI.
+- Wired orders/time services and admin users API to repo factory, plus test-mode smoke route.
+- Documented TEST_MODE (enable via `TEST_MODE=true` locally/Codex/Replit; keep OFF in production) in CANON, handoff, and env example.
+
+Commands run:
+- None
+
 ### 2026-02-07 — Fix seed vendor record reference in JS seed
 - Added vendor upsert tracking in prisma/seed.js to match seed.ts and prevent vendorRecords undefined errors.
 

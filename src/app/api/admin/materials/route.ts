@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessAdmin, canAccessViewer, isMachinist } from '@/lib/rbac';
 
 async function requireAdmin(): Promise<NextResponse | null> {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = session.user as any;
   if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });
@@ -13,7 +12,7 @@ async function requireAdmin(): Promise<NextResponse | null> {
 }
 
 async function requireTeamAccess(): Promise<NextResponse | null> {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = session.user as any;
   if (!canAccessAdmin(user) && !isMachinist(user) && !canAccessViewer(user)) {

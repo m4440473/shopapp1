@@ -3,15 +3,14 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { getAppSettings, updateAppSettings } from '@/lib/app-settings';
 import { ensureAttachmentRoot } from '@/lib/storage';
 
 async function requireAdmin() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     return new NextResponse('Unauthorized', { status: 401 });
   }

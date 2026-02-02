@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessAdmin, isMachinist } from '@/lib/rbac';
 import { updateOrderStatusForEmployee } from '@/modules/orders/orders.service';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = session.user as any;
   if (!isMachinist(user) && !canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });

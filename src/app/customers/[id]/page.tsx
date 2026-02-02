@@ -1,10 +1,9 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { format } from 'date-fns';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { Printer, UserCircle, Phone, Mail, MapPin, Activity, Package2 } from 'lucide-react';
 
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { EditCustomerDialog } from '@/components/EditCustomerDialog';
 import { Badge } from '@/components/ui/badge';
@@ -36,7 +35,7 @@ type CustomerPageProps = {
 };
 
 export default async function CustomerDetailPage({ params }: CustomerPageProps) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     redirect(`/auth/signin?callbackUrl=/customers/${params.id}`);
   }

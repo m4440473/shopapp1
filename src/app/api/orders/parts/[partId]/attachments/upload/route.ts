@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { businessNameFromCode, type BusinessName } from '@/lib/businesses';
 import { getAppSettings } from '@/lib/app-settings';
@@ -9,7 +8,7 @@ import { storeAttachmentFile } from '@/lib/storage';
 import { getPartUploadContext } from '@/modules/orders/orders.service';
 
 async function requireAdmin() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     return new NextResponse('Unauthorized', { status: 401 });
   }

@@ -1,9 +1,8 @@
 import React from 'react';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import {
   DEFAULT_TEMPLATE_SECTIONS,
@@ -27,7 +26,7 @@ export default async function QuotePrintPage({
   params: { id: string };
   searchParams?: { templateId?: string };
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session || !canAccessAdmin(session.user as any)) {
     redirect('/');
   }

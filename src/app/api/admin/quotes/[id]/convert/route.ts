@@ -4,10 +4,9 @@ import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { z } from 'zod';
 
-import { authOptions } from '@/lib/auth';
 import {
   DEFAULT_QUOTE_METADATA,
   mergeQuoteMetadata,
@@ -24,7 +23,7 @@ import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-fie
 import { convertQuoteToOrder, findActiveOrderCustomFields, findQuoteForConversion } from '@/modules/quotes/quotes.service';
 
 async function requireAdmin() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     return new NextResponse('Unauthorized', { status: 401 });
   }

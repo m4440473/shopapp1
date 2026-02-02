@@ -2,8 +2,13 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { canAccessAdmin } from '@/lib/rbac';
+import { isTestMode } from '@/lib/testMode';
 
 export async function middleware(request: NextRequest) {
+  if (isTestMode()) {
+    return NextResponse.next();
+  }
+
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   const pathname = request.nextUrl.pathname;
 

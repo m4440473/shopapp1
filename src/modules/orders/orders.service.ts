@@ -77,7 +77,7 @@ import {
   updateOrderStatus,
   generateNextOrderNumber,
   syncChecklistForOrder,
-} from './orders.repo';
+} from '@/repos/orders';
 
 export { generateNextOrderNumber, syncChecklistForOrder };
 export type { OrderFilterState, OrderListItem, OrderWithMeta };

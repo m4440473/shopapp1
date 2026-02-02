@@ -1,6 +1,6 @@
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import Link from 'next/link';
 
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +12,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/Card';
-import { authOptions } from '@/lib/auth';
 import AdminPricingGate from '@/components/Admin/AdminPricingGate';
 import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
@@ -33,7 +32,7 @@ const formatCurrency = (cents: number) =>
 export const dynamic = 'force-dynamic';
 
 export default async function QuoteDetailPage({ params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     redirect('/');
   }

@@ -1,8 +1,7 @@
 import { format } from 'date-fns';
 import { redirect, notFound } from 'next/navigation';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 function formatDate(input?: Date | string | null) {
@@ -17,7 +16,7 @@ type PrintPageProps = {
 };
 
 export default async function CustomerPrintPage({ params }: PrintPageProps) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     redirect(`/auth/signin?callbackUrl=/customers/${params.id}/print`);
   }
