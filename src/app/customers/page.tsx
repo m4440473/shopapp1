@@ -1,10 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { Users, ClipboardList, Timer, Layers } from 'lucide-react';
 
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -19,7 +18,7 @@ function formatRelative(date: Date | null) {
 }
 
 export default async function CustomersPage() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     redirect('/auth/signin?callbackUrl=/customers');
   }

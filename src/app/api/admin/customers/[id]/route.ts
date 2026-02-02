@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { canAccessAdmin } from '@/lib/rbac';
 import { CustomerUpdate } from '@/lib/zod-customers';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session || !canAccessAdmin(session.user as any)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

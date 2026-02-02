@@ -1,9 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { Search as SearchIcon } from 'lucide-react';
 
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -47,7 +46,7 @@ type SearchPageProps = {
 };
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     const query = searchParams?.q ? `?callbackUrl=/search?q=${encodeURIComponent(searchParams.q)}` : '?callbackUrl=/search';
     redirect(`/auth/signin${query}`);

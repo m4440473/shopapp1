@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { OrderAttachmentCreate } from '@/modules/orders/orders.schema';
 import { createAttachmentForOrder } from '@/modules/orders/orders.service';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions as any);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = (session as any).user;
   if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });

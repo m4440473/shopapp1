@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { z } from 'zod';
 
-import { authOptions } from '@/lib/auth';
 import { ListQuery } from '@/lib/zod';
 import { listAddonsForOrders } from '@/modules/orders/orders.service';
 
@@ -11,7 +10,7 @@ const QuerySchema = ListQuery.extend({
 });
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     return new NextResponse('Unauthorized', { status: 401 });
   }

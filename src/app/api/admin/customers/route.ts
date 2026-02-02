@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessAdmin, canAccessViewer, isMachinist } from '@/lib/rbac';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -21,7 +20,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session || !canAccessAdmin(session.user as any)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

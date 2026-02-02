@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../lib/auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessAdmin } from '@/lib/rbac';
 
 export async function GET(_req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session?.user?.email) {
     return new NextResponse('Unauthorized', { status: 401 });
   }

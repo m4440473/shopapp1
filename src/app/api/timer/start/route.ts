@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { getOrderHeaderInfo, getOrderPartSummary, logPartEvent } from '@/modules/orders/orders.service';
 import { getActiveTimeEntry, startTimeEntryWithConflict } from '@/modules/time/time.service';
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
 
   const userId = (session.user as any)?.id as string | undefined;

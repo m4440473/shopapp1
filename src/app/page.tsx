@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Activity, ArrowUpRight, CalendarDays, CircleCheck, Users } from 'lucide-react';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
 import { RecentOrdersTable } from '@/components/RecentOrdersTable';
 import { ShopFloorLayouts } from '@/components/ShopFloorLayouts';
@@ -9,7 +9,6 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { authOptions } from '@/lib/auth';
 import {
   decorateOrder,
   getDepartmentsOrdered,
@@ -22,7 +21,7 @@ import { prisma } from '@/lib/prisma';
 import { cn } from '@/lib/utils';
 
 export default async function Home() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     redirect('/auth/signin?callbackUrl=/');
   }

@@ -1,10 +1,9 @@
 import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { z } from 'zod';
 
-import { authOptions } from '@/lib/auth';
 import { parseQuoteMetadata } from '@/lib/quote-metadata';
 import { canAccessAdmin } from '@/lib/rbac';
 import { ListQuery } from '@/lib/zod';
@@ -19,7 +18,7 @@ import {
 } from '@/modules/quotes/quotes.service';
 
 async function getSessionWithRole() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     return new NextResponse('Unauthorized', { status: 401 });
   }

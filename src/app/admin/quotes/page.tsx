@@ -1,10 +1,9 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
 import NavTabs from '@/components/Admin/NavTabs';
 import { ToastProvider } from '@/components/ui/Toast';
-import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import Client from './client';
 import { mergeQuoteMetadata } from '@/lib/quote-metadata';
@@ -12,7 +11,7 @@ import { mergeQuoteMetadata } from '@/lib/quote-metadata';
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     redirect('/');
   }

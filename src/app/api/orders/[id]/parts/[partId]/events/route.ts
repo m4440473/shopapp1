@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { listPartEvents } from '@/modules/orders/orders.service';
 
 export async function GET(req: Request, { params }: { params: { id: string; partId: string } }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
 
   const { id, partId } = params;

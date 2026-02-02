@@ -1,14 +1,13 @@
 import 'server-only';
 
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { getActiveDocumentTemplate, listDocumentTemplates } from '@/lib/document-templates';
 import { getOrderPrintData } from '@/modules/orders/orders.service';
 
 async function requireSession() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     return new NextResponse('Unauthorized', { status: 401 });
   }

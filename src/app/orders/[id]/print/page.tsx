@@ -2,9 +2,8 @@ import React from 'react';
 import { format } from 'date-fns';
 import { headers } from 'next/headers';
 import { redirect, notFound } from 'next/navigation';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import {
   DEFAULT_TEMPLATE_SECTIONS,
   normalizeSectionName,
@@ -83,7 +82,7 @@ export default async function OrderPrintPage({
   params: { id: string };
   searchParams?: { templateId?: string };
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     redirect(`/auth/signin?callbackUrl=/orders/${params.id}/print`);
   }

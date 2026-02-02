@@ -1,14 +1,13 @@
 import { redirect } from 'next/navigation';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { ToastProvider } from '@/components/ui/Toast';
 import PasswordClient from './client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) {
     redirect('/auth/signin');
   }

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { PartAttachmentUpdate } from '@/modules/orders/orders.schema';
 import { deleteAttachmentForPart, updateAttachmentForPart } from '@/modules/orders/orders.service';
 
 async function requireAdmin() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = session.user as any;
   if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });
