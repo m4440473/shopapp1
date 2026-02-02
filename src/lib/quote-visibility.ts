@@ -48,6 +48,11 @@ export type SanitizedOrder = Omit<OrderWithRelations, 'checklist' | 'charges'> &
 
 type SanitizableEntity = QuoteDetailWithRelations | QuoteSummaryWithRelations | OrderWithRelations;
 
+import {
+  isRestrictedOrderAttachment,
+  isRestrictedPartAttachment,
+} from './attachment-visibility';
+
 export function sanitizePricingForNonAdmin(entity: SanitizableEntity, isAdmin = false) {
   if (isAdmin) return entity;
 
@@ -96,8 +101,13 @@ export function sanitizePricingForNonAdmin(entity: SanitizableEntity, isAdmin = 
       parts: (order.parts || []).map((part: any) => ({
         ...part,
         charges: (part.charges || []).map(({ unitPrice: _, ...charge }: any) => charge),
+        attachments: (part.attachments || []).filter((attachment: any) => !isRestrictedPartAttachment(attachment)),
       })),
       charges: (order.charges || []).map(({ unitPrice: _, ...charge }) => charge),
+      partAttachments: Array.isArray((order as any).partAttachments)
+        ? (order as any).partAttachments.filter((attachment: any) => !isRestrictedPartAttachment(attachment))
+        : [],
+      attachments: (order.attachments || []).filter((attachment: any) => !isRestrictedOrderAttachment(attachment)),
     };
   }
 
