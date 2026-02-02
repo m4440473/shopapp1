@@ -54,6 +54,7 @@ export const AddonUpsert = z.object({
   rateType: AddonRateType.default('HOURLY'),
   rateCents: z.coerce.number().int().min(0).max(10_000_000),
   active: z.boolean().default(true),
+  isChecklistItem: z.boolean().default(true),
   departmentId: Id,
 });
 export const AddonPatch = AddonUpsert.partial();

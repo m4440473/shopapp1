@@ -36,6 +36,7 @@ interface Item {
   rateType: 'HOURLY' | 'FLAT';
   rateCents: number;
   active: boolean;
+  isChecklistItem: boolean;
   departmentId: string;
   department?: Department | null;
 }
@@ -66,6 +67,7 @@ export default function Client({ initial }: ClientProps) {
     rateType: 'HOURLY' as Item['rateType'],
     rate: '0.00',
     active: true,
+    isChecklistItem: true,
     departmentId: '',
   });
   const toast = useToast();
@@ -86,6 +88,7 @@ export default function Client({ initial }: ClientProps) {
         rateType: dialog.data.rateType,
         rate: (dialog.data.rateCents / 100).toFixed(2),
         active: dialog.data.active,
+        isChecklistItem: dialog.data.isChecklistItem,
         departmentId: dialog.data.departmentId,
       });
     } else if (dialog?.mode === 'create') {
@@ -95,6 +98,7 @@ export default function Client({ initial }: ClientProps) {
         rateType: 'HOURLY',
         rate: '0.00',
         active: true,
+        isChecklistItem: true,
         departmentId: '',
       });
     }
@@ -113,6 +117,11 @@ export default function Client({ initial }: ClientProps) {
         header: 'Rate',
         render: (_: number, row: Item) =>
           `${formatCurrency(row.rateCents)}${row.rateType === 'HOURLY' ? ' / hr' : ''}`,
+      },
+      {
+        key: 'isChecklistItem',
+        header: 'Checklist Item',
+        render: (value: boolean) => (value ? 'Yes' : 'No'),
       },
       {
         key: 'active',
@@ -162,6 +171,7 @@ export default function Client({ initial }: ClientProps) {
       rateType: form.rateType,
       rateCents,
       active: form.active,
+      isChecklistItem: form.isChecklistItem,
       departmentId: form.departmentId,
     });
 
@@ -327,6 +337,16 @@ export default function Client({ initial }: ClientProps) {
               />
               <Label htmlFor="addonActive" className="text-sm font-normal">
                 Active and available on new quotes
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="addonChecklistItem"
+                checked={form.isChecklistItem}
+                onCheckedChange={(checked) => setForm((prev) => ({ ...prev, isChecklistItem: Boolean(checked) }))}
+              />
+              <Label htmlFor="addonChecklistItem" className="text-sm font-normal">
+                Show as checklist item on parts (uncheck for pricing-only addons like labor hours)
               </Label>
             </div>
             <DialogFooter>
