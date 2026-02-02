@@ -41,6 +41,12 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-07 — Verified print page template wiring
+- Reviewed order/quote print pages and confirmed they render with PrintControls and template-driven section layouts from document templates.
+
+Commands run:
+- None
+
 ### 2026-02-07 — Quote/order intake steppers and part-centric layouts
 - Added stepper-based navigation for quote creation and order creation to separate info, parts, build/review steps.
 - Restructured both flows to use a parts list + selected part editor layout for clearer part-centric editing.

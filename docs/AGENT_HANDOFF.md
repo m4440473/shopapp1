@@ -4,14 +4,13 @@
 
 Date: 2026-02-07
 Agent: Codex
-Goal (1 sentence): Redesign quote and order creation flows with steppers and part-centric editing while keeping all fields reachable.
+Goal (1 sentence): Verify order/quote print pages still use template-defined layouts and allow printing.
 
 ## What I changed
-- Summary: Added stepper navigation and parts list + selected part editor layouts to quote and order creation, and reorganized assembly notes/attachments/review sections without removing fields.
+- Summary: Reviewed print pages and template wiring to confirm print controls and layout selection behavior.
 
 ## Files touched
-- src/app/admin/quotes/QuoteEditor.tsx
-- src/app/orders/new/page.tsx
+- PROGRESS_LOG.md
 - PROGRESS_LOG.md
 - docs/AGENT_HANDOFF.md
 
@@ -19,7 +18,7 @@ Goal (1 sentence): Redesign quote and order creation flows with steppers and par
 - None
 
 ## Notes / gotchas
-- None.
+- Review-only session; no application code changes.
 
 ## Next steps
-- [ ] Verify quote and order creation steppers in a seeded environment, including part-centric editing and attachment flows.
+- [ ] Manually verify print previews in a seeded environment if Prisma is available.
