@@ -41,6 +41,15 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-02 — Restrict non-admin access to PO/quote/invoice attachments
+- Filtered order/part attachments for non-admin responses and blocked public attachment downloads when labels indicate Quote/PO/Invoice.
+- Added unit tests for attachment filtering in quote-visibility.
+
+Commands run:
+- npm test -- src/lib/__tests__/quote-visibility.test.ts
+- npm run lint (fails: existing QuoteEditor no-unescaped-entities + existing hooks warnings)
+- npm run build (fails: Google Fonts fetch blocked in this environment)
+
 ### 2026-02-10 — Store PartEvent meta as text for sqlite compatibility
 - Changed PartEvent.meta to TEXT in the Prisma schema, added a migration to redefine the column, and serialize/parse meta JSON in orders repo so sqlite Prisma Client generation works.
 - Prisma generate now succeeds locally with sqlite after the schema update.

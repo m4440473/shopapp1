@@ -2,27 +2,28 @@
 
 # Agent Handoff (Update Every Session)
 
-Date: 2026-02-10
-Agent: Codex
-Goal (1 sentence): Fix local sqlite Prisma sync by replacing the PartEvent Json field with a text-backed JSON payload.
+Date: 2026-02-02
+Agent: Copilot
+Goal (1 sentence): Restrict non-admin access to Quote/PO/Invoice attachments while keeping other attachments visible.
 
 ## What I changed
-- Summary: Updated PartEvent.meta to TEXT in the Prisma schema, added a migration for the column change, and serialized/parsed meta JSON in the orders repo so sqlite Prisma client generation succeeds.
+- Summary: Filtered attachments in non-admin order responses and blocked public attachment downloads for Quote/PO/Invoice labels. Added unit tests for attachment filtering.
 
 ## Files touched
-- prisma/schema.prisma
-- prisma/migrations/20260210120000_part_event_meta_text/migration.sql
-- src/modules/orders/orders.repo.ts
-- src/modules/orders/orders.service.ts
+- src/lib/quote-visibility.ts
+- src/lib/__tests__/quote-visibility.test.ts
+- src/app/(public)/attachments/[...path]/route.ts
 - PROGRESS_LOG.md
 - docs/AGENT_HANDOFF.md
 
 ## Commands run
-- DATABASE_URL="file:./dev.db" npx prisma migrate reset --force
-- npx prisma generate
+- npm ci
+- npm test -- src/lib/__tests__/quote-visibility.test.ts
+- npm run lint (failed: existing QuoteEditor no-unescaped-entities + hooks warnings)
+- npm run build (failed: Google Fonts fetch blocked)
 
 ## Notes / gotchas
-- PartEvent.meta is stored as a JSON string now; repo helpers parse it back into an object for consumers.
+- Attachment restriction uses label matching ("quote", "po", "purchase order", "invoice") and part attachment kind "PO".
 
 ## Next steps
-- [ ] Re-run any local seed/dev workflows that previously failed due to Prisma generate issues.
+- [ ] Consider adding a first-class attachment type for order-level attachments (invoice/quote/po) to avoid label heuristics.
