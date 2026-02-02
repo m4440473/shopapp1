@@ -1,4 +1,3 @@
-import type { Prisma } from '@prisma/client';
 import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
 import { prisma } from '@/lib/prisma';
 
@@ -362,13 +361,31 @@ export async function findOrderPartSummary(orderId: string, partId: string) {
   });
 }
 
+function serializePartEventMeta(meta?: Record<string, unknown> | null) {
+  if (!meta) {
+    return null;
+  }
+  return JSON.stringify(meta);
+}
+
+function parsePartEventMeta(meta: string | null) {
+  if (!meta) {
+    return null;
+  }
+  try {
+    return JSON.parse(meta) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 export async function createPartEvent(data: {
   orderId: string;
   partId: string;
   userId?: string | null;
   type: string;
   message: string;
-  meta?: Prisma.JsonValue | null;
+  meta?: Record<string, unknown> | null;
 }) {
   return prisma.partEvent.create({
     data: {
@@ -377,17 +394,21 @@ export async function createPartEvent(data: {
       userId: data.userId ?? null,
       type: data.type,
       message: data.message,
-      meta: data.meta ?? null,
+      meta: serializePartEventMeta(data.meta),
     },
   });
 }
 
 export async function listPartEventsForPart(orderId: string, partId: string) {
-  return prisma.partEvent.findMany({
+  const events = await prisma.partEvent.findMany({
     where: { orderId, partId },
     orderBy: { createdAt: 'desc' },
     include: { user: { select: { id: true, name: true, email: true } } },
   });
+  return events.map((event) => ({
+    ...event,
+    meta: parsePartEventMeta(event.meta),
+  }));
 }
 
 export async function createOrderPartWithCharges({
