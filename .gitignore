@@ -6,7 +6,8 @@ storage/
 *.zip
 /.env
 cookies.txt
-prisma/prisma/dev.db
+prisma/dev.db
+prisma/dev.db-journal
 /.vscode/
 /.DS_Store
 node_modules/@next/swc-win32-x64-msvc/next-swc.win32-x64-msvc.node
