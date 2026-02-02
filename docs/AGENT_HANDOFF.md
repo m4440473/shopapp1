@@ -4,13 +4,13 @@
 
 Date: 2026-02-07
 Agent: Codex
-Goal (1 sentence): Verify order/quote print pages still use template-defined layouts and allow printing.
+Goal (1 sentence): Fix seed.js vendor record tracking to avoid undefined vendor references.
 
 ## What I changed
-- Summary: Reviewed print pages and template wiring to confirm print controls and layout selection behavior.
+- Summary: Added vendor record tracking in prisma/seed.js to align with seed.ts and prevent vendorRecords undefined errors.
 
 ## Files touched
-- PROGRESS_LOG.md
+- prisma/seed.js
 - PROGRESS_LOG.md
 - docs/AGENT_HANDOFF.md
 
@@ -18,7 +18,7 @@ Goal (1 sentence): Verify order/quote print pages still use template-defined lay
 - None
 
 ## Notes / gotchas
-- Review-only session; no application code changes.
+- None.
 
 ## Next steps
-- [ ] Manually verify print previews in a seeded environment if Prisma is available.
+- [ ] Run seed scripts in an environment with Prisma client artifacts if needed.
