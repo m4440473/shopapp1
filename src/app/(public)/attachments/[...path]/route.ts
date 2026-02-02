@@ -5,16 +5,30 @@ import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 
 import { ensureAttachmentRoot } from '@/lib/storage';
+import { canAccessAdmin } from '@/lib/rbac';
 
 export const dynamic = 'force-dynamic';
+
+const RESTRICTED_LABELS = ['quote', 'po', 'purchase order', 'invoice'];
+
+function matchesRestrictedLabel(label?: string | null) {
+  if (!label) return false;
+  const normalized = label.trim().toLowerCase();
+  return RESTRICTED_LABELS.some((keyword) => normalized.includes(keyword));
+}
 
 export async function GET(_req: NextRequest, { params }: { params: { path: string[] } }) {
   const { prisma } = await import('@/lib/prisma');
   const { getAppSettings } = await import('@/lib/app-settings');
+  const { getServerAuthSession } = await import('@/lib/auth-session');
   const segments = Array.isArray(params.path) ? params.path : [];
   if (segments.length === 0) {
     return new NextResponse('Not found', { status: 404 });
   }
+
+  const session = await getServerAuthSession();
+  const user = session?.user as any;
+  const isAdmin = canAccessAdmin(user);
 
   const relativePath = segments.join('/');
   const quoteAttachment = await prisma.quoteAttachment.findFirst({
@@ -30,6 +44,10 @@ export async function GET(_req: NextRequest, { params }: { params: { path: strin
       });
 
   const attachment = quoteAttachment ?? orderAttachment;
+
+  if (attachment && !isAdmin && matchesRestrictedLabel(attachment.label)) {
+    return new NextResponse('Forbidden', { status: 403 });
+  }
 
   if (!attachment) {
     return new NextResponse('Not found', { status: 404 });

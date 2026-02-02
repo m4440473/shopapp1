@@ -139,7 +139,31 @@ describe('pricing visibility sanitization', () => {
     poNumber: null,
     assignedMachinistId: null,
     assignedMachinist: null,
-    parts: [],
+    parts: [
+      {
+        id: 'part-1',
+        orderId: 'order-1',
+        partNumber: 'BR-1',
+        quantity: 1,
+        attachments: [
+          {
+            id: 'part-attach-1',
+            kind: 'PO',
+            label: 'PO document',
+            url: 'https://example.com/po.pdf',
+            storagePath: null,
+          },
+          {
+            id: 'part-attach-2',
+            kind: 'PDF',
+            label: 'Machining drawing',
+            url: 'https://example.com/drawing.pdf',
+            storagePath: null,
+          },
+        ],
+        charges: [],
+      },
+    ],
     checklist: [
       {
         id: 'check-1',
@@ -164,7 +188,36 @@ describe('pricing visibility sanitization', () => {
     ],
     statusHistory: [],
     notes: [],
-    attachments: [],
+    attachments: [
+      {
+        id: 'order-attach-1',
+        label: 'Invoice 2024-01',
+        url: 'https://example.com/invoice.pdf',
+        storagePath: null,
+      },
+      {
+        id: 'order-attach-2',
+        label: 'Spec sheet',
+        url: 'https://example.com/specs.pdf',
+        storagePath: null,
+      },
+    ],
+    partAttachments: [
+      {
+        id: 'order-part-attach-1',
+        kind: 'PO',
+        label: 'PO summary',
+        url: 'https://example.com/po.pdf',
+        storagePath: null,
+      },
+      {
+        id: 'order-part-attach-2',
+        kind: 'PDF',
+        label: 'Setup notes',
+        url: 'https://example.com/setup.pdf',
+        storagePath: null,
+      },
+    ],
   };
 
   it('returns the original payload for admins', () => {
@@ -207,5 +260,16 @@ describe('pricing visibility sanitization', () => {
 
     expect(result.checklist[0].addon?.rateCents).toBeUndefined();
     expect(orderBase.checklist[0].addon?.rateCents).toBe(700);
+  });
+
+  it('removes restricted attachments for non-admins', () => {
+    const result = sanitizePricingForNonAdmin(orderBase, false);
+
+    expect(result.attachments).toHaveLength(1);
+    expect(result.attachments[0].label).toBe('Spec sheet');
+    expect(result.parts[0].attachments).toHaveLength(1);
+    expect(result.parts[0].attachments[0].label).toBe('Machining drawing');
+    expect(result.partAttachments).toHaveLength(1);
+    expect(result.partAttachments[0].label).toBe('Setup notes');
   });
 });
