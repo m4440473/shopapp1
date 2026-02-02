@@ -786,6 +786,15 @@ export async function listAddons({
     orderBy: { name: 'asc' },
     take: take + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    include: { department: true },
+  });
+}
+
+export async function listAddonsByIds(addonIds: string[]) {
+  if (!addonIds.length) return [];
+  return prisma.addon.findMany({
+    where: { id: { in: addonIds } },
+    select: { id: true, name: true, rateCents: true, rateType: true, departmentId: true },
   });
 }
 

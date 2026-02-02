@@ -55,6 +55,7 @@ import {
   findUserById,
   listPartEventsForPart,
   listAddons,
+  listAddonsByIds,
   listChecklistItems,
   listDepartmentsOrdered,
   listOrderLevelDepartmentChecklistItems,
@@ -392,10 +393,51 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
           },
         },
       },
-      select: { id: true },
+      select: { id: true, parts: { select: { id: true }, orderBy: { createdAt: 'asc' } } },
     },
     customFieldValues: normalizedCustomFieldValues,
   });
+
+  const selectionsByPart = body.parts
+    .map((part, index) => ({
+      partId: created.parts?.[index]?.id ?? null,
+      selections: part.addonSelections ?? [],
+    }))
+    .filter((entry) => entry.partId && entry.selections.length);
+
+  if (selectionsByPart.length) {
+    const addonIds = Array.from(
+      new Set(
+        selectionsByPart.flatMap((entry) => entry.selections.map((selection) => selection.addonId))
+      )
+    );
+    const addons = await listAddonsByIds(addonIds);
+    const addonMap = new Map(addons.map((addon) => [addon.id, addon]));
+
+    let sortOrder = 0;
+    for (const entry of selectionsByPart) {
+      for (const selection of entry.selections) {
+        const addon = addonMap.get(selection.addonId);
+        if (!addon || !entry.partId) continue;
+        await createOrderCharge({
+          data: {
+            orderId: created.id,
+            partId: entry.partId,
+            departmentId: addon.departmentId,
+            addonId: addon.id,
+            kind: 'ADDON',
+            name: addon.name,
+            description: selection.notes ?? null,
+            quantity: new Prisma.Decimal(selection.units ?? 0),
+            unitPrice: new Prisma.Decimal(addon.rateCents ?? 0),
+            sortOrder: sortOrder++,
+          },
+        });
+      }
+    }
+
+    await syncChecklistForOrder(created.id);
+  }
 
   return ok({ id: created.id });
 }
@@ -526,14 +568,13 @@ export async function toggleChecklistItem({
   addonId?: string;
   partId?: string;
   checked: boolean;
-  employeeName: string;
+  employeeName?: string;
   togglerId?: string;
 }) {
   if (!checklistId && !chargeId && !addonId) {
     return fail(400, 'Missing checklistId');
   }
   if (typeof checked !== 'boolean') return fail(400, 'Missing checked state');
-  if (!employeeName) return fail(400, 'Employee name is required');
 
   const orderExists = await findOrderById(orderId);
   if (!orderExists) return fail(404, 'Order not found');
@@ -574,13 +615,14 @@ export async function toggleChecklistItem({
   });
 
   const label = charge?.name ?? addonExists?.name ?? 'Checklist';
+  const togglerLabel = employeeName?.trim() || toggledById || 'Unknown user';
 
   await createStatusHistoryEntry({
     orderId,
     from: `${label} ${previousState ? 'checked' : 'unchecked'}`,
     to: `${label} ${checked ? 'checked' : 'unchecked'}`,
     userId: toggledById ?? undefined,
-    reason: `Checklist "${label}" ${checked ? 'checked' : 'unchecked'} by ${employeeName}`,
+    reason: `Checklist "${label}" ${checked ? 'checked' : 'unchecked'} by ${togglerLabel}`,
   });
 
   if (existingChecklist.partId) {

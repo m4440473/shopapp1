@@ -61,4 +61,5 @@ export const findPartAttachment = repo.findPartAttachment;
 export const updatePartAttachment = repo.updatePartAttachment;
 export const deletePartAttachment = repo.deletePartAttachment;
 export const listAddons = repo.listAddons;
+export const listAddonsByIds = repo.listAddonsByIds;
 export const listReadyOrderPartsForDepartment = repo.listReadyOrderPartsForDepartment;

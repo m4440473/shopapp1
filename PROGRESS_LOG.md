@@ -41,6 +41,21 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-09 — Checklist toggle fix + per-part add-on library + quote field staging
+- Fixed checklist toggle API to derive toggler identity from session and return JSON errors; UI now surfaces toggle failures and reverts optimistic state.
+- Replaced raw selects/buttons in quote/order flows with shadcn equivalents and added shared AvailableItemsLibrary + AssignedItemsPanel for drag/drop add-ons.
+- Added per-part add-on assignments for order creation and quote build parts, with reorder/removal and notes/units fields.
+- Introduced CustomField.uiSection (string) and filtered quote custom fields so Finish Required appears in build stage; updated seed/migration.
+
+Validation attempts (blocked by Prisma client generation in this environment):
+- Orders checklist toggle flow, quote build parts drag/drop flow, order create flow, and print route could not be verified because `@prisma/client` was not generated (root layout crashed).
+
+Commands run:
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000 (app error: Prisma client not generated)
+- DATABASE_URL="file:./dev.db" npx prisma migrate deploy
+- DATABASE_URL="file:./dev.db" npm run seed (failed: Prisma client not generated)
+- npx prisma generate (failed: Json field unsupported by sqlite connector)
+
 ### 2026-02-08 — Add TEST_MODE harness for mock auth + in-memory repos
 - Added TEST_MODE switch, centralized auth session helper, and middleware bypass in test mode.
 - Added repo factory with mock orders/time/users repos and seeded deterministic data for orders UI.

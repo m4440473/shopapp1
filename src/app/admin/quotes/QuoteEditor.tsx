@@ -44,6 +44,8 @@ import {
 } from '@/lib/businesses';
 import { CustomFieldInputs, type CustomFieldDefinition } from '@/components/CustomFieldInputs';
 import { hasCustomFieldValue } from '@/lib/custom-field-values';
+import { AvailableItemsLibrary } from '@/components/AvailableItemsLibrary';
+import { AssignedItemsPanel } from '@/components/AssignedItemsPanel';
 
 import type { QuoteCreateInput } from '@/lib/zod-quotes';
 
@@ -65,6 +67,7 @@ type AddonOption = {
   rateCents: number;
   active: boolean;
   description?: string | null;
+  department?: { id: string; name: string } | null;
 };
 
 type QuotePartState = {
@@ -370,6 +373,15 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     { key: 'review', label: 'Review & pricing' },
   ];
 
+  const intakeCustomFields = useMemo(
+    () => customFields.filter((field) => (field.uiSection ?? 'INTAKE') === 'INTAKE'),
+    [customFields]
+  );
+  const buildCustomFields = useMemo(
+    () => customFields.filter((field) => (field.uiSection ?? 'INTAKE') === 'PART_BUILD'),
+    [customFields]
+  );
+
   useEffect(() => {
     setAttachmentBusiness(initialAttachmentBusiness);
   }, [initialAttachmentBusiness]);
@@ -554,11 +566,17 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     ]);
   }
 
-  function addAddonSelection(partKey: string) {
+  function addAddonSelection(partKey: string, addonId = '') {
     setParts((prev) =>
       prev.map((part) =>
         part.key === partKey
-          ? { ...part, addonSelections: [...part.addonSelections, { key: createKey(), addonId: '', units: '1.0', notes: '' }] }
+          ? {
+              ...part,
+              addonSelections: [
+                ...part.addonSelections,
+                { key: createKey(), addonId, units: '1.0', notes: '' },
+              ],
+            }
           : part
       )
     );
@@ -593,6 +611,22 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           ? { ...part, addonSelections: part.addonSelections.filter((selection) => selection.key !== selectionKey) }
           : part
       )
+    );
+  }
+
+  function moveAddonSelection(partKey: string, selectionKey: string, direction: 'up' | 'down') {
+    setParts((prev) =>
+      prev.map((part) => {
+        if (part.key !== partKey) return part;
+        const index = part.addonSelections.findIndex((selection) => selection.key === selectionKey);
+        if (index < 0) return part;
+        const nextIndex = direction === 'up' ? index - 1 : index + 1;
+        if (nextIndex < 0 || nextIndex >= part.addonSelections.length) return part;
+        const updated = [...part.addonSelections];
+        const [moved] = updated.splice(index, 1);
+        updated.splice(nextIndex, 0, moved);
+        return { ...part, addonSelections: updated };
+      })
     );
   }
 
@@ -680,6 +714,22 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   }
 
   const addonMap = useMemo(() => new Map(addons.map((addon) => [addon.id, addon])), [addons]);
+  const availableItems = useMemo(
+    () =>
+      addons.map((addon) => ({
+        id: addon.id,
+        name: addon.name,
+        description: addon.description,
+        kind: 'addon' as const,
+        rateType: addon.rateType,
+        departmentName: addon.department?.name ?? null,
+      })),
+    [addons]
+  );
+  const availableItemsById = useMemo(
+    () => new Map(availableItems.map((item) => [item.id, item])),
+    [availableItems]
+  );
 
   const activePart = useMemo(
     () => parts.find((part) => part.key === activePartKey) ?? parts[0],
@@ -818,9 +868,11 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       <div className="rounded border border-border/60 bg-card/60 p-4">
         <div className="flex flex-wrap gap-2">
           {steps.map((step, index) => (
-            <button
+            <Button
               key={step.key}
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setCurrentStep(index)}
               className={`rounded-full border px-4 py-2 text-sm ${
                 index === currentStep
@@ -830,7 +882,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             >
               <span className="mr-2 text-xs text-muted-foreground">{index + 1}</span>
               {step.label}
-            </button>
+            </Button>
           ))}
         </div>
         <div className="mt-3 h-1 w-full rounded-full bg-muted">
@@ -851,20 +903,21 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="quoteBusiness">Business *</Label>
-            <select
-              id="quoteBusiness"
+            <Select
               value={form.business}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, business: event.target.value as BusinessCode }))
-              }
-              className="rounded border border-border bg-background px-3 py-2 text-sm"
+              onValueChange={(value) => setForm((prev) => ({ ...prev, business: value as BusinessCode }))}
             >
-              {BUSINESS_OPTIONS.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.prefix} — {option.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="quoteBusiness" className="border border-border bg-background px-3 py-2 text-sm">
+                <SelectValue placeholder="Select a business" />
+              </SelectTrigger>
+              <SelectContent>
+                {BUSINESS_OPTIONS.map((option) => (
+                  <SelectItem key={option.code} value={option.code}>
+                    {option.prefix} — {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="quoteCompanyName">Company *</Label>
@@ -994,18 +1047,18 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           </div>
           <div className="grid gap-2">
             <Label htmlFor="quoteStatus">Status</Label>
-            <select
-              id="quoteStatus"
-              value={form.status}
-              onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
-              className="rounded border border-border bg-background px-3 py-2 text-sm"
-            >
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <Select value={form.status} onValueChange={(value) => setForm((prev) => ({ ...prev, status: value }))}>
+              <SelectTrigger id="quoteStatus" className="border border-border bg-background px-3 py-2 text-sm">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="quoteBasePrice">Base fabrication price (USD)</Label>
@@ -1040,7 +1093,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             </CardHeader>
             <CardContent>
               <CustomFieldInputs
-                fields={customFields}
+                fields={intakeCustomFields}
                 values={customFieldValues}
                 onChange={(fieldId, value) =>
                   setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
@@ -1076,9 +1129,11 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               </div>
               <div className="space-y-2">
                 {parts.map((part, index) => (
-                  <button
+                  <Button
                     key={part.key}
                     type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => setActivePartKey(part.key)}
                     className={`w-full rounded border px-3 py-2 text-left text-sm ${
                       part.key === activePartKey
@@ -1090,7 +1145,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                     <div className="text-xs text-muted-foreground">
                       {part.partNumber || 'No part number'} • Qty {part.quantity || '1'}
                     </div>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -1210,48 +1265,70 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               <CardTitle>Build parts</CardTitle>
               <CardDescription>Add add-ons, labor notes, and attachments per part.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 lg:grid-cols-[280px_1fr]">
-              <div className="space-y-3 rounded border border-border/60 bg-muted/10 p-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Parts list</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const nextPart = buildEmptyPart();
-                      setParts((prev) => [...prev, nextPart]);
-                      setActivePartKey(nextPart.key);
-                    }}
-                  >
-                    Add part
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {parts.map((part, index) => (
-                    <button
-                      key={part.key}
-                      type="button"
-                      onClick={() => setActivePartKey(part.key)}
-                      className={`w-full rounded border px-3 py-2 text-left text-sm ${
-                        part.key === activePartKey
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border/60 text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      <div className="font-medium">{part.name || `Part ${index + 1}`}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {part.addonSelections.length} add-ons • Notes {part.notes ? 'added' : 'empty'}
-                      </div>
-                    </button>
-                  ))}
-                </div>
+            <CardContent className="grid gap-4 lg:grid-cols-[320px_1fr]">
+              <div className="space-y-3">
+                <AvailableItemsLibrary
+                  title="Available items library"
+                  description="Drag items onto the selected part or click Add."
+                  items={availableItems}
+                  onAddItem={(item) => {
+                    if (!activePart) return;
+                    addAddonSelection(activePart.key, item.id);
+                  }}
+                />
+                {addons.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Need more options? Configure add-ons in the{' '}
+                    <Link href="/admin/addons" className="underline">
+                      Add-ons admin panel
+                    </Link>
+                    .
+                  </p>
+                )}
               </div>
               <div className="space-y-4">
+                <div className="rounded border border-border/60 bg-card/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-muted-foreground">Parts list</p>
+                      <p className="text-xs text-muted-foreground">Select a part to assign add-ons.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const nextPart = buildEmptyPart();
+                        setParts((prev) => [...prev, nextPart]);
+                        setActivePartKey(nextPart.key);
+                      }}
+                    >
+                      Add part
+                    </Button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {parts.map((part, index) => (
+                      <Button
+                        key={part.key}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setActivePartKey(part.key)}
+                        className={`justify-start ${
+                          part.key === activePartKey
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border/60 text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {part.name || `Part ${index + 1}`}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
                 {activePart ? (
                   <>
                     <div className="rounded border border-border/60 bg-card/60 p-4">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <div>
                           <p className="text-sm font-semibold text-muted-foreground">Selected part</p>
                           <h3 className="text-lg font-semibold">{activePart.name || 'New part'}</h3>
@@ -1265,7 +1342,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                           Remove
                         </Button>
                       </div>
-                      <div className="grid gap-2 mt-4">
+                      <div className="mt-4 grid gap-2">
                         <Label>Part notes</Label>
                         <Textarea
                           value={activePart.notes}
@@ -1274,95 +1351,37 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                         />
                       </div>
                     </div>
-                    <div className="rounded border border-border/60 bg-muted/10 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <Label className="text-sm font-medium">Add-ons & labor</Label>
-                        <Button type="button" variant="outline" size="sm" onClick={() => addAddonSelection(activePart.key)}>
-                          Add add-on
-                        </Button>
-                      </div>
-                      {activePart.addonSelections.length === 0 && (
-                        <p className="text-xs text-muted-foreground">No add-ons assigned to this part yet.</p>
-                      )}
-                      {activePart.addonSelections.map((selection) => {
-                        const addon = addonMap.get(selection.addonId);
-                        const units = numberFromString(selection.units);
-                        const totalCents = addon ? Math.round(addon.rateCents * (units > 0 ? units : 0)) : 0;
+                    <AssignedItemsPanel
+                      title="Assigned add-ons & labor"
+                      description="Drop items here or use Add from the library."
+                      assignments={activePart.addonSelections.map((selection) => ({
+                        key: selection.key,
+                        itemId: selection.addonId,
+                        units: selection.units,
+                        notes: selection.notes,
+                      }))}
+                      itemsById={availableItemsById}
+                      onAddItem={(itemId) => addAddonSelection(activePart.key, itemId)}
+                      onUpdateAssignment={(key, patch) => {
+                        const updates: Partial<QuoteAddonState> = {};
+                        if (patch.units !== undefined) updates.units = patch.units;
+                        if (patch.notes !== undefined) updates.notes = patch.notes;
+                        updateAddonSelection(activePart.key, key, updates);
+                      }}
+                      onRemoveAssignment={(key) => removeAddonSelection(activePart.key, key)}
+                      onMoveAssignment={(key, direction) => moveAddonSelection(activePart.key, key, direction)}
+                      renderMeta={(assignment) => {
+                        const addon = addonMap.get(assignment.itemId);
+                        if (!addon) return null;
+                        const units = numberFromString(assignment.units);
+                        const totalCents = Math.round(addon.rateCents * (units > 0 ? units : 0));
                         return (
-                          <div key={selection.key} className="mt-3 rounded border border-border/50 bg-card/40 p-3">
-                            <div className="grid gap-3 md:grid-cols-3">
-                              <div className="grid gap-2">
-                                <Label className="text-xs">Add-on</Label>
-                                <select
-                                  value={selection.addonId}
-                                  onChange={(event) =>
-                                    updateAddonSelection(activePart.key, selection.key, { addonId: event.target.value })
-                                  }
-                                  className="rounded border border-border bg-background px-3 py-2 text-sm"
-                                >
-                                  <option value="">Select add-on</option>
-                                  {addons.map((option) => (
-                                    <option key={option.id} value={option.id}>
-                                      {option.name} ({option.rateType === 'HOURLY' ? 'Hourly' : 'Flat'})
-                                    </option>
-                                  ))}
-                                </select>
-                                {addon?.description && (
-                                  <p className="text-xs text-muted-foreground mt-1">{addon.description}</p>
-                                )}
-                              </div>
-                              <div className="grid gap-2">
-                                <Label className="text-xs">{addon?.rateType === 'FLAT' ? 'Quantity' : 'Hours'}</Label>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.25"
-                                  value={selection.units}
-                                  onChange={(event) =>
-                                    updateAddonSelection(activePart.key, selection.key, { units: event.target.value })
-                                  }
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label className="text-xs">Subtotal</Label>
-                                <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
-                                  {addon
-                                    ? `${formatCurrency(addon.rateCents)} x ${units.toFixed(2)} = ${formatCurrency(totalCents)}`
-                                    : '—'}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="grid gap-2 mt-3">
-                              <Label className="text-xs">Notes</Label>
-                              <Textarea
-                                value={selection.notes}
-                                onChange={(event) =>
-                                  updateAddonSelection(activePart.key, selection.key, { notes: event.target.value })
-                                }
-                              />
-                            </div>
-                            <div className="mt-3 flex justify-end">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => removeAddonSelection(activePart.key, selection.key)}
-                              >
-                                Remove
-                              </Button>
-                            </div>
+                          <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
+                            {formatCurrency(addon.rateCents)} x {units.toFixed(2)} = {formatCurrency(totalCents)}
                           </div>
                         );
-                      })}
-                      {addons.length === 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          Need more options? Configure add-ons in the{' '}
-                          <Link href="/admin/addons" className="underline">
-                            Add-ons admin panel
-                          </Link>
-                          .
-                        </p>
-                      )}
-                    </div>
+                      }}
+                    />
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground">Select a part to add add-ons and notes.</p>
@@ -1370,6 +1389,24 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               </div>
             </CardContent>
           </Card>
+
+          {buildCustomFields.length ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Part build fields</CardTitle>
+                <CardDescription>Finish requirements and other build-stage details.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CustomFieldInputs
+                  fields={buildCustomFields}
+                  values={customFieldValues}
+                  onChange={(fieldId, value) =>
+                    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
+                  }
+                />
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>
@@ -1424,18 +1461,18 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             <CardContent className="space-y-4">
               <div className="grid gap-2 md:w-1/2">
                 <Label htmlFor="quoteAttachmentBusiness">Business folder</Label>
-                <select
-                  id="quoteAttachmentBusiness"
-                  value={attachmentBusiness}
-                  onChange={(event) => setAttachmentBusiness(event.target.value as BusinessName)}
-                  className="rounded border border-border bg-background px-3 py-2 text-sm"
-                >
-                  {BUSINESS_OPTIONS.map((option) => (
-                    <option key={option.slug} value={option.name}>
-                      {option.name}
-                    </option>
-                  ))}
-                </select>
+                <Select value={attachmentBusiness} onValueChange={(value) => setAttachmentBusiness(value as BusinessName)}>
+                  <SelectTrigger id="quoteAttachmentBusiness" className="border border-border bg-background px-3 py-2 text-sm">
+                    <SelectValue placeholder="Select a business" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BUSINESS_OPTIONS.map((option) => (
+                      <SelectItem key={option.slug} value={option.name}>
+                        {option.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <p className="text-xs text-muted-foreground">
                   Files upload under <code className="font-mono text-xs">{attachmentPathPreview}</code> inside the storage root.
                 </p>
@@ -1559,29 +1596,30 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="grid gap-2">
                         <Label>Vendor</Label>
-                        <select
+                        <Select
                           value={item.vendorId}
-                          onChange={(event) =>
-                            {
-                              const selected = vendors.find((option) => option.id === event.target.value);
-                              setVendorItems((prev) =>
-                                prev.map((row) =>
-                                  row.key === item.key
-                                    ? { ...row, vendorId: event.target.value, vendorName: selected?.name ?? '' }
-                                    : row
-                                )
-                              );
-                            }
-                          }
-                          className="rounded border border-border bg-background px-3 py-2 text-sm"
+                          onValueChange={(value) => {
+                            const selected = vendors.find((option) => option.id === value);
+                            setVendorItems((prev) =>
+                              prev.map((row) =>
+                                row.key === item.key
+                                  ? { ...row, vendorId: value, vendorName: selected?.name ?? '' }
+                                  : row
+                              )
+                            );
+                          }}
                         >
-                          <option value="">Select vendor</option>
-                          {vendors.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.name}
-                            </option>
-                          ))}
-                        </select>
+                          <SelectTrigger className="border border-border bg-background px-3 py-2 text-sm">
+                            <SelectValue placeholder="Select vendor" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {vendors.map((option) => (
+                              <SelectItem key={option.id} value={option.id}>
+                                {option.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="grid gap-2">
                         <Label>Override vendor name</Label>
@@ -1653,10 +1691,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             Suggestions:
                             {MARKUP_SUGGESTIONS.map((suggestion) => (
-                              <button
+                              <Button
                                 key={suggestion}
                                 type="button"
-                                className="rounded border border-border/60 bg-background px-2 py-1 text-xs"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
                                 onClick={() =>
                                   setVendorItems((prev) =>
                                     prev.map((row) =>
@@ -1668,7 +1708,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                                 }
                               >
                                 {suggestion}%
-                              </button>
+                              </Button>
                             ))}
                           </div>
                         </div>

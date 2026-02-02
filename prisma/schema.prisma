@@ -430,6 +430,7 @@ model CustomField {
   isRequired  Boolean  @default(false)
   isActive    Boolean  @default(true)
   sortOrder   Int      @default(0)
+  uiSection   String   @default("INTAKE")
   options     CustomFieldOption[]
   values      CustomFieldValue[]
   createdAt   DateTime @default(now())

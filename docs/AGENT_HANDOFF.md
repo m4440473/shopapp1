@@ -2,42 +2,44 @@
 
 # Agent Handoff (Update Every Session)
 
-Date: 2026-02-08
+Date: 2026-02-09
 Agent: Codex
-Goal (1 sentence): Add a TEST_MODE harness to bypass auth/Prisma with mock repos and a smoke check.
+Goal (1 sentence): Fix checklist toggles, add per-part add-on drag/drop library for quotes/orders, and move Finish Required to the build stage.
 
 ## What I changed
-- Summary: Added a centralized TEST_MODE switch with mock auth + in-memory repos, updated orders/time services and admin users routes to use the repo factory, and added a test-mode smoke API.
+- Summary: Fixed checklist toggle error handling, replaced raw selects/buttons with shadcn components, introduced shared AvailableItemsLibrary/AssignedItemsPanel drag-drop UI, added per-part add-on assignments on order/quote creation, and added CustomField.uiSection for quote stage placement.
 
 ## Files touched
-- middleware.ts
-- src/lib/testMode.ts
-- src/lib/auth-session.ts
-- src/repos/index.ts
-- src/repos/orders.ts
-- src/repos/time.ts
-- src/repos/users.ts
-- src/repos/mock/seed.ts
-- src/repos/mock/orders.ts
-- src/repos/mock/time.ts
-- src/repos/mock/users.ts
+- prisma/schema.prisma
+- prisma/seed.ts
+- prisma/seed.js
+- prisma/migrations/20260208130000_custom_field_ui_section/migration.sql
+- src/components/AvailableItemsLibrary.tsx
+- src/components/AssignedItemsPanel.tsx
+- src/components/CustomFieldInputs.tsx
+- src/app/api/orders/[id]/checklist/route.ts
+- src/modules/orders/orders.schema.ts
+- src/modules/orders/orders.repo.ts
 - src/modules/orders/orders.service.ts
-- src/modules/time/time.service.ts
-- src/modules/users/users.repo.ts
-- src/app/api/test-mode/smoke/route.ts
-- src/app/api/admin/users/route.ts
-- src/app/api/admin/users/[id]/route.ts
-- .env.example
-- CANON.md
+- src/repos/orders.ts
+- src/repos/mock/orders.ts
+- src/app/orders/[id]/page.tsx
+- src/app/orders/new/page.tsx
+- src/app/admin/quotes/QuoteEditor.tsx
+- src/app/admin/quotes/client.tsx
 - docs/AGENT_CONTEXT.md
 - PROGRESS_LOG.md
 - docs/AGENT_HANDOFF.md
 
 ## Commands run
-- None
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000 (app errored: Prisma client not generated)
+- DATABASE_URL="file:./dev.db" npx prisma migrate deploy
+- DATABASE_URL="file:./dev.db" npm run seed (failed: Prisma client not generated)
+- npx prisma generate (failed: Json field unsupported by sqlite connector)
 
 ## Notes / gotchas
-- Enable with `TEST_MODE=true` in local/Codex/Replit environments to bypass auth + Prisma; keep it OFF in production.
+- Prisma client generation fails with sqlite due to Json field support; dev server crashes on layout AppSettings without generated client.
 
 ## Next steps
-- [ ] Run a local dev smoke check with TEST_MODE=true and visit /api/test-mode/smoke.
+- [ ] Resolve Prisma client generation issue (Json type support) so UI flows can be verified locally.
+- [ ] Re-run the required order/quote flow validations once Prisma client is available.

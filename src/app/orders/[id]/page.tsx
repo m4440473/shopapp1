@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/Textarea';
+import { useToast } from '@/components/ui/Toast';
 
 const PART_TABS = ['overview', 'notes', 'checklist', 'log'] as const;
 const PART_ATTACHMENT_KINDS = ['DWG', 'STEP', 'PDF', 'PO', 'IMAGE', 'OTHER'] as const;
@@ -68,6 +69,7 @@ const statusBadgeStyles: Record<string, string> = {
 export default function OrderDetailPage() {
   const pathname = usePathname();
   const id = pathname?.split('/').pop() ?? '';
+  const toast = useToast();
   const [item, setItem] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +105,8 @@ export default function OrderDetailPage() {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [attachmentFileKey, setAttachmentFileKey] = useState(0);
   const [attachmentFileName, setAttachmentFileName] = useState<string | null>(null);
+  const [checklistError, setChecklistError] = useState<string | null>(null);
+  const [checklistOverrides, setChecklistOverrides] = useState<Record<string, boolean>>({});
 
   const parts = Array.isArray(item?.parts) ? item.parts : [];
   const partIdsParam = useMemo(() => parts.map((part: any) => part.id).filter(Boolean).join(','), [parts]);
@@ -401,6 +405,8 @@ export default function OrderDetailPage() {
 
   const handleChecklistToggle = async (entry: any, checked: boolean) => {
     if (!selectedPartId) return;
+    setChecklistError(null);
+    setChecklistOverrides((prev) => ({ ...prev, [entry.id]: checked }));
     try {
       const res = await fetch(`/api/orders/${id}/checklist`, {
         method: 'POST',
@@ -412,12 +418,32 @@ export default function OrderDetailPage() {
         }),
         credentials: 'include',
       });
-      if (!res.ok) throw res;
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        const message =
+          typeof errorBody?.error === 'string'
+            ? errorBody.error
+            : 'Failed to toggle checklist item.';
+        throw new Error(message);
+      }
       await load();
       await loadPartEvents();
-    } catch {
-      // ignore
+    } catch (err: any) {
+      const message = err?.message || 'Failed to toggle checklist item.';
+      setChecklistOverrides((prev) => {
+        const next = { ...prev };
+        delete next[entry.id];
+        return next;
+      });
+      setChecklistError(message);
+      toast.push(message, 'error');
+      return;
     }
+    setChecklistOverrides((prev) => {
+      const next = { ...prev };
+      delete next[entry.id];
+      return next;
+    });
   };
 
   if (loading) {
@@ -822,9 +848,18 @@ export default function OrderDetailPage() {
                 <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                   <ListChecks className="h-4 w-4 text-muted-foreground" /> To-do / Checklist
                 </div>
+                {checklistError ? (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {checklistError}
+                  </div>
+                ) : null}
                 {selectedChecklist.length ? (
                   selectedChecklist.map((entry: any) => {
                     const label = entry.charge?.name ?? entry.addon?.name ?? 'Checklist item';
+                    const checkedValue =
+                      typeof checklistOverrides[entry.id] === 'boolean'
+                        ? checklistOverrides[entry.id]
+                        : Boolean(entry.completed);
                     return (
                       <label
                         key={entry.id}
@@ -832,7 +867,7 @@ export default function OrderDetailPage() {
                       >
                         <div className="flex items-start gap-3">
                           <Checkbox
-                            checked={Boolean(entry.completed)}
+                            checked={checkedValue}
                             onCheckedChange={(checked) => handleChecklistToggle(entry, checked === true)}
                           />
                           <div>

@@ -24,6 +24,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/Textarea';
+import { AvailableItemsLibrary } from '@/components/AvailableItemsLibrary';
+import { AssignedItemsPanel } from '@/components/AssignedItemsPanel';
 import {
   Dialog,
   DialogContent,
@@ -62,6 +64,13 @@ type AddonOption = {
   description?: string | null;
   rateType?: 'HOURLY' | 'FLAT';
   active?: boolean;
+  department?: { id: string; name: string } | null;
+};
+type PartAddonSelection = {
+  key: string;
+  addonId: string;
+  units: string;
+  notes: string;
 };
 type PartInput = {
   key: string;
@@ -71,6 +80,7 @@ type PartInput = {
   stockSize?: string;
   cutLength?: string;
   notes?: string;
+  addonSelections: PartAddonSelection[];
 };
 type AttachmentInput = { url: string; storagePath: string; label: string; mimeType: string; uploading?: boolean };
 
@@ -82,6 +92,7 @@ const emptyPart = (): PartInput => ({
   stockSize: '',
   cutLength: '',
   notes: '',
+  addonSelections: [],
 });
 const emptyAttachment = (): AttachmentInput => ({ url: '', storagePath: '', label: '', mimeType: '', uploading: false });
 
@@ -251,21 +262,37 @@ function NewOrderForm() {
         setModelIncluded(Boolean(quote.multiPiece));
         setParts(
           (quote.parts ?? []).length
-            ? quote.parts.map((part: any) => ({
-                key: createKey(),
-                partNumber: part.partNumber ?? part.name ?? '',
-                quantity: part.quantity ?? 1,
-                materialId: part.materialId ?? '',
-                stockSize: part.stockSize ?? '',
-                cutLength: part.cutLength ?? '',
-                notes: buildPartNotes({
-                  description: part.description ?? null,
-                  notes: part.notes ?? null,
-                  pieceCount: part.pieceCount ?? 1,
-                  stockSize: part.stockSize ?? null,
-                  cutLength: part.cutLength ?? null,
-                }),
-              }))
+            ? (() => {
+                const legacySelections = (quote.addonSelections ?? []).filter((selection: any) => !selection.quotePartId);
+                return quote.parts.map((part: any, index: number) => {
+                  const selections = part.addonSelections?.length
+                    ? part.addonSelections
+                    : index === 0
+                      ? legacySelections
+                      : [];
+                  return {
+                    key: createKey(),
+                    partNumber: part.partNumber ?? part.name ?? '',
+                    quantity: part.quantity ?? 1,
+                    materialId: part.materialId ?? '',
+                    stockSize: part.stockSize ?? '',
+                    cutLength: part.cutLength ?? '',
+                    notes: buildPartNotes({
+                      description: part.description ?? null,
+                      notes: part.notes ?? null,
+                      pieceCount: part.pieceCount ?? 1,
+                      stockSize: part.stockSize ?? null,
+                      cutLength: part.cutLength ?? null,
+                    }),
+                    addonSelections: selections.map((selection: any) => ({
+                      key: createKey(),
+                      addonId: selection.addonId ?? selection.addon?.id ?? '',
+                      units: String(selection.units ?? 1),
+                      notes: selection.notes ?? '',
+                    })),
+                  };
+                });
+              })()
             : [emptyPart()],
         );
         const quoteAddonIds = new Set<string>();
@@ -313,9 +340,82 @@ function NewOrderForm() {
     () => parts.find((part) => part.key === activePartKey) ?? parts[0],
     [activePartKey, parts],
   );
+  const availableItems = React.useMemo(
+    () =>
+      addons.map((addon) => ({
+        id: addon.id,
+        name: addon.name,
+        description: addon.description,
+        kind: 'addon' as const,
+        rateType: addon.rateType,
+        departmentName: addon.department?.name ?? null,
+      })),
+    [addons],
+  );
+  const availableItemsById = React.useMemo(
+    () => new Map(availableItems.map((item) => [item.id, item])),
+    [availableItems],
+  );
 
   function updatePart(key: string, patch: Partial<PartInput>) {
     setParts((prev) => prev.map((part) => (part.key === key ? { ...part, ...patch } : part)));
+  }
+
+  function addAddonSelection(partKey: string, addonId: string) {
+    setParts((prev) =>
+      prev.map((part) =>
+        part.key === partKey
+          ? {
+              ...part,
+              addonSelections: [
+                ...part.addonSelections,
+                { key: createKey(), addonId, units: '1.0', notes: '' },
+              ],
+            }
+          : part
+      )
+    );
+  }
+
+  function updateAddonSelection(partKey: string, selectionKey: string, patch: Partial<PartAddonSelection>) {
+    setParts((prev) =>
+      prev.map((part) =>
+        part.key === partKey
+          ? {
+              ...part,
+              addonSelections: part.addonSelections.map((selection) =>
+                selection.key === selectionKey ? { ...selection, ...patch } : selection
+              ),
+            }
+          : part
+      )
+    );
+  }
+
+  function removeAddonSelection(partKey: string, selectionKey: string) {
+    setParts((prev) =>
+      prev.map((part) =>
+        part.key === partKey
+          ? { ...part, addonSelections: part.addonSelections.filter((selection) => selection.key !== selectionKey) }
+          : part
+      )
+    );
+  }
+
+  function moveAddonSelection(partKey: string, selectionKey: string, direction: 'up' | 'down') {
+    setParts((prev) =>
+      prev.map((part) => {
+        if (part.key !== partKey) return part;
+        const index = part.addonSelections.findIndex((selection) => selection.key === selectionKey);
+        if (index < 0) return part;
+        const nextIndex = direction === 'up' ? index - 1 : index + 1;
+        if (nextIndex < 0 || nextIndex >= part.addonSelections.length) return part;
+        const updated = [...part.addonSelections];
+        const [moved] = updated.splice(index, 1);
+        updated.splice(nextIndex, 0, moved);
+        return { ...part, addonSelections: updated };
+      })
+    );
   }
 
   function addPartRow() {
@@ -442,6 +542,16 @@ function NewOrderForm() {
         stockSize: part.stockSize?.trim() ? part.stockSize.trim() : undefined,
         cutLength: part.cutLength?.trim() ? part.cutLength.trim() : undefined,
         notes: part.notes?.trim() ? part.notes.trim() : undefined,
+        addonSelections: part.addonSelections
+          .filter((selection) => selection.addonId)
+          .map((selection) => {
+            const units = Number.parseFloat(selection.units);
+            return {
+              addonId: selection.addonId,
+              units: Number.isFinite(units) ? units : 0,
+              notes: selection.notes?.trim() ? selection.notes.trim() : undefined,
+            };
+          }),
       }))
       .filter((part) => part.partNumber.length > 0);
 
@@ -653,9 +763,11 @@ function NewOrderForm() {
       <div className="rounded border border-border/60 bg-card/70 p-4 backdrop-blur">
         <div className="flex flex-wrap gap-2">
           {steps.map((step, index) => (
-            <button
+            <Button
               key={step.key}
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setCurrentStep(index)}
               className={`rounded-full border px-4 py-2 text-sm ${
                 index === currentStep
@@ -665,7 +777,7 @@ function NewOrderForm() {
             >
               <span className="mr-2 text-xs text-muted-foreground">{index + 1}</span>
               {step.label}
-            </button>
+            </Button>
           ))}
         </div>
         <div className="mt-3 h-1 w-full rounded-full bg-muted">
@@ -933,109 +1045,168 @@ function NewOrderForm() {
                 <PlusCircle className="mr-2 h-4 w-4" /> Add part
               </Button>
             </CardHeader>
-            <CardContent className="grid gap-6 lg:grid-cols-[280px_1fr]">
-              <div className="space-y-3 rounded-lg border border-border/60 bg-background/60 p-4">
-                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Parts list</p>
-                <div className="space-y-2">
-                  {parts.map((part, index) => (
-                    <button
-                      key={part.key}
-                      type="button"
-                      onClick={() => setActivePartKey(part.key)}
-                      className={`w-full rounded border px-3 py-2 text-left text-sm ${
-                        part.key === activePartKey
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border/60 text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      <div className="font-medium">{part.partNumber || `Part ${index + 1}`}</div>
-                      <div className="text-xs text-muted-foreground">Qty {part.quantity || 1}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {activePart ? (
-                <div className="rounded-xl border border-border/60 bg-background/60 p-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                      Selected part
-                    </h3>
-                    {parts.length > 1 && (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removePart(activePart.key)}>
-                        Remove
-                      </Button>
-                    )}
+            <CardContent className="grid gap-6 lg:grid-cols-[320px_1fr]">
+              <AvailableItemsLibrary
+                title="Available items library"
+                description={
+                  conversionMode
+                    ? 'Add-ons come from the quote and are read-only here.'
+                    : 'Drag items onto the selected part or click Add.'
+                }
+                items={availableItems}
+                onAddItem={(item) => {
+                  if (!activePart || conversionMode) return;
+                  addAddonSelection(activePart.key, item.id);
+                }}
+                disabled={conversionMode}
+              />
+              <div className="space-y-4">
+                <div className="rounded-lg border border-border/60 bg-background/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Parts list</p>
+                      <p className="text-xs text-muted-foreground">Select a part to assign add-ons.</p>
+                    </div>
                   </div>
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label>Part number</Label>
-                      <Input
-                        value={activePart.partNumber}
-                        onChange={(e) => updatePart(activePart.key, { partNumber: e.target.value })}
-                        placeholder="e.g. SP-1024"
-                        required
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Quantity</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={activePart.quantity}
-                        onChange={(e) => updatePart(activePart.key, { quantity: Number(e.target.value) || 1 })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Stock size (optional)</Label>
-                      <Input
-                        value={activePart.stockSize || ''}
-                        onChange={(e) => updatePart(activePart.key, { stockSize: e.target.value })}
-                        placeholder="e.g. 2in x 12in bar"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Cut length (optional)</Label>
-                      <Input
-                        value={activePart.cutLength || ''}
-                        onChange={(e) => updatePart(activePart.key, { cutLength: e.target.value })}
-                        placeholder="e.g. 6.5 in"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Preferred material</Label>
-                      <Select
-                        value={activePart.materialId || OPTIONAL_VALUE}
-                        onValueChange={(value) =>
-                          updatePart(activePart.key, { materialId: value === OPTIONAL_VALUE ? '' : value })
-                        }
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {parts.map((part, index) => (
+                      <Button
+                        key={part.key}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setActivePartKey(part.key)}
+                        className={`justify-start ${
+                          part.key === activePartKey
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border/60 text-muted-foreground hover:text-foreground'
+                        }`}
                       >
-                        <SelectTrigger className="border-border/60 bg-background/80">
-                          <SelectValue placeholder="Optional" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={OPTIONAL_VALUE}>TBD</SelectItem>
-                          {materials.map((m) => (
-                            <SelectItem key={m.id} value={m.id}>
-                              {m.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Notes</Label>
-                      <Textarea
-                        value={activePart.notes}
-                        onChange={(e) => updatePart(activePart.key, { notes: e.target.value })}
-                        placeholder="Surface finish, tolerances, tooling, etc."
-                        className="min-h-[100px]"
-                      />
-                    </div>
+                        {part.partNumber || `Part ${index + 1}`}
+                      </Button>
+                    ))}
                   </div>
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Select a part to edit details.</p>
-              )}
+                {activePart ? (
+                  <>
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                          Selected part
+                        </h3>
+                        {parts.length > 1 && (
+                          <Button type="button" variant="ghost" size="sm" onClick={() => removePart(activePart.key)}>
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <div className="grid gap-2">
+                          <Label>Part number</Label>
+                          <Input
+                            value={activePart.partNumber}
+                            onChange={(e) => updatePart(activePart.key, { partNumber: e.target.value })}
+                            placeholder="e.g. SP-1024"
+                            required
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Quantity</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={activePart.quantity}
+                            onChange={(e) => updatePart(activePart.key, { quantity: Number(e.target.value) || 1 })}
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Stock size (optional)</Label>
+                          <Input
+                            value={activePart.stockSize || ''}
+                            onChange={(e) => updatePart(activePart.key, { stockSize: e.target.value })}
+                            placeholder="e.g. 2in x 12in bar"
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Cut length (optional)</Label>
+                          <Input
+                            value={activePart.cutLength || ''}
+                            onChange={(e) => updatePart(activePart.key, { cutLength: e.target.value })}
+                            placeholder="e.g. 6.5 in"
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Preferred material</Label>
+                          <Select
+                            value={activePart.materialId || OPTIONAL_VALUE}
+                            onValueChange={(value) =>
+                              updatePart(activePart.key, { materialId: value === OPTIONAL_VALUE ? '' : value })
+                            }
+                          >
+                            <SelectTrigger className="border-border/60 bg-background/80">
+                              <SelectValue placeholder="Optional" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={OPTIONAL_VALUE}>TBD</SelectItem>
+                              {materials.map((m) => (
+                                <SelectItem key={m.id} value={m.id}>
+                                  {m.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-2 md:col-span-2">
+                          <Label>Notes</Label>
+                          <Textarea
+                            value={activePart.notes}
+                            onChange={(e) => updatePart(activePart.key, { notes: e.target.value })}
+                            placeholder="Surface finish, tolerances, tooling, etc."
+                            className="min-h-[100px]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <AssignedItemsPanel
+                      title="Assigned add-ons & labor"
+                      description={
+                        conversionMode
+                          ? 'Add-ons are read-only while converting from a quote.'
+                          : 'Drop items here or use Add from the library.'
+                      }
+                      assignments={activePart.addonSelections.map((selection) => ({
+                        key: selection.key,
+                        itemId: selection.addonId,
+                        units: selection.units,
+                        notes: selection.notes,
+                      }))}
+                      itemsById={availableItemsById}
+                      onAddItem={(itemId) => {
+                        if (conversionMode) return;
+                        addAddonSelection(activePart.key, itemId);
+                      }}
+                      onUpdateAssignment={(key, patch) => {
+                        if (conversionMode) return;
+                        const updates: Partial<PartAddonSelection> = {};
+                        if (patch.units !== undefined) updates.units = patch.units;
+                        if (patch.notes !== undefined) updates.notes = patch.notes;
+                        updateAddonSelection(activePart.key, key, updates);
+                      }}
+                      onRemoveAssignment={(key) => {
+                        if (conversionMode) return;
+                        removeAddonSelection(activePart.key, key);
+                      }}
+                      onMoveAssignment={(key, direction) => {
+                        if (conversionMode) return;
+                        moveAddonSelection(activePart.key, key, direction);
+                      }}
+                      disabled={conversionMode}
+                    />
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Select a part to edit details.</p>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -1175,7 +1346,7 @@ function NewOrderForm() {
 
             <Card className="border-border/60 bg-card/70 backdrop-blur">
               <CardHeader>
-                <CardTitle>Add-ons & notes</CardTitle>
+                <CardTitle>Order-level add-ons & notes</CardTitle>
                 <CardDescription>
                   {conversionMode
                     ? 'Add-ons will be pulled from the quote parts during conversion.'
