@@ -64,6 +64,7 @@ type AddonOption = {
   active?: boolean;
 };
 type PartInput = {
+  key: string;
   partNumber: string;
   quantity: number;
   materialId?: string;
@@ -74,6 +75,7 @@ type PartInput = {
 type AttachmentInput = { url: string; storagePath: string; label: string; mimeType: string; uploading?: boolean };
 
 const emptyPart = (): PartInput => ({
+  key: createKey(),
   partNumber: '',
   quantity: 1,
   materialId: '',
@@ -139,6 +141,7 @@ function NewOrderForm() {
   const [priority, setPriority] = React.useState('NORMAL');
   const [business, setBusiness] = React.useState<BusinessCode>(DEFAULT_BUSINESS_CODE);
   const [parts, setParts] = React.useState<PartInput[]>([emptyPart()]);
+  const [activePartKey, setActivePartKey] = React.useState(parts[0]?.key ?? createKey());
   const [attachments, setAttachments] = React.useState<AttachmentInput[]>([emptyAttachment()]);
   const [attachmentBusiness, setAttachmentBusiness] = React.useState<BusinessName>(DEFAULT_BUSINESS_NAME);
   const [draftAttachmentReference] = React.useState(() => createKey());
@@ -153,8 +156,14 @@ function NewOrderForm() {
   const [createdOrderId, setCreatedOrderId] = React.useState<string | null>(null);
   const [quotePrefillError, setQuotePrefillError] = React.useState<string | null>(null);
   const [quotePrefillLoading, setQuotePrefillLoading] = React.useState(false);
+  const [currentStep, setCurrentStep] = React.useState(0);
   const quoteId = searchParams.get('quoteId');
   const conversionMode = Boolean(quoteId);
+  const steps = [
+    { key: 'info', label: 'Order info' },
+    { key: 'parts', label: 'Parts' },
+    { key: 'review', label: 'Review & create' },
+  ];
   const router = useRouter();
   const handlePrintNewOrder = React.useCallback(() => {
     if (!createdOrderId) return;
@@ -243,6 +252,7 @@ function NewOrderForm() {
         setParts(
           (quote.parts ?? []).length
             ? quote.parts.map((part: any) => ({
+                key: createKey(),
                 partNumber: part.partNumber ?? part.name ?? '',
                 quantity: part.quantity ?? 1,
                 materialId: part.materialId ?? '',
@@ -279,6 +289,12 @@ function NewOrderForm() {
       .finally(() => setQuotePrefillLoading(false));
   }, [quoteId]);
 
+  React.useEffect(() => {
+    if (!parts.length) return;
+    if (parts.some((part) => part.key === activePartKey)) return;
+    setActivePartKey(parts[0]?.key ?? createKey());
+  }, [activePartKey, parts]);
+
   const selectedBusinessOption = React.useMemo(
     () => BUSINESS_OPTIONS.find((option) => option.name === attachmentBusiness) ?? BUSINESS_OPTIONS[0],
     [attachmentBusiness],
@@ -293,16 +309,23 @@ function NewOrderForm() {
     return `${businessSlug}/${customerSlug || 'customer'}/${referenceSlug}`;
   }, [customerId, customers, draftAttachmentReference, poNumber, selectedBusinessOption]);
 
-  function updatePart(index: number, patch: Partial<PartInput>) {
-    setParts((prev) => prev.map((part, i) => (i === index ? { ...part, ...patch } : part)));
+  const activePart = React.useMemo(
+    () => parts.find((part) => part.key === activePartKey) ?? parts[0],
+    [activePartKey, parts],
+  );
+
+  function updatePart(key: string, patch: Partial<PartInput>) {
+    setParts((prev) => prev.map((part) => (part.key === key ? { ...part, ...patch } : part)));
   }
 
   function addPartRow() {
-    setParts((prev) => [...prev, emptyPart()]);
+    const nextPart = emptyPart();
+    setParts((prev) => [...prev, nextPart]);
+    setActivePartKey(nextPart.key);
   }
 
-  function removePart(index: number) {
-    setParts((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
+  function removePart(key: string) {
+    setParts((prev) => (prev.length === 1 ? prev : prev.filter((part) => part.key !== key)));
   }
 
   function updateAttachment(index: number, patch: Partial<AttachmentInput>) {
@@ -627,13 +650,41 @@ function NewOrderForm() {
         {quotePrefillError && <p className="text-sm text-destructive">{quotePrefillError}</p>}
       </div>
 
+      <div className="rounded border border-border/60 bg-card/70 p-4 backdrop-blur">
+        <div className="flex flex-wrap gap-2">
+          {steps.map((step, index) => (
+            <button
+              key={step.key}
+              type="button"
+              onClick={() => setCurrentStep(index)}
+              className={`rounded-full border px-4 py-2 text-sm ${
+                index === currentStep
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border/60 text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span className="mr-2 text-xs text-muted-foreground">{index + 1}</span>
+              {step.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 h-1 w-full rounded-full bg-muted">
+          <div
+            className="h-1 rounded-full bg-primary transition-all"
+            style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
+          />
+        </div>
+      </div>
+
       <form className="flex flex-col gap-8" onSubmit={handleSubmit}>
-        <Card className="border-border/60 bg-card/70 backdrop-blur">
-          <CardHeader>
-            <CardTitle>Customer & schedule</CardTitle>
-            <CardDescription>Who is the work for and when do they need it?</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-6 md:grid-cols-2">
+        {currentStep === 0 && (
+          <>
+            <Card className="border-border/60 bg-card/70 backdrop-blur">
+              <CardHeader>
+                <CardTitle>Customer & schedule</CardTitle>
+                <CardDescription>Who is the work for and when do they need it?</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-6 md:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="business">Business</Label>
               <Select
@@ -799,31 +850,31 @@ function NewOrderForm() {
                 placeholder="Optional purchase order"
               />
             </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
 
-        <Card className="border-border/60 bg-card/70 backdrop-blur">
-          <CardHeader>
-            <CardTitle>Custom intake fields</CardTitle>
-            <CardDescription>Additional fields configured for this business.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CustomFieldInputs
-              fields={customFields}
-              values={customFieldValues}
-              onChange={(fieldId, value) =>
-                setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
-              }
-            />
-          </CardContent>
-        </Card>
+            <Card className="border-border/60 bg-card/70 backdrop-blur">
+              <CardHeader>
+                <CardTitle>Custom intake fields</CardTitle>
+                <CardDescription>Additional fields configured for this business.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CustomFieldInputs
+                  fields={customFields}
+                  values={customFieldValues}
+                  onChange={(fieldId, value) =>
+                    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
+                  }
+                />
+              </CardContent>
+            </Card>
 
-        <Card className="border-border/60 bg-card/70 backdrop-blur">
-          <CardHeader>
-            <CardTitle>Vendors & materials</CardTitle>
-            <CardDescription>Capture sourcing and prep requirements.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-6 md:grid-cols-2">
+            <Card className="border-border/60 bg-card/70 backdrop-blur">
+              <CardHeader>
+                <CardTitle>Vendors & materials</CardTitle>
+                <CardDescription>Capture sourcing and prep requirements.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-6 md:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="vendor">Vendor</Label>
               <Select
@@ -861,346 +912,399 @@ function NewOrderForm() {
                 CAD model provided with job
               </label>
             </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </>
+        )}
 
-        <Card className="border-border/60 bg-card/70 backdrop-blur">
-          <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle>Parts in this order</CardTitle>
-              <CardDescription>Track every unique part, quantity, and preferred material.</CardDescription>
-            </div>
-            <Button type="button" variant="secondary" className="rounded-full border border-primary/40 bg-primary/10 text-primary" onClick={addPartRow}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Add part
-            </Button>
-          </CardHeader>
-          <CardContent className="grid gap-6">
-            {parts.map((part, index) => (
-              <div key={index} className="rounded-xl border border-border/60 bg-background/60 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                    Part {index + 1}
-                  </h3>
-                  {parts.length > 1 && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => removePart(index)}>
-                      Remove
-                    </Button>
-                  )}
-                </div>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label>Part number</Label>
-                    <Input
-                      value={part.partNumber}
-                      onChange={(e) => updatePart(index, { partNumber: e.target.value })}
-                      placeholder="e.g. SP-1024"
-                      required={index === 0}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Quantity</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={part.quantity}
-                      onChange={(e) => updatePart(index, { quantity: Number(e.target.value) || 1 })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Stock size (optional)</Label>
-                    <Input
-                      value={part.stockSize || ''}
-                      onChange={(e) => updatePart(index, { stockSize: e.target.value })}
-                      placeholder="e.g. 2in x 12in bar"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Cut length (optional)</Label>
-                    <Input
-                      value={part.cutLength || ''}
-                      onChange={(e) => updatePart(index, { cutLength: e.target.value })}
-                      placeholder="e.g. 6.5 in"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Preferred material</Label>
-                    <Select
-                      value={part.materialId || OPTIONAL_VALUE}
-                      onValueChange={(value) => updatePart(index, { materialId: value === OPTIONAL_VALUE ? '' : value })}
-                    >
-                      <SelectTrigger className="border-border/60 bg-background/80">
-                        <SelectValue placeholder="Optional" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={OPTIONAL_VALUE}>TBD</SelectItem>
-                        {materials.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Notes</Label>
-                    <Textarea
-                      value={part.notes}
-                      onChange={(e) => updatePart(index, { notes: e.target.value })}
-                      placeholder="Surface finish, tolerances, tooling, etc."
-                      className="min-h-[100px]"
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {conversionMode ? (
+        {currentStep === 1 && (
           <Card className="border-border/60 bg-card/70 backdrop-blur">
-            <CardHeader>
-              <CardTitle>Attachments</CardTitle>
-              <CardDescription>Existing quote attachments will copy to the order automatically.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Uploads from this screen are disabled while converting a quote. Add attachments to the quote first to have them copied into the order folder.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="border-border/60 bg-card/70 backdrop-blur">
-            <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <CardTitle>Attachments</CardTitle>
-                <CardDescription>Link drawings, STEP files, or upload lightweight references.</CardDescription>
+                <CardTitle>Parts in this order</CardTitle>
+                <CardDescription>Track every unique part, quantity, and preferred material.</CardDescription>
               </div>
-              <div className="flex flex-col gap-3 md:items-end">
-                <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
-                  <Label className="text-xs uppercase tracking-[0.3em] text-muted-foreground md:text-right">
-                    Storage business
-                  </Label>
-                  <Select value={attachmentBusiness} onValueChange={(value) => setAttachmentBusiness(value as BusinessName)}>
-                    <SelectTrigger className="w-[220px] border-border/60 bg-background/80">
-                      <SelectValue placeholder="Select a business" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {BUSINESS_OPTIONS.map((option) => (
-                        <SelectItem key={option.slug} value={option.name}>
-                          {option.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-xs text-muted-foreground md:text-right">
-                  Files upload to{' '}
-                  <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{attachmentPathPreview}</code>
-                </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="rounded-full border border-primary/40 bg-primary/10 text-primary"
-                  onClick={addAttachmentRow}
-                >
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add attachment
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="rounded-full border border-primary/40 bg-primary/10 text-primary"
+                onClick={addPartRow}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" /> Add part
+              </Button>
             </CardHeader>
-            <CardContent className="grid gap-4">
-              {attachments.map((att, index) => (
-                <div key={index} className="rounded-xl border border-border/60 bg-background/60 p-4">
+            <CardContent className="grid gap-6 lg:grid-cols-[280px_1fr]">
+              <div className="space-y-3 rounded-lg border border-border/60 bg-background/60 p-4">
+                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Parts list</p>
+                <div className="space-y-2">
+                  {parts.map((part, index) => (
+                    <button
+                      key={part.key}
+                      type="button"
+                      onClick={() => setActivePartKey(part.key)}
+                      className={`w-full rounded border px-3 py-2 text-left text-sm ${
+                        part.key === activePartKey
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border/60 text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <div className="font-medium">{part.partNumber || `Part ${index + 1}`}</div>
+                      <div className="text-xs text-muted-foreground">Qty {part.quantity || 1}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {activePart ? (
+                <div className="rounded-xl border border-border/60 bg-background/60 p-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                      Attachment {index + 1}
+                      Selected part
                     </h3>
-                    {attachments.length > 1 && (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removeAttachment(index)}>
+                    {parts.length > 1 && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removePart(activePart.key)}>
                         Remove
                       </Button>
                     )}
                   </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <div className="grid gap-2">
-                      <Label>Label</Label>
+                      <Label>Part number</Label>
                       <Input
-                        value={att.label}
-                        onChange={(e) => updateAttachment(index, { label: e.target.value })}
-                        placeholder="e.g. REV B STEP"
+                        value={activePart.partNumber}
+                        onChange={(e) => updatePart(activePart.key, { partNumber: e.target.value })}
+                        placeholder="e.g. SP-1024"
+                        required
                       />
                     </div>
                     <div className="grid gap-2">
-                      <Label>Mime type</Label>
+                      <Label>Quantity</Label>
                       <Input
-                        value={att.mimeType}
-                        onChange={(e) => updateAttachment(index, { mimeType: e.target.value })}
-                        placeholder="application/step"
+                        type="number"
+                        min={1}
+                        value={activePart.quantity}
+                        onChange={(e) => updatePart(activePart.key, { quantity: Number(e.target.value) || 1 })}
                       />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Stock size (optional)</Label>
+                      <Input
+                        value={activePart.stockSize || ''}
+                        onChange={(e) => updatePart(activePart.key, { stockSize: e.target.value })}
+                        placeholder="e.g. 2in x 12in bar"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Cut length (optional)</Label>
+                      <Input
+                        value={activePart.cutLength || ''}
+                        onChange={(e) => updatePart(activePart.key, { cutLength: e.target.value })}
+                        placeholder="e.g. 6.5 in"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Preferred material</Label>
+                      <Select
+                        value={activePart.materialId || OPTIONAL_VALUE}
+                        onValueChange={(value) =>
+                          updatePart(activePart.key, { materialId: value === OPTIONAL_VALUE ? '' : value })
+                        }
+                      >
+                        <SelectTrigger className="border-border/60 bg-background/80">
+                          <SelectValue placeholder="Optional" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={OPTIONAL_VALUE}>TBD</SelectItem>
+                          {materials.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="grid gap-2 md:col-span-2">
-                      <Label>External link</Label>
-                      <Input
-                        value={att.url}
-                        onChange={(e) => handleAttachmentUrlChange(index, e.target.value)}
-                        placeholder="Paste Google Drive or SharePoint link"
-                        disabled={att.uploading}
+                      <Label>Notes</Label>
+                      <Textarea
+                        value={activePart.notes}
+                        onChange={(e) => updatePart(activePart.key, { notes: e.target.value })}
+                        placeholder="Surface finish, tolerances, tooling, etc."
+                        className="min-h-[100px]"
                       />
-                    </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Upload file</Label>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                        <Input
-                          type="file"
-                          className="bg-background/80"
-                          onChange={(e) => void handleAttachmentFile(index, e.target.files)}
-                          disabled={att.uploading}
-                        />
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Upload className="h-4 w-4 text-muted-foreground" />
-                          {att.uploading ? 'Uploading…' : 'Drop a file to upload'}
-                        </div>
-                      </div>
-                      <div className="space-y-1 text-xs text-muted-foreground">
-                        <p>Uploads are written to the shared storage above for easy access on the shop floor.</p>
-                        {att.storagePath ? (
-                          <p className="flex flex-wrap items-center gap-1">
-                            Stored file:
-                            <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{att.storagePath}</code>
-                            <a
-                              href={`/attachments/${att.storagePath}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-medium text-primary hover:underline"
-                            >
-                              Open stored copy
-                            </a>
-                          </p>
-                        ) : (
-                          <p>Add a file to copy it into shared storage.</p>
-                        )}
-                      </div>
                     </div>
                   </div>
                 </div>
-              ))}
+              ) : (
+                <p className="text-sm text-muted-foreground">Select a part to edit details.</p>
+              )}
             </CardContent>
           </Card>
         )}
 
-        <Card className="border-border/60 bg-card/70 backdrop-blur">
-          <CardHeader>
-            <CardTitle>Add-ons & notes</CardTitle>
-            <CardDescription>
-              {conversionMode
-                ? 'Add-ons will be pulled from the quote parts during conversion.'
-                : 'Select value-added services and include launch notes.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-6">
-            {!conversionMode && (
-              <div className="grid gap-2">
-                <Label>Add-on services</Label>
-                <div className="grid gap-3 rounded-lg border border-border/60 bg-background/60 p-4 sm:grid-cols-2">
-                  {addons.map((item) => {
-                    const checked = selectedAddonIds.includes(item.id);
-                    return (
-                      <label key={item.id} className="flex items-start justify-between gap-3 rounded-md border border-border/40 bg-muted/10 p-3 text-sm">
-                        <div className="flex items-start gap-3">
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(value) => {
-                              const isChecked = value === true;
-                              setSelectedAddonIds((sel) =>
-                                isChecked ? [...sel, item.id] : sel.filter((id) => id !== item.id)
-                              );
-                            }}
+        {currentStep === 2 && (
+          <>
+            {conversionMode ? (
+              <Card className="border-border/60 bg-card/70 backdrop-blur">
+                <CardHeader>
+                  <CardTitle>Attachments</CardTitle>
+                  <CardDescription>Existing quote attachments will copy to the order automatically.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Uploads from this screen are disabled while converting a quote. Add attachments to the quote first to have them copied into the order folder.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-border/60 bg-card/70 backdrop-blur">
+                <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <CardTitle>Attachments</CardTitle>
+                    <CardDescription>Link drawings, STEP files, or upload lightweight references.</CardDescription>
+                  </div>
+                  <div className="flex flex-col gap-3 md:items-end">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+                      <Label className="text-xs uppercase tracking-[0.3em] text-muted-foreground md:text-right">
+                        Storage business
+                      </Label>
+                      <Select value={attachmentBusiness} onValueChange={(value) => setAttachmentBusiness(value as BusinessName)}>
+                        <SelectTrigger className="w-[220px] border-border/60 bg-background/80">
+                          <SelectValue placeholder="Select a business" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {BUSINESS_OPTIONS.map((option) => (
+                            <SelectItem key={option.slug} value={option.name}>
+                              {option.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <p className="text-xs text-muted-foreground md:text-right">
+                      Files upload to{' '}
+                      <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{attachmentPathPreview}</code>
+                    </p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="rounded-full border border-primary/40 bg-primary/10 text-primary"
+                      onClick={addAttachmentRow}
+                    >
+                      <PlusCircle className="mr-2 h-4 w-4" /> Add attachment
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  {attachments.map((att, index) => (
+                    <div key={index} className="rounded-xl border border-border/60 bg-background/60 p-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                          Attachment {index + 1}
+                        </h3>
+                        {attachments.length > 1 && (
+                          <Button type="button" variant="ghost" size="sm" onClick={() => removeAttachment(index)}>
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <div className="grid gap-2">
+                          <Label>Label</Label>
+                          <Input
+                            value={att.label}
+                            onChange={(e) => updateAttachment(index, { label: e.target.value })}
+                            placeholder="e.g. REV B STEP"
                           />
-                          <div className="space-y-1">
-                            <span className="font-medium text-foreground">{item.name}</span>
-                            {item.description && (
-                              <span className="block text-xs text-muted-foreground">{item.description}</span>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Mime type</Label>
+                          <Input
+                            value={att.mimeType}
+                            onChange={(e) => updateAttachment(index, { mimeType: e.target.value })}
+                            placeholder="application/step"
+                          />
+                        </div>
+                        <div className="grid gap-2 md:col-span-2">
+                          <Label>External link</Label>
+                          <Input
+                            value={att.url}
+                            onChange={(e) => handleAttachmentUrlChange(index, e.target.value)}
+                            placeholder="Paste Google Drive or SharePoint link"
+                            disabled={att.uploading}
+                          />
+                        </div>
+                        <div className="grid gap-2 md:col-span-2">
+                          <Label>Upload file</Label>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                            <Input
+                              type="file"
+                              className="bg-background/80"
+                              onChange={(e) => void handleAttachmentFile(index, e.target.files)}
+                              disabled={att.uploading}
+                            />
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Upload className="h-4 w-4 text-muted-foreground" />
+                              {att.uploading ? 'Uploading…' : 'Drop a file to upload'}
+                            </div>
+                          </div>
+                          <div className="space-y-1 text-xs text-muted-foreground">
+                            <p>Uploads are written to the shared storage above for easy access on the shop floor.</p>
+                            {att.storagePath ? (
+                              <p className="flex flex-wrap items-center gap-1">
+                                Stored file:
+                                <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{att.storagePath}</code>
+                                <a
+                                  href={`/attachments/${att.storagePath}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium text-primary hover:underline"
+                                >
+                                  Open stored copy
+                                </a>
+                              </p>
+                            ) : (
+                              <p>Add a file to copy it into shared storage.</p>
                             )}
                           </div>
                         </div>
-                        <span className="text-xs text-muted-foreground text-right">
-                          Pricing available in Admin Portal
-                        </span>
-                      </label>
-                    );
-                  })}
-                  {addons.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      No add-ons available yet. Create them from the admin dashboard.
-                    </p>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+            <Card className="border-border/60 bg-card/70 backdrop-blur">
+              <CardHeader>
+                <CardTitle>Add-ons & notes</CardTitle>
+                <CardDescription>
+                  {conversionMode
+                    ? 'Add-ons will be pulled from the quote parts during conversion.'
+                    : 'Select value-added services and include launch notes.'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-6">
+                {!conversionMode && (
+                  <div className="grid gap-2">
+                    <Label>Add-on services</Label>
+                    <div className="grid gap-3 rounded-lg border border-border/60 bg-background/60 p-4 sm:grid-cols-2">
+                      {addons.map((item) => {
+                        const checked = selectedAddonIds.includes(item.id);
+                        return (
+                          <label key={item.id} className="flex items-start justify-between gap-3 rounded-md border border-border/40 bg-muted/10 p-3 text-sm">
+                            <div className="flex items-start gap-3">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(value) => {
+                                  const isChecked = value === true;
+                                  setSelectedAddonIds((sel) =>
+                                    isChecked ? [...sel, item.id] : sel.filter((id) => id !== item.id)
+                                  );
+                                }}
+                              />
+                              <div className="space-y-1">
+                                <span className="font-medium text-foreground">{item.name}</span>
+                                {item.description && (
+                                  <span className="block text-xs text-muted-foreground">{item.description}</span>
+                                )}
+                              </div>
+                            </div>
+                            <span className="text-xs text-muted-foreground text-right">
+                              Pricing available in Admin Portal
+                            </span>
+                          </label>
+                        );
+                      })}
+                      {addons.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          No add-ons available yet. Create them from the admin dashboard.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {conversionMode && (
+                  <div className="rounded-lg border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                    Add-ons and labor will copy from the quote parts and become part-level charges on the order.
+                  </div>
+                )}
+                <div className="grid gap-2">
+                  <Label htmlFor="notes">Launch notes</Label>
+                  <Textarea
+                    id="notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Special instructions, fixtures, or inspection notes"
+                    className="min-h-[140px]"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/60 bg-card/70 backdrop-blur">
+              <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                  Orders auto-number starting at 1001
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Button type="submit" disabled={loading} className="rounded-full bg-primary px-6 text-primary-foreground shadow-lg shadow-primary/30">
+                    {loading ? 'Submitting…' : 'Create order'}
+                  </Button>
+                  <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+                    <Link href="/orders">Cancel</Link>
+                  </Button>
+                </div>
+              </CardFooter>
+              {(message || createdOrderId) && (
+                <div className="px-6 pb-6">
+                  {message && <p className="text-sm text-primary">{message}</p>}
+                  {createdOrderId && (
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <Button
+                        type="button"
+                        onClick={() => router.push(`/orders/${createdOrderId}`)}
+                        className="rounded-full px-6"
+                      >
+                        View order
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handlePrintNewOrder}
+                        className="rounded-full border-border/60 bg-background/80"
+                      >
+                        <Printer className="mr-2 h-4 w-4" /> Print order
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => router.push('/orders')}
+                        className="rounded-full border-border/60 bg-background/80"
+                      >
+                        Back to orders
+                      </Button>
+                    </div>
                   )}
                 </div>
-              </div>
-            )}
-            {conversionMode && (
-              <div className="rounded-lg border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-                Add-ons and labor will copy from the quote parts and become part-level charges on the order.
-              </div>
-            )}
-            <div className="grid gap-2">
-              <Label htmlFor="notes">Launch notes</Label>
-              <Textarea
-                id="notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Special instructions, fixtures, or inspection notes"
-                className="min-h-[140px]"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/60 bg-card/70 backdrop-blur">
-          <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-muted-foreground">
-              Orders auto-number starting at 1001
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Button type="submit" disabled={loading} className="rounded-full bg-primary px-6 text-primary-foreground shadow-lg shadow-primary/30">
-                {loading ? 'Submitting…' : 'Create order'}
-              </Button>
-              <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
-                <Link href="/orders">Cancel</Link>
-              </Button>
-            </div>
-          </CardFooter>
-          {(message || createdOrderId) && (
-            <div className="px-6 pb-6">
-              {message && <p className="text-sm text-primary">{message}</p>}
-              {createdOrderId && (
-                <div className="mt-3 flex flex-wrap gap-3">
-                  <Button
-                    type="button"
-                    onClick={() => router.push(`/orders/${createdOrderId}`)}
-                    className="rounded-full px-6"
-                  >
-                    View order
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handlePrintNewOrder}
-                    className="rounded-full border-border/60 bg-background/80"
-                  >
-                    <Printer className="mr-2 h-4 w-4" /> Print order
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => router.push('/orders')}
-                    className="rounded-full border-border/60 bg-background/80"
-                  >
-                    Back to orders
-                  </Button>
-                </div>
               )}
-            </div>
-          )}
-        </Card>
+            </Card>
+          </>
+        )}
+
+        {currentStep < steps.length - 1 && (
+          <div className="flex items-center justify-between">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setCurrentStep((prev) => Math.max(prev - 1, 0))}
+              disabled={currentStep === 0}
+            >
+              Back
+            </Button>
+            <Button type="button" onClick={() => setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1))}>
+              Next
+            </Button>
+          </div>
+        )}
       </form>
     </div>
   );
