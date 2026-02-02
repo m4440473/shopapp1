@@ -1804,7 +1804,6 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           </Button>
         </div>
       )}
-                   variant="ghost"
     </form>
   );
 }
