@@ -48,25 +48,10 @@ export type SanitizedOrder = Omit<OrderWithRelations, 'checklist' | 'charges'> &
 
 type SanitizableEntity = QuoteDetailWithRelations | QuoteSummaryWithRelations | OrderWithRelations;
 
-const RESTRICTED_ATTACHMENT_LABELS = ['quote', 'po', 'purchase order', 'invoice'];
-
-function matchesRestrictedAttachmentLabel(label?: string | null) {
-  if (!label) return false;
-  const normalized = label.trim().toLowerCase();
-  return RESTRICTED_ATTACHMENT_LABELS.some((keyword) => normalized.includes(keyword));
-}
-
-function isRestrictedPartAttachment(attachment: any) {
-  if (!attachment) return false;
-  const kind = typeof attachment.kind === 'string' ? attachment.kind.toUpperCase() : '';
-  if (kind === 'PO') return true;
-  return matchesRestrictedAttachmentLabel(attachment.label);
-}
-
-function isRestrictedOrderAttachment(attachment: any) {
-  if (!attachment) return false;
-  return matchesRestrictedAttachmentLabel(attachment.label);
-}
+import {
+  isRestrictedOrderAttachment,
+  isRestrictedPartAttachment,
+} from './attachment-visibility';
 
 export function sanitizePricingForNonAdmin(entity: SanitizableEntity, isAdmin = false) {
   if (isAdmin) return entity;
@@ -119,9 +104,9 @@ export function sanitizePricingForNonAdmin(entity: SanitizableEntity, isAdmin = 
         attachments: (part.attachments || []).filter((attachment: any) => !isRestrictedPartAttachment(attachment)),
       })),
       charges: (order.charges || []).map(({ unitPrice: _, ...charge }) => charge),
-      partAttachments: (order as any).partAttachments
+      partAttachments: Array.isArray((order as any).partAttachments)
         ? (order as any).partAttachments.filter((attachment: any) => !isRestrictedPartAttachment(attachment))
-        : (order as any).partAttachments,
+        : [],
       attachments: (order.attachments || []).filter((attachment: any) => !isRestrictedOrderAttachment(attachment)),
     };
   }

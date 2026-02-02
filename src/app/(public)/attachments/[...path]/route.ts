@@ -6,16 +6,9 @@ import { Readable } from 'node:stream';
 
 import { ensureAttachmentRoot } from '@/lib/storage';
 import { canAccessAdmin } from '@/lib/rbac';
+import { matchesRestrictedAttachmentLabel } from '@/lib/attachment-visibility';
 
 export const dynamic = 'force-dynamic';
-
-const RESTRICTED_LABELS = ['quote', 'po', 'purchase order', 'invoice'];
-
-function matchesRestrictedLabel(label?: string | null) {
-  if (!label) return false;
-  const normalized = label.trim().toLowerCase();
-  return RESTRICTED_LABELS.some((keyword) => normalized.includes(keyword));
-}
 
 export async function GET(_req: NextRequest, { params }: { params: { path: string[] } }) {
   const { prisma } = await import('@/lib/prisma');
@@ -45,7 +38,7 @@ export async function GET(_req: NextRequest, { params }: { params: { path: strin
 
   const attachment = quoteAttachment ?? orderAttachment;
 
-  if (attachment && !isAdmin && matchesRestrictedLabel(attachment.label)) {
+  if (attachment && !isAdmin && matchesRestrictedAttachmentLabel(attachment.label)) {
     return new NextResponse('Forbidden', { status: 403 });
   }
 
