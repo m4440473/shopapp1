@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 
-import { authOptions } from '@/lib/auth';
 import { canAccessAdmin } from '@/lib/rbac';
 import { deleteOrderPartDetails, updateOrderPartDetails } from '@/modules/orders/orders.service';
 import { OrderPartUpdate } from '@/modules/orders/orders.schema';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string; partId: string } }) {
-  const session = await getServerSession(authOptions as any);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = (session as any).user;
   if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });
@@ -37,7 +36,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string; partId: string } }) {
-  const session = await getServerSession(authOptions as any);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = (session as any).user;
   if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });

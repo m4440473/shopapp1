@@ -311,6 +311,7 @@ async function main() {
       fieldType: 'SELECT',
       description: 'Required finish for the quoted parts.',
       businessCode,
+      uiSection: 'PART_BUILD',
       isRequired: false,
       sortOrder: 20,
       options: [

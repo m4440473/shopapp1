@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { z } from 'zod';
 
-import { authOptions } from '@/lib/auth';
 import { canAccessMachinist } from '@/lib/rbac';
 import { transitionPartsDepartment } from '@/modules/orders/orders.service';
 
@@ -14,7 +13,7 @@ const TransitionPayload = z.object({
 });
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const role = (session.user as any)?.role as string | undefined;
   if (!canAccessMachinist(role)) return new NextResponse('Forbidden', { status: 403 });

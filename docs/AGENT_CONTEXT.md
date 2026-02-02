@@ -61,6 +61,14 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-02-09 — Add CustomField.uiSection for quote step staging
+Decision: Introduce CustomField.uiSection (INTAKE/PART_BUILD/REVIEW) to control when custom fields appear in the quote editor.
+Reason: Move Finish Required out of intake without breaking existing custom field behavior.
+
+### 2026-02-08 — Add TEST_MODE harness + repo factory
+Decision: Introduce TEST_MODE switch with centralized auth bypass and repo factory that can swap Prisma repos for in-memory mocks (orders/users/time).
+Reason: Allow safe testing in restricted environments without DB/auth, while keeping production behavior unchanged.
+
 ### 2026-02-05 — Add PartEvent logging + part status for order detail workflow
 Decision: Introduce PartEvent records (with OrderPart.status) to capture part-level activity (timers, notes, files, checklist).
 Reason: The two-card order workspace needs a dedicated part log and a completion marker for finish events.

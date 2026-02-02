@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { compare, hash } from 'bcryptjs';
 import { z } from 'zod';
 
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 const PasswordUpdate = z.object({
@@ -12,7 +11,7 @@ const PasswordUpdate = z.object({
 });
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session?.user) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
@@ -35,7 +34,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session?.user) {
     return new NextResponse('Unauthorized', { status: 401 });
   }

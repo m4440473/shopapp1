@@ -92,6 +92,7 @@ Phase 4 — **UI polish once logic is right**
 - No new dependencies without a Decision Log entry.
 - No drive‑by refactors. Fix only what the task requires.
 - Update continuity docs every session (PROGRESS_LOG.md + docs/AGENT_HANDOFF.md).
+- TEST_MODE is a local/dev-only harness that swaps in mock auth + in-memory repos (enable with TEST_MODE=\"true\" in local/Codex/Replit). It must remain OFF in production.
 
 ## 11) How to Use This Canon
 

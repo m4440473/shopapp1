@@ -34,6 +34,7 @@ export type CustomFieldDefinition = {
   isRequired: boolean;
   isActive: boolean;
   sortOrder: number;
+  uiSection?: string | null;
   options?: CustomFieldOption[];
 };
 

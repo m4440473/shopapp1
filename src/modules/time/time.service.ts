@@ -6,7 +6,7 @@ import {
   findLatestTimeEntryForUserOrder,
   findTimeEntryById,
   listTimeEntriesForOrderParts,
-} from './time.repo';
+} from '@/repos/time';
 import type { TimeEntry, TimeEntryResumeInput, TimeEntryStartInput } from './time.types';
 
 export type { TimeEntry, TimeEntryResumeInput, TimeEntryStartInput };

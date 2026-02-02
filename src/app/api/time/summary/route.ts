@@ -1,12 +1,11 @@
 import 'server-only';
 
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { getTimeEntrySummary } from '@/modules/time/time.service';
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
 
   const userId = (session.user as any)?.id as string | undefined;

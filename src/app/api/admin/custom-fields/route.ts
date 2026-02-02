@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessAdmin } from '@/lib/rbac';
 import { CustomFieldUpsert } from '@/lib/zod';
 
 async function requireAdmin(): Promise<NextResponse | null> {
-  const session = await getServerSession(authOptions);
+  const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = session.user as any;
   if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });
