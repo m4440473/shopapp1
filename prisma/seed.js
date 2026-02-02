@@ -44,13 +44,16 @@ async function main() {
   }
 
   // Vendors
-  for (const v of [
+  const vendorSeeds = [
     { name: 'McMaster-Carr' },
     { name: 'Grainger' },
     { name: 'OnlineMetals' },
     { name: 'Yamazen' },
-  ]) {
-    await prisma.vendor.upsert({ where: { name: v.name }, update: {}, create: v });
+  ];
+  const vendorRecords = [];
+  for (const v of vendorSeeds) {
+    const record = await prisma.vendor.upsert({ where: { name: v.name }, update: {}, create: v });
+    vendorRecords.push(record);
   }
 
   const departmentSeeds = [
