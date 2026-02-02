@@ -41,6 +41,12 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-07 — Fix seed vendor record reference in JS seed
+- Added vendor upsert tracking in prisma/seed.js to match seed.ts and prevent vendorRecords undefined errors.
+
+Commands run:
+- None
+
 ### 2026-02-07 — Verified print page template wiring
 - Reviewed order/quote print pages and confirmed they render with PrintControls and template-driven section layouts from document templates.
 
