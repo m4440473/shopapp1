@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
 import { fetchJson } from '@/lib/fetchJson';
 import QuoteWorkflowControls from './QuoteWorkflowControls';
@@ -196,17 +197,18 @@ export default function Client({ initial, initialRole, initialAdmin }: ClientPro
           placeholder="Search by quote number, company, or contact"
           className="w-full max-w-sm"
         />
-        <select
-          value={status}
-          onChange={(event) => setStatus(event.target.value)}
-          className="rounded border border-border bg-background px-3 py-2 text-sm"
-        >
-          <option value="">All statuses</option>
-          <option value="DRAFT">Draft</option>
-          <option value="SENT">Sent</option>
-          <option value="APPROVED">Approved</option>
-          <option value="EXPIRED">Expired</option>
-        </select>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger className="w-[180px] border border-border bg-background">
+            <SelectValue placeholder="All statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">All statuses</SelectItem>
+            <SelectItem value="DRAFT">Draft</SelectItem>
+            <SelectItem value="SENT">Sent</SelectItem>
+            <SelectItem value="APPROVED">Approved</SelectItem>
+            <SelectItem value="EXPIRED">Expired</SelectItem>
+          </SelectContent>
+        </Select>
         <Button variant="outline" onClick={() => refresh()}>
           Search
         </Button>

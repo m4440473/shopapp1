@@ -122,7 +122,27 @@ export function createMockOrdersRepo() {
         updatedAt: createdAt,
       };
       state.orders.push(order);
-      return { id: order.id };
+      const partCreates = orderData.data?.parts?.create ?? [];
+      const createdParts = (partCreates as Array<Record<string, unknown>>).map((part) => {
+        const partId = nextId('part');
+        const createdPart: MockOrderPart = {
+          id: partId,
+          orderId: order.id,
+          partNumber: (part.partNumber as string) ?? null,
+          quantity: (part.quantity as number) ?? null,
+          description: (part.notes as string) ?? null,
+          status: null,
+          materialId: (part.materialId as string) ?? null,
+          currentDepartmentId: null,
+        };
+        state.orderParts.push(createdPart);
+        return createdPart;
+      });
+      const response: Record<string, unknown> = { id: order.id };
+      if (orderData?.select?.parts) {
+        response.parts = createdParts.map((part) => ({ id: part.id }));
+      }
+      return response;
     },
 
     async findOrderById(id: string) {
@@ -597,6 +617,11 @@ export function createMockOrdersRepo() {
 
     async listAddons({ take }: { where?: Record<string, unknown>; take: number; cursor?: string | null }) {
       return state.addons.slice(0, take + 1);
+    },
+
+    async listAddonsByIds(addonIds: string[]) {
+      if (!addonIds.length) return [];
+      return state.addons.filter((addon) => addonIds.includes(addon.id));
     },
 
     async listReadyOrderPartsForDepartment(departmentId: string) {

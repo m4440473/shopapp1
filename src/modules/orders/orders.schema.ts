@@ -33,6 +33,12 @@ export const OrderQuery = z.object({
 export type OrderQueryInput = z.infer<typeof OrderQuery>;
 
 /** POST body for creating an order */
+const OrderPartAddonSelection = z.object({
+  addonId: z.string().trim().min(1),
+  units: z.coerce.number().min(0).default(1),
+  notes: z.string().trim().max(1000).optional().nullable(),
+});
+
 export const OrderPartCreate = z.object({
   partNumber: z.string().trim().min(1),
   quantity: z.coerce.number().int().min(1),
@@ -40,6 +46,7 @@ export const OrderPartCreate = z.object({
   stockSize: z.string().trim().max(200).optional(),
   cutLength: z.string().trim().max(200).optional(),
   notes: z.string().trim().max(500).optional(),
+  addonSelections: z.array(OrderPartAddonSelection).optional().default([]),
 });
 
 export const OrderPartUpdate = z
