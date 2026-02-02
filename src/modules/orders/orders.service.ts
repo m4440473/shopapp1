@@ -111,7 +111,7 @@ type PartEventInput = {
   userId?: string | null;
   type: string;
   message: string;
-  meta?: Prisma.JsonValue | null;
+  meta?: Record<string, unknown> | null;
 };
 
 export const ORDER_STATUS_LABELS: Record<string, string> = {

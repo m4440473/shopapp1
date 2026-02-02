@@ -190,7 +190,7 @@ model PartEvent {
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   type      String
   message   String
-  meta      Json?
+  meta      String?
   createdAt DateTime @default(now())
 
   @@index([orderId])

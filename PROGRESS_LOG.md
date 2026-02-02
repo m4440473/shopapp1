@@ -41,6 +41,14 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-10 — Store PartEvent meta as text for sqlite compatibility
+- Changed PartEvent.meta to TEXT in the Prisma schema, added a migration to redefine the column, and serialize/parse meta JSON in orders repo so sqlite Prisma Client generation works.
+- Prisma generate now succeeds locally with sqlite after the schema update.
+
+Commands run:
+- DATABASE_URL="file:./dev.db" npx prisma migrate reset --force
+- npx prisma generate
+
 ### 2026-02-09 — Checklist toggle fix + per-part add-on library + quote field staging
 - Fixed checklist toggle API to derive toggler identity from session and return JSON errors; UI now surfaces toggle failures and reverts optimistic state.
 - Replaced raw selects/buttons in quote/order flows with shadcn equivalents and added shared AvailableItemsLibrary + AssignedItemsPanel for drag/drop add-ons.
