@@ -41,6 +41,29 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-07 — Verified print page template wiring
+- Reviewed order/quote print pages and confirmed they render with PrintControls and template-driven section layouts from document templates.
+
+Commands run:
+- None
+
+### 2026-02-07 — Quote/order intake steppers and part-centric layouts
+- Added stepper-based navigation for quote creation and order creation to separate info, parts, build/review steps.
+- Restructured both flows to use a parts list + selected part editor layout for clearer part-centric editing.
+- Reorganized assembly-level notes, attachments, and review sections to keep all existing fields reachable.
+
+Commands run:
+- None
+
+### 2026-02-06 — Seed data expansion + order detail button polish
+- Updated order detail tab and action button spacing to clean up the part details card layout.
+- Expanded seed data with 10 orders, per-part addons/checklists, per-part time entries, and 10 quotes to show realistic multi-part workflows.
+
+Commands run:
+- npm run dev (failed: Prisma client not initialized for AppSettings)
+- npm run seed (failed: Prisma client not initialized)
+- npx prisma generate (failed: Json field unsupported by current connector)
+
 ### 2026-02-05 — Two-card order workspace, part events, and timer conflict handling
 - Refactored the order detail view into a two-card workspace with a sticky active-work timer header, parts list, and tabbed part details (overview, notes/files, checklist, log).
 - Added PartEvent + OrderPart.status to track part completion and activity logs, plus new timer API endpoints with conflict handling.
