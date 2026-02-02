@@ -30,7 +30,7 @@ export async function generateNextOrderNumber(business: BusinessCode): Promise<s
 }
 
 export async function syncChecklistForOrder(orderId: string) {
-  const [charges, checklist] = await prisma.$transaction([
+  const [charges, checklist, addons] = await prisma.$transaction([
     prisma.orderCharge.findMany({
       where: { orderId },
       select: { id: true, partId: true, departmentId: true, addonId: true, completedAt: true },
@@ -39,9 +39,22 @@ export async function syncChecklistForOrder(orderId: string) {
       where: { orderId, chargeId: { not: null } },
       select: { id: true, chargeId: true, isActive: true, completed: true, partId: true, departmentId: true },
     }),
+    prisma.addon.findMany({
+      where: { isChecklistItem: true },
+      select: { id: true },
+    }),
   ]);
 
-  const chargeKeys = new Set(charges.map((charge) => buildChecklistKey({ chargeId: charge.id })));
+  // Only include charges that have an addon marked as checklist item
+  const checklistAddonIds = new Set(addons.map((addon) => addon.id));
+  const checklistEligibleCharges = charges.filter((charge) => {
+    // If charge has no addon (manual charge), don't create checklist item
+    if (!charge.addonId) return false;
+    // Only create checklist for addons marked as checklist items
+    return checklistAddonIds.has(charge.addonId);
+  });
+
+  const chargeKeys = new Set(checklistEligibleCharges.map((charge) => buildChecklistKey({ chargeId: charge.id })));
 
   const checklistByKey = new Map(
     checklist
@@ -50,7 +63,7 @@ export async function syncChecklistForOrder(orderId: string) {
   );
   const chargeById = new Map<string, (typeof charges)[number]>(charges.map((charge) => [charge.id, charge]));
 
-  const toCreate = charges.filter((charge) => !checklistByKey.has(buildChecklistKey({ chargeId: charge.id })));
+  const toCreate = checklistEligibleCharges.filter((charge) => !checklistByKey.has(buildChecklistKey({ chargeId: charge.id })));
   const toActivate = checklist.filter((item) => {
     if (!item.chargeId) return false;
     return chargeKeys.has(buildChecklistKey({ chargeId: item.chargeId })) && !item.isActive;
