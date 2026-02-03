@@ -9,3 +9,7 @@ export const TimeEntryStart = z.object({
 export const TimeEntryResume = z.object({
   entryId: z.string().trim().min(1),
 });
+
+export const TimeEntryStop = z.object({
+  entryId: z.string().trim().min(1),
+});

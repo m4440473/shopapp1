@@ -23,21 +23,23 @@ export default async function QuotePrintPage({
   params,
   searchParams,
 }: {
-  params: { id: string };
-  searchParams?: { templateId?: string };
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ templateId?: string }>;
 }) {
   const session = await getServerAuthSession();
   if (!session || !canAccessAdmin(session.user as any)) {
     redirect('/');
   }
 
-  const headerStore = headers();
+  const headerStore = await headers();
+  const { id } = await params;
+  const resolvedSearchParams = await searchParams;
   const host = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
   const protocol = headerStore.get('x-forwarded-proto') ?? 'https';
   const baseUrl = host ? `${protocol}://${host}` : '';
   const cookie = headerStore.get('cookie') ?? '';
 
-  const response = await fetch(`${baseUrl}/api/admin/quotes/${params.id}/print-data`, {
+  const response = await fetch(`${baseUrl}/api/admin/quotes/${id}/print-data`, {
     headers: { cookie },
     cache: 'no-store',
   });
@@ -53,7 +55,7 @@ export default async function QuotePrintPage({
     redirect('/admin/quotes');
   }
 
-  const requestedTemplateId = searchParams?.templateId;
+  const requestedTemplateId = resolvedSearchParams?.templateId;
   const selectedTemplate =
     templates.find((template) => template.id === requestedTemplateId) ?? activeTemplate ?? templates[0] ?? null;
   const layout = normalizeTemplateLayout(selectedTemplate?.layoutJson);

@@ -36,6 +36,7 @@ interface Item {
   rateType: 'HOURLY' | 'FLAT';
   rateCents: number;
   active: boolean;
+  affectsPrice: boolean;
   isChecklistItem: boolean;
   departmentId: string;
   department?: Department | null;
@@ -67,6 +68,7 @@ export default function Client({ initial }: ClientProps) {
     rateType: 'HOURLY' as Item['rateType'],
     rate: '0.00',
     active: true,
+    affectsPrice: true,
     isChecklistItem: true,
     departmentId: '',
   });
@@ -88,6 +90,7 @@ export default function Client({ initial }: ClientProps) {
         rateType: dialog.data.rateType,
         rate: (dialog.data.rateCents / 100).toFixed(2),
         active: dialog.data.active,
+        affectsPrice: dialog.data.affectsPrice,
         isChecklistItem: dialog.data.isChecklistItem,
         departmentId: dialog.data.departmentId,
       });
@@ -98,6 +101,7 @@ export default function Client({ initial }: ClientProps) {
         rateType: 'HOURLY',
         rate: '0.00',
         active: true,
+        affectsPrice: true,
         isChecklistItem: true,
         departmentId: '',
       });
@@ -121,6 +125,11 @@ export default function Client({ initial }: ClientProps) {
       {
         key: 'isChecklistItem',
         header: 'Checklist Item',
+        render: (value: boolean) => (value ? 'Yes' : 'No'),
+      },
+      {
+        key: 'affectsPrice',
+        header: 'Affects Price',
         render: (value: boolean) => (value ? 'Yes' : 'No'),
       },
       {
@@ -171,6 +180,7 @@ export default function Client({ initial }: ClientProps) {
       rateType: form.rateType,
       rateCents,
       active: form.active,
+      affectsPrice: form.affectsPrice,
       isChecklistItem: form.isChecklistItem,
       departmentId: form.departmentId,
     });
@@ -337,6 +347,16 @@ export default function Client({ initial }: ClientProps) {
               />
               <Label htmlFor="addonActive" className="text-sm font-normal">
                 Active and available on new quotes
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="addonAffectsPrice"
+                checked={form.affectsPrice}
+                onCheckedChange={(checked) => setForm((prev) => ({ ...prev, affectsPrice: Boolean(checked) }))}
+              />
+              <Label htmlFor="addonAffectsPrice" className="text-sm font-normal">
+                Include in quote and order totals
               </Label>
             </div>
             <div className="flex items-center space-x-2">

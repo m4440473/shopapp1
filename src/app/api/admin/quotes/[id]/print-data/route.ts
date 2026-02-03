@@ -21,11 +21,12 @@ async function requireAdmin() {
   return { session, user };
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const quote = await findQuoteById(params.id);
+  const { id } = await params;
+  const quote = await findQuoteById(id);
   if (!quote) {
     return new NextResponse('Not found', { status: 404 });
   }

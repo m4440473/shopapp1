@@ -50,5 +50,6 @@ export async function POST() {
     return NextResponse.json({ error: completeResult.error }, { status: completeResult.status });
   }
 
-  return NextResponse.json({ entry, part: completeResult.data.part });
+  const part = (completeResult.data as { part: unknown }).part;
+  return NextResponse.json({ entry, part });
 }

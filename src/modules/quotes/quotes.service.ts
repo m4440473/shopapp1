@@ -85,6 +85,16 @@ export interface PreparedQuoteComponents {
   }>;
 }
 
+export function calculatePricedAddonTotal(
+  selections: Array<{ units: number; rateCents: number; affectsPrice: boolean }>
+) {
+  return selections.reduce((sum, selection) => {
+    if (!selection.affectsPrice) return sum;
+    const units = Number.isFinite(selection.units) ? selection.units : 0;
+    return sum + Math.round(selection.rateCents * (units > 0 ? units : 0));
+  }, 0);
+}
+
 export async function prepareQuoteComponents(
   input: QuoteCreateInput,
   options?: { existingQuoteNumber?: string }
@@ -102,7 +112,13 @@ export async function prepareQuoteComponents(
   const vendorRecords = (await listVendorsByIds(vendorIds)) as VendorRecord[];
   const vendorMap = new Map(vendorRecords.map((vendor) => [vendor.id, vendor]));
 
-  type AddonRecord = { id: string; name: string; rateType: string; rateCents: number };
+  type AddonRecord = {
+    id: string;
+    name: string;
+    rateType: string;
+    rateCents: number;
+    affectsPrice: boolean;
+  };
   const addonSelectionsInput = parts.flatMap((part, partIndex) =>
     (part.addonSelections ?? []).map((item) => ({ partIndex, item }))
   );
@@ -120,7 +136,7 @@ export async function prepareQuoteComponents(
   for (const selection of addonSelectionsInput) {
     const addon = addonMap.get(selection.item.addonId)!;
     const units = typeof selection.item.units === 'number' ? selection.item.units : 0;
-    const totalCents = Math.round(addon.rateCents * units);
+    const totalCents = addon.affectsPrice ? Math.round(addon.rateCents * units) : 0;
     const entry = {
       addonId: addon.id,
       units,
@@ -133,9 +149,15 @@ export async function prepareQuoteComponents(
     addonSelectionsByPart.set(selection.partIndex, [...existing, entry]);
   }
 
-  const addonsTotalCents = Array.from(addonSelectionsByPart.values()).reduce(
-    (sum, selections) => sum + selections.reduce((innerSum, selection) => innerSum + selection.totalCents, 0),
-    0
+  const addonsTotalCents = calculatePricedAddonTotal(
+    addonSelectionsInput.map(({ item }) => {
+      const addon = addonMap.get(item.addonId)!;
+      return {
+        units: typeof item.units === 'number' ? item.units : 0,
+        rateCents: addon.rateCents,
+        affectsPrice: addon.affectsPrice,
+      };
+    })
   );
 
   const vendorItems = vendorItemsInput.map((item) => {

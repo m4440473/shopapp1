@@ -24,7 +24,7 @@ export default async function Page() {
 
   const isAdmin = canAccessAdmin(user ?? role);
 
-  const headerStore = headers();
+  const headerStore = await headers();
   const host = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
   const protocol = headerStore.get('x-forwarded-proto') ?? 'https';
   const baseUrl = host ? `${protocol}://${host}` : '';

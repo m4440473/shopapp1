@@ -304,7 +304,6 @@ export function createMockOrdersRepo() {
       if (item) {
         item.completed = checked;
       }
-      return { count: item ? 1 : 0 };
     },
 
     async listChecklistItems(orderId: string) {
@@ -398,13 +397,36 @@ export function createMockOrdersRepo() {
       );
     },
 
-    async moveOrderPartsToDepartment({ partIds, departmentId }: { partIds: string[]; departmentId: string | null }) {
+    async moveOrderPartsToDepartment({
+      orderId,
+      partIds,
+      toDepartmentId,
+      statusHistory,
+    }: {
+      orderId: string;
+      partIds: string[];
+      toDepartmentId: string;
+      statusHistory: { from: string; to: string; userId?: string | null; reason?: string | null };
+    }) {
+      let count = 0;
       state.orderParts.forEach((part) => {
-        if (partIds.includes(part.id)) {
-          part.currentDepartmentId = departmentId ?? null;
+        if (part.orderId === orderId && partIds.includes(part.id)) {
+          part.currentDepartmentId = toDepartmentId;
+          count += 1;
         }
       });
-      return { count: partIds.length };
+
+      state.statusHistory.push({
+        id: nextId('status'),
+        orderId,
+        from: statusHistory.from,
+        to: statusHistory.to,
+        userId: statusHistory.userId ?? null,
+        reason: statusHistory.reason ?? null,
+        createdAt: new Date(),
+      });
+
+      return { count };
     },
 
     async updateOrderPart(partId: string, data: Record<string, unknown>) {
@@ -432,7 +454,6 @@ export function createMockOrdersRepo() {
       if (index >= 0) {
         state.orderParts.splice(index, 1);
       }
-      return { id: partId };
     },
 
     async listOrderCharges(orderId: string) {
@@ -536,7 +557,6 @@ export function createMockOrdersRepo() {
       const index = state.orderCharges.findIndex((item) => item.id === chargeId);
       if (index >= 0) state.orderCharges.splice(index, 1);
       state.orderChecklist = state.orderChecklist.filter((item) => item.chargeId !== chargeId);
-      return { id: chargeId };
     },
 
     async createOrderAttachment(data: { data?: Record<string, unknown> } | Record<string, unknown>) {

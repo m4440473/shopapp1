@@ -337,6 +337,16 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
     }))
     .filter((value) => value.value !== null) as { fieldId: string; value: string }[];
 
+  type AddonRecord = {
+    id: string;
+    name: string;
+    rateCents: number;
+    rateType: string;
+    departmentId: string;
+    affectsPrice: boolean;
+    isChecklistItem: boolean;
+  };
+
   const created = await createOrderWithCustomFields({
     orderData: {
       data: {
@@ -363,7 +373,6 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
             notes: p.notes ?? null,
           })),
         },
-        checklist: body.addonIds.length ? { create: body.addonIds.map((id) => ({ addonId: id })) } : undefined,
         attachments: body.attachments.length
           ? {
               create: body.attachments.map((a) => ({
@@ -405,13 +414,15 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
     }))
     .filter((entry) => entry.partId && entry.selections.length);
 
+  const checklistKeys = new Set<string>();
+
   if (selectionsByPart.length) {
     const addonIds = Array.from(
       new Set(
         selectionsByPart.flatMap((entry) => entry.selections.map((selection) => selection.addonId))
       )
     );
-    const addons = await listAddonsByIds(addonIds);
+    const addons = (await listAddonsByIds(addonIds)) as AddonRecord[];
     const addonMap = new Map(addons.map((addon) => [addon.id, addon]));
 
     let sortOrder = 0;
@@ -419,24 +430,62 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
       for (const selection of entry.selections) {
         const addon = addonMap.get(selection.addonId);
         if (!addon || !entry.partId) continue;
-        await createOrderCharge({
-          data: {
+        if (addon.affectsPrice) {
+          await createOrderCharge({
+            data: {
+              orderId: created.id,
+              partId: entry.partId,
+              departmentId: addon.departmentId,
+              addonId: addon.id,
+              kind: 'ADDON',
+              name: addon.name,
+              description: selection.notes ?? null,
+              quantity: new Prisma.Decimal(selection.units ?? 0),
+              unitPrice: new Prisma.Decimal(addon.rateCents ?? 0),
+              sortOrder: sortOrder++,
+            },
+          });
+        }
+
+        if (addon.isChecklistItem && !addon.affectsPrice) {
+          const checklistKey = `${entry.partId}:${addon.id}`;
+          if (checklistKeys.has(checklistKey)) continue;
+          checklistKeys.add(checklistKey);
+          await createOrderChecklistItem({
             orderId: created.id,
             partId: entry.partId,
-            departmentId: addon.departmentId,
             addonId: addon.id,
-            kind: 'ADDON',
-            name: addon.name,
-            description: selection.notes ?? null,
-            quantity: new Prisma.Decimal(selection.units ?? 0),
-            unitPrice: new Prisma.Decimal(addon.rateCents ?? 0),
-            sortOrder: sortOrder++,
-          },
-        });
+            departmentId: addon.departmentId ?? null,
+            completed: false,
+            isActive: true,
+          });
+        }
       }
     }
 
     await syncChecklistForOrder(created.id);
+  }
+
+  if (body.addonIds.length) {
+    const addons = (await listAddonsByIds(body.addonIds)) as AddonRecord[];
+    const checklistAddons = addons.filter((addon) => addon.isChecklistItem && !addon.affectsPrice);
+    if (checklistAddons.length && created.parts?.length) {
+      for (const part of created.parts) {
+        for (const addon of checklistAddons) {
+          const checklistKey = `${part.id}:${addon.id}`;
+          if (checklistKeys.has(checklistKey)) continue;
+          checklistKeys.add(checklistKey);
+          await createOrderChecklistItem({
+            orderId: created.id,
+            partId: part.id,
+            addonId: addon.id,
+            departmentId: addon.departmentId ?? null,
+            completed: false,
+            isActive: true,
+          });
+        }
+      }
+    }
   }
 
   return ok({ id: created.id });

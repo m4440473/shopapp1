@@ -21,11 +21,11 @@ async function requireAdmin() {
   return { session };
 }
 
-export async function POST(req: NextRequest, { params }: { params: { partId: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ partId: string }> }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const { partId } = params;
+  const { partId } = await params;
   if (!partId) return NextResponse.json({ error: 'Missing part id' }, { status: 400 });
 
   const result = await getPartUploadContext(partId);

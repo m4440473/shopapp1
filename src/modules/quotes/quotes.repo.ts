@@ -10,6 +10,7 @@ import {
   stringifyQuoteMetadata,
   type QuoteApprovalMetadata,
 } from '@/lib/quote-metadata';
+import { buildChecklistEntriesFromQuoteSelections } from './quote-work-items';
 
 export async function listQuotes({
   where,
@@ -45,7 +46,10 @@ export async function listVendorsByIds(ids: string[]) {
 
 export async function listAddonsByIds(ids: string[]) {
   if (!ids.length) return [];
-  return prisma.addon.findMany({ where: { id: { in: ids } } });
+  return prisma.addon.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, rateType: true, rateCents: true, affectsPrice: true },
+  });
 }
 
 export async function findActiveQuoteCustomFields({
@@ -507,12 +511,36 @@ export async function findQuoteForConversion(id: string) {
         include: {
           material: true,
           addonSelections: {
-            include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true, departmentId: true } } },
+            include: {
+              addon: {
+                select: {
+                  id: true,
+                  name: true,
+                  rateType: true,
+                  rateCents: true,
+                  departmentId: true,
+                  affectsPrice: true,
+                  isChecklistItem: true,
+                },
+              },
+            },
           },
         },
       },
       addonSelections: {
-        include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true, departmentId: true } } },
+        include: {
+          addon: {
+            select: {
+              id: true,
+              name: true,
+              rateType: true,
+              rateCents: true,
+              departmentId: true,
+              affectsPrice: true,
+              isChecklistItem: true,
+            },
+          },
+        },
       },
       attachments: true,
     },
@@ -683,8 +711,12 @@ export async function convertQuoteToOrder({
           orderPartId: orderParts[0]?.id ?? null,
         })) ?? [];
 
-    const chargeSelections = [...quotePartSelections, ...legacySelections].filter(
-      (entry: any) => entry.orderPartId && entry.selection.addon?.departmentId
+    const allSelections = [...quotePartSelections, ...legacySelections];
+    const chargeSelections = allSelections.filter(
+      (entry: any) =>
+        entry.orderPartId &&
+        entry.selection.addon?.departmentId &&
+        entry.selection.addon?.affectsPrice !== false
     );
 
     if (chargeSelections.length) {
@@ -706,6 +738,11 @@ export async function convertQuoteToOrder({
           })
         )
       );
+    }
+
+    const checklistData = buildChecklistEntriesFromQuoteSelections(order.id, allSelections);
+    if (checklistData.length) {
+      await tx.orderChecklist.createMany({ data: checklistData });
     }
 
     const updatedMetadata = mergeQuoteMetadata({

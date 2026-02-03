@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
-import { getOrderHeaderInfo, getOrderPartSummary, logPartEvent } from '@/modules/orders/orders.service';
-import { getActiveTimeEntry, startTimeEntryWithConflict } from '@/modules/time/time.service';
+import { getOrderPartSummary, logPartEvent } from '@/modules/orders/orders.service';
+import { startTimeEntry } from '@/modules/time/time.service';
 
 export async function POST(req: NextRequest) {
   const session = await getServerAuthSession();
@@ -23,31 +23,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: partCheck.error }, { status: partCheck.status });
   }
 
-  const activeResult = await getActiveTimeEntry(userId);
-  if (activeResult.ok === false) {
-    return NextResponse.json({ error: activeResult.error }, { status: activeResult.status });
-  }
-
-  const activeEntry = activeResult.data.entry;
-  if (activeEntry) {
-    const orderResult = await getOrderHeaderInfo(activeEntry.orderId);
-    const partResult = activeEntry.partId
-      ? await getOrderPartSummary(activeEntry.orderId, activeEntry.partId)
-      : null;
-    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(activeEntry.startedAt).getTime()) / 1000));
-    return NextResponse.json(
-      {
-        error: 'Active timer already running.',
-        activeEntry,
-        activeOrder: orderResult.ok ? orderResult.data.order : null,
-        activePart: partResult?.ok ? partResult.data.part : null,
-        elapsedSeconds,
-      },
-      { status: 409 }
-    );
-  }
-
-  const result = await startTimeEntryWithConflict(userId, {
+  const result = await startTimeEntry(userId, {
     orderId,
     partId,
     operation: 'Part Work',

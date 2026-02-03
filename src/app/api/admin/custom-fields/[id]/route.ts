@@ -26,9 +26,10 @@ function parseJsonValue(value: string | null) {
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard) return guard;
+  const { id } = await params;
   const body = await req.json();
   const parsed = CustomFieldPatch.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
@@ -37,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const options = data.options;
   const item = await prisma.$transaction(async (tx) => {
     const updated = await tx.customField.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         entityType: data.entityType,
         name: data.name,
@@ -82,13 +83,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard) return guard;
+  const { id } = await params;
   await prisma.$transaction([
-    prisma.customFieldValue.deleteMany({ where: { fieldId: params.id } }),
-    prisma.customFieldOption.deleteMany({ where: { fieldId: params.id } }),
-    prisma.customField.delete({ where: { id: params.id } }),
+    prisma.customFieldValue.deleteMany({ where: { fieldId: id } }),
+    prisma.customFieldOption.deleteMany({ where: { fieldId: id } }),
+    prisma.customField.delete({ where: { id } }),
   ]);
   return NextResponse.json({ ok: true });
 }

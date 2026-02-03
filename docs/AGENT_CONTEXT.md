@@ -61,6 +61,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-02-03 — Add dotenv load for postinstall DB setup
+Decision: Add dotenv as a dev dependency and load it in scripts/setup-db.cjs so postinstall can see DATABASE_URL from .env.
+Reason: Local dev should honor .env during setup-db without requiring manual exports.
+
 ### 2026-02-09 — Add CustomField.uiSection for quote step staging
 Decision: Introduce CustomField.uiSection (INTAKE/PART_BUILD/REVIEW) to control when custom fields appear in the quote editor.
 Reason: Move Finish Required out of intake without breaking existing custom field behavior.

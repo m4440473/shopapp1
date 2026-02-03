@@ -8,19 +8,20 @@ import QuoteEditor from '../../QuoteEditor';
 
 export const dynamic = 'force-dynamic';
 
-export default async function EditQuotePage({ params }: { params: { id: string } }) {
+export default async function EditQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getServerAuthSession();
   if (!session || !canAccessAdmin(session.user as any)) {
     redirect('/');
   }
 
-  const headerStore = headers();
+  const { id } = await params;
+  const headerStore = await headers();
   const host = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
   const protocol = headerStore.get('x-forwarded-proto') ?? 'https';
   const baseUrl = host ? `${protocol}://${host}` : '';
   const cookie = headerStore.get('cookie') ?? '';
 
-  const response = await fetch(`${baseUrl}/api/admin/quotes/${params.id}`, {
+  const response = await fetch(`${baseUrl}/api/admin/quotes/${id}`, {
     headers: { cookie },
     cache: 'no-store',
   });

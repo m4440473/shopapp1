@@ -10,9 +10,10 @@ export type AvailableItem = {
   id: string;
   name: string;
   description?: string | null;
-  kind: 'addon' | 'checklist';
   rateType?: 'HOURLY' | 'FLAT';
   departmentName?: string | null;
+  affectsPrice: boolean;
+  isChecklistItem: boolean;
 };
 
 type AvailableItemsLibraryProps = {
@@ -78,10 +79,7 @@ export function AvailableItemsLibrary({
                   key={item.id}
                   draggable={!disabled}
                   onDragStart={(event) => {
-                    event.dataTransfer.setData(
-                      'application/json',
-                      JSON.stringify({ id: item.id, kind: item.kind })
-                    );
+                    event.dataTransfer.setData('application/json', JSON.stringify({ id: item.id }));
                     event.dataTransfer.effectAllowed = 'copy';
                   }}
                   className={`flex items-start justify-between gap-3 rounded border border-border/60 bg-background/80 p-3 ${
@@ -94,11 +92,20 @@ export function AvailableItemsLibrary({
                       <div className="text-xs text-muted-foreground">{item.description}</div>
                     ) : null}
                     <div className="flex flex-wrap gap-2">
-                      {item.kind === 'checklist' ? (
+                      {item.isChecklistItem ? (
                         <Badge variant="outline" className="text-[10px] uppercase">
                           Checklist
                         </Badge>
                       ) : null}
+                      {item.affectsPrice ? (
+                        <Badge variant="secondary" className="text-[10px] uppercase">
+                          Pricing
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px] uppercase">
+                          No charge
+                        </Badge>
+                      )}
                       {item.rateType ? (
                         <Badge variant="secondary" className="text-[10px] uppercase">
                           {item.rateType === 'HOURLY' ? 'Labor' : 'Flat'}

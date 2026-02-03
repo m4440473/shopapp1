@@ -19,11 +19,11 @@ async function requireAdmin() {
   return { session };
 }
 
-export async function GET(req: NextRequest, { params }: { params: { partId: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ partId: string }> }) {
   const session = await requireSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
 
-  const { partId } = params;
+  const { partId } = await params;
   if (!partId) return NextResponse.json({ error: 'Missing part id' }, { status: 400 });
 
   const result = await listAttachmentsForPart(partId);
@@ -35,12 +35,12 @@ export async function GET(req: NextRequest, { params }: { params: { partId: stri
   return NextResponse.json({ attachments });
 }
 
-export async function POST(req: NextRequest, { params }: { params: { partId: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ partId: string }> }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
   const userId = (guard.session.user as any)?.id as string | undefined;
 
-  const { partId } = params;
+  const { partId } = await params;
   if (!partId) return NextResponse.json({ error: 'Missing part id' }, { status: 400 });
 
   const json = await req.json().catch(() => null);

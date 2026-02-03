@@ -13,7 +13,7 @@ export const TEST_MODE_USER = {
 
 export async function getServerAuthSession(): Promise<Session | null> {
   if (isTestMode()) {
-    return { user: TEST_MODE_USER } as Session;
+    return { user: TEST_MODE_USER, expires: new Date(Date.now() + 3600 * 1000).toISOString() } as Session;
   }
   return getServerSession(authOptions);
 }

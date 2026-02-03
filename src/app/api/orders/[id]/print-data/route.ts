@@ -15,11 +15,12 @@ async function requireSession() {
   return { session };
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireSession();
   if (guard instanceof NextResponse) return guard;
 
-  const result = await getOrderPrintData(params.id);
+  const { id } = await params;
+  const result = await getOrderPrintData(id);
   if (result.ok === false) {
     return new NextResponse('Not found', { status: result.status });
   }

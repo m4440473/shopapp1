@@ -41,6 +41,21 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-03 — Build/env fixes + work item flags + checklist/time alignment
+- Added affectsPrice to Addon with migration, updated admin add-ons UI + library badges, and ensured quote totals ignore checklist-only items.
+- Ensured quote->order conversion and order creation instantiate per-part checklist rows for checklist-only items.
+- Fixed Next 15 params/searchParams typing in pages and API routes, and updated public attachments route signature.
+- Updated setup-db to load dotenv and removed unsupported migrate flag; aligned test tooling with vitest aliases and server-only stub.
+- Timer start now auto-closes active entries; added stop-by-entryId; added tests for pricing totals, quote checklist mapping, and time durations.
+- Adjusted mock repos for new signatures and checklist/timer flows.
+
+Commands run:
+- npm ci
+- npm install
+- npx prisma migrate dev --name add_affects_price_to_addon --create-only
+- npm test -- src/modules/quotes/__tests__/quote-totals.test.ts src/modules/quotes/__tests__/quote-work-items.test.ts src/modules/time/__tests__/time.service.test.ts
+- npm run build
+
 ### 2026-02-02 — Restrict non-admin access to PO/quote/invoice attachments
 - Filtered order/part attachments for non-admin responses and blocked public attachment downloads when labels indicate Quote/PO/Invoice.
 - Added unit tests for attachment filtering in quote-visibility.

@@ -31,7 +31,7 @@ const formatCurrency = (cents: number) =>
 
 export const dynamic = 'force-dynamic';
 
-export default async function QuoteDetailPage({ params }: { params: { id: string } }) {
+export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getServerAuthSession();
   if (!session) {
     redirect('/');
@@ -46,14 +46,15 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
   const isAdmin = canAccessAdmin(user ?? role);
   const initialRole = role;
 
-  const headerStore = headers();
+  const headerStore = await headers();
+  const { id } = await params;
   const fallbackHost = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
   const fallbackProtocol = headerStore.get('x-forwarded-proto') ?? 'https';
   const runtimeBase = fallbackHost ? `${fallbackProtocol}://${fallbackHost}` : '';
   const baseUrl = fallbackHost ? `${fallbackProtocol}://${fallbackHost}` : '';
   const cookie = headerStore.get('cookie') ?? '';
 
-  const response = await fetch(`${baseUrl}/api/admin/quotes/${params.id}`, {
+  const response = await fetch(`${baseUrl}/api/admin/quotes/${id}`, {
     headers: { cookie },
     cache: 'no-store',
   });

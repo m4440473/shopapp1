@@ -24,9 +24,10 @@ function parseJsonValue(value: string) {
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard) return guard;
+  const { id } = await params;
   const body = await req.json();
   const parsed = DocumentTemplatePatch.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
@@ -34,7 +35,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const data = parsed.data;
 
   const updated = await prisma.$transaction(async (tx) => {
-    const existing = await tx.documentTemplate.findUnique({ where: { id: params.id } });
+    const existing = await tx.documentTemplate.findUnique({ where: { id } });
     if (!existing) return null;
 
     if (data.isDefault) {
@@ -53,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const nextLayout = data.layoutJson !== undefined ? serializeJsonValue(data.layoutJson) : existing.layoutJson;
 
     const template = await tx.documentTemplate.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         name: data.name,
         documentType: data.documentType,
@@ -89,9 +90,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard) return guard;
-  await prisma.documentTemplate.delete({ where: { id: params.id } });
+  const { id } = await params;
+  await prisma.documentTemplate.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

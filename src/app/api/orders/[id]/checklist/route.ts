@@ -9,12 +9,13 @@ async function requireAuth() {
   return session;
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuth();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const role = (session.user as any)?.role as string | undefined;
   if (!canAccessMachinist(role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  const { id } = await params;
   try {
     const json = await req.json().catch(() => null);
     const { checklistId, chargeId, addonId, partId, departmentId, checked } = json ?? {};
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       (typeof user?.id === 'string' && user.id.trim()) ||
       undefined;
 
-    const orderId = params.id;
+    const orderId = id;
     const result = await toggleChecklistItem({
       orderId,
       checklistId,
@@ -63,10 +64,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 }
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAuth();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
-  const result = await listChecklistForOrder(params.id);
+  const { id } = await params;
+  const result = await listChecklistForOrder(id);
   if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

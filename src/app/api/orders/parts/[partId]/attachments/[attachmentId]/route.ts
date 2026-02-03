@@ -15,12 +15,12 @@ async function requireAdmin() {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { partId: string; attachmentId: string } }
+  { params }: { params: Promise<{ partId: string; attachmentId: string }> }
 ) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const { partId, attachmentId } = params;
+  const { partId, attachmentId } = await params;
   if (!partId || !attachmentId) {
     return NextResponse.json({ error: 'Missing part or attachment id' }, { status: 400 });
   }
@@ -42,12 +42,12 @@ export async function PATCH(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { partId: string; attachmentId: string } }
+  { params }: { params: Promise<{ partId: string; attachmentId: string }> }
 ) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const { partId, attachmentId } = params;
+  const { partId, attachmentId } = await params;
   if (!partId || !attachmentId) {
     return NextResponse.json({ error: 'Missing part or attachment id' }, { status: 400 });
   }
