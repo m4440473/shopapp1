@@ -132,6 +132,32 @@ export async function stopActiveTimeEntry(
   return ok({ entry: { ...active, endedAt: now, updatedAt: now } });
 }
 
+export async function stopTimeEntryById(
+  userId: string,
+  entryId: string
+): Promise<ServiceResult<{ entry: TimeEntry }>> {
+  const entry = await findTimeEntryById(entryId);
+  if (!entry) {
+    return fail(404, 'Time entry not found.');
+  }
+
+  if (entry.userId !== userId) {
+    return fail(403, 'Cannot stop a time entry owned by another user.');
+  }
+
+  if (entry.endedAt) {
+    return fail(409, 'Time entry is already closed.');
+  }
+
+  const now = new Date();
+  const closeResult = await closeTimeEntryById(entry.id, now);
+  if (closeResult.count === 0) {
+    return fail(409, 'Time entry is already closed.');
+  }
+
+  return ok({ entry: { ...entry, endedAt: now, updatedAt: now } });
+}
+
 export async function resumeTimeEntry(
   userId: string,
   input: TimeEntryResumeInput

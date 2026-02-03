@@ -13,21 +13,22 @@ async function requireAdmin(): Promise<NextResponse | null> {
   return null;
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard) return guard;
+  const { id } = await params;
   const body = await req.json();
   const parsed = UserPatch.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   const { password, ...data } = parsed.data as any;
-  const item = await updateUser(params.id, {
+  const item = await updateUser(id, {
     ...data,
     ...(password ? { passwordHash: await hash(password, 10) } : {}),
   });
   return NextResponse.json({ ok: true, item });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard) return guard;
   return NextResponse.json({ error: 'Delete not allowed. Disable user instead.' }, { status: 405 });

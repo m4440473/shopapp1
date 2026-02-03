@@ -13,11 +13,11 @@ async function requireAdmin() {
   return { session };
 }
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const { id: orderId } = params;
+  const { id: orderId } = await params;
   if (!orderId) return NextResponse.json({ error: 'Missing order id' }, { status: 400 });
 
   const result = await listChargesForOrder(orderId);
@@ -29,11 +29,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({ charges });
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const { id: orderId } = params;
+  const { id: orderId } = await params;
   if (!orderId) return NextResponse.json({ error: 'Missing order id' }, { status: 400 });
 
   const json = await req.json().catch(() => null);

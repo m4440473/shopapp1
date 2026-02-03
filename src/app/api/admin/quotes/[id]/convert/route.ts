@@ -169,7 +169,7 @@ async function prepareAttachments({
   return prepared;
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
@@ -187,7 +187,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
   }
 
-  const quote = await findQuoteForConversion(params.id);
+  const { id } = await params;
+  const quote = await findQuoteForConversion(id);
 
   if (!quote) {
     return new NextResponse('Not found', { status: 404 });

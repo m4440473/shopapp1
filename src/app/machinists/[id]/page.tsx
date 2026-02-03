@@ -83,9 +83,10 @@ function formatRelative(date: Date | string | null) {
 
 export const dynamic = 'force-dynamic';
 
-export default async function MachinistProfilePage({ params }: { params: { id: string } }) {
+export default async function MachinistProfilePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const machinist = await prisma.user.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       orders: {
         include: {
@@ -245,7 +246,7 @@ export default async function MachinistProfilePage({ params }: { params: { id: s
               <CardDescription>Live queue of assigned work with due dates and statuses.</CardDescription>
             </div>
             <Button asChild variant="outline" size="sm">
-              <Link href={`/orders?assignedMachinistId=${params.id}`}>
+              <Link href={`/orders?assignedMachinistId=${id}`}>
                 View in orders queue
               </Link>
             </Button>

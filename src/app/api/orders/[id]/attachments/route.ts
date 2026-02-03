@@ -5,13 +5,13 @@ import { canAccessAdmin } from '@/lib/rbac';
 import { OrderAttachmentCreate } from '@/modules/orders/orders.schema';
 import { createAttachmentForOrder } from '@/modules/orders/orders.service';
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = (session as any).user;
   if (!canAccessAdmin(user)) return new NextResponse('Forbidden', { status: 403 });
 
-  const { id } = params;
+  const { id } = await params;
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
   const json = await req.json().catch(() => null);

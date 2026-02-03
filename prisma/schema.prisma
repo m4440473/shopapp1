@@ -232,6 +232,7 @@ model Addon {
   rateType    String
   rateCents   Int
   active      Boolean  @default(true)
+  affectsPrice Boolean @default(true)
   isChecklistItem Boolean @default(true)
   departmentId String
   department  Department @relation(fields: [departmentId], references: [id])

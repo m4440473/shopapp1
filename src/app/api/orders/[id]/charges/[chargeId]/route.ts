@@ -13,11 +13,14 @@ async function requireAdmin() {
   return { session };
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string; chargeId: string } }) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; chargeId: string }> }
+) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const { id: orderId, chargeId } = params;
+  const { id: orderId, chargeId } = await params;
   if (!orderId || !chargeId) {
     return NextResponse.json({ error: 'Missing order or charge id' }, { status: 400 });
   }
@@ -37,11 +40,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({ charge });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string; chargeId: string } }) {
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; chargeId: string }> }
+) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const { id: orderId, chargeId } = params;
+  const { id: orderId, chargeId } = await params;
   if (!orderId || !chargeId) {
     return NextResponse.json({ error: 'Missing order or charge id' }, { status: 400 });
   }

@@ -10,11 +10,15 @@ import { matchesRestrictedAttachmentLabel } from '@/lib/attachment-visibility';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_req: NextRequest, { params }: { params: { path: string[] } }) {
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ path?: string | string[] }> },
+) {
   const { prisma } = await import('@/lib/prisma');
   const { getAppSettings } = await import('@/lib/app-settings');
   const { getServerAuthSession } = await import('@/lib/auth-session');
-  const segments = Array.isArray(params.path) ? params.path : [];
+  const { path: rawPath } = await params;
+  const segments = Array.isArray(rawPath) ? rawPath : rawPath ? [rawPath] : [];
   if (segments.length === 0) {
     return new NextResponse('Not found', { status: 404 });
   }

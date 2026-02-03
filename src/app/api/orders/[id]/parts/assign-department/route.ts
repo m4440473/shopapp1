@@ -10,12 +10,13 @@ const AssignPayload = z.object({
   departmentId: z.string().trim().min(1),
 });
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const role = (session.user as any)?.role as string | undefined;
   if (!canAccessMachinist(role)) return new NextResponse('Forbidden', { status: 403 });
 
+  const { id } = await params;
   const json = await req.json().catch(() => null);
   const parsed = AssignPayload.safeParse(json);
   if (!parsed.success) {
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const result = await assignPartDepartment({
-    orderId: params.id,
+    orderId: id,
     partId: parsed.data.partId,
     departmentId: parsed.data.departmentId,
   });

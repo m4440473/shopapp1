@@ -28,13 +28,15 @@ export async function GET(req: NextRequest) {
   const partResult = activeEntry?.partId
     ? await getOrderPartSummary(activeEntry.orderId, activeEntry.partId)
     : null;
+  const activeOrder = orderResult?.ok ? (orderResult.data as { order: unknown }).order : null;
+  const activePart = partResult?.ok ? (partResult.data as { part: unknown }).part : null;
 
   const totalsResult = orderId && partIds.length ? await getOrderPartTimeTotals(orderId, partIds) : null;
 
   return NextResponse.json({
     activeEntry,
-    activeOrder: orderResult?.ok ? orderResult.data.order : null,
-    activePart: partResult?.ok ? partResult.data.part : null,
+    activeOrder,
+    activePart,
     totals: totalsResult?.ok ? totalsResult.data.totals : {},
   });
 }

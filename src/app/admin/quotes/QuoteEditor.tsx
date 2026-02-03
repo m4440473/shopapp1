@@ -66,6 +66,8 @@ type AddonOption = {
   rateType: 'HOURLY' | 'FLAT';
   rateCents: number;
   active: boolean;
+  affectsPrice: boolean;
+  isChecklistItem: boolean;
   description?: string | null;
   department?: { id: string; name: string } | null;
 };
@@ -720,9 +722,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         id: addon.id,
         name: addon.name,
         description: addon.description,
-        kind: 'addon' as const,
         rateType: addon.rateType,
         departmentName: addon.department?.name ?? null,
+        affectsPrice: addon.affectsPrice,
+        isChecklistItem: addon.isChecklistItem,
       })),
     [addons]
   );
@@ -749,6 +752,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       part.addonSelections.reduce((innerSum, selection) => {
         const addon = addonMap.get(selection.addonId);
         if (!addon) return innerSum;
+        if (!addon.affectsPrice) return innerSum;
         const units = numberFromString(selection.units);
         return innerSum + Math.round(addon.rateCents * (units > 0 ? units : 0));
       }, 0)
@@ -1373,6 +1377,13 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                       renderMeta={(assignment) => {
                         const addon = addonMap.get(assignment.itemId);
                         if (!addon) return null;
+                        if (!addon.affectsPrice) {
+                          return (
+                            <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                              No charge (checklist only).
+                            </div>
+                          );
+                        }
                         const units = numberFromString(assignment.units);
                         const totalCents = Math.round(addon.rateCents * (units > 0 ? units : 0));
                         return (

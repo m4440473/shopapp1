@@ -1,5 +1,7 @@
 const { spawnSync } = require('child_process');
 
+require('dotenv').config();
+
 function run(command, args) {
   const result = spawnSync(command, args, { stdio: 'inherit', env: process.env });
   if (result.status !== 0) {
@@ -21,7 +23,7 @@ function run(command, args) {
 
   try {
     console.log('Applying Prisma migrations...');
-    run('npx', ['prisma', 'migrate', 'deploy', '--skip-generate']);
+    run('npx', ['prisma', 'migrate', 'deploy']);
 
     console.log('Generating Prisma client...');
     run('npx', ['prisma', 'generate']);

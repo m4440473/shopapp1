@@ -13,18 +13,20 @@ async function requireAdmin(): Promise<NextResponse | null> {
 
 import { VendorUpsert } from '@/lib/zod';
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin(); if (guard) return guard;
+  const { id } = await params;
   const body = await req.json();
   const parsed = VendorUpsert.partial().safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   const data = parsed.data as any;
-  const item = await prisma.vendor.update({ where: { id: params.id }, data });
+  const item = await prisma.vendor.update({ where: { id }, data });
   return NextResponse.json({ ok: true, item });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin(); if (guard) return guard;
-  await prisma.vendor.delete({ where: { id: params.id } });
+  const { id } = await params;
+  await prisma.vendor.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

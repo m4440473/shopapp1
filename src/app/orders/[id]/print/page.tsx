@@ -79,21 +79,23 @@ export default async function OrderPrintPage({
   params,
   searchParams,
 }: {
-  params: { id: string };
-  searchParams?: { templateId?: string };
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ templateId?: string }>;
 }) {
+  const { id } = await params;
+  const resolvedSearchParams = await searchParams;
   const session = await getServerAuthSession();
   if (!session) {
-    redirect(`/auth/signin?callbackUrl=/orders/${params.id}/print`);
+    redirect(`/auth/signin?callbackUrl=/orders/${id}/print`);
   }
 
-  const headerStore = headers();
+  const headerStore = await headers();
   const host = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
   const protocol = headerStore.get('x-forwarded-proto') ?? 'https';
   const baseUrl = host ? `${protocol}://${host}` : '';
   const cookie = headerStore.get('cookie') ?? '';
 
-  const response = await fetch(`${baseUrl}/api/orders/${params.id}/print-data`, {
+  const response = await fetch(`${baseUrl}/api/orders/${id}/print-data`, {
     headers: { cookie },
     cache: 'no-store',
   });
@@ -113,7 +115,7 @@ export default async function OrderPrintPage({
     notFound();
   }
 
-  const requestedTemplateId = searchParams?.templateId;
+  const requestedTemplateId = resolvedSearchParams?.templateId;
   const selectedTemplate =
     templates.find((template) => template.id === requestedTemplateId) ?? activeTemplate ?? templates[0] ?? null;
   const layout = normalizeTemplateLayout(selectedTemplate?.layoutJson);

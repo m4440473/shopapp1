@@ -18,10 +18,11 @@ async function requireAdmin() {
   return { session };
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
+  const { id } = await params;
   const body = await req.json();
   const parsed = DepartmentPatch.safeParse(body);
   if (!parsed.success) {
@@ -34,15 +35,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     ...(data.name ? { slug: slugifyName(data.name, 'department') } : {}),
   };
 
-  const item = await prisma.department.update({ where: { id: params.id }, data: updateData });
+  const item = await prisma.department.update({ where: { id }, data: updateData });
   return NextResponse.json({ ok: true, item });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const addonCount = await prisma.addon.count({ where: { departmentId: params.id } });
+  const { id } = await params;
+  const addonCount = await prisma.addon.count({ where: { departmentId: id } });
   if (addonCount > 0) {
     return NextResponse.json(
       { error: 'Department is assigned to existing add-ons. Disable it instead.' },
@@ -50,15 +52,16 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     );
   }
 
-  await prisma.department.delete({ where: { id: params.id } });
+  await prisma.department.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const item = await prisma.department.findUnique({ where: { id: params.id } });
+  const { id } = await params;
+  const item = await prisma.department.findUnique({ where: { id } });
   if (!item) {
     return new NextResponse('Not found', { status: 404 });
   }

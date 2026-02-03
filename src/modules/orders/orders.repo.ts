@@ -828,7 +828,15 @@ export async function listAddonsByIds(addonIds: string[]) {
   if (!addonIds.length) return [];
   return prisma.addon.findMany({
     where: { id: { in: addonIds } },
-    select: { id: true, name: true, rateCents: true, rateType: true, departmentId: true },
+    select: {
+      id: true,
+      name: true,
+      rateCents: true,
+      rateType: true,
+      departmentId: true,
+      affectsPrice: true,
+      isChecklistItem: true,
+    },
   });
 }
 

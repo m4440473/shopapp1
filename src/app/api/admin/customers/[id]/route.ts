@@ -5,13 +5,13 @@ import { prisma } from '@/lib/prisma';
 import { canAccessAdmin } from '@/lib/rbac';
 import { CustomerUpdate } from '@/lib/zod-customers';
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerAuthSession();
   if (!session || !canAccessAdmin(session.user as any)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = params;
+  const { id } = await params;
   if (!id) {
     return NextResponse.json({ error: 'Missing id' }, { status: 400 });
   }

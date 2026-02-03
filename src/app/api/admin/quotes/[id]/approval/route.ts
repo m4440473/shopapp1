@@ -39,10 +39,11 @@ const BodySchema = z.object({
   attachment: AttachmentSchema.optional(),
 });
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
+  const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) {
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const settings = await getAppSettings();
 
   const result = await updateQuoteApproval({
-    quoteId: params.id,
+    quoteId: id,
     received,
     attachment,
     requireAttachment: settings.requirePOForQuoteApproval,

@@ -42,17 +42,20 @@ function buildQueryVariants(input: string): string[] {
 }
 
 type SearchPageProps = {
-  searchParams?: { q?: string };
+  searchParams?: Promise<{ q?: string }>;
 };
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
+  const resolvedSearchParams = await searchParams;
   const session = await getServerAuthSession();
   if (!session) {
-    const query = searchParams?.q ? `?callbackUrl=/search?q=${encodeURIComponent(searchParams.q)}` : '?callbackUrl=/search';
+    const query = resolvedSearchParams?.q
+      ? `?callbackUrl=/search?q=${encodeURIComponent(resolvedSearchParams.q)}`
+      : '?callbackUrl=/search';
     redirect(`/auth/signin${query}`);
   }
 
-  const query = searchParams?.q?.trim() ?? '';
+  const query = resolvedSearchParams?.q?.trim() ?? '';
   const hasQuery = query.length > 0;
 
   const results = hasQuery

@@ -64,6 +64,8 @@ type AddonOption = {
   description?: string | null;
   rateType?: 'HOURLY' | 'FLAT';
   active?: boolean;
+  affectsPrice?: boolean;
+  isChecklistItem?: boolean;
   department?: { id: string; name: string } | null;
 };
 type PartAddonSelection = {
@@ -346,15 +348,20 @@ function NewOrderForm() {
         id: addon.id,
         name: addon.name,
         description: addon.description,
-        kind: 'addon' as const,
         rateType: addon.rateType,
         departmentName: addon.department?.name ?? null,
+        affectsPrice: addon.affectsPrice ?? true,
+        isChecklistItem: addon.isChecklistItem ?? false,
       })),
     [addons],
   );
   const availableItemsById = React.useMemo(
     () => new Map(availableItems.map((item) => [item.id, item])),
     [availableItems],
+  );
+  const orderChecklistAddons = React.useMemo(
+    () => addons.filter((addon) => addon.isChecklistItem && !addon.affectsPrice),
+    [addons],
   );
 
   function updatePart(key: string, patch: Partial<PartInput>) {
@@ -1346,19 +1353,19 @@ function NewOrderForm() {
 
             <Card className="border-border/60 bg-card/70 backdrop-blur">
               <CardHeader>
-                <CardTitle>Order-level add-ons & notes</CardTitle>
+                <CardTitle>Checklist items & notes</CardTitle>
                 <CardDescription>
                   {conversionMode
-                    ? 'Add-ons will be pulled from the quote parts during conversion.'
-                    : 'Select value-added services and include launch notes.'}
+                    ? 'Checklist items will be pulled from the quote parts during conversion.'
+                    : 'Select checklist items that should be applied to every part.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-6">
                 {!conversionMode && (
                   <div className="grid gap-2">
-                    <Label>Add-on services</Label>
+                    <Label>Checklist items (applied per part)</Label>
                     <div className="grid gap-3 rounded-lg border border-border/60 bg-background/60 p-4 sm:grid-cols-2">
-                      {addons.map((item) => {
+                      {orderChecklistAddons.map((item) => {
                         const checked = selectedAddonIds.includes(item.id);
                         return (
                           <label key={item.id} className="flex items-start justify-between gap-3 rounded-md border border-border/40 bg-muted/10 p-3 text-sm">
@@ -1379,15 +1386,13 @@ function NewOrderForm() {
                                 )}
                               </div>
                             </div>
-                            <span className="text-xs text-muted-foreground text-right">
-                              Pricing available in Admin Portal
-                            </span>
+                            <span className="text-xs text-muted-foreground text-right">Checklist only</span>
                           </label>
                         );
                       })}
-                      {addons.length === 0 && (
+                      {orderChecklistAddons.length === 0 && (
                         <p className="text-sm text-muted-foreground">
-                          No add-ons available yet. Create them from the admin dashboard.
+                          No checklist-only items available yet. Create them from the admin dashboard.
                         </p>
                       )}
                     </div>
@@ -1395,7 +1400,7 @@ function NewOrderForm() {
                 )}
                 {conversionMode && (
                   <div className="rounded-lg border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-                    Add-ons and labor will copy from the quote parts and become part-level charges on the order.
+                    Add-ons and labor will copy from the quote parts and become part-level charges and checklist items.
                   </div>
                 )}
                 <div className="grid gap-2">

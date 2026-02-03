@@ -27,6 +27,10 @@ export type MockAddon = {
   id: string;
   name: string;
   departmentId: string | null;
+  rateType: string;
+  rateCents: number;
+  affectsPrice: boolean;
+  isChecklistItem: boolean;
 };
 
 export type MockMaterial = {
@@ -220,7 +224,15 @@ export function createMockSeedState(): MockSeedState {
   ];
 
   const addons: MockAddon[] = [
-    { id: 'addon_test_001', name: 'Anodize', departmentId: 'dept_test_002' },
+    {
+      id: 'addon_test_001',
+      name: 'Anodize',
+      departmentId: 'dept_test_002',
+      rateType: 'FLAT',
+      rateCents: 2500,
+      affectsPrice: true,
+      isChecklistItem: true,
+    },
   ];
 
   const materials: MockMaterial[] = [

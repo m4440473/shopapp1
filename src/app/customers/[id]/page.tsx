@@ -31,17 +31,18 @@ function formatDate(input?: Date | string | null) {
 }
 
 type CustomerPageProps = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 export default async function CustomerDetailPage({ params }: CustomerPageProps) {
+  const { id } = await params;
   const session = await getServerAuthSession();
   if (!session) {
-    redirect(`/auth/signin?callbackUrl=/customers/${params.id}`);
+    redirect(`/auth/signin?callbackUrl=/customers/${id}`);
   }
 
   const customer = await prisma.customer.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       orders: {
         include: {
