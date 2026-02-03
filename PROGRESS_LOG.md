@@ -41,6 +41,31 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-03 — Codebase audit + UX analysis from machine shop perspective
+- Performed comprehensive analysis of outdated/unused code, UI-backend connections, and UX workflows.
+- Created detailed audit report (docs/AUDIT_REPORT_2026-02-03.md) with findings organized by priority.
+- Created quick-reference summary (docs/AUDIT_SUMMARY.md) with 5-stage implementation plan.
+- Identified critical issues: duplicate timer APIs (timer vs time), Prisma access in pages, bloated orders service (1367 lines).
+- Evaluated UX from machinist/shop owner perspective: no quick resume, parts not first-class, dept queue static, order page overload.
+- Mapped all recommendations to ROADMAP.md phases for staged execution.
+
+Key findings:
+- Duplicate APIs: /api/timer/* (used by UI) vs /api/time/* (unused) both exist
+- Architecture violations: 8+ pages/components bypass service layer
+- Dead code: fetchJson (0 imports), colors.ts (unused), machinist page (unreferenced)
+- UX gaps: no "Resume Last" button, can't see cross-order part list, no real-time dept updates
+- Orders service needs split: CRUD + parts + checklist + charges mixed in 1367 lines
+
+Staged plan (5 phases):
+1. Consolidate & clean (Phase 1 - P0)
+2. Modularize backend (Phase 2 - P2)
+3. Part-centric refactor (Phase 3 - P1)
+4. UX polish for shop floor (Phase 4 - P1)
+5. Live data & mobile (Phase 5 - P1/P3)
+
+Commands run:
+- None (analysis/documentation only)
+
 ### 2026-02-03 — Build/env fixes + work item flags + checklist/time alignment
 - Added affectsPrice to Addon with migration, updated admin add-ons UI + library badges, and ensured quote totals ignore checklist-only items.
 - Ensured quote->order conversion and order creation instantiate per-part checklist rows for checklist-only items.
