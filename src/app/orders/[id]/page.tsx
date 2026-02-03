@@ -600,7 +600,7 @@ export default function OrderDetailPage() {
               <Badge className="bg-primary/10 text-primary">{statusLabel}</Badge>
               <span className="text-sm text-muted-foreground">Due {dueDateLabel}</span>
             </div>
-            <div className="flex flex-wrap gap-3 border-b border-border/60 pb-2 text-sm">
+            <div className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-md bg-muted/20 p-1">
               {PART_TABS.map((tab) => {
                 const label =
                   tab === 'overview'
@@ -616,10 +616,10 @@ export default function OrderDetailPage() {
                     key={tab}
                     type="button"
                     onClick={() => setActiveTab(tab)}
-                    className={`inline-flex items-center px-2 pb-2 text-sm font-medium transition ${
+                    className={`inline-flex items-center h-9 rounded-md px-3 text-sm font-medium transition ${
                       isActive
-                        ? 'border-b-2 border-primary text-foreground shadow-[0_0_12px_rgba(59,130,246,0.45)]'
-                        : 'border-b-2 border-transparent text-muted-foreground hover:text-foreground hover:shadow-[0_0_10px_rgba(59,130,246,0.3)]'
+                        ? 'bg-background text-foreground shadow-sm border border-border/40'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
                     }`}
                   >
                     {label}
