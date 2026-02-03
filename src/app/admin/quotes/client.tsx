@@ -53,7 +53,7 @@ export default function Client({ initial, initialRole, initialAdmin }: ClientPro
   const [items, setItems] = useState<QuoteItem[]>(initial.items ?? []);
   const [nextCursor, setNextCursor] = useState<string | null>(initial.nextCursor ?? null);
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState('__none__');
   const toast = useToast();
   const router = useRouter();
   const user = useCurrentUser();
@@ -173,7 +173,8 @@ export default function Client({ initial, initialRole, initialAdmin }: ClientPro
   async function refresh(cursor?: string) {
     const qs = new URLSearchParams();
     if (query) qs.set('q', query);
-    if (status) qs.set('status', status);
+    // Translate sentinel value to empty string for API
+    if (status && status !== '__none__') qs.set('status', status);
     if (cursor) qs.set('cursor', cursor);
     const data = await fetchJson<{ items: QuoteItem[]; nextCursor: string | null }>(
       `/api/admin/quotes?${qs.toString()}`
@@ -202,7 +203,7 @@ export default function Client({ initial, initialRole, initialAdmin }: ClientPro
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All statuses</SelectItem>
+            <SelectItem value="__none__">All statuses</SelectItem>
             <SelectItem value="DRAFT">Draft</SelectItem>
             <SelectItem value="SENT">Sent</SelectItem>
             <SelectItem value="APPROVED">Approved</SelectItem>
