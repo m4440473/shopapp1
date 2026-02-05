@@ -1,4 +1,5 @@
 'use client';
+import { fetchJson } from '@/lib/fetchJson';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -34,7 +35,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/Card';
-import { fetchJson } from '@/lib/fetchJson';
 import {
   BUSINESS_OPTIONS,
   getBusinessOptionByCode,

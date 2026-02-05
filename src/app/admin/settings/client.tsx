@@ -1,4 +1,5 @@
 'use client';
+import { fetchJson } from '@/lib/fetchJson';
 
 import * as React from 'react';
 import Image from 'next/image';
@@ -21,7 +22,6 @@ import {
 } from '@/components/ui/dialog';
 import { hexToHslCss, isValidHex, normalizeHex } from '@/lib/colors';
 import { getInitials } from '@/lib/get-initials';
-import { fetchJson } from '@/lib/fetchJson';
 import { DepartmentUpsert } from '@/lib/zod';
 import { canAccessAdmin } from '@/lib/rbac';
 import { useCurrentUser } from '@/lib/use-current-user';

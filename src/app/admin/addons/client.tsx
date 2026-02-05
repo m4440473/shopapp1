@@ -1,4 +1,5 @@
 'use client';
+import { fetchJson } from '@/lib/fetchJson';
 
 import React, { useEffect, useMemo, useState } from 'react';
 
@@ -17,7 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { fetchJson } from '@/lib/fetchJson';
 import { canAccessAdmin } from '@/lib/rbac';
 import { useCurrentUser } from '@/lib/use-current-user';
 import { AddonUpsert } from '@/lib/zod';

@@ -81,8 +81,8 @@ import {
 } from '@/repos/orders';
 
 export { generateNextOrderNumber, syncChecklistForOrder };
-export type { OrderFilterState, OrderListItem, OrderWithMeta };
 export { isPartReadyForDepartment };
+export type { OrderListItem } from './orders.types';
 
 export type DepartmentFeedPart = { id: string; partNumber: string | null; quantity: number | null };
 export type DepartmentFeedOrder = {

@@ -1,8 +1,8 @@
 'use client';
+import { fetchJson } from '@/lib/fetchJson';
 import React, { useEffect, useMemo, useState } from 'react';
 import Table from '@/components/Admin/Table';
 import { useToast } from '@/components/ui/Toast';
-import { fetchJson } from '@/lib/fetchJson';
 import { VendorUpsert } from '@/lib/zod';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
