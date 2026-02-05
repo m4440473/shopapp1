@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters, type OrderWithMeta } from '@/modules/orders/orders.service';
+import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters, type OrderWithMeta } from '@/lib/order-ui-utils';
 
 type LayoutOption = 'grid' | 'handoff' | 'machinist';
 

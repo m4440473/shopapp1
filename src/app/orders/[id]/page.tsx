@@ -187,7 +187,7 @@ export default function OrderDetailPage() {
         params.set('orderId', id);
         params.set('partIds', partIdsParam);
       }
-      const res = await fetch(`/api/timer/active?${params.toString()}`, { credentials: 'include' });
+      const res = await fetch(`/api/time/active?${params.toString()}`, { credentials: 'include' });
       if (!res.ok) throw res;
       const data = await res.json();
       setActiveEntry(data.activeEntry ?? null);
@@ -228,23 +228,12 @@ export default function OrderDetailPage() {
     setTimerSaving(true);
     setTimerError(null);
     try {
-      const res = await fetch('/api/timer/start', {
+      const res = await fetch('/api/time/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: id, partId: selectedPartId }),
+        body: JSON.stringify({ orderId: id, partId: selectedPartId, operation: 'Part Work' }),
         credentials: 'include',
       });
-      if (res.status === 409) {
-        const data = await res.json();
-        setConflictState({
-          open: true,
-          activeEntry: data.activeEntry ?? null,
-          activeOrder: data.activeOrder ?? null,
-          activePart: data.activePart ?? null,
-          elapsedSeconds: data.elapsedSeconds ?? 0,
-        });
-        return;
-      }
       if (!res.ok) throw res;
       await refreshTimerSummary();
       await loadPartEvents();
@@ -259,7 +248,7 @@ export default function OrderDetailPage() {
     setTimerSaving(true);
     setTimerError(null);
     try {
-      const res = await fetch('/api/timer/pause', { method: 'POST', credentials: 'include' });
+      const res = await fetch('/api/time/pause', { method: 'POST', credentials: 'include' });
       if (!res.ok) throw res;
       await refreshTimerSummary();
       await loadPartEvents();
@@ -274,7 +263,7 @@ export default function OrderDetailPage() {
     setTimerSaving(true);
     setTimerError(null);
     try {
-      const res = await fetch('/api/timer/finish', { method: 'POST', credentials: 'include' });
+      const res = await fetch('/api/time/finish', { method: 'POST', credentials: 'include' });
       if (!res.ok) throw res;
       await load();
       await refreshTimerSummary();

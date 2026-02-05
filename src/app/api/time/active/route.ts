@@ -1,6 +1,7 @@
+import 'server-only';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
-
 import { getOrderHeaderInfo, getOrderPartSummary } from '@/modules/orders/orders.service';
 import { getActiveTimeEntry, getOrderPartTimeTotals } from '@/modules/time/time.service';
 
