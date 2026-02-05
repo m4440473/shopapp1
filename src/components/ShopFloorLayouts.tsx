@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters, type OrderWithMeta } from '@/modules/orders/orders.service';
+import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters, type OrderWithMeta } from '@/lib/order-ui-utils';
 
 type LayoutOption = 'grid' | 'handoff' | 'machinist';
 
@@ -91,6 +91,7 @@ export function ShopFloorLayouts({
   const [departmentFeed, setDepartmentFeed] = useState(initialDepartmentFeed ?? []);
   const [departmentLoading, setDepartmentLoading] = useState(false);
   const [departmentError, setDepartmentError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   useEffect(() => {
     setDepartmentId(initialDepartmentId ?? '');
@@ -111,6 +112,7 @@ export function ShopFloorLayouts({
       }
       const data = await res.json();
       setDepartmentFeed(Array.isArray(data?.items) ? data.items : []);
+      setLastRefresh(new Date());
     } catch (err: any) {
       setDepartmentError(err?.message ?? 'Failed to load department feed');
       setDepartmentFeed([]);
@@ -118,6 +120,17 @@ export function ShopFloorLayouts({
       setDepartmentLoading(false);
     }
   }, []);
+
+  // Auto-refresh department feed every 30 seconds when in handoff mode
+  useEffect(() => {
+    if (layout !== 'handoff' || !departmentId) return;
+
+    const interval = setInterval(() => {
+      loadDepartmentFeed(departmentId);
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [layout, departmentId, loadDepartmentFeed]);
 
   useEffect(() => {
     if (!departmentId) {
@@ -162,7 +175,7 @@ export function ShopFloorLayouts({
   const machinistBuckets = useMemo(() => {
     const buckets: Record<string, OrderWithMeta[]> = {};
     sorted.forEach((order) => {
-      const key = order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned';
+      const key = order.assignedMachinist?.name ?? order.assignedMachinist?.id ?? 'Unassigned';
       buckets[key] = buckets[key] ? [...buckets[key], order] : [order];
     });
     return buckets;
@@ -245,8 +258,8 @@ export function ShopFloorLayouts({
                         <SelectItem value="all">All</SelectItem>
                         <SelectItem value="__unassigned__">Unassigned</SelectItem>
                         {machinists.map((mach) => (
-                          <SelectItem key={mach.id ?? mach.email ?? 'unknown'} value={mach.id ?? mach.email ?? 'unknown'}>
-                            {mach.name ?? mach.email ?? 'Unassigned'}
+                          <SelectItem key={mach.id ?? 'unknown'} value={mach.id ?? 'unknown'}>
+                            {mach.name ?? mach.email ?? 'Unknown'}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -398,6 +411,11 @@ export function ShopFloorLayouts({
                 ))}
               </SelectContent>
             </Select>
+            {departmentId && (
+              <span className="text-xs text-muted-foreground">
+                Last updated: {lastRefresh.toLocaleTimeString()}
+              </span>
+            )}
           </div>
         </div>
         {departmentError ? (
@@ -509,7 +527,7 @@ export function ShopFloorLayouts({
                 <div>
                   <p className="text-xs uppercase tracking-wide">Machinist</p>
                   <p className="text-foreground">
-                    {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
+                    {order.assignedMachinist?.name ?? 'Unassigned'}
                   </p>
                 </div>
                 <div>
@@ -619,7 +637,7 @@ export function ShopFloorLayouts({
                 </div>
                 <p className="text-sm text-lime-100">
                   {order.customer?.name ?? 'Unknown customer'} •{' '}
-                  {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
+                  {order.assignedMachinist?.name ?? 'Unassigned'}
                 </p>
                 <p className="text-xs font-medium uppercase tracking-wide text-lime-200">
                   {order.openAddonCount} addon{order.openAddonCount === 1 ? '' : 's'} remaining

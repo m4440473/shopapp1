@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getInitials } from '@/lib/get-initials';
-import { ORDER_STATUS_LABELS } from '@/modules/orders/orders.service';
+import { ORDER_STATUS_LABELS } from '@/lib/order-ui-utils';
 
 type SortOption = 'dueDate' | 'receivedDate';
 

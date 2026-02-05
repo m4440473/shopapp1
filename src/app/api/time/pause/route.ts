@@ -3,6 +3,7 @@ import 'server-only';
 import { NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { pauseActiveTimeEntry } from '@/modules/time/time.service';
+import { logPartEvent } from '@/modules/orders/orders.service';
 
 export async function POST() {
   const session = await getServerAuthSession();
@@ -16,6 +17,19 @@ export async function POST() {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  const { entry } = result.data as { entry: unknown };
+  const { entry } = result.data as { entry: any };
+  
+  // Log part event if entry has a partId
+  if (entry.partId) {
+    await logPartEvent({
+      orderId: entry.orderId,
+      partId: entry.partId,
+      userId,
+      type: 'TIMER_PAUSED',
+      message: 'Timer paused.',
+      meta: { timeEntryId: entry.id },
+    });
+  }
+
   return NextResponse.json({ entry });
 }

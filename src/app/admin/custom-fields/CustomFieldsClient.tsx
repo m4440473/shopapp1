@@ -1,4 +1,5 @@
 'use client';
+import { fetchJson } from '@/lib/fetchJson';
 
 import React from 'react';
 
@@ -15,7 +16,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/Toast';
-import { fetchJson } from '@/lib/fetchJson';
 import type { CustomFieldDefinition, CustomFieldOption } from '@/components/CustomFieldInputs';
 import { canAccessAdmin } from '@/lib/rbac';
 import { useCurrentUser } from '@/lib/use-current-user';

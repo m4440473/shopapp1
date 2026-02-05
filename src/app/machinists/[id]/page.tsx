@@ -1,4 +1,11 @@
 import Link from 'next/link';
+// TODO: This page needs refactoring to follow CANON.md architecture:
+// - Remove direct Prisma imports
+// - Create machinist service in src/modules/users/
+// - Call service instead of direct database access
+// - Add proper error handling and loading states
+// See: docs/AUDIT_REPORT_2026-02-03.md for details
+
 import { notFound } from 'next/navigation';
 import { formatDistanceToNow, format } from 'date-fns';
 import {

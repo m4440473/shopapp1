@@ -1,8 +1,9 @@
+import 'server-only';
+
 import { NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
-
-import { completeOrderPart, logPartEvent } from '@/modules/orders/orders.service';
 import { getActiveTimeEntry, stopActiveTimeEntry } from '@/modules/time/time.service';
+import { completeOrderPart, logPartEvent } from '@/modules/orders/orders.service';
 
 export async function POST() {
   const session = await getServerAuthSession();
@@ -37,7 +38,7 @@ export async function POST() {
     userId,
     type: 'TIMER_FINISHED',
     message: 'Timer finished.',
-    meta: { timeEntryId: entry.id },
+    meta: { timeEntryId: (entry as any).id },
   });
 
   const completeResult = await completeOrderPart({

@@ -41,6 +41,57 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-04 — Stage 1 Complete: Timer API consolidation, component violations fixed, dept queue polling
+- Consolidated duplicate timer APIs: merged /api/timer/* into /api/time/* with complete feature parity.
+- Created /api/time/finish (part completion) and /api/time/active (status query) endpoints.
+- Enhanced all /api/time/* routes with part event logging (start/pause/finish).
+- Migrated UI (orders/[id]/page.tsx) from /api/timer/* to /api/time/* endpoints.
+- Fixed component→service violations: created src/lib/order-ui-utils.ts for shared UI utilities.
+- Moved ORDER_STATUS_LABELS, decorateOrder, formatStatusLabel, orderMatchesFilters out of orders.service.
+- Updated ShopFloorLayouts and RecentOrdersTable to import from order-ui-utils (zero service imports).
+- Added 30-second auto-refresh polling to department queue in ShopFloorLayouts (handoff mode).
+- Added "Last updated" timestamp indicator for department feed.
+- Fixed TypeScript compilation errors: duplicate type exports, email property access issues.
+- Added TODO note to machinists/[id]/page.tsx for future refactoring.
+- Corrected audit: fetchJson and colors.ts are actually in use (not dead code).
+
+Key metrics achieved:
+- Only 1 timer endpoint system exists (/api/time/*)
+- Zero components import services directly
+- Department queue auto-refreshes every 30 seconds
+- TypeScript compiles with zero errors
+
+Files changed: Created 3, Modified 11, Deleted 4 (timer API directory)
+
+Commands run:
+- npm ci
+- npx tsc --noEmit (verified zero errors)
+
+### 2026-02-03 — Codebase audit + UX analysis from machine shop perspective
+- Performed comprehensive analysis of outdated/unused code, UI-backend connections, and UX workflows.
+- Created detailed audit report (docs/AUDIT_REPORT_2026-02-03.md) with findings organized by priority.
+- Created quick-reference summary (docs/AUDIT_SUMMARY.md) with 5-stage implementation plan.
+- Identified critical issues: duplicate timer APIs (timer vs time), Prisma access in pages, bloated orders service (1367 lines).
+- Evaluated UX from machinist/shop owner perspective: no quick resume, parts not first-class, dept queue static, order page overload.
+- Mapped all recommendations to ROADMAP.md phases for staged execution.
+
+Key findings:
+- Duplicate APIs: /api/timer/* (used by UI) vs /api/time/* (unused) both exist
+- Architecture violations: 8+ pages/components bypass service layer
+- Dead code: fetchJson (0 imports), colors.ts (unused), machinist page (unreferenced)
+- UX gaps: no "Resume Last" button, can't see cross-order part list, no real-time dept updates
+- Orders service needs split: CRUD + parts + checklist + charges mixed in 1367 lines
+
+Staged plan (5 phases):
+1. Consolidate & clean (Phase 1 - P0)
+2. Modularize backend (Phase 2 - P2)
+3. Part-centric refactor (Phase 3 - P1)
+4. UX polish for shop floor (Phase 4 - P1)
+5. Live data & mobile (Phase 5 - P1/P3)
+
+Commands run:
+- None (analysis/documentation only)
+
 ### 2026-02-03 — Build/env fixes + work item flags + checklist/time alignment
 - Added affectsPrice to Addon with migration, updated admin add-ons UI + library badges, and ensured quote totals ignore checklist-only items.
 - Ensured quote->order conversion and order creation instantiate per-part checklist rows for checklist-only items.
