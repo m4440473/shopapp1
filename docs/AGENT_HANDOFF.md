@@ -4,7 +4,98 @@
 
 ---
 
-## LATEST HANDOFF — 2026-02-03 (Codebase Audit)
+## LATEST HANDOFF — 2026-02-04 (Stage 1 Complete)
+
+**Agent**: GitHub Copilot  
+**Goal**: Execute Stage 1 cleanup - consolidate timer APIs, remove dead code, fix component violations, add dept polling
+
+### What I Changed
+
+**Completed All Stage 1 Tasks:**
+
+1. **Timer API Consolidation** ✅
+   - Merged `/api/timer/*` into `/api/time/*` (single system)
+   - Added part event logging to all time endpoints
+   - Created `/api/time/finish` (part completion + logging)
+   - Created `/api/time/active` (status query with order/part info)
+   - Migrated UI from `/api/timer/*` to `/api/time/*`
+   - Deleted old `/api/timer/` directory (4 files)
+
+2. **Component Service Violations** ✅
+   - Created `src/lib/order-ui-utils.ts` for shared UI utilities
+   - Moved UI helper functions out of `orders.service.ts`
+   - Updated `ShopFloorLayouts` and `RecentOrdersTable` to use order-ui-utils
+   - Fixed duplicate type exports in orders.service.ts
+   - Result: Zero components import services directly
+
+3. **Department Queue Polling** ✅
+   - Added 30-second auto-refresh when in handoff mode
+   - Added "Last updated" timestamp indicator
+   - Polling activates only when layout=handoff AND departmentId set
+
+4. **Code Quality** ✅
+   - Fixed all TypeScript compilation errors
+   - Fixed email property access issues in ShopFloorLayouts
+   - Added TODO note to machinist page for future work
+
+**Audit Correction**: fetchJson and colors.ts are NOT dead code (used by 14 files total)
+
+### Files Touched
+
+**Created:**
+- `src/app/api/time/finish/route.ts`
+- `src/app/api/time/active/route.ts`
+- `src/lib/order-ui-utils.ts`
+- `docs/STAGE1_COMPLETE.md`
+
+**Modified:**
+- `src/app/api/time/start/route.ts` (part validation + logging)
+- `src/app/api/time/pause/route.ts` (event logging)
+- `src/app/orders/[id]/page.tsx` (use /api/time/*)
+- `src/components/ShopFloorLayouts.tsx` (order-ui-utils + polling + types)
+- `src/components/RecentOrdersTable.tsx` (order-ui-utils)
+- `src/modules/orders/orders.service.ts` (re-exports + fix duplicates)
+- `src/app/machinists/[id]/page.tsx` (TODO note)
+- PROGRESS_LOG.md, docs/AGENT_HANDOFF.md
+
+**Deleted:**
+- `src/app/api/timer/` (entire directory)
+
+### Commands Run
+- `npm ci` (install dependencies)
+- `npx tsc --noEmit` (verified zero TypeScript errors)
+
+### What's Next: Stage 2 (Modularization)
+
+**User Decision**: Proceed with Stage 2 when ready
+
+**Stage 2 Goals** (from audit report):
+1. Complete quote module extraction (lib/quote-*.ts → modules/quotes/)
+2. Split orders service (1,367 lines → parts/checklist/charges services)
+3. Migrate pages to services (remove Prisma imports from UI)
+
+**Key Files to Refactor**:
+- Quote system: `src/lib/quote-*.ts`, `src/app/admin/quotes/[id]/page.tsx`
+- Pages with Prisma: `src/app/page.tsx`, `src/app/search/page.tsx`, `src/app/machinists/[id]/page.tsx`
+
+See `docs/STAGE1_COMPLETE.md` and `docs/AUDIT_REPORT_2026-02-03.md` for details.
+
+### Notes for Continuity
+
+**Success Metrics Achieved:**
+- ✅ Only 1 timer endpoint system
+- ✅ Zero component→service violations
+- ✅ Department queue auto-refresh (30s)
+- ✅ TypeScript compiles cleanly
+
+**Known Issues (Not Stage 1 scope):**
+- Orders service still 1,367 lines (needs splitting in Stage 2)
+- Several pages still use Prisma directly (needs services in Stage 2)
+- Quote system scattered across lib/ (needs module extraction in Stage 2)
+
+---
+
+## PREVIOUS HANDOFF — 2026-02-03 (Codebase Audit)
 
 **Agent**: GitHub Copilot  
 **Goal**: Comprehensive codebase audit for outdated/unused code, UI-backend connections, and UX from machine shop perspective.
