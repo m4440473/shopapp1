@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { redirect, notFound } from 'next/navigation';
 import { getServerAuthSession } from '@/lib/auth-session';
+import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 
 import { prisma } from '@/lib/prisma';
 
@@ -19,7 +20,7 @@ export default async function CustomerPrintPage({ params }: PrintPageProps) {
   const { id } = await params;
   const session = await getServerAuthSession();
   if (!session) {
-    redirect(`/auth/signin?callbackUrl=/customers/${id}/print`);
+    redirect(buildSignInRedirectPath(`/customers/${id}/print`));
   }
 
   const customer = await prisma.customer.findUnique({

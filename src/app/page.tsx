@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Activity, ArrowUpRight, CalendarDays, CircleCheck, Users } from 'lucide-react';
 import { getServerAuthSession } from '@/lib/auth-session';
+import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 
 import { RecentOrdersTable } from '@/components/RecentOrdersTable';
 import { ShopFloorLayouts } from '@/components/ShopFloorLayouts';
@@ -23,7 +24,7 @@ import { cn } from '@/lib/utils';
 export default async function Home() {
   const session = await getServerAuthSession();
   if (!session) {
-    redirect('/auth/signin?callbackUrl=/');
+    redirect(buildSignInRedirectPath('/'));
   }
 
   const now = new Date();

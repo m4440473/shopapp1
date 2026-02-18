@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 import { canAccessAdmin } from '@/lib/rbac';
 import { isTestMode } from '@/lib/testMode';
 
@@ -13,8 +14,8 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   if (!token) {
-    const signInUrl = new URL('/auth/signin', request.url);
-    signInUrl.searchParams.set('callbackUrl', `${pathname}${request.nextUrl.search}`);
+    const callbackUrl = `${pathname}${request.nextUrl.search}`;
+    const signInUrl = new URL(buildSignInRedirectPath(callbackUrl), request.url);
     return NextResponse.redirect(signInUrl);
   }
 

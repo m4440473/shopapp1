@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { getServerAuthSession } from '@/lib/auth-session';
+import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 import { Users, ClipboardList, Timer, Layers } from 'lucide-react';
 
 import { prisma } from '@/lib/prisma';
@@ -20,7 +21,7 @@ function formatRelative(date: Date | null) {
 export default async function CustomersPage() {
   const session = await getServerAuthSession();
   if (!session) {
-    redirect('/auth/signin?callbackUrl=/customers');
+    redirect(buildSignInRedirectPath('/customers'));
   }
 
   const customers = await prisma.customer.findMany({
