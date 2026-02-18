@@ -41,6 +41,28 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+
+### 2026-02-18 — P1-T2/P1-T3 shell+mobile-nav verification and Phase 1 closeout
+- Executed runtime verification for shell/provider stability and mobile nav reachability using Playwright on mobile viewport, including logged-out refresh and logged-in refresh checks on `/`, `/orders`, and `/customers`.
+- Seeded demo credentials (`npm run demo:setup`) to ensure authenticated navigation checks could run deterministically.
+- Produced a Phase 1 gate report with pass/fail evidence mapped 1:1 to ROADMAP Phase 1 exit criteria (`docs/PHASE1_CLOSEOUT_REPORT.md`).
+- Logged non-blocking warnings observed during runtime checks (`@next/swc` version mismatch warning in dev and Radix sheet `Description` warning) as backlog notes rather than drive-by fixes.
+
+Commands run:
+- rg --files -g 'AGENTS.md'
+- cat AGENTS.md
+- cat docs/AGENT_CONTEXT.md
+- cat PROGRESS_LOG.md
+- cat docs/AGENT_HANDOFF.md
+- cat docs/AGENT_TASK_BOARD.md
+- cat ROADMAP.md
+- cat CANON.md
+- npm run lint
+- npm run test -- src/lib/auth-redirect.test.ts
+- npm run demo:setup
+- npm run dev
+- Playwright runtime checks against localhost:3000 (refresh + mobile nav reachability)
+
 ### 2026-02-18 — P1-T1 auth/session single-source convergence
 - Added `src/lib/auth-redirect.ts` as the shared callback URL normalization + sign-in redirect path utility so middleware/pages/sign-in consume one redirect policy.
 - Updated middleware and key server route guards (home, search, customers, customer detail/print, order print, account password) to use the shared redirect builder instead of hand-built query strings.
