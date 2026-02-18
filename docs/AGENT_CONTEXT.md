@@ -61,6 +61,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-02-18 — Treat continuity freshness as explicit recurring task work
+Decision: When executing `P0-C1`, record explicit DoD evidence in `PROGRESS_LOG.md` and refresh `docs/AGENT_HANDOFF.md` even when no product code changes occur.
+Reason: Continuity drift is a tracked risk; explicit audit artifacts make freshness verifiable across agent sessions.
+
 ### 2026-02-18 — Add ticket-sized agent task board + prompt pack
 Decision: Add `docs/AGENT_TASK_BOARD.md` and `AGENT_PROMPTS.md` as execution companions to ROADMAP for one-task-per-session delegation.
 Reason: Reduce agent drift by making phase order, dependencies, scope, and DoD explicit and copy/paste assignable.
