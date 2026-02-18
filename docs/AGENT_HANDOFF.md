@@ -2,48 +2,34 @@
 
 # Agent Handoff (Update Every Session)
 
-Date: 2026-02-03
+Date: 2026-02-18
 Agent: ChatGPT
-Goal (1 sentence): Stabilize build typing, add work-item pricing flags, and align checklist/timer flows with part-centric requirements.
+Goal (1 sentence): Create a clean, low-drift, ticket-sized execution system so future agents can be assigned by phase/task/prompt with minimal ambiguity.
 
 ## What I changed
-- Added `affectsPrice` to Addon (migration + schema), updated admin add-ons UI, available-item badges, and quote/order totals to ignore checklist-only items.
-- Ensured quote->order conversion and order creation instantiate per-part checklist rows for checklist-only items.
-- Updated Next 15 page/route params typing and headers usage; fixed public attachments route signature.
-- Added dotenv loading for setup-db and removed unsupported migrate flag.
-- Updated timer start to auto-close active entries and added stop-by-entryId; added vitest config aliases + tests for pricing totals, quote checklist mapping, and time duration.
-- Synced mock repos with real repo signatures.
+- Added `docs/AGENT_TASK_BOARD.md` with strict, ticket-sized tasks grouped by roadmap phase, explicit dependencies, and Definition of Done checklists.
+- Added root `AGENT_PROMPTS.md` as a copy/paste assignment pack with one-task-per-session prompt wrapper plus task-specific prompt add-ons.
+- Updated `ROADMAP.md` to reference the execution companion docs.
+- Added a Decision Log entry in `docs/AGENT_CONTEXT.md` for the new task-board/prompt-pack delegation pattern.
+- Updated `PROGRESS_LOG.md` with this session’s summary and commands.
 
 ## Files touched
-- prisma/schema.prisma, prisma/migrations/20260203020905_add_affects_price_to_addon/migration.sql
-- scripts/setup-db.cjs
-- src/app/(public)/attachments/[...path]/route.ts
-- src/app/admin/addons/client.tsx
-- src/app/admin/quotes/QuoteEditor.tsx
-- src/app/admin/quotes/[id]/page.tsx, src/app/admin/quotes/[id]/edit/page.tsx, src/app/admin/quotes/[id]/print/page.tsx, src/app/admin/quotes/page.tsx
-- src/app/api/**/route.ts (admin + orders + time/timer params typing updates)
-- src/app/orders/new/page.tsx, src/app/orders/[id]/print/page.tsx, src/app/search/page.tsx, src/app/customers/[id]/*, src/app/machinists/[id]/page.tsx
-- src/components/AvailableItemsLibrary.tsx
-- src/lib/auth-session.ts, src/lib/zod.ts
-- src/modules/orders/orders.repo.ts, src/modules/orders/orders.service.ts
-- src/modules/quotes/quotes.repo.ts, src/modules/quotes/quotes.service.ts, src/modules/quotes/quote-work-items.ts
-- src/modules/time/time.schema.ts, src/modules/time/time.service.ts
-- src/repos/mock/orders.ts, src/repos/mock/seed.ts
-- vitest.config.ts, src/test/server-only.ts
-- src/modules/quotes/__tests__/*, src/modules/time/__tests__/*
-- docs/audit_20260203.md, PROGRESS_LOG.md, docs/AGENT_CONTEXT.md
+- AGENT_PROMPTS.md
+- docs/AGENT_TASK_BOARD.md
+- ROADMAP.md
+- docs/AGENT_CONTEXT.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
 
 ## Commands run
-- npm ci
-- npm install
-- npx prisma migrate dev --name add_affects_price_to_addon --create-only
-- npm test -- src/modules/quotes/__tests__/quote-totals.test.ts src/modules/quotes/__tests__/quote-work-items.test.ts src/modules/time/__tests__/time.service.test.ts
-- npm run build
+- rg --files | rg 'AGENT_PROMPTS|ROADMAP|PROGRESS_LOG|AGENT_HANDOFF|docs/'
+- sed -n '1,260p' docs/archive/AGENT_PROMPTS.md
+- git status --short --branch
+- git log --oneline -n 12
 
 ## Notes / gotchas
-- `npm run build` succeeds with warnings about @next/swc version mismatch and baseline-browser-mapping staleness.
-- TEST_MODE session now includes `expires` to satisfy NextAuth Session typing.
+- There is an unrelated untracked path present in the working tree: `prisma/prisma/` (left untouched).
 
 ## Next steps
-- [ ] Investigate @next/swc mismatch warning (15.5.11 expects 15.5.7 platform packages; no matching 15.5.11 package published).
-- [ ] Verify quote/order attachment scoping for part-level files if needed beyond current UI.
+- [ ] Start agent season with `P0-C1` (continuity freshness), then execute tasks strictly in dependency order from `docs/AGENT_TASK_BOARD.md`.
+- [ ] Require every PR to include DoD pass/fail evidence for the assigned task ID.

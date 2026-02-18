@@ -41,6 +41,15 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-18 — Agent season execution pack (task board + prompt wrappers)
+- Added a new ticket-sized execution board (`docs/AGENT_TASK_BOARD.md`) that maps each roadmap phase into atomic tasks with dependencies, scope boundaries, and definition-of-done checklists.
+- Added a root-level prompt pack (`AGENT_PROMPTS.md`) with one-task-per-session wrappers and copy/paste prompts keyed to task IDs for low-drift delegation.
+- Linked ROADMAP to the new execution companion docs and logged the new delegation pattern in the Decision Log for continuity.
+
+Commands run:
+- git status --short --branch
+- rg --files | rg 'AGENT_PROMPTS|ROADMAP|PROGRESS_LOG|AGENT_HANDOFF|docs/'
+
 ### 2026-02-03 — Build/env fixes + work item flags + checklist/time alignment
 - Added affectsPrice to Addon with migration, updated admin add-ons UI + library badges, and ensured quote totals ignore checklist-only items.
 - Ensured quote->order conversion and order creation instantiate per-part checklist rows for checklist-only items.

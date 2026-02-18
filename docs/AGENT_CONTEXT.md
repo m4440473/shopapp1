@@ -61,6 +61,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-02-18 — Add ticket-sized agent task board + prompt pack
+Decision: Add `docs/AGENT_TASK_BOARD.md` and `AGENT_PROMPTS.md` as execution companions to ROADMAP for one-task-per-session delegation.
+Reason: Reduce agent drift by making phase order, dependencies, scope, and DoD explicit and copy/paste assignable.
+
 ### 2026-02-03 — Add dotenv load for postinstall DB setup
 Decision: Add dotenv as a dev dependency and load it in scripts/setup-db.cjs so postinstall can see DATABASE_URL from .env.
 Reason: Local dev should honor .env during setup-db without requiring manual exports.

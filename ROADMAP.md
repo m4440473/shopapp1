@@ -2,6 +2,10 @@
 
 This roadmap is the authoritative sequence of work. Each phase must be completed and verified before the next phase starts. If a phase is not complete, agents must not start work in later phases.
 
+Execution companion docs:
+- `docs/AGENT_TASK_BOARD.md` — ticket-sized tasks with dependencies + Definition of Done.
+- `AGENT_PROMPTS.md` — copy/paste prompt wrappers for assigning exactly one task ID per session.
+
 ## Phase 0 — Continuity & Guardrails (Always-On)
 **Goal:** Keep the project consistent and prevent context drift.
 
