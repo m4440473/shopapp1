@@ -41,6 +41,26 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-18 — P1-T1 auth/session single-source convergence
+- Added `src/lib/auth-redirect.ts` as the shared callback URL normalization + sign-in redirect path utility so middleware/pages/sign-in consume one redirect policy.
+- Updated middleware and key server route guards (home, search, customers, customer detail/print, order print, account password) to use the shared redirect builder instead of hand-built query strings.
+- Updated sign-in to honor and sanitize incoming `callbackUrl`, so logged-out refresh/login now returns to the originating page.
+- Added Vitest coverage for callback normalization and redirect path building.
+
+Commands run:
+- rg --files -g 'AGENTS.md'
+- cat AGENTS.md
+- cat docs/AGENT_CONTEXT.md
+- cat PROGRESS_LOG.md
+- cat docs/AGENT_HANDOFF.md
+- cat docs/AGENT_TASK_BOARD.md
+- cat AGENT_PROMPTS.md
+- cat ROADMAP.md
+- cat CANON.md
+- rg -n "auth/signin" src middleware.ts
+- npm run test -- src/lib/auth-redirect.test.ts
+- npm run lint
+
 ### 2026-02-18 — P0-C1 continuity docs freshness check
 - Performed a continuity freshness pass for `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_CONTEXT.md` to ensure the latest completed work is reflected consistently.
 - Confirmed latest session ordering is preserved and refreshed handoff metadata/command evidence for this run.

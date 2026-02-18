@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getServerAuthSession } from '@/lib/auth-session';
+import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 
 import { ToastProvider } from '@/components/ui/Toast';
 import PasswordClient from './client';
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export default async function Page() {
   const session = await getServerAuthSession();
   if (!session) {
-    redirect('/auth/signin');
+    redirect(buildSignInRedirectPath('/account/password'));
   }
 
   return (

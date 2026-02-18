@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getServerAuthSession } from '@/lib/auth-session';
+import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 import { Search as SearchIcon } from 'lucide-react';
 
 import { prisma } from '@/lib/prisma';
@@ -49,10 +50,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const resolvedSearchParams = await searchParams;
   const session = await getServerAuthSession();
   if (!session) {
-    const query = resolvedSearchParams?.q
-      ? `?callbackUrl=/search?q=${encodeURIComponent(resolvedSearchParams.q)}`
-      : '?callbackUrl=/search';
-    redirect(`/auth/signin${query}`);
+    const callbackUrl = resolvedSearchParams?.q
+      ? `/search?q=${encodeURIComponent(resolvedSearchParams.q)}`
+      : '/search';
+    redirect(buildSignInRedirectPath(callbackUrl));
   }
 
   const query = resolvedSearchParams?.q?.trim() ?? '';

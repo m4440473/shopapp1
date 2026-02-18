@@ -61,6 +61,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-02-18 — Centralize sign-in callback URL normalization
+Decision: Add `src/lib/auth-redirect.ts` and route all sign-in redirects + callback parsing through shared helpers (`buildSignInRedirectPath`, `normalizeCallbackUrl`).
+Reason: P1-T1 requires one auth/session truth path; shared redirect normalization removes split callback handling and prevents unsafe external callback targets.
+
 ### 2026-02-18 — Treat continuity freshness as explicit recurring task work
 Decision: When executing `P0-C1`, record explicit DoD evidence in `PROGRESS_LOG.md` and refresh `docs/AGENT_HANDOFF.md` even when no product code changes occur.
 Reason: Continuity drift is a tracked risk; explicit audit artifacts make freshness verifiable across agent sessions.

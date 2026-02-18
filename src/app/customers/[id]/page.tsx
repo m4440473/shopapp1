@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { format } from 'date-fns';
 import { getServerAuthSession } from '@/lib/auth-session';
+import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 import { Printer, UserCircle, Phone, Mail, MapPin, Activity, Package2 } from 'lucide-react';
 
 import { prisma } from '@/lib/prisma';
@@ -38,7 +39,7 @@ export default async function CustomerDetailPage({ params }: CustomerPageProps) 
   const { id } = await params;
   const session = await getServerAuthSession();
   if (!session) {
-    redirect(`/auth/signin?callbackUrl=/customers/${id}`);
+    redirect(buildSignInRedirectPath(`/customers/${id}`));
   }
 
   const customer = await prisma.customer.findUnique({

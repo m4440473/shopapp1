@@ -2,22 +2,25 @@
 
 import { signIn } from 'next-auth/react';
 import { useEffect, useState } from 'react';
+import { normalizeCallbackUrl } from '@/lib/auth-redirect';
 
 export default function SignInPage() {
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('admin123');
   const [error, setError] = useState<string | null>(null);
+  const [callbackUrl, setCallbackUrl] = useState('/');
 
   useEffect(() => {
-    // Read ?error= from the URL on the client to avoid using `useSearchParams` which
-    // can trigger prerender/suspense boundary errors when the page is statically generated.
+    // Read auth query params on the client to avoid using `useSearchParams`, which can
+    // trigger prerender/suspense boundary errors when the page is statically generated.
     const params = new URLSearchParams(window.location.search);
     setError(params.get('error'));
+    setCallbackUrl(normalizeCallbackUrl(params.get('callbackUrl'), '/'));
   }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await signIn('credentials', { email, password, redirect: true, callbackUrl: '/' });
+    await signIn('credentials', { email, password, redirect: true, callbackUrl });
   }
 
   return (

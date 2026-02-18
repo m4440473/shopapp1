@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { headers } from 'next/headers';
 import { redirect, notFound } from 'next/navigation';
 import { getServerAuthSession } from '@/lib/auth-session';
+import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 
 import {
   DEFAULT_TEMPLATE_SECTIONS,
@@ -86,7 +87,7 @@ export default async function OrderPrintPage({
   const resolvedSearchParams = await searchParams;
   const session = await getServerAuthSession();
   if (!session) {
-    redirect(`/auth/signin?callbackUrl=/orders/${id}/print`);
+    redirect(buildSignInRedirectPath(`/orders/${id}/print`));
   }
 
   const headerStore = await headers();
