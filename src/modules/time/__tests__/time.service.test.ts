@@ -61,6 +61,79 @@ describe('time.service', () => {
     expect(updated.endedAt?.toISOString()).toBe('2026-02-03T00:09:00.000Z');
   });
 
+
+  it('returns conflict when starting while another entry is active', async () => {
+    vi.setSystemTime(new Date('2026-02-03T00:00:00Z'));
+    vi.resetModules();
+    const { getActiveTimeEntry, startTimeEntry, startTimeEntryWithConflict } = await import('../time.service');
+
+    await startTimeEntry('user_test_machinist', {
+      orderId: 'order_test_001',
+      partId: 'part_test_001',
+      operation: 'Part Work',
+    });
+
+    const conflictResult = await startTimeEntryWithConflict('user_test_machinist', {
+      orderId: 'order_test_001',
+      partId: 'part_test_002',
+      operation: 'Part Work',
+    });
+
+    expect(conflictResult.ok).toBe(false);
+    expect((conflictResult as { ok: false; status: number }).status).toBe(409);
+
+    const activeResult = await getActiveTimeEntry('user_test_machinist');
+    expect(activeResult.ok).toBe(true);
+    const activeEntry = (activeResult as { ok: true; data: { entry: any } }).data.entry;
+    expect(activeEntry?.partId).toBe('part_test_001');
+    expect(activeEntry?.endedAt).toBeNull();
+  });
+
+  it('switches without inflating time during confirmation path', async () => {
+    vi.setSystemTime(new Date('2026-02-03T00:00:00Z'));
+    vi.resetModules();
+    const { getOrderPartTimeTotals, pauseActiveTimeEntry, startTimeEntry, startTimeEntryWithConflict } = await import('../time.service');
+
+    const switchOrderId = 'order_switch_test_001';
+    const firstPartId = 'part_switch_test_001';
+    const secondPartId = 'part_switch_test_002';
+
+    await startTimeEntry('user_test_machinist', {
+      orderId: switchOrderId,
+      partId: firstPartId,
+      operation: 'Part Work',
+    });
+
+    vi.setSystemTime(new Date('2026-02-03T00:10:00Z'));
+    const conflictResult = await startTimeEntryWithConflict('user_test_machinist', {
+      orderId: switchOrderId,
+      partId: secondPartId,
+      operation: 'Part Work',
+    });
+    expect(conflictResult.ok).toBe(false);
+
+    const paused = await pauseActiveTimeEntry('user_test_machinist');
+    expect(paused.ok).toBe(true);
+
+    vi.setSystemTime(new Date('2026-02-03T00:10:00Z'));
+    const switched = await startTimeEntryWithConflict('user_test_machinist', {
+      orderId: switchOrderId,
+      partId: secondPartId,
+      operation: 'Part Work',
+    });
+    expect(switched.ok).toBe(true);
+
+    vi.setSystemTime(new Date('2026-02-03T00:25:00Z'));
+    const closedSecond = await pauseActiveTimeEntry('user_test_machinist');
+    expect(closedSecond.ok).toBe(true);
+
+    const totalsResult = await getOrderPartTimeTotals(switchOrderId, [firstPartId, secondPartId]);
+    expect(totalsResult.ok).toBe(true);
+    const totals = (totalsResult as { ok: true; data: { totals: Record<string, number> } }).data.totals;
+    expect(totals[firstPartId]).toBe(10);
+    expect(totals[secondPartId]).toBe(15);
+  });
+
   it('rejects editing an active entry', async () => {
     vi.setSystemTime(new Date('2026-02-03T00:00:00Z'));
     vi.resetModules();

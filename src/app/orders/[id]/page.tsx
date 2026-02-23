@@ -164,7 +164,7 @@ export default function OrderDetailPage() {
   }, [id]);
 
   const loadPartEvents = React.useCallback(async () => {
-    if (!id || !selectedPartId) return;
+    if (!id || !selectedPartId) return false;
     setEventsLoading(true);
     try {
       const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/events`, { credentials: 'include' });
@@ -223,8 +223,8 @@ export default function OrderDetailPage() {
     loadPartEvents();
   }, [loadPartEvents]);
 
-  const handleStart = async () => {
-    if (!id || !selectedPartId) return;
+  const handleStart = async (): Promise<boolean> => {
+    if (!id || !selectedPartId) return false;
     setTimerSaving(true);
     setTimerError(null);
     try {
@@ -243,19 +243,21 @@ export default function OrderDetailPage() {
           activePart: data.activePart ?? null,
           elapsedSeconds: data.elapsedSeconds ?? 0,
         });
-        return;
+        return false;
       }
       if (!res.ok) throw res;
       await refreshTimerSummary();
       await loadPartEvents();
+      return true;
     } catch {
       setTimerError('Failed to start timer.');
+      return false;
     } finally {
       setTimerSaving(false);
     }
   };
 
-  const handlePause = async () => {
+  const handlePause = async (): Promise<boolean> => {
     setTimerSaving(true);
     setTimerError(null);
     try {
@@ -263,14 +265,16 @@ export default function OrderDetailPage() {
       if (!res.ok) throw res;
       await refreshTimerSummary();
       await loadPartEvents();
+      return true;
     } catch {
       setTimerError('Failed to pause timer.');
+      return false;
     } finally {
       setTimerSaving(false);
     }
   };
 
-  const handleFinish = async () => {
+  const handleFinish = async (): Promise<boolean> => {
     setTimerSaving(true);
     setTimerError(null);
     try {
@@ -279,8 +283,10 @@ export default function OrderDetailPage() {
       await load();
       await refreshTimerSummary();
       await loadPartEvents();
+      return true;
     } catch {
       setTimerError('Failed to finish timer.');
+      return false;
     } finally {
       setTimerSaving(false);
     }
@@ -288,11 +294,8 @@ export default function OrderDetailPage() {
 
   const handleConflictAction = async (action: 'pause' | 'finish') => {
     setConflictState((prev) => ({ ...prev, open: false }));
-    if (action === 'pause') {
-      await handlePause();
-    } else {
-      await handleFinish();
-    }
+    const closedCurrent = action === 'pause' ? await handlePause() : await handleFinish();
+    if (!closedCurrent) return;
     await handleStart();
   };
 
@@ -486,6 +489,10 @@ export default function OrderDetailPage() {
               .
             </p>
             <p>Elapsed: {formatDuration(conflictState.elapsedSeconds)}</p>
+            <p>
+              Confirming switch will close that timer, then start a new timer on{' '}
+              <span className="font-medium text-foreground">{selectedPart?.partNumber || 'the selected part'}</span>.
+            </p>
           </div>
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => setConflictState((prev) => ({ ...prev, open: false }))}>

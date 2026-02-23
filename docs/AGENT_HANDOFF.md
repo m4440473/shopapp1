@@ -1,3 +1,53 @@
+Date: 2026-02-23
+Agent: GPT-5.2-Codex
+Goal (1 sentence): Execute P3-T3 and P3-T4 only by closing Phase 3 with explicit evidence and enforcing switch-confirmation timer UX safety.
+
+## What I changed
+- Updated `src/app/api/timer/start/route.ts` to enforce conflict-first starts via `startTimeEntryWithConflict` and return explicit 409 switch payload context (`requiredAction`, active order/part, elapsed seconds).
+- Updated `src/app/orders/[id]/page.tsx` timer switch behavior:
+  - `handleStart`/`handlePause`/`handleFinish` now return success booleans.
+  - Conflict follow-up start runs only when pause/finish succeeds.
+  - Conflict dialog copy now explicitly states which active timer exists and what will happen on switch confirmation.
+- Added targeted tests in `src/modules/time/__tests__/time.service.test.ts`:
+  - conflict result when starting with an existing active entry.
+  - confirmation-path switch totals proving no interval inflation.
+- Updated session control artifacts: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`.
+
+## Files touched
+- src/app/api/timer/start/route.ts
+- src/app/orders/[id]/page.tsx
+- src/modules/time/__tests__/time.service.test.ts
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+## Commands run
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+- npm run build
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot script against http://127.0.0.1:3000/orders
+
+## Verification Evidence
+- Time service test suite for touched behavior passed (5/5).
+- Lint passed with no ESLint warnings/errors.
+- Build passed.
+- Runtime smoke check in TEST_MODE succeeded for `/orders`; screenshot captured.
+- Non-blocking advisories observed: `@next/swc` version mismatch and stale `baseline-browser-mapping` data.
+
+## DoD Checklist (P3-T3 & P3-T4)
+- [x] P3-T3: Phase 3 exit criteria explicitly pass/fail with evidence.
+- [x] P3-T3: No blocking gaps; remaining non-blocking advisories logged as backlog notes.
+- [x] P3-T4: Starting a new timer with an active timer yields an explicit context dialog trigger payload (409 conflict + active context).
+- [x] P3-T4: Dialog identifies active order/part and switch action consequence.
+- [x] P3-T4: Switch confirmation path avoids inflation by closing current interval before the new start and test-proving expected totals.
+
+## Next steps
+- [ ] Backlog: unify `/api/time/*` and `/api/timer/*` overlap after current roadmap gate sequence allows endpoint consolidation.
+- [ ] Backlog: optional environment hygiene task to align `@next/swc` and refresh `baseline-browser-mapping` data outside P3 scope.
+
+---
+
 ---
 **Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
 
