@@ -91,3 +91,34 @@ If you feel tempted to do extra work:
 - Would it be better as a note in PROGRESS_LOG.md?
 
 When in doubt: write it down, don’t implement it.
+
+
+## Workflow Orchestration Standard (ShopApp Style)
+
+1) **Plan mode is default for non-trivial work.**
+   - If work has 3+ steps, cross-file impact, or architectural decisions, write a plan first in `tasks/todo.md`.
+   - Do not start implementation until the plan is written and verified.
+2) **Stop-and-replan when reality diverges.**
+   - If tests fail unexpectedly, assumptions are invalidated, or scope shifts, stop implementation and update the plan before continuing.
+3) **Verification is mandatory before done.**
+   - Never mark a task complete without command/runtime evidence mapped to the task DoD.
+   - Include this evidence in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
+4) **Self-improvement loop is required.**
+   - After user correction or process failure, add a prevention rule entry in `tasks/lessons.md`.
+   - Apply and reference relevant lessons at the start of the next session.
+5) **Elegance is balanced, not over-engineered.**
+   - For non-trivial changes, challenge obvious but brittle fixes before finalizing.
+   - For simple/obvious fixes, keep implementation minimal.
+
+## Task Board Ownership and Validation
+
+- The active agent owns task status updates in `docs/AGENT_TASK_BOARD.md` artifacts and continuity logs.
+- Before starting a new task, the active agent must validate completion quality of prior dependency tasks.
+- If prior-task gaps are found, report them first (with evidence) before starting new implementation.
+
+## Required Planning Artifacts
+
+- `tasks/todo.md`: session plan/checklist and verification record.
+- `tasks/lessons.md`: anti-repeat lessons from corrections and failures.
+
+These files are mandatory for workflow control and continuity.
