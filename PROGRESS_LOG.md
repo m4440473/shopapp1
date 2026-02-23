@@ -40,6 +40,33 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-23 — Fix React hook warnings on Orders detail page
+- Scoped change to the user-requested warning cleanup only in `src/app/orders/[id]/page.tsx`.
+- Replaced unstable `parts` inline conditional with a memoized `parts` value so hook dependencies are stable.
+- Reworked elapsed timer ticker from `tick` counter to `nowMs` timestamp state and updated memo dependencies to remove the unnecessary dependency warning.
+
+Commands run:
+- npm run lint
+- npm run build
+
+Verification note:
+- `npm run lint` now reports `✔ No ESLint warnings or errors`.
+- `npm run build` completes successfully; React hook warnings are no longer emitted.
+
+### 2026-02-23 — Resolve Next.js SWC mismatch warning from project-level run
+- Scoped change to dependency alignment only (no application code changes).
+- Adjusted `next` and `eslint-config-next` from `^15.5.11` to `^15.5.7` so installed SWC binary versions match and the Next.js build no longer emits the SWC version mismatch warning.
+- Confirmed existing React hooks warnings in `src/app/orders/[id]/page.tsx` remain pre-existing and intentionally untouched per request scope.
+
+Commands run:
+- npm install next@15.5.7 eslint-config-next@15.5.7
+- npm run build
+- npm run lint
+
+Verification note:
+- `npm run build` passes and no longer prints `Mismatching @next/swc version` warning.
+- `npm run lint` passes with the same pre-existing React hook warnings only.
+
 ### 2026-02-23 — P2-T3 Customers boundary alignment + P2-T4 Phase 2 audit closeout
 - Executed P2-T3 and P2-T4 only.
 - Added module-owned Customers boundary files: `src/modules/customers/customers.repo.ts`, `customers.service.ts`, `customers.schema.ts`, and `customers.types.ts`.

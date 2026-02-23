@@ -5,6 +5,76 @@
 
 Date: 2026-02-23
 Agent: GPT-5.2-Codex
+Goal (1 sentence): Fix the React hook warnings in `src/app/orders/[id]/page.tsx` only, per user clarification.
+
+## What I changed
+- Updated `src/app/orders/[id]/page.tsx` to stabilize hook dependencies:
+  - Memoized `parts` derived from `item?.parts`.
+  - Replaced `tick` state with `nowMs` timestamp state.
+  - Updated `activeElapsedSeconds` memo to depend on `nowMs` and `activeEntry?.startedAt`.
+- Kept the change narrowly scoped to the warning-producing hooks in this file only.
+
+## Files touched
+- src/app/orders/[id]/page.tsx
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- tasks/lessons.md
+
+## Commands run
+- npm run lint
+- npm run build
+
+## Verification Evidence
+- `npm run lint` reports no ESLint warnings/errors.
+- `npm run build` succeeds and no longer prints React hook warnings for `src/app/orders/[id]/page.tsx`.
+
+## Diff/Review Notes
+- No drive-by refactors; only hook-dependency stabilization related to the requested warnings.
+
+## Next steps
+- [ ] If desired separately, address non-hook build advisories (`@next/swc` mismatch and baseline-browser-mapping freshness).
+
+---
+
+Date: 2026-02-23
+Agent: GPT-5.2-Codex
+Goal (1 sentence): Fix the project-run Next.js SWC mismatch warning only, while leaving known pre-existing React hook warnings untouched.
+
+## What I changed
+- Updated dependency versions only:
+  - `next` from `^15.5.11` to `^15.5.7`
+  - `eslint-config-next` from `^15.5.11` to `^15.5.7`
+- Regenerated lockfile entries via install to keep dependency graph consistent.
+- No source code files were changed.
+
+## Files touched
+- package.json
+- package-lock.json
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- tasks/todo.md
+
+## Commands run
+- npm install next@15.5.7 eslint-config-next@15.5.7
+- npm run build
+- npm run lint
+
+## Verification Evidence
+- Build completes successfully and does not emit `Mismatching @next/swc version` warning anymore.
+- Lint completes successfully with only pre-existing React hook warnings in `src/app/orders/[id]/page.tsx` (known baseline).
+
+## Diff/Review Notes
+- Scope was intentionally limited to the dependency version mismatch warning identified in project-level run output.
+- No refactors or unrelated fixes were included.
+
+## Next steps
+- [ ] Optional follow-up outside this scoped fix: evaluate upgrading to a patched Next.js version path that avoids the known 15.5.7 security advisory while retaining SWC alignment.
+
+---
+
+Date: 2026-02-23
+Agent: GPT-5.2-Codex
 Goal (1 sentence): Execute P2-T3 and P2-T4 by aligning Customers to repo/service boundaries and producing a Phase 2 Prisma/layering audit with explicit gate pass/fail.
 
 ## What I changed
