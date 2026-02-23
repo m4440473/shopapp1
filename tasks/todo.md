@@ -3,25 +3,25 @@
 ## Session Metadata
 - Date: 2026-02-23
 - Agent: GPT-5.2-Codex
-- Task ID: P3-T1 & P3-T2
-- Goal: Enforce and verify time-tracking invariants plus deterministic server-side API rule enforcement only.
+- Task ID: P3-T3 & P3-T4
+- Goal: Close Phase 3 with explicit evidence and enforce switch-confirmation UX safety for timer transitions.
 
 ## Dependency Validation
-- [x] Reviewed prior dependency artifacts for P2-T4 completion quality in `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md`.
-- [x] No unresolved dependency blocker found; proceeded with P3 scope.
+- [x] Reviewed prior dependency artifacts for P3-T2 completion quality in `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md`.
+- [x] No unresolved dependency blocker found; proceeded with P3-T3/P3-T4 scope only.
 
 ## Plan First
-- [x] Audit time service/repo/routes against P3-T1 and P3-T2 DoD.
-- [x] Implement only missing invariant/rule-enforcement pieces (no drive-by refactors).
-- [x] Add/extend targeted tests for changed time-service behavior.
-- [x] Run verification commands relevant to touched paths.
+- [x] Audit existing timer switch behavior across `/api/timer/*` and order detail timer UX.
+- [x] Implement minimal API + UI changes needed for explicit switch confirmation context.
+- [x] Run targeted tests/build checks for changed paths.
+- [x] Record Phase 3 pass/fail evidence and any remaining gaps as backlog notes.
 
 ## Implementation Checklist
-- [x] Added closed-interval edit schema + service path with conflict/error handling.
-- [x] Added repo/mock-repo support for closed-interval updates (closed-only guard).
-- [x] Added admin-gated API route for closed-interval edits with explicit reason and PartEvent audit logging.
-- [x] Tightened timer API validation/error behavior for deterministic server responses.
-- [x] Added time-service tests for closed-interval edit success/failure paths.
+- [x] Updated timer start API conflict path to return explicit switch-confirmation payload (active order/part context + elapsed time).
+- [x] Preserved server-side single-active enforcement by requiring explicit user switch confirmation in timer start flow.
+- [x] Hardened switch confirmation client path to stop if pause/finish fails before re-start attempt.
+- [x] Improved conflict dialog copy so operators see what is active and what action will occur on confirmation.
+- [x] Added/updated targeted time service tests for conflict-first start behavior and switch timing correctness.
 
 ## Verification Checklist
 - [x] `npm run test -- src/modules/time/__tests__/time.service.test.ts`
@@ -29,6 +29,6 @@
 - [x] `npm run build`
 
 ## Review + Results
-- P3-T1: single-active behavior preserved in service start/resume/stop flow; totals remain computed from intervals; closed-interval edit path is now explicit and admin-audited via API gate + PartEvent log.
-- P3-T2: time/timer APIs enforce validation and deterministic error responses server-side; invalid transitions return structured status/error outcomes.
-- Existing environment advisories remain non-blocking (`@next/swc` mismatch and stale baseline-browser-mapping data warning).
+- P3-T3 gate evidence: ROADMAP Phase 3 exit criteria pass with command evidence (time-service tests + build/lint) and runtime-path verification in updated timer switch API/UI flow.
+- P3-T4 behavior: timer start now returns explicit switch-confirmation payload when an active timer exists, and the order detail dialog explicitly states active context and switch consequence before action.
+- Remaining gaps: no blocking gap for P3 criteria found; advisory warnings (`@next/swc` mismatch and baseline-browser-mapping freshness) remain non-blocking environment noise.

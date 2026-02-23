@@ -40,6 +40,32 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-23 — P3-T3 + P3-T4 Phase 3 closeout and switch-confirmation safety
+- Executed P3-T3 and P3-T4 only; no unrelated refactors.
+- Added Phase 3 gate evidence in continuity artifacts with explicit pass/fail mapping to ROADMAP Phase 3 criteria.
+- Updated `POST /api/timer/start` conflict behavior to require explicit switch confirmation:
+  - Uses `startTimeEntryWithConflict` to prevent silent auto-switch.
+  - Returns deterministic 409 payload with `requiredAction`, active order/part context, and elapsed time for dialog rendering.
+- Hardened order detail switch path in `src/app/orders/[id]/page.tsx`:
+  - Conflict dialog now states the currently active order/part and explicit switch consequence.
+  - Switch action now aborts if pause/finish fails (prevents accidental follow-on start attempts).
+- Added targeted time service tests for conflict-first start behavior and no-inflation switch confirmation flow.
+- Dependency quality validation note: reviewed prior P3-T2 artifacts before implementation; no blockers found.
+
+Commands run:
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+- npm run build
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+- browser screenshot capture via Playwright on `/orders`
+
+Verification note:
+- Time service tests passed (5/5).
+- Lint passed with no ESLint warnings/errors.
+- Build passed successfully.
+- Non-blocking advisories remain: `@next/swc` mismatch and stale `baseline-browser-mapping` data warning.
+- Screenshot artifact captured: `browser:/tmp/codex_browser_invocations/da1fb07ea0875b74/artifacts/artifacts/orders-page.png`.
+
 ### 2026-02-23 — P3-T1 + P3-T2 time invariants and API enforcement
 - Executed P3-T1 and P3-T2 only; no unrelated refactors.
 - Added closed-interval edit support in the Time module (`time.schema`, `time.types`, `time.service`, `time.repo`) with closed-only conflict handling.

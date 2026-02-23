@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
-import { getOrderPartSummary, logPartEvent } from '@/modules/orders/orders.service';
+import { getOrderHeaderInfo, getOrderPartSummary, logPartEvent } from '@/modules/orders/orders.service';
 import { TimeEntryStart } from '@/modules/time/time.schema';
-import { startTimeEntry } from '@/modules/time/time.service';
+import { getActiveTimeEntry, startTimeEntryWithConflict } from '@/modules/time/time.service';
 
 export async function POST(req: NextRequest) {
   const session = await getServerAuthSession();
@@ -28,12 +28,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: partCheck.error }, { status: partCheck.status });
   }
 
-  const result = await startTimeEntry(userId, {
+  const result = await startTimeEntryWithConflict(userId, {
     orderId,
     partId,
     operation: 'Part Work',
   });
   if (result.ok === false) {
+    if (result.status === 409) {
+      const activeResult = await getActiveTimeEntry(userId);
+      if (activeResult.ok === false) {
+        return NextResponse.json({ error: activeResult.error }, { status: activeResult.status });
+      }
+
+      const activeEntry = activeResult.data.entry;
+      const activeOrderResult = activeEntry ? await getOrderHeaderInfo(activeEntry.orderId) : null;
+      const activePartResult = activeEntry?.partId
+        ? await getOrderPartSummary(activeEntry.orderId, activeEntry.partId)
+        : null;
+      const elapsedSeconds = activeEntry
+        ? Math.max(0, Math.floor((Date.now() - new Date(activeEntry.startedAt).getTime()) / 1000))
+        : 0;
+
+      return NextResponse.json(
+        {
+          error: result.error,
+          requiredAction: 'switch_confirmation',
+          switchAction: 'pause_or_finish',
+          activeEntry,
+          activeOrder: activeOrderResult?.ok ? (activeOrderResult.data as { order: unknown }).order : null,
+          activePart: activePartResult?.ok ? (activePartResult.data as { part: unknown }).part : null,
+          elapsedSeconds,
+        },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
