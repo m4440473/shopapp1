@@ -40,6 +40,29 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-23 — P4-T1 + P4-T2 timer control clarity and switch-context visibility
+- Executed P4-T1 and P4-T2 only; no unrelated refactors.
+- Updated the order detail Active Work panel (`src/app/orders/[id]/page.tsx`) to improve operator control clarity:
+  - Added explicit control labels (`Start selected part`, `Pause active timer`, `Finish active timer`) with action icons.
+  - Added running/stopped state badge and explicit switch-warning callout when an active timer exists on another part.
+  - Added switch helper text so operators understand that switch confirmation is required to avoid overlap.
+- Added last-action visibility beside timer controls by surfacing the most recent part event message + timestamp.
+- Preserved prior server-side switch enforcement path (no inflation logic changes in this task).
+- Dependency quality validation note: reviewed prior P3-T4 artifacts before implementation; no blockers found.
+
+Commands run:
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+- npm run build
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot capture against `/orders/<id>` order detail page
+
+Verification note:
+- Time service tests passed (5/5), including switch-confirmation no-inflation coverage.
+- Lint passed with no ESLint warnings/errors.
+- Build failed due to pre-existing Prisma prerender issue on `/auth/signin` (`P2002` unique constraint on `AppSettings.id`), unchanged by this task.
+- Screenshot artifact captured: `browser:/tmp/codex_browser_invocations/b16608d19312dfd6/artifacts/artifacts/p4-t1-t2-order-detail.png`.
+
 ### 2026-02-23 — P3-T3 + P3-T4 Phase 3 closeout and switch-confirmation safety
 - Executed P3-T3 and P3-T4 only; no unrelated refactors.
 - Added Phase 3 gate evidence in continuity artifacts with explicit pass/fail mapping to ROADMAP Phase 3 criteria.

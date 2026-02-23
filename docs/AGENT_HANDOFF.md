@@ -1,5 +1,48 @@
 Date: 2026-02-23
 Agent: GPT-5.2-Codex
+Goal (1 sentence): Execute P4-T1 and P4-T2 only by improving timer control clarity and switch/last-action visibility on order detail.
+
+## What I changed
+- Updated `src/app/orders/[id]/page.tsx` Active Work panel only (UI scope):
+  - Added explicit control labels and icons for `Start selected part`, `Pause active timer`, and `Finish active timer`.
+  - Added running/stopped status badge plus clear switch-warning callout when active work is on a different part.
+  - Added helper copy explaining switch-confirmation behavior.
+  - Added `lastPartEvent` display so the most recent part action is visible beside timer controls.
+- Updated session control artifacts: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`.
+
+## Files touched
+- src/app/orders/[id]/page.tsx
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+## Commands run
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+- npm run build
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot script against http://127.0.0.1:3000/orders/<id>
+
+## Verification Evidence
+- Time service tests passed (5/5), including switch no-inflation behavior.
+- Lint passed with no ESLint warnings/errors.
+- Build failed on pre-existing `/auth/signin` prerender Prisma `P2002` (`AppSettings.id` unique constraint), unchanged by this scope.
+- Runtime smoke check in TEST_MODE succeeded for order detail timer panel; screenshot captured.
+
+## DoD Checklist (P4-T1 & P4-T2)
+- [x] P4-T1: Start/pause/resume controls are obvious and unambiguous (explicit action labels + status context in Active Work panel).
+- [x] P4-T1: Active state is clearly visible without extra navigation (running/stopped badge + elapsed time + active-part callout).
+- [x] P4-T2: Switching operations does not inflate time (existing switch-confirmation backend/service behavior unchanged; no-inflation test suite remains passing).
+- [x] P4-T2: Last operation/action context is visible and understandable (most recent part log event surfaced in controls panel).
+
+## Next steps
+- [ ] Backlog: normalize Next.js/SWC version mismatch warnings in environment dependencies.
+- [ ] Backlog: resolve pre-existing `/auth/signin` prerender Prisma `AppSettings` uniqueness bootstrap issue so production build can pass end-to-end.
+
+---
+
+Date: 2026-02-23
+Agent: GPT-5.2-Codex
 Goal (1 sentence): Execute P3-T3 and P3-T4 only by closing Phase 3 with explicit evidence and enforcing switch-confirmation timer UX safety.
 
 ## What I changed
