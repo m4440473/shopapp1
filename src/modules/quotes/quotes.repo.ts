@@ -39,6 +39,14 @@ export async function findQuoteByNumber(quoteNumber: string) {
   return prisma.quote.findUnique({ where: { quoteNumber } });
 }
 
+
+export async function findQuoteAttachmentByStoragePath(storagePath: string) {
+  return prisma.quoteAttachment.findFirst({
+    where: { storagePath },
+    select: { mimeType: true, label: true },
+  });
+}
+
 export async function listVendorsByIds(ids: string[]) {
   if (!ids.length) return [];
   return prisma.vendor.findMany({ where: { id: { in: ids } } });

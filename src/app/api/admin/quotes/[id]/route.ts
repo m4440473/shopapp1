@@ -5,7 +5,7 @@ import { getServerAuthSession } from '@/lib/auth-session';
 
 import { DEFAULT_QUOTE_METADATA, parseQuoteMetadata } from '@/lib/quote-metadata';
 import { canAccessAdmin } from '@/lib/rbac';
-import { QuoteCreate } from '@/lib/zod-quotes';
+import { QuoteCreate } from '@/modules/quotes/quotes.schema';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 import { hasCustomFieldValue, parseCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 import {

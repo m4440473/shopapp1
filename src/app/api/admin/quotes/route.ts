@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { parseQuoteMetadata } from '@/lib/quote-metadata';
 import { canAccessAdmin } from '@/lib/rbac';
 import { ListQuery } from '@/lib/zod';
-import { QuoteCreate } from '@/lib/zod-quotes';
+import { QuoteCreate } from '@/modules/quotes/quotes.schema';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 import {

@@ -40,6 +40,27 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-23 — P2-T2 Quotes layering enforcement
+- Executed P2-T2 only by enforcing Quotes Prisma boundaries and module-owned Quotes schema usage.
+- Added `findQuoteAttachmentByStoragePath` to `src/modules/quotes/quotes.repo.ts` with service re-export in `src/modules/quotes/quotes.service.ts`.
+- Updated `src/app/(public)/attachments/[...path]/route.ts` to resolve quote attachment metadata via Quotes service instead of direct `prisma.quoteAttachment` access.
+- Added `src/modules/quotes/quotes.schema.ts` and migrated Quotes call sites (`quotes.service`, Quotes APIs, Quotes editor UI typing) to module schema imports.
+- Converted `src/lib/zod-quotes.ts` into a deprecated compatibility shim re-exporting from `src/modules/quotes/quotes.schema.ts` so domain ownership is module-first without breaking legacy imports.
+- Dependency quality validation note: prior dependency task P2-T1 has fresh build/lint evidence in latest continuity docs; no blocker found before starting P2-T2.
+
+Commands run:
+- rg --files -g 'AGENTS.md'
+- cat required pre-read docs (CANON/ROADMAP/AGENT_CONTEXT/PROGRESS_LOG/AGENT_HANDOFF/AGENT_TASK_BOARD/AGENT_PROMPTS/tasks)
+- rg --files src | rg 'quotes|quote'
+- rg -n Prisma/Quotes boundary audits across `src`
+- npm run test -- src/modules/quotes/__tests__/quote-totals.test.ts src/modules/quotes/__tests__/quote-work-items.test.ts
+- npm run lint
+- npm run build
+
+Verification note:
+- Quotes Prisma boundary audit command returns no Quotes Prisma usage outside `src/modules/quotes/quotes.repo.ts`.
+- `npm run test` (targeted Quotes module tests), `npm run lint`, and `npm run build` all pass; build/lint include pre-existing warnings in `src/app/orders/[id]/page.tsx` outside P2-T2 scope.
+
 ### 2026-02-23 — P2-T1 Orders layering + mental model enforcement
 - Executed P2-T1 only by enforcing Orders data access boundaries for server pages that were still querying Orders via direct Prisma (`/` and `/search`).
 - Added Orders repo functions (`getDashboardOrderOverview`, `searchOrdersByTerm`) and corresponding service wrappers (`getHomeDashboardData`, `searchOrders`) so UI/server pages consume Orders data through the module boundary.
