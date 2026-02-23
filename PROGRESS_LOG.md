@@ -40,6 +40,26 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-23 — P3-T1 + P3-T2 time invariants and API enforcement
+- Executed P3-T1 and P3-T2 only; no unrelated refactors.
+- Added closed-interval edit support in the Time module (`time.schema`, `time.types`, `time.service`, `time.repo`) with closed-only conflict handling.
+- Added admin-only API endpoint `PATCH /api/time/entries/[entryId]` requiring explicit reason and recording `TIME_ENTRY_EDITED` PartEvent audit metadata when a part-linked entry is edited.
+- Strengthened timer API enforcement for deterministic server behavior:
+  - `POST /api/timer/start` now uses `TimeEntryStart` schema parsing and explicit `partId` requirement.
+  - `GET /api/timer/active` now returns deterministic error status when totals computation fails.
+- Added targeted service tests for closed interval edit success/failure and kept existing duration test coverage.
+- Dependency quality validation note: reviewed prior P2-T4 evidence before implementation; no blockers found.
+
+Commands run:
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+- npm run build
+
+Verification note:
+- Time service tests passed (3/3).
+- Lint passed with no ESLint warnings/errors.
+- Build passed successfully; non-blocking environment advisories observed for `@next/swc` version mismatch and stale `baseline-browser-mapping` data.
+
 ### 2026-02-23 — Fix React hook warnings on Orders detail page
 - Scoped change to the user-requested warning cleanup only in `src/app/orders/[id]/page.tsx`.
 - Replaced unstable `parts` inline conditional with a memoized `parts` value so hook dependencies are stable.

@@ -51,6 +51,16 @@ export function createMockTimeRepo() {
       return entries.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())[0] ?? null;
     },
 
+
+    async updateClosedTimeEntryById(id: string, data: { startedAt: Date; endedAt: Date }) {
+      const entry = state.timeEntries.find((item) => item.id === id);
+      if (!entry || !entry.endedAt) return null;
+      entry.startedAt = data.startedAt;
+      entry.endedAt = data.endedAt;
+      entry.updatedAt = new Date();
+      return entry;
+    },
+
     async findTimeEntryById(entryId: string) {
       return state.timeEntries.find((entry) => entry.id === entryId) ?? null;
     },

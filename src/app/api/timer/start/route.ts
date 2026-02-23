@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
 import { getOrderPartSummary, logPartEvent } from '@/modules/orders/orders.service';
+import { TimeEntryStart } from '@/modules/time/time.schema';
 import { startTimeEntry } from '@/modules/time/time.service';
 
 export async function POST(req: NextRequest) {
@@ -12,10 +13,14 @@ export async function POST(req: NextRequest) {
   if (!userId) return new NextResponse('Unauthorized', { status: 401 });
 
   const json = await req.json().catch(() => null);
-  const orderId = typeof json?.orderId === 'string' ? json.orderId : '';
-  const partId = typeof json?.partId === 'string' ? json.partId : '';
-  if (!orderId || !partId) {
-    return NextResponse.json({ error: 'Missing orderId or partId' }, { status: 400 });
+  const parsed = TimeEntryStart.safeParse(json);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const { orderId, partId } = parsed.data;
+  if (!partId) {
+    return NextResponse.json({ error: 'partId is required for timer start.' }, { status: 400 });
   }
 
   const partCheck = await getOrderPartSummary(orderId, partId);

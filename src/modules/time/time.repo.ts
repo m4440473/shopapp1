@@ -69,3 +69,17 @@ export async function closeTimeEntryById(id: string, endedAt: Date) {
     data: { endedAt },
   });
 }
+
+
+export async function updateClosedTimeEntryById(
+  id: string,
+  data: { startedAt: Date; endedAt: Date }
+) {
+  const result = await prisma.timeEntry.updateMany({
+    where: { id, endedAt: { not: null } },
+    data: { startedAt: data.startedAt, endedAt: data.endedAt },
+  });
+
+  if (result.count === 0) return null;
+  return prisma.timeEntry.findUnique({ where: { id } });
+}

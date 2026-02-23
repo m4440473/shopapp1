@@ -9,3 +9,5 @@ export const findLatestTimeEntriesForUserParts = repo.findLatestTimeEntriesForUs
 export const findLatestTimeEntryForUserOrder = repo.findLatestTimeEntryForUserOrder;
 export const findTimeEntryById = repo.findTimeEntryById;
 export const listTimeEntriesForOrderParts = repo.listTimeEntriesForOrderParts;
+
+export const updateClosedTimeEntryById = repo.updateClosedTimeEntryById;

@@ -6,10 +6,16 @@ import {
   findLatestTimeEntryForUserOrder,
   findTimeEntryById,
   listTimeEntriesForOrderParts,
+  updateClosedTimeEntryById,
 } from '@/repos/time';
-import type { TimeEntry, TimeEntryResumeInput, TimeEntryStartInput } from './time.types';
+import type {
+  TimeEntry,
+  TimeEntryClosedEditInput,
+  TimeEntryResumeInput,
+  TimeEntryStartInput,
+} from './time.types';
 
-export type { TimeEntry, TimeEntryResumeInput, TimeEntryStartInput };
+export type { TimeEntry, TimeEntryClosedEditInput, TimeEntryResumeInput, TimeEntryStartInput };
 
 type ServiceResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
 
@@ -221,4 +227,38 @@ export function computeEntryMinutes(entries: Array<Pick<TimeEntry, 'startedAt' |
     if (diffMs <= 0) return total;
     return total + Math.round(diffMs / 60000);
   }, 0);
+}
+
+
+export async function editClosedTimeEntry(
+  userId: string,
+  input: TimeEntryClosedEditInput
+): Promise<ServiceResult<{ entry: TimeEntry }>> {
+  const entry = await findTimeEntryById(input.entryId);
+  if (!entry) {
+    return fail(404, 'Time entry not found.');
+  }
+
+  if (entry.userId !== userId) {
+    return fail(403, 'Cannot edit a time entry owned by another user.');
+  }
+
+  if (!entry.endedAt) {
+    return fail(409, 'Only closed time entries can be edited.');
+  }
+
+  if (input.endedAt.getTime() <= input.startedAt.getTime()) {
+    return fail(400, 'endedAt must be later than startedAt.');
+  }
+
+  const updated = await updateClosedTimeEntryById(input.entryId, {
+    startedAt: input.startedAt,
+    endedAt: input.endedAt,
+  });
+
+  if (!updated) {
+    return fail(409, 'Closed time entry update conflict.');
+  }
+
+  return ok({ entry: updated });
 }

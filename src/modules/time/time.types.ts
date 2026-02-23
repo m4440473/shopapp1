@@ -19,3 +19,10 @@ export type TimeEntryStartInput = {
 export type TimeEntryResumeInput = {
   entryId: string;
 };
+
+export type TimeEntryClosedEditInput = {
+  entryId: string;
+  startedAt: Date;
+  endedAt: Date;
+  reason: string;
+};
