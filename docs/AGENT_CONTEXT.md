@@ -60,6 +60,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-02-23 — Customers module boundary pattern aligned with Orders/Quotes
+Decision: Add `src/modules/customers/{customers.repo.ts, customers.service.ts, customers.schema.ts, customers.types.ts}` and route active Customers call paths through service/repo layering; keep `src/lib/zod-customers.ts` as a compatibility shim.
+Reason: P2-T3 requires Customers to stop being a boundary exception while avoiding broad drive-by refactors.
+
 ### 2026-02-23 — Orchestration standards + business-logic canon alignment
 Decision: Formalize plan-first orchestration artifacts (`tasks/todo.md`, `tasks/lessons.md`), require prior-task validation before new task execution, require build/test verification per session, and align canon with part-level charges + Orders-as-container enforcement + switch-context dialog + admin-audited closed-interval edit policy.
 Reason: Owner clarified governance and business-logic standards that must be uniform across all future task execution and architecture work.

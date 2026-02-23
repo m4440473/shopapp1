@@ -5,7 +5,7 @@ import { getServerAuthSession } from '@/lib/auth-session';
 import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 import { Users, ClipboardList, Timer, Layers } from 'lucide-react';
 
-import { prisma } from '@/lib/prisma';
+import { listCustomerDashboardCards } from '@/modules/customers/customers.service';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 
@@ -24,15 +24,7 @@ export default async function CustomersPage() {
     redirect(buildSignInRedirectPath('/customers'));
   }
 
-  const customers = await prisma.customer.findMany({
-    orderBy: { name: 'asc' },
-    include: {
-      orders: {
-        include: { parts: { select: { quantity: true } } },
-        orderBy: [{ receivedDate: 'desc' }],
-      },
-    },
-  });
+  const customers = await listCustomerDashboardCards();
 
   const metrics = customers.map((customer) => {
     const totalOrders = customer.orders.length;

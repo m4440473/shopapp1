@@ -3,7 +3,7 @@ import { redirect, notFound } from 'next/navigation';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 
-import { prisma } from '@/lib/prisma';
+import { getCustomerDetail } from '@/modules/customers/customers.service';
 
 function formatDate(input?: Date | string | null) {
   if (!input) return '—';
@@ -23,18 +23,7 @@ export default async function CustomerPrintPage({ params }: PrintPageProps) {
     redirect(buildSignInRedirectPath(`/customers/${id}/print`));
   }
 
-  const customer = await prisma.customer.findUnique({
-    where: { id },
-    include: {
-      orders: {
-        include: {
-          assignedMachinist: { select: { name: true, email: true } },
-          parts: { select: { quantity: true } },
-        },
-        orderBy: [{ receivedDate: 'desc' }],
-      },
-    },
-  });
+  const customer = await getCustomerDetail(id);
 
   if (!customer) {
     notFound();

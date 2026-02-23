@@ -40,6 +40,25 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-23 — P2-T3 Customers boundary alignment + P2-T4 Phase 2 audit closeout
+- Executed P2-T3 and P2-T4 only.
+- Added module-owned Customers boundary files: `src/modules/customers/customers.repo.ts`, `customers.service.ts`, `customers.schema.ts`, and `customers.types.ts`.
+- Refactored Customers API routes (`/api/admin/customers`, `/api/admin/customers/[id]`) and Customers server pages (`/customers`, `/customers/[id]`, `/customers/[id]/print`) to call Customers services instead of direct Prisma queries.
+- Converted `src/lib/zod-customers.ts` into a compatibility shim that re-exports module-owned customer schema/types.
+- Dependency quality validation note: P2-T2 continuity docs and verification evidence were reviewed before starting P2-T3/P2-T4; no dependency blocker found.
+
+Commands run:
+- rg --files -g 'AGENTS.md'
+- sed/cat reads of required pre-read docs (CANON/ROADMAP/AGENT_CONTEXT/PROGRESS_LOG/AGENT_HANDOFF/AGENT_TASK_BOARD/AGENT_PROMPTS/tasks files)
+- rg audits for Customers/Orders/Quotes Prisma usage and layering checks
+- npm run lint
+- npm run build
+
+Verification note:
+- Prisma audit commands report no Orders/Quotes/Customers model access outside their domain repo files.
+- `npm run lint` passes with pre-existing warnings in `src/app/orders/[id]/page.tsx` (out of scope).
+- `npm run build` passes with the same pre-existing warnings and non-blocking advisory warnings for baseline-browser-mapping/@next/swc mismatch.
+
 ### 2026-02-23 — P2-T2 Quotes layering enforcement
 - Executed P2-T2 only by enforcing Quotes Prisma boundaries and module-owned Quotes schema usage.
 - Added `findQuoteAttachmentByStoragePath` to `src/modules/quotes/quotes.repo.ts` with service re-export in `src/modules/quotes/quotes.service.ts`.

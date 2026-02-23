@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
-import { prisma } from '@/lib/prisma';
+import {
+  parseCustomerUpdatePayload,
+  updateCustomerFromInput,
+  buildCustomerUpdateData,
+} from '@/modules/customers/customers.service';
 import { canAccessAdmin } from '@/lib/rbac';
-import { CustomerUpdate } from '@/lib/zod-customers';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerAuthSession();
@@ -17,27 +20,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const json = await req.json().catch(() => null);
-  const parsed = CustomerUpdate.safeParse(json);
+  const parsed = parseCustomerUpdatePayload(json);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   const payload = parsed.data;
-  const data: Record<string, unknown> = {};
-  if (payload.name !== undefined) data.name = payload.name;
-  if (payload.contact !== undefined) data.contact = payload.contact || null;
-  if (payload.phone !== undefined) data.phone = payload.phone || null;
-  if (payload.email !== undefined) data.email = payload.email || null;
-  if (payload.address !== undefined) data.address = payload.address || null;
-
-  if (Object.keys(data).length === 0) {
+  if (Object.keys(buildCustomerUpdateData(payload)).length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   }
 
-  const customer = await prisma.customer.update({
-    where: { id },
-    data,
-  });
+  const customer = await updateCustomerFromInput(id, payload);
 
   return NextResponse.json({ ok: true, item: customer });
 }

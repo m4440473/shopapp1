@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessAdmin, canAccessViewer, isMachinist } from '@/lib/rbac';
-import { prisma } from '@/lib/prisma';
+import {
+  createCustomerFromInput,
+  listCustomersForAdmin,
+  parseCustomerCreatePayload,
+} from '@/modules/customers/customers.service';
 
 export async function GET(req: NextRequest) {
   const session = await getServerAuthSession();
@@ -15,7 +19,7 @@ export async function GET(req: NextRequest) {
   }
   const { searchParams } = new URL(req.url);
   const take = parseInt(searchParams.get('take') || '100', 10);
-  const customers = await prisma.customer.findMany({ take });
+  const customers = await listCustomersForAdmin(take);
   return NextResponse.json({ items: customers });
 }
 
@@ -24,9 +28,11 @@ export async function POST(req: NextRequest) {
   if (!session || !canAccessAdmin(session.user as any)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const body = await req.json();
-  const name = body?.name?.trim();
-  if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
-  const customer = await prisma.customer.create({ data: { name, contact: body.contact || null, phone: body.phone || null, email: body.email || null, address: body.address || null } });
+  const body = await req.json().catch(() => null);
+  const parsed = parseCustomerCreatePayload(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+  const customer = await createCustomerFromInput(parsed.data);
   return NextResponse.json({ ok: true, item: customer });
 }
