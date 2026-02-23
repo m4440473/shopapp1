@@ -5,7 +5,7 @@ import { getServerAuthSession } from '@/lib/auth-session';
 import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 import { Printer, UserCircle, Phone, Mail, MapPin, Activity, Package2 } from 'lucide-react';
 
-import { prisma } from '@/lib/prisma';
+import { getCustomerDetail } from '@/modules/customers/customers.service';
 import { EditCustomerDialog } from '@/components/EditCustomerDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
@@ -42,18 +42,7 @@ export default async function CustomerDetailPage({ params }: CustomerPageProps) 
     redirect(buildSignInRedirectPath(`/customers/${id}`));
   }
 
-  const customer = await prisma.customer.findUnique({
-    where: { id },
-    include: {
-      orders: {
-        include: {
-          assignedMachinist: { select: { id: true, name: true, email: true } },
-          parts: { select: { quantity: true } },
-        },
-        orderBy: [{ receivedDate: 'desc' }],
-      },
-    },
-  });
+  const customer = await getCustomerDetail(id);
 
   if (!customer) {
     notFound();

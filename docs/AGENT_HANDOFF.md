@@ -5,36 +5,42 @@
 
 Date: 2026-02-23
 Agent: GPT-5.2-Codex
-Goal (1 sentence): Execute P2-T2 by removing remaining Quotes Prisma access outside Quotes repos and moving active Quotes schema ownership into `src/modules/quotes`.
+Goal (1 sentence): Execute P2-T3 and P2-T4 by aligning Customers to repo/service boundaries and producing a Phase 2 Prisma/layering audit with explicit gate pass/fail.
 
 ## What I changed
-- Added Quotes repo function `findQuoteAttachmentByStoragePath` and exposed it via `src/modules/quotes/quotes.service.ts`.
-- Updated `src/app/(public)/attachments/[...path]/route.ts` to call `findQuoteAttachmentByStoragePath` from Quotes service instead of querying `prisma.quoteAttachment` directly.
-- Added `src/modules/quotes/quotes.schema.ts` as module-owned schema/types for Quotes input validation.
-- Migrated active Quotes call paths to import Quote schema/types from module scope:
-  - `src/modules/quotes/quotes.service.ts`
-  - `src/app/api/admin/quotes/route.ts`
-  - `src/app/api/admin/quotes/[id]/route.ts`
-  - `src/app/admin/quotes/QuoteEditor.tsx`
-- Converted `src/lib/zod-quotes.ts` into a deprecated compatibility shim that re-exports from module schema ownership.
+- Added module-owned Customers boundary files:
+  - `src/modules/customers/customers.repo.ts`
+  - `src/modules/customers/customers.service.ts`
+  - `src/modules/customers/customers.schema.ts`
+  - `src/modules/customers/customers.types.ts`
+- Refactored Customers API routes to call Customers services (thin route handlers):
+  - `src/app/api/admin/customers/route.ts`
+  - `src/app/api/admin/customers/[id]/route.ts`
+- Refactored Customers server pages to call Customers services instead of direct Prisma:
+  - `src/app/customers/page.tsx`
+  - `src/app/customers/[id]/page.tsx`
+  - `src/app/customers/[id]/print/page.tsx`
+- Converted `src/lib/zod-customers.ts` into a compatibility shim that re-exports module-owned schema/types.
 - Updated continuity/planning artifacts: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`.
 
 ## Files touched
-- src/modules/quotes/quotes.repo.ts
-- src/modules/quotes/quotes.service.ts
-- src/modules/quotes/quotes.schema.ts
-- src/app/(public)/attachments/[...path]/route.ts
-- src/app/api/admin/quotes/route.ts
-- src/app/api/admin/quotes/[id]/route.ts
-- src/app/admin/quotes/QuoteEditor.tsx
-- src/lib/zod-quotes.ts
+- src/modules/customers/customers.repo.ts
+- src/modules/customers/customers.service.ts
+- src/modules/customers/customers.schema.ts
+- src/modules/customers/customers.types.ts
+- src/app/api/admin/customers/route.ts
+- src/app/api/admin/customers/[id]/route.ts
+- src/app/customers/page.tsx
+- src/app/customers/[id]/page.tsx
+- src/app/customers/[id]/print/page.tsx
+- src/lib/zod-customers.ts
 - tasks/todo.md
 - PROGRESS_LOG.md
 - docs/AGENT_HANDOFF.md
 
 ## Commands run
 - rg --files -g 'AGENTS.md'
-- cat/sed required pre-reads:
+- sed/cat required pre-reads:
   - CANON.md
   - ROADMAP.md
   - docs/AGENT_CONTEXT.md
@@ -44,27 +50,28 @@ Goal (1 sentence): Execute P2-T2 by removing remaining Quotes Prisma access outs
   - AGENT_PROMPTS.md
   - tasks/todo.md
   - tasks/lessons.md
-- rg --files src | rg 'quotes|quote'
-- rg -n "prisma\.(quote|quoteAttachment|quotePart|quoteAddonSelection|quoteVendorItem|quoteAuditLog)" src | rg -v "src/modules/quotes/quotes.repo.ts|src/repos/mock"
-- npm run test -- src/modules/quotes/__tests__/quote-totals.test.ts src/modules/quotes/__tests__/quote-work-items.test.ts
+- rg -n "prisma\.customer" src
+- rg -n "prisma\.(order|orderPart|orderCharge|orderChecklist|partAttachment)" src --glob '!src/modules/orders/orders.repo.ts'
+- rg -n "prisma\.(quote|quotePart|quoteAttachment|quoteVendorItem|quoteAddonSelection)" src --glob '!src/modules/quotes/quotes.repo.ts'
+- rg -n "prisma\.customer" src --glob '!src/modules/customers/customers.repo.ts'
+- rg -n "@/lib/prisma" src/app/api/orders src/app/api/admin/quotes src/app/api/admin/customers src/app/customers
 - npm run lint
 - npm run build
 
 ## Verification Evidence
-- Quotes Prisma boundary audit: no matches for Quotes Prisma usage outside `src/modules/quotes/quotes.repo.ts`.
-- `npm run test -- src/modules/quotes/__tests__/quote-totals.test.ts src/modules/quotes/__tests__/quote-work-items.test.ts` passed.
-- `npm run lint` passed (with pre-existing warnings in `src/app/orders/[id]/page.tsx`, not modified here).
-- `npm run build` passed (with pre-existing warning lines, no failures).
+- Orders/Quotes/Customers Prisma out-of-repo audit commands returned no matches.
+- Customers API and pages no longer import `@/lib/prisma`; call paths now go route/page -> customers.service -> customers.repo.
+- `npm run lint` passed (pre-existing warnings remain in `src/app/orders/[id]/page.tsx`, not touched in this task).
+- `npm run build` passed (same pre-existing warnings plus non-blocking advisories for baseline-browser-mapping and @next/swc mismatch).
 
 ## Diff/Review Notes
-- Scope intentionally limited to P2-T2 (Quotes domain layering + quote schema ownership path).
+- Scope intentionally limited to P2-T3 + P2-T4.
 - No new dependencies added.
-- No drive-by refactors in unrelated domains.
+- No unrelated refactors outside Customers alignment and Phase 2 audit evidence capture.
 
 ## Notes / gotchas
-- The public attachment route still imports Prisma dynamically for order attachment lookups (`prisma.attachment`) because that path is outside Quotes scope.
-- Pre-existing lint warnings in `src/app/orders/[id]/page.tsx` remain and should be handled in a dedicated task.
+- P2-T4 gate evidence is captured via command output + continuity docs; legacy order-centric migration-note consolidation is still a documentation follow-up.
 
 ## Next steps
-- [ ] Execute `P2-T3` (Customers boundary alignment).
-- [ ] In a future Quotes-scoped task, migrate quote metadata/visibility helpers from `src/lib/*` into `src/modules/quotes/*` if full domain ownership hardening is desired.
+- [ ] Start P3-T1 (time model invariants verification) only after owner confirms Phase 2 gate acceptance.
+- [ ] Optional docs-only follow-up: consolidate legacy order-centric deprecation/migration notes into a single appendix for future gate audits.
