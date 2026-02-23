@@ -1,5 +1,50 @@
 Date: 2026-02-23
 Agent: GPT-5.2-Codex
+Goal (1 sentence): Resolve local setup friction and timer/order-detail issues by updating install docs, handling timer FK failures gracefully, and fixing order timer control overlap.
+
+## What I changed
+- Rewrote `README.md` local install section into a deterministic setup flow (`npm ci` → env setup → prisma generate/migrate → seed → demo password setup).
+- Added timer start FK-failure handling in `src/modules/time/time.service.ts`:
+  - catches Prisma known request error `P2003` during time-entry creation.
+  - returns deterministic 409 with actionable re-login guidance for stale-session scenarios.
+- Updated order detail timer controls in `src/app/orders/[id]/page.tsx` from a fixed 3-column action row to stacked actions to prevent overlap/crowding in the narrow sidebar.
+- Updated continuity artifacts for this session: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `docs/AGENT_TASK_BOARD.md`.
+
+## Files touched
+- README.md
+- src/modules/time/time.service.ts
+- src/app/orders/[id]/page.tsx
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- docs/AGENT_TASK_BOARD.md
+
+## Commands run
+- npm run seed
+- npm run set-demo-passwords
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+- npm run build
+- npm run dev
+- Playwright screenshot script against http://127.0.0.1:3000/orders/<id>
+
+## Verification Evidence
+- Seed completed successfully.
+- Demo password script completed successfully.
+- Time service tests passed (5/5).
+- Lint passed with no ESLint warnings/errors.
+- Build passed successfully.
+- Runtime UI screenshot captured for updated order timer controls.
+- Non-blocking advisories observed: `@next/swc` mismatch warning and stale `baseline-browser-mapping` data warning.
+
+## Next steps
+- [ ] Backlog: align `next` and `@next/swc` versions to remove build advisory.
+- [ ] Backlog: refresh `baseline-browser-mapping` dev dependency data.
+
+---
+
+Date: 2026-02-23
+Agent: GPT-5.2-Codex
 Goal (1 sentence): Execute P4-T3 only by producing explicit Phase 4 gate pass/fail evidence from existing timer behavior and verification commands.
 
 ## What I changed

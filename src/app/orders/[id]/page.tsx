@@ -548,7 +548,7 @@ export default function OrderDetailPage() {
                 </div>
               ) : null}
 
-              <div className="grid gap-2 md:grid-cols-3">
+              <div className="grid gap-2">
                 <Button
                   type="button"
                   size="sm"

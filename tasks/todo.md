@@ -3,28 +3,35 @@
 ## Session Metadata
 - Date: 2026-02-23
 - Agent: GPT-5.2-Codex
-- Task ID: P4-T3
-- Goal: Produce Phase 4 gate closeout evidence only, proving operator switch safety and manager-trustworthy totals without changing product behavior.
+- Task ID: Unplanned maintenance (README local install + timer start failure + order timer controls UI)
+- Goal: Fix local install/docs friction, resolve timer start foreign-key failure mode, and clean up order timer control layout overlap.
 
 ## Dependency Validation
-- [x] Reviewed prior dependency artifacts for P4-T2 completion quality in `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md`.
-- [x] No unresolved dependency blockers found; proceeded with P4-T3 evidence-only scope.
+- [x] Reviewed dependency artifacts in `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md`.
+- [x] No dependency blocker requiring pause before this maintenance scope.
 
 ## Plan First
-- [x] Reconfirm P4-T1/P4-T2 evidence and map it directly to ROADMAP Phase 4 exit criteria.
-- [x] Run verification commands relevant to timer behavior and touched reporting artifacts.
-- [x] Record explicit pass/fail DoD outcomes and backlog-only follow-ups in continuity docs.
+- [x] Reproduce/inspect current install + seed behavior and timer start flow to identify root causes.
+- [x] Implement targeted fixes:
+  - README local install section cleanup and accurate commands.
+  - Timer start error handling for stale-session/foreign-key failures.
+  - View-order timer control layout update to prevent control overlap.
+- [x] Run focused verification (lint/tests/build where relevant) and collect evidence.
+- [x] Update continuity artifacts (`PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and task board status note).
 
 ## Implementation Checklist
-- [x] Captured P4-T3 pass/fail mapping for both Phase 4 outcomes (operator no-inflation flow + manager totals trust).
-- [x] Kept scope to evidence/reporting artifacts only (no dependency changes, no domain refactors).
+- [x] README installation instructions rewritten for clean local setup and seed expectations.
+- [x] Timer service gracefully handles Prisma FK violations and returns actionable message.
+- [x] Order view timer control layout no longer packs conflicting controls in narrow sidebar width.
 
 ## Verification Checklist
 - [x] `npm run test -- src/modules/time/__tests__/time.service.test.ts`
 - [x] `npm run lint`
 - [x] `npm run build`
+- [x] Playwright runtime screenshot capture of updated order timer controls.
 
 ## Review + Results
-- P4-T3 DoD #1 (operators can start/stop/switch without inflation): PASS, evidenced by passing time service conflict/switch tests and prior P4 UI + P3 switch-confirmation behavior.
-- P4-T3 DoD #2 (managers can trust totals without manual reconciliation): PASS, evidenced by computed-interval service behavior remaining green and successful production build/type checks.
-- Backlog-only note: non-blocking environment advisories remain (`@next/swc` version mismatch warning and stale `baseline-browser-mapping` data) and are intentionally out of P4-T3 scope.
+- Root-cause guardrail added for timer starts: Prisma `P2003` (foreign key) now maps to an actionable 409 error message instructing session refresh/re-login.
+- Local install docs now include required password seeding for demo login reliability (`set-demo-passwords` / `demo:setup`).
+- Timer controls no longer force a 3-column layout in the narrow order sidebar, preventing visual overlap/crowding.
+- Verification evidence recorded in continuity docs; build/test/lint all passed (with non-blocking environment advisories).

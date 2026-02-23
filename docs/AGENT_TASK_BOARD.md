@@ -9,6 +9,13 @@ Use with:
 
 ---
 
+
+## Session Status Notes
+
+- 2026-02-23: Completed unplanned maintenance scope (outside numbered roadmap ticket) for local install/readme, timer start FK failure handling, and order-detail timer control layout overlap. Verification evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
+
+---
+
 ## Operating rules
 
 1. **One task ID per agent session.**

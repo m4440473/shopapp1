@@ -1,99 +1,99 @@
-# Shop Orders — Database Layer
+# ShopApp1
 
-npm is the canonical install path (package-lock.json is authoritative).
-
-This package contains the Prisma schema and seed for the Shop Orders app.
-
-## Replit deployment playbook
-
-See [`docs/archive/REPLIT_AGENT_PLAYBOOK.md`](./docs/archive/REPLIT_AGENT_PLAYBOOK.md) for historical Replit environment variables, build/start steps, and troubleshooting tips.
+ShopApp1 is a Next.js + Prisma shop operations app (orders, parts, checklist, quotes, and time tracking).
 
 ## Prerequisites
 
-1. Install **Node.js 18** or newer. The easiest cross-platform approach is to
-   use [nvm](https://github.com/nvm-sh/nvm#installing-and-updating). Once nvm is
-   installed, run:
+- Node.js 18+ (Node 20 LTS recommended)
+- npm (project uses `package-lock.json`)
+
+## Local install + first run
+
+1. Install dependencies:
 
    ```bash
-   nvm install --lts
-   nvm use --lts
+   npm ci
    ```
 
-   This installs Node.js and its accompanying `npm` CLI.
-2. Use the npm CLI that ships with Node.js for installs and scripts.
+2. Create your env file:
 
-After the prerequisites are in place, install dependencies from the repository
-root:
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Generate Prisma client and apply local migrations:
+
+   ```bash
+   npm run prisma:generate
+   npm run prisma:migrate -- --name init
+   ```
+
+4. Seed demo data:
+
+   ```bash
+   npm run seed
+   ```
+
+5. (Optional, recommended) Set demo passwords so seeded users can sign in:
+
+   ```bash
+   npm run set-demo-passwords
+   ```
+
+   Or run both in one command:
+
+   ```bash
+   npm run demo:setup
+   ```
+
+6. Start the app:
+
+   ```bash
+   npm run dev
+   ```
+
+## Demo users
+
+After `npm run set-demo-passwords`:
+
+- `admin@example.com`
+- `mach1@example.com`
+- `mach2@example.com`
+- `viewer@example.com`
+
+(Passwords are set by `scripts/set-demo-passwords.js`.)
+
+## Troubleshooting
+
+### Timer start fails with a foreign key error
+
+This usually means your auth session references a stale user id (commonly after resetting/reseeding a database).
+
+- Sign out, then sign back in.
+- Retry starting the timer.
+
+### Seed script appears to fail
+
+Use this sequence from the repo root:
 
 ```bash
-npm ci
-```
-
-## Domain glossary
-
-- **Addon** = template/catalog item.
-- **OrderCharge** = billable instance line item applied to a part or order.
-- **OrderChecklist** = task instance (department checklist items must be per-part).
-- Routing + intelligence queues use `OrderPart.currentDepartmentId` and per-part department checklist items.
-
-## Quickstart (SQLite)
-
-```bash
-npm install -D prisma
-npm install @prisma/client
-cp .env.example .env
 npm run prisma:generate
 npm run prisma:migrate -- --name init
 npm run seed
+```
 
-If ts-node isn’t available:
+If login fails after seeding, run:
 
-npm install -D ts-node typescript
-
-What you get
-	•	Complete schema with enums and relations
-	•	Indices for status/dueDate and common lookups
-	•	Referential actions (Cascade/SetNull/Restrict) chosen to preserve history
-	•	Seed data:
-	•	Users: admin@example.com, mach1@example.com, mach2@example.com, viewer@example.com
-	•	Catalogs: common materials/vendors/checklist items
-	•	Customers: Corning, Toyota, Acme Fab
-	•	Orders: 3 sample POs with parts, checklist rows, history, notes, timelogs, attachments
+```bash
+npm run set-demo-passwords
+```
 
 ## Attachment storage
 
-- Attachments are stored on disk underneath the directory defined by the
-  `ATTACHMENTS_DIR` environment variable. If it is not set, the application
-  defaults to a local `storage/` folder in the project root.
-- `npm install` automatically runs `scripts/init-storage.cjs` to
-  create the attachment root and top-level folders for each business (Sterling
-  Tool and Die, C and R Machining, Powder Coating).
-- Attachments are saved using slugified directory names in the format
-  `<business>/<customer>/<reference>/`. For example, an order for "Acme Co" with
-  reference `PO-1234` under Sterling Tool and Die will live at
-  `storage/sterling-tool-and-die/acme-co/po-1234/` by default.
-- Override `ATTACHMENTS_DIR` at runtime or during installation to point to a
-  different root location, and rerun `node scripts/init-storage.cjs`
-  if you need to recreate the initial structure manually.
+- Attachments default to `storage/` in project root.
+- Override with `ATTACHMENTS_DIR`.
+- Recreate the storage directory scaffold manually with:
 
-Switch to MySQL (optional)
-	1.	In datasource db set provider = "mysql" and set DATABASE_URL in .env.
-	2.	Run:
-
-npm run prisma:generate
-npm run prisma:migrate -- --name init_mysql
-npm run seed
-
-Hand-off to Agent 2+
-	•	Agent 2 (Auth/RBAC) can rely on User.passwordHash being nullable.
-	•	API can assume relational integrity and indexes are in place.
-
----
-
-## Acceptance criteria (hard)
-- `grep -R "\.\.\."` matches **zero** files.
-- `prisma/schema.prisma` compiles; `npm run prisma:generate` succeeds.
-- `npm run prisma:migrate -- --name init` creates a valid SQLite DB.
-- `npm run seed` runs without error and creates at least 3 orders with child rows.
-- All relations enforce sensible `onDelete` behaviors (Orders cascade parts, notes, timelogs, attachments, checklist; Users set-null on history/notes/attachments; Materials/Vendors set-null on parts/orders).
-- Models and enums exactly cover: User, Customer, Material, Vendor, Addon, Order, OrderPart, OrderChecklist, TimeLog, StatusHistory, Attachment, Note; Role, Priority, Status, TimePhase.
+  ```bash
+  node scripts/init-storage.cjs
+  ```
