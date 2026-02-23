@@ -870,3 +870,58 @@ export async function listReadyOrderPartsForDepartment(departmentId: string) {
     },
   });
 }
+
+export async function getDashboardOrderOverview() {
+  const [totalOrders, closedOrders, activeOrders, recentOrders] = await Promise.all([
+    prisma.order.count(),
+    prisma.order.count({ where: { status: 'CLOSED' } }),
+    prisma.order.findMany({
+      where: { status: { not: 'CLOSED' } },
+      include: {
+        customer: { select: { name: true } },
+        assignedMachinist: { select: { id: true, name: true, email: true } },
+        parts: { select: { quantity: true } },
+        checklist: { select: { completed: true, addon: { select: { name: true } } } },
+        statusHistory: { select: { createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+      orderBy: [{ dueDate: 'asc' }, { orderNumber: 'asc' }],
+      take: 50,
+    }),
+    prisma.order.findMany({
+      include: {
+        customer: { select: { name: true } },
+        assignedMachinist: { select: { name: true } },
+      },
+      orderBy: [{ receivedDate: 'desc' }],
+      take: 8,
+    }),
+  ]);
+
+  return { totalOrders, closedOrders, activeOrders, recentOrders };
+}
+
+export async function searchOrdersByTerm(query: string, variants: string[]) {
+  if (!query.length) return [];
+
+  const clauses = variants.length
+    ? variants.flatMap((value) => [
+        { orderNumber: { contains: value } },
+        { customer: { name: { contains: value } } },
+        { parts: { some: { partNumber: { contains: value } } } },
+      ])
+    : [
+        { orderNumber: { contains: query } },
+        { customer: { name: { contains: query } } },
+        { parts: { some: { partNumber: { contains: query } } } },
+      ];
+
+  return prisma.order.findMany({
+    where: { OR: clauses },
+    include: {
+      customer: { select: { id: true, name: true } },
+      assignedMachinist: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: [{ dueDate: 'asc' }, { orderNumber: 'asc' }],
+    take: 60,
+  });
+}

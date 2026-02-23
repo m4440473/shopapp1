@@ -4,8 +4,8 @@ import { getServerAuthSession } from '@/lib/auth-session';
 import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 import { Search as SearchIcon } from 'lucide-react';
 
-import { prisma } from '@/lib/prisma';
 import { Badge } from '@/components/ui/badge';
+import { searchOrders } from '@/modules/orders/orders.service';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -28,20 +28,6 @@ function formatDate(input?: Date | string | null) {
   return date.toLocaleDateString();
 }
 
-function buildQueryVariants(input: string): string[] {
-  const trimmed = input.trim();
-  if (!trimmed) return [];
-  const lower = trimmed.toLowerCase();
-  const upper = trimmed.toUpperCase();
-  const title = trimmed
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ');
-  const variants = new Set([trimmed, lower, upper, title]);
-  return Array.from(variants).filter(Boolean);
-}
-
 type SearchPageProps = {
   searchParams?: Promise<{ q?: string }>;
 };
@@ -59,35 +45,21 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const query = resolvedSearchParams?.q?.trim() ?? '';
   const hasQuery = query.length > 0;
 
-  const results = hasQuery
-    ? await prisma.order.findMany({
-        where: {
-          OR: (() => {
-            const variants = buildQueryVariants(query);
-            if (variants.length === 0) {
-              return [
-                { orderNumber: { contains: query } },
-                { customer: { name: { contains: query } } },
-                { parts: { some: { partNumber: { contains: query } } } },
-              ];
-            }
-            const clauses: any[] = [];
-            for (const value of variants) {
-              clauses.push({ orderNumber: { contains: value } });
-              clauses.push({ customer: { name: { contains: value } } });
-              clauses.push({ parts: { some: { partNumber: { contains: value } } } });
-            }
-            return clauses;
-          })(),
-        },
-        include: {
-          customer: { select: { id: true, name: true } },
-          assignedMachinist: { select: { id: true, name: true, email: true } },
-        },
-        orderBy: [{ dueDate: 'asc' }, { orderNumber: 'asc' }],
-        take: 60,
-      })
-    : [];
+  let results: Array<{
+    id: string;
+    orderNumber: string;
+    status: string;
+    dueDate: Date | string | null;
+    customer: { id: string; name: string | null } | null;
+    assignedMachinist: { id: string; name: string | null; email: string | null } | null;
+  }> = [];
+  if (hasQuery) {
+    const searchResult = await searchOrders(query);
+    if (searchResult.ok === false) {
+      throw new Error(String(searchResult.error));
+    }
+    results = searchResult.data.orders;
+  }
 
   return (
     <div className="space-y-8">

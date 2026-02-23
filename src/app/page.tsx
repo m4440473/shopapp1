@@ -13,12 +13,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import {
   decorateOrder,
   getDepartmentsOrdered,
+  getHomeDashboardData,
   getOrderDepartmentFeed,
   ORDER_STATUS_LABELS,
   type DepartmentFeedOrder,
 } from '@/modules/orders/orders.service';
 import { getInitials } from '@/lib/get-initials';
-import { prisma } from '@/lib/prisma';
 import { cn } from '@/lib/utils';
 
 export default async function Home() {
@@ -30,30 +30,12 @@ export default async function Home() {
   const now = new Date();
   const soon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const [totalOrders, closedOrders, activeOrders, recentOrders] = await Promise.all([
-    prisma.order.count(),
-    prisma.order.count({ where: { status: 'CLOSED' } }),
-    prisma.order.findMany({
-      where: { status: { not: 'CLOSED' } },
-      include: {
-        customer: { select: { name: true } },
-        assignedMachinist: { select: { id: true, name: true, email: true } },
-        parts: { select: { quantity: true } },
-        checklist: { select: { completed: true, addon: { select: { name: true } } } },
-        statusHistory: { select: { createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 },
-      },
-      orderBy: [{ dueDate: 'asc' }, { orderNumber: 'asc' }],
-      take: 50,
-    }),
-    prisma.order.findMany({
-      include: {
-        customer: { select: { name: true } },
-        assignedMachinist: { select: { name: true } },
-      },
-      orderBy: [{ receivedDate: 'desc' }],
-      take: 8,
-    }),
-  ]);
+  const dashboardResult = await getHomeDashboardData();
+  if (dashboardResult.ok === false) {
+    throw new Error(String(dashboardResult.error));
+  }
+
+  const { totalOrders, closedOrders, activeOrders, recentOrders } = dashboardResult.data;
   const departmentsResult = await getDepartmentsOrdered();
   const departments = departmentsResult.ok ? departmentsResult.data.items : [];
   const initialDepartmentId = departments[0]?.id ?? null;
