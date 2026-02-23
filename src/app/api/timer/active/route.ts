@@ -32,6 +32,9 @@ export async function GET(req: NextRequest) {
   const activePart = partResult?.ok ? (partResult.data as { part: unknown }).part : null;
 
   const totalsResult = orderId && partIds.length ? await getOrderPartTimeTotals(orderId, partIds) : null;
+  if (totalsResult && totalsResult.ok === false) {
+    return NextResponse.json({ error: totalsResult.error }, { status: totalsResult.status });
+  }
 
   return NextResponse.json({
     activeEntry,

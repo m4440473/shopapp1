@@ -5,6 +5,58 @@
 
 Date: 2026-02-23
 Agent: GPT-5.2-Codex
+Goal (1 sentence): Execute P3-T1 and P3-T2 by enforcing closed-interval time invariants and deterministic server-side API rules only.
+
+## What I changed
+- Time module invariant enforcement updates:
+  - Added `TimeEntryClosedEdit` schema and `TimeEntryClosedEditInput` type.
+  - Added `editClosedTimeEntry` service path with deterministic 404/403/409/400 outcomes.
+  - Added `updateClosedTimeEntryById` repo + mock-repo support with closed-entry-only guard (`endedAt != null`).
+- Time API enforcement updates:
+  - Added `PATCH /api/time/entries/[entryId]` (admin-only via RBAC) with required reason and PartEvent audit record (`TIME_ENTRY_EDITED`) for part-linked entries.
+  - Updated `POST /api/timer/start` to validate request via `TimeEntryStart` schema and require `partId` explicitly.
+  - Updated `GET /api/timer/active` to return deterministic error status if totals lookup fails.
+- Added/updated tests:
+  - Extended `src/modules/time/__tests__/time.service.test.ts` with closed-entry edit success and active-entry edit rejection cases.
+
+## Files touched
+- src/modules/time/time.schema.ts
+- src/modules/time/time.types.ts
+- src/modules/time/time.service.ts
+- src/modules/time/time.repo.ts
+- src/repos/time.ts
+- src/repos/mock/time.ts
+- src/app/api/time/entries/[entryId]/route.ts
+- src/app/api/timer/start/route.ts
+- src/app/api/timer/active/route.ts
+- src/modules/time/__tests__/time.service.test.ts
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- docs/AGENT_CONTEXT.md
+
+## Commands run
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+- npm run build
+
+## Verification Evidence
+- Time service tests pass (3/3), including closed-entry edit paths.
+- Lint passes with no ESLint warnings/errors.
+- Production build succeeds and includes new `/api/time/entries/[entryId]` route in output.
+
+## Diff/Review Notes
+- Scope limited to P3-T1 and P3-T2; no dependency additions and no unrelated domain edits.
+- Existing environment warnings (`@next/swc` mismatch and `baseline-browser-mapping` freshness) were observed but are outside this task scope.
+
+## Next steps
+- [ ] P3-T3: produce formal Phase 3 gate closeout pass/fail report with explicit mapping to ROADMAP criteria.
+- [ ] Backlog: consider DB-level partial uniqueness guard for active entries if/when SQLite migration strategy is approved.
+
+---
+
+Date: 2026-02-23
+Agent: GPT-5.2-Codex
 Goal (1 sentence): Fix the React hook warnings in `src/app/orders/[id]/page.tsx` only, per user clarification.
 
 ## What I changed
