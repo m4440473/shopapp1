@@ -14,7 +14,6 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ path?: string | string[] }> },
 ) {
-  const { prisma } = await import('@/lib/prisma');
   const { getAppSettings } = await import('@/lib/app-settings');
   const { getServerAuthSession } = await import('@/lib/auth-session');
   const { path: rawPath } = await params;
@@ -28,10 +27,11 @@ export async function GET(
   const isAdmin = canAccessAdmin(user);
 
   const relativePath = segments.join('/');
-  const quoteAttachment = await prisma.quoteAttachment.findFirst({
-    where: { storagePath: relativePath },
-    select: { mimeType: true, label: true },
-  });
+  const { findQuoteAttachmentByStoragePath } = await import('@/modules/quotes/quotes.service');
+
+  const quoteAttachment = await findQuoteAttachmentByStoragePath(relativePath);
+
+  const { prisma } = await import('@/lib/prisma');
 
   const orderAttachment = quoteAttachment
     ? null

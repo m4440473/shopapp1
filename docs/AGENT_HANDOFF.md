@@ -5,34 +5,36 @@
 
 Date: 2026-02-23
 Agent: GPT-5.2-Codex
-Goal (1 sentence): Execute P2-T1 by removing remaining Orders Prisma access outside Orders repos and routing affected page data loading through Orders services.
+Goal (1 sentence): Execute P2-T2 by removing remaining Quotes Prisma access outside Quotes repos and moving active Quotes schema ownership into `src/modules/quotes`.
 
 ## What I changed
-- Added Orders-repo data access functions for dashboard/search use cases:
-  - `getDashboardOrderOverview`
-  - `searchOrdersByTerm`
-- Added Orders-service wrappers:
-  - `getHomeDashboardData`
-  - `searchOrders`
-- Updated homepage and search page to call Orders services instead of direct Prisma usage.
-- Updated `src/repos/orders.ts` exports and `src/repos/mock/orders.ts` to include the new repo methods so TEST_MODE repo contracts remain aligned.
-- Updated continuity/planning artifacts (`tasks/todo.md`, `tasks/lessons.md`, `PROGRESS_LOG.md`) with plan + verification + correction-derived lesson entry.
+- Added Quotes repo function `findQuoteAttachmentByStoragePath` and exposed it via `src/modules/quotes/quotes.service.ts`.
+- Updated `src/app/(public)/attachments/[...path]/route.ts` to call `findQuoteAttachmentByStoragePath` from Quotes service instead of querying `prisma.quoteAttachment` directly.
+- Added `src/modules/quotes/quotes.schema.ts` as module-owned schema/types for Quotes input validation.
+- Migrated active Quotes call paths to import Quote schema/types from module scope:
+  - `src/modules/quotes/quotes.service.ts`
+  - `src/app/api/admin/quotes/route.ts`
+  - `src/app/api/admin/quotes/[id]/route.ts`
+  - `src/app/admin/quotes/QuoteEditor.tsx`
+- Converted `src/lib/zod-quotes.ts` into a deprecated compatibility shim that re-exports from module schema ownership.
+- Updated continuity/planning artifacts: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`.
 
 ## Files touched
-- src/modules/orders/orders.repo.ts
-- src/modules/orders/orders.service.ts
-- src/repos/orders.ts
-- src/repos/mock/orders.ts
-- src/app/page.tsx
-- src/app/search/page.tsx
+- src/modules/quotes/quotes.repo.ts
+- src/modules/quotes/quotes.service.ts
+- src/modules/quotes/quotes.schema.ts
+- src/app/(public)/attachments/[...path]/route.ts
+- src/app/api/admin/quotes/route.ts
+- src/app/api/admin/quotes/[id]/route.ts
+- src/app/admin/quotes/QuoteEditor.tsx
+- src/lib/zod-quotes.ts
 - tasks/todo.md
-- tasks/lessons.md
 - PROGRESS_LOG.md
 - docs/AGENT_HANDOFF.md
 
 ## Commands run
 - rg --files -g 'AGENTS.md'
-- sed/cat reads for required pre-reads:
+- cat/sed required pre-reads:
   - CANON.md
   - ROADMAP.md
   - docs/AGENT_CONTEXT.md
@@ -42,27 +44,27 @@ Goal (1 sentence): Execute P2-T1 by removing remaining Orders Prisma access outs
   - AGENT_PROMPTS.md
   - tasks/todo.md
   - tasks/lessons.md
-- rg -n "P2-T1|Phase 2|Orders layering" docs/AGENT_TASK_BOARD.md ROADMAP.md PROGRESS_LOG.md docs/AGENT_CONTEXT.md
-- rg --files src | rg 'orders|order|api/.*/orders|modules/orders'
-- rg -n "@/lib/prisma|from '@/repos/orders'|from '@/repos'|prisma\." src/app/api/orders src/modules/orders src/app/orders src/repos/orders.ts
-- rg -n "prisma\.(order|orderPart|orderCharge|orderChecklist|partAttachment|partEvent)" src | rg -v "src/modules/orders/.*\.repo\.ts|src/repos/mock/orders.ts"
+- rg --files src | rg 'quotes|quote'
+- rg -n "prisma\.(quote|quoteAttachment|quotePart|quoteAddonSelection|quoteVendorItem|quoteAuditLog)" src | rg -v "src/modules/quotes/quotes.repo.ts|src/repos/mock"
+- npm run test -- src/modules/quotes/__tests__/quote-totals.test.ts src/modules/quotes/__tests__/quote-work-items.test.ts
 - npm run lint
 - npm run build
 
 ## Verification Evidence
-- Boundary audit: `rg -n "prisma\.(order|orderPart|orderCharge|orderChecklist|partAttachment|partEvent)" ...` returned no matches outside `src/modules/orders/*.repo.ts` (plus mock exclusions), satisfying the Prisma-boundary criterion for touched paths.
-- Build: `npm run build` completed successfully.
-- Lint: `npm run lint` completed successfully (with existing hook warnings in `src/app/orders/[id]/page.tsx`, not modified in this task).
+- Quotes Prisma boundary audit: no matches for Quotes Prisma usage outside `src/modules/quotes/quotes.repo.ts`.
+- `npm run test -- src/modules/quotes/__tests__/quote-totals.test.ts src/modules/quotes/__tests__/quote-work-items.test.ts` passed.
+- `npm run lint` passed (with pre-existing warnings in `src/app/orders/[id]/page.tsx`, not modified here).
+- `npm run build` passed (with pre-existing warning lines, no failures).
 
 ## Diff/Review Notes
-- Scope intentionally limited to P2-T1 for Orders-layering enforcement in the two identified server-page query paths.
-- No new dependencies were added.
-- No drive-by fixes were applied to unrelated warnings.
+- Scope intentionally limited to P2-T2 (Quotes domain layering + quote schema ownership path).
+- No new dependencies added.
+- No drive-by refactors in unrelated domains.
 
 ## Notes / gotchas
-- `next lint`/`next build` still report existing hook dependency warnings in `src/app/orders/[id]/page.tsx`.
-- During this session, user issued a tool-usage warning; a preventive rule was logged in `tasks/lessons.md`.
+- The public attachment route still imports Prisma dynamically for order attachment lookups (`prisma.attachment`) because that path is outside Quotes scope.
+- Pre-existing lint warnings in `src/app/orders/[id]/page.tsx` remain and should be handled in a dedicated task.
 
 ## Next steps
-- [ ] Execute `P2-T2` (Quotes layering enforcement).
-- [ ] In a separate scoped task, address existing `src/app/orders/[id]/page.tsx` hook dependency warnings.
+- [ ] Execute `P2-T3` (Customers boundary alignment).
+- [ ] In a future Quotes-scoped task, migrate quote metadata/visibility helpers from `src/lib/*` into `src/modules/quotes/*` if full domain ownership hardening is desired.

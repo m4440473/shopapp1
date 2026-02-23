@@ -1,13 +1,14 @@
 import 'server-only';
 
 import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
-import type { QuoteCreateInput } from '@/lib/zod-quotes';
+import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
 import type { QuoteApprovalMetadata } from '@/lib/quote-metadata';
 import {
   createQuoteWithDetails,
   deleteQuoteById,
   findActiveOrderCustomFields,
   findActiveQuoteCustomFields,
+  findQuoteAttachmentByStoragePath,
   findQuoteById,
   findQuoteByNumber,
   findQuoteForConversion,
@@ -244,6 +245,7 @@ export {
   deleteQuoteById,
   findActiveOrderCustomFields,
   findActiveQuoteCustomFields,
+  findQuoteAttachmentByStoragePath,
   findQuoteById,
   findQuoteForConversion,
   findQuoteForUpdate,

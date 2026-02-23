@@ -47,7 +47,7 @@ import { hasCustomFieldValue } from '@/lib/custom-field-values';
 import { AvailableItemsLibrary } from '@/components/AvailableItemsLibrary';
 import { AssignedItemsPanel } from '@/components/AssignedItemsPanel';
 
-import type { QuoteCreateInput } from '@/lib/zod-quotes';
+import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
 
 const NO_MATERIAL_VALUE = '__no_material__';
 

@@ -3,8 +3,8 @@
 ## Session Metadata
 - Date: 2026-02-23
 - Agent: GPT-5.2-Codex
-- Task ID: P2-T1
-- Goal: Enforce Orders domain layering by removing remaining Orders Prisma access outside Orders repo/service boundaries and validating P2-T1 DoD evidence.
+- Task ID: P2-T2
+- Goal: Enforce Quotes domain layering by removing remaining Quotes Prisma usage outside Quotes repos and shifting quote schema ownership to the Quotes module boundary.
 
 ## Plan First (Required for non-trivial tasks)
 - [x] Scope confirmed (single task ID)
@@ -13,9 +13,10 @@
 - [x] Plan verified before implementation
 
 ## Implementation Checklist
-- [x] Step 1: Audit Orders Prisma usage outside `src/modules/orders/*.repo.ts` and identify violations in changed scope.
-- [x] Step 2: Add/reuse Orders repo+service functions so server pages consume Orders data through service boundaries.
-- [x] Step 3: Update affected pages to call Orders services (no direct Prisma usage), preserving behavior.
+- [x] Step 1: Audit Quotes Prisma usage and Quotes domain ownership usage in `src/lib/*` vs `src/modules/quotes/*`.
+- [x] Step 2: Move quote Prisma access in public attachment route behind Quotes service/repo boundary.
+- [x] Step 3: Add module-owned quote schema entry point and migrate Quotes call sites off `src/lib/zod-quotes.ts`.
+- [x] Step 4: Keep `src/lib/zod-quotes.ts` as a deprecation shim to preserve compatibility without domain ownership.
 
 ## Verification Checklist
 - [x] Relevant build command(s) run
@@ -24,6 +25,7 @@
 - [x] DoD pass/fail evidence mapped to task board criteria
 
 ## Review + Results
-- Summary: Migrated homepage and order search data loading from direct Prisma calls into Orders repo/service boundaries, added mock-repo parity, and validated no Orders Prisma access remains outside Orders repo files.
-- Blockers/Risks: `next lint`/`next build` continue to report pre-existing hook warnings in `src/app/orders/[id]/page.tsx`; warnings are outside P2-T1 scope.
-- Follow-ups (logged, not implemented): Evaluate replacing duplicated map/find patterns in mock repo overview builders with helper utilities for readability.
+- Summary: Added `findQuoteAttachmentByStoragePath` in Quotes repo/service and routed quote-attachment lookup in the public attachments route through Quotes services; created `src/modules/quotes/quotes.schema.ts` and moved active quotes callers to module-owned schema imports while leaving `src/lib/zod-quotes.ts` as a compatibility shim.
+- Blockers/Risks: Build/lint still surface pre-existing React hook warnings in `src/app/orders/[id]/page.tsx` and baseline-browser-mapping/swc version warnings; no blocking failures.
+- Follow-ups (logged, not implemented):
+  - Consider migrating quote metadata/visibility helpers from `src/lib/*` into `src/modules/quotes/*` to fully complete schema+helper ownership alignment.
