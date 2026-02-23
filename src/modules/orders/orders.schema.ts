@@ -137,7 +137,7 @@ export const PartAttachmentKind = z.enum(PART_ATTACHMENT_KINDS);
 
 export const OrderChargeCreate = z
   .object({
-    partId: z.string().trim().min(1).optional().nullable(),
+    partId: z.string().trim().min(1),
     departmentId: z.string().trim().min(1),
     addonId: z.string().trim().min(1).optional().nullable(),
     kind: ChargeKind,
@@ -148,18 +148,15 @@ export const OrderChargeCreate = z
     sortOrder: z.coerce.number().int().min(0).default(0),
   })
   .refine((value) => {
-    if (value.kind === 'LABOR' || value.kind === 'ADDON') {
-      return Boolean(value.partId);
-    }
-    return true;
+    return Boolean(value.partId);
   }, {
-    message: 'partId is required for labor or addon charges.',
+    message: 'partId is required for all charge kinds (orders are containers; parts are work units).',
     path: ['partId'],
   });
 
 export const OrderChargeUpdate = z
   .object({
-    partId: z.string().trim().min(1).optional().nullable(),
+    partId: z.string().trim().min(1).optional(),
     departmentId: z.string().trim().min(1).optional(),
     addonId: z.string().trim().min(1).optional().nullable(),
     kind: ChargeKind.optional(),
@@ -173,13 +170,8 @@ export const OrderChargeUpdate = z
   .refine((value) => Object.values(value).some((item) => item !== undefined), {
     message: 'Provide at least one field to update.',
   })
-  .refine((value) => {
-    if (value.kind === 'LABOR' || value.kind === 'ADDON') {
-      return value.partId !== null;
-    }
-    return true;
-  }, {
-    message: 'partId is required for labor or addon charges.',
+  .refine((value) => value.partId === undefined || Boolean(value.partId), {
+    message: 'partId is required for all charge kinds (orders are containers; parts are work units).',
     path: ['partId'],
   });
 

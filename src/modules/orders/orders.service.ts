@@ -65,6 +65,8 @@ import {
   listOrderPartsByIds,
   listReadyOrderPartsForDepartment,
   listPartAttachments,
+  getDashboardOrderOverview,
+  searchOrdersByTerm,
   moveOrderPartsToDepartment,
   createOrderChecklistItem,
   updateChecklistCompletion,
@@ -959,10 +961,8 @@ export async function createChargeForOrder({
   const order = await findOrderById(orderId);
   if (!order) return fail(404, 'Order not found');
 
-  if (payload.partId) {
-    const part = await findOrderPartSummary(orderId, payload.partId);
-    if (!part) return fail(404, 'Part not found on order');
-  }
+  const part = await findOrderPartSummary(orderId, payload.partId);
+  if (!part) return fail(404, 'Part not found on order');
 
   const department = await findDepartmentById(payload.departmentId);
   if (!department) return fail(404, 'Department not found');
@@ -978,7 +978,7 @@ export async function createChargeForOrder({
   const charge = await createOrderCharge({
     data: {
       orderId,
-      partId: payload.partId ?? null,
+      partId: payload.partId,
       departmentId: payload.departmentId,
       addonId: payload.addonId ?? null,
       kind: payload.kind,
@@ -1008,17 +1008,18 @@ export async function updateChargeForOrder({
   const charge = await findOrderCharge(orderId, chargeId);
   if (!charge) return fail(404, 'Charge not found');
 
-  const nextKind = payload.kind ?? charge.kind;
+  if (payload.partId === null) {
+    return fail(400, 'partId cannot be null for order charges.');
+  }
+
   const nextPartId = payload.partId !== undefined ? payload.partId : charge.partId;
 
-  if ((nextKind === 'LABOR' || nextKind === 'ADDON') && !nextPartId) {
-    return fail(400, 'partId is required for labor or addon charges.');
+  if (!nextPartId) {
+    return fail(400, 'partId is required for all charge kinds (orders are containers; parts are work units).');
   }
 
-  if (payload.partId) {
-    const part = await findOrderPartSummary(orderId, payload.partId);
-    if (!part) return fail(404, 'Part not found on order');
-  }
+  const part = await findOrderPartSummary(orderId, payload.partId);
+  if (!part) return fail(404, 'Part not found on order');
 
   if (payload.departmentId) {
     const department = await findDepartmentById(payload.departmentId);
@@ -1034,7 +1035,7 @@ export async function updateChargeForOrder({
   }
 
   const data: Record<string, any> = {};
-  if (payload.partId !== undefined) data.partId = payload.partId ?? null;
+  if (payload.partId !== undefined) data.partId = payload.partId;
   if (payload.departmentId !== undefined) data.departmentId = payload.departmentId;
   if (payload.addonId !== undefined) data.addonId = payload.addonId ?? null;
   if (payload.kind !== undefined) data.kind = payload.kind;
@@ -1264,6 +1265,28 @@ export async function listAddonsForOrders({
 export async function getDepartmentsOrdered() {
   const items = await listDepartmentsOrdered();
   return ok({ items });
+}
+
+export async function getHomeDashboardData() {
+  const overview = await getDashboardOrderOverview();
+  return ok(overview);
+}
+
+export async function searchOrders(query: string) {
+  const normalized = query.trim();
+  if (!normalized.length) return ok({ orders: [] });
+
+  const variants = Array.from(
+    new Set(
+      normalized
+        .split(/[\s-]+/)
+        .map((chunk) => chunk.trim())
+        .filter((chunk) => chunk.length >= 2)
+    )
+  );
+
+  const orders = await searchOrdersByTerm(normalized, variants);
+  return ok({ orders });
 }
 
 export async function getOrderDepartmentFeed(

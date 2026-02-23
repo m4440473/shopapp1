@@ -4,24 +4,27 @@
 # Agent Handoff (Update Every Session)
 
 Date: 2026-02-23
-Agent: ChatGPT
-Goal (1 sentence): Align governance docs and task board with owner-confirmed orchestration standards and business-logic canon requirements.
+Agent: GPT-5.2-Codex
+Goal (1 sentence): Execute P2-T1 by removing remaining Orders Prisma access outside Orders repos and routing affected page data loading through Orders services.
 
 ## What I changed
-- Added workflow orchestration standards to `AGENTS.md` (plan-first gate, stop/replan requirement, verification-before-done, lessons loop, and prior-task validation responsibility).
-- Updated `docs/AGENT_TASK_BOARD.md` operating rules and phase DoD language for stronger validation standards and newly confirmed business-logic constraints.
-- Updated `AGENT_PROMPTS.md` to align task IDs with task board Phase 1 (`P1-T1/P1-T2/P1-T3`) and enforce planning/verification artifacts.
-- Updated canonical direction in `CANON.md` and sequencing in `ROADMAP.md` for strict part-level charges, orders-as-container enforcement, switch-context dialog, and admin-audited closed-interval edit policy.
-- Added required `tasks/todo.md` and `tasks/lessons.md` workflow artifacts.
-- Updated continuity docs (`PROGRESS_LOG.md`, `docs/AGENT_CONTEXT.md`, `docs/AGENT_HANDOFF.md`) for this session.
+- Added Orders-repo data access functions for dashboard/search use cases:
+  - `getDashboardOrderOverview`
+  - `searchOrdersByTerm`
+- Added Orders-service wrappers:
+  - `getHomeDashboardData`
+  - `searchOrders`
+- Updated homepage and search page to call Orders services instead of direct Prisma usage.
+- Updated `src/repos/orders.ts` exports and `src/repos/mock/orders.ts` to include the new repo methods so TEST_MODE repo contracts remain aligned.
+- Updated continuity/planning artifacts (`tasks/todo.md`, `tasks/lessons.md`, `PROGRESS_LOG.md`) with plan + verification + correction-derived lesson entry.
 
 ## Files touched
-- AGENTS.md
-- AGENT_PROMPTS.md
-- docs/AGENT_TASK_BOARD.md
-- CANON.md
-- ROADMAP.md
-- docs/AGENT_CONTEXT.md
+- src/modules/orders/orders.repo.ts
+- src/modules/orders/orders.service.ts
+- src/repos/orders.ts
+- src/repos/mock/orders.ts
+- src/app/page.tsx
+- src/app/search/page.tsx
 - tasks/todo.md
 - tasks/lessons.md
 - PROGRESS_LOG.md
@@ -29,36 +32,37 @@ Goal (1 sentence): Align governance docs and task board with owner-confirmed orc
 
 ## Commands run
 - rg --files -g 'AGENTS.md'
-- cat AGENTS.md
-- cat docs/AGENT_CONTEXT.md
-- cat PROGRESS_LOG.md
-- cat docs/AGENT_HANDOFF.md
-- cat docs/AGENT_TASK_BOARD.md
-- cat AGENT_PROMPTS.md
-- cat ROADMAP.md
-- cat CANON.md
-- rg --files src | head -n 120
-- python (doc update scripts)
-- rg -n "P0-T1|P0-T2|P0-T3|part-level|orders are containers|tasks/todo.md|tasks/lessons.md|TEST_MODE|admin" AGENT_PROMPTS.md docs/AGENT_TASK_BOARD.md CANON.md ROADMAP.md AGENTS.md docs/AGENT_CONTEXT.md PROGRESS_LOG.md
+- sed/cat reads for required pre-reads:
+  - CANON.md
+  - ROADMAP.md
+  - docs/AGENT_CONTEXT.md
+  - PROGRESS_LOG.md
+  - docs/AGENT_HANDOFF.md
+  - docs/AGENT_TASK_BOARD.md
+  - AGENT_PROMPTS.md
+  - tasks/todo.md
+  - tasks/lessons.md
+- rg -n "P2-T1|Phase 2|Orders layering" docs/AGENT_TASK_BOARD.md ROADMAP.md PROGRESS_LOG.md docs/AGENT_CONTEXT.md
+- rg --files src | rg 'orders|order|api/.*/orders|modules/orders'
+- rg -n "@/lib/prisma|from '@/repos/orders'|from '@/repos'|prisma\." src/app/api/orders src/modules/orders src/app/orders src/repos/orders.ts
+- rg -n "prisma\.(order|orderPart|orderCharge|orderChecklist|partAttachment|partEvent)" src | rg -v "src/modules/orders/.*\.repo\.ts|src/repos/mock/orders.ts"
 - npm run lint
-- npx prisma db push
-- npm run demo:setup
 - npm run build
 
 ## Verification Evidence
-- Verified task-ID mismatch fix by searching for old `P0-T1/P0-T2/P0-T3` prompt labels.
-- Verified presence of new workflow artifact requirements (`tasks/todo.md`, `tasks/lessons.md`) across governance docs.
-- Lint passed in current environment.
+- Boundary audit: `rg -n "prisma\.(order|orderPart|orderCharge|orderChecklist|partAttachment|partEvent)" ...` returned no matches outside `src/modules/orders/*.repo.ts` (plus mock exclusions), satisfying the Prisma-boundary criterion for touched paths.
+- Build: `npm run build` completed successfully.
+- Lint: `npm run lint` completed successfully (with existing hook warnings in `src/app/orders/[id]/page.tsx`, not modified in this task).
 
 ## Diff/Review Notes
-- Scope intentionally limited to governance/canon/continuity docs and workflow artifacts.
-- Runtime code changes for these business rules are intentionally deferred to execution tasks on the board.
+- Scope intentionally limited to P2-T1 for Orders-layering enforcement in the two identified server-page query paths.
+- No new dependencies were added.
+- No drive-by fixes were applied to unrelated warnings.
 
 ## Notes / gotchas
-- Build currently fails on prerender of `/about` because `prisma.appSettings.create()` hits unique constraint `P2002` (baseline issue observed during verification).
-- This session introduces stricter process gates; future sessions should expect more up-front planning/verification logging.
+- `next lint`/`next build` still report existing hook dependency warnings in `src/app/orders/[id]/page.tsx`.
+- During this session, user issued a tool-usage warning; a preventive rule was logged in `tasks/lessons.md`.
 
 ## Next steps
-- [ ] Execute `P2-T1` to enforce Orders-as-container and Parts-as-work-unit behavior in runtime contracts.
-- [ ] Execute strict part-level charge enforcement in runtime and schema paths.
-- [ ] Execute switch-context dialog and admin-audited closed-interval edit implementation in time-tracking flows.
+- [ ] Execute `P2-T2` (Quotes layering enforcement).
+- [ ] In a separate scoped task, address existing `src/app/orders/[id]/page.tsx` hook dependency warnings.

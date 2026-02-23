@@ -667,5 +667,80 @@ export function createMockOrdersRepo() {
           };
         });
     },
+
+
+    async getDashboardOrderOverview() {
+      const totalOrders = state.orders.length;
+      const closedOrders = state.orders.filter((order) => order.status === 'CLOSED').length;
+      const activeOrders = state.orders
+        .filter((order) => order.status !== 'CLOSED')
+        .map((order) => {
+          const customer = state.customers.find((item) => item.id === order.customerId) ?? null;
+          const assignedMachinist = state.users.find((item) => item.id === order.assignedMachinistId) ?? null;
+          const parts = findOrderParts(order.id);
+          const checklist = findChecklistForOrder(order.id).map((entry) => ({
+            completed: entry.completed,
+            addon: state.addons.find((addon) => addon.id === entry.addonId) ?? null,
+          }));
+          const statusHistory = state.statusHistory
+            .filter((entry) => entry.orderId === order.id)
+            .slice(0, 1)
+            .map((entry) => ({ createdAt: entry.createdAt }));
+
+          return {
+            ...order,
+            customer: customer ? { name: customer.name } : null,
+            assignedMachinist: assignedMachinist
+              ? { id: assignedMachinist.id, name: assignedMachinist.name, email: assignedMachinist.email }
+              : null,
+            parts: parts.map((part) => ({ quantity: part.quantity })),
+            checklist,
+            statusHistory,
+          };
+        });
+      const recentOrders = state.orders
+        .slice()
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .slice(0, 8)
+        .map((order) => ({
+          ...order,
+          customer: state.customers.find((item) => item.id === order.customerId)
+            ? { name: state.customers.find((item) => item.id === order.customerId)?.name ?? null }
+            : null,
+          assignedMachinist: state.users.find((item) => item.id === order.assignedMachinistId)
+            ? { name: state.users.find((item) => item.id === order.assignedMachinistId)?.name ?? null }
+            : null,
+        }));
+
+      return { totalOrders, closedOrders, activeOrders, recentOrders };
+    },
+
+    async searchOrdersByTerm(query: string, variants: string[]) {
+      const terms = variants.length ? variants : [query];
+      const includes = (value: string | null | undefined, term: string) => (value ?? '').toLowerCase().includes(term.toLowerCase());
+
+      return state.orders
+        .filter((order) => {
+          const customer = state.customers.find((item) => item.id === order.customerId);
+          const parts = findOrderParts(order.id);
+          return terms.some((term) =>
+            includes(order.orderNumber, term) ||
+            includes(customer?.name, term) ||
+            parts.some((part) => includes(part.partNumber, term))
+          );
+        })
+        .slice(0, 60)
+        .map((order) => ({
+          ...order,
+          customer: (() => {
+            const customer = state.customers.find((item) => item.id === order.customerId);
+            return customer ? { id: customer.id, name: customer.name } : null;
+          })(),
+          assignedMachinist: (() => {
+            const machinist = state.users.find((item) => item.id === order.assignedMachinistId);
+            return machinist ? { id: machinist.id, name: machinist.name, email: machinist.email } : null;
+          })(),
+        }));
+    },
   };
 }

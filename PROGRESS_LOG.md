@@ -40,6 +40,27 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-23 — P2-T1 Orders layering + mental model enforcement
+- Executed P2-T1 only by enforcing Orders data access boundaries for server pages that were still querying Orders via direct Prisma (`/` and `/search`).
+- Added Orders repo functions (`getDashboardOrderOverview`, `searchOrdersByTerm`) and corresponding service wrappers (`getHomeDashboardData`, `searchOrders`) so UI/server pages consume Orders data through the module boundary.
+- Updated mock Orders repo parity for TEST_MODE by implementing `getDashboardOrderOverview` and `searchOrdersByTerm` in `src/repos/mock/orders.ts`.
+- Replaced direct Prisma usage in `src/app/page.tsx` and `src/app/search/page.tsx` with Orders service calls; verified no `prisma.order*`/Orders-table Prisma access remains outside `src/modules/orders/*.repo.ts`.
+- Dependency quality validation note: prior phase closeout evidence exists in continuity docs (`P1-T3` in recent logs); no dependency blocker found for starting P2-T1.
+
+Commands run:
+- rg --files -g 'AGENTS.md'
+- sed -n reads of required pre-reads (CANON/ROADMAP/AGENT_CONTEXT/PROGRESS_LOG/AGENT_HANDOFF/TASK_BOARD/AGENT_PROMPTS/tasks files)
+- rg -n "P2-T1|Phase 2|Orders layering" docs/AGENT_TASK_BOARD.md ROADMAP.md PROGRESS_LOG.md docs/AGENT_CONTEXT.md
+- rg --files src | rg 'orders|order|api/.*/orders|modules/orders'
+- rg -n "@/lib/prisma|prisma\." src/app/api/orders src/modules/orders src/app/orders src/repos/orders.ts
+- rg -n "prisma\.(order|orderPart|orderCharge|orderChecklist|partAttachment|partEvent)" src | rg -v "src/modules/orders/.*\.repo\.ts|src/repos/mock/orders.ts"
+- npm run lint
+- npm run build
+
+Verification note:
+- `npm run build` passes after changes (with pre-existing lint warnings in `src/app/orders/[id]/page.tsx`, outside this task scope).
+- P2-T1 DoD evidence captured in this session + handoff.
+
 ### 2026-02-23 — Governance/canon/task-board standards alignment
 - Aligned agent governance docs to ShopApp workflow orchestration standards: mandatory plan-first (`tasks/todo.md`), stop/replan behavior, verification-before-complete, and lessons loop (`tasks/lessons.md`).
 - Updated agent task board rules for prior-task validation before new work, mandatory build/test checks, and correction-driven lessons entries.
