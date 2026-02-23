@@ -20,3 +20,7 @@ Record lessons after user corrections or process failures.
   - Mistake pattern: I used `apply_patch` through shell commands instead of preferring direct file-edit methods available in this environment.
   - Preventive rule: Avoid shell-invoked `apply_patch`; use direct scripted file edits/other approved editing workflows in this repo context.
   - Applied in next session where: P2-T1 Orders boundary enforcement.
+
+## 2026-02-23 — Tooling correction: patch workflow
+- When editing files, use the dedicated patch workflow/tool instead of invoking `apply_patch` through a generic shell execution command.
+- Before running patch operations, sanity-check that command/tool usage follows the repository interaction rules for this environment.

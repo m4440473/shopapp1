@@ -85,7 +85,7 @@ export default function OrderDetailPage() {
   const [activeEntry, setActiveEntry] = useState<any | null>(null);
   const [activePart, setActivePart] = useState<any | null>(null);
   const [partTotals, setPartTotals] = useState<Record<string, number>>({});
-  const [tick, setTick] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [conflictState, setConflictState] = useState<ConflictState>({
     open: false,
     activeEntry: null,
@@ -108,7 +108,7 @@ export default function OrderDetailPage() {
   const [checklistError, setChecklistError] = useState<string | null>(null);
   const [checklistOverrides, setChecklistOverrides] = useState<Record<string, boolean>>({});
 
-  const parts = Array.isArray(item?.parts) ? item.parts : [];
+  const parts = useMemo(() => (Array.isArray(item?.parts) ? item.parts : []), [item?.parts]);
   const partIdsParam = useMemo(() => parts.map((part: any) => part.id).filter(Boolean).join(','), [parts]);
   const selectedPart = useMemo(
     () => parts.find((part: any) => part?.id === selectedPartId) ?? null,
@@ -129,11 +129,11 @@ export default function OrderDetailPage() {
   const activeElapsedSeconds = useMemo(() => {
     if (!activeEntry?.startedAt) return 0;
     const started = new Date(activeEntry.startedAt).getTime();
-    return Math.max(0, Math.floor((Date.now() - started) / 1000));
-  }, [activeEntry?.startedAt, tick]);
+    return Math.max(0, Math.floor((nowMs - started) / 1000));
+  }, [activeEntry?.startedAt, nowMs]);
 
   useEffect(() => {
-    const interval = activeEntry ? window.setInterval(() => setTick((prev) => prev + 1), 1000) : null;
+    const interval = activeEntry ? window.setInterval(() => setNowMs(Date.now()), 1000) : null;
     return () => {
       if (interval) window.clearInterval(interval);
     };
