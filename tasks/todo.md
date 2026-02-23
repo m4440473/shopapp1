@@ -3,32 +3,32 @@
 ## Session Metadata
 - Date: 2026-02-23
 - Agent: GPT-5.2-Codex
-- Task ID: P3-T3 & P3-T4
-- Goal: Close Phase 3 with explicit evidence and enforce switch-confirmation UX safety for timer transitions.
+- Task ID: P4-T1 & P4-T2
+- Goal: Improve timer control clarity and switch-flow context visibility on the order detail page without changing time-domain business rules.
 
 ## Dependency Validation
-- [x] Reviewed prior dependency artifacts for P3-T2 completion quality in `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md`.
-- [x] No unresolved dependency blocker found; proceeded with P3-T3/P3-T4 scope only.
+- [x] Reviewed prior dependency artifacts for P3-T4 completion quality in `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md`.
+- [x] No unresolved dependency blocker found; proceeded with P4-T1/P4-T2 scope only.
 
 ## Plan First
-- [x] Audit existing timer switch behavior across `/api/timer/*` and order detail timer UX.
-- [x] Implement minimal API + UI changes needed for explicit switch confirmation context.
-- [x] Run targeted tests/build checks for changed paths.
-- [x] Record Phase 3 pass/fail evidence and any remaining gaps as backlog notes.
+- [x] Audit current order detail timer controls and active/switch context display.
+- [x] Implement UI-only clarity updates for start/pause/finish controls and active/last-action visibility.
+- [x] Run targeted validation for timer invariants and touched UI paths.
+- [x] Record DoD evidence and backlog-only follow-ups.
 
 ## Implementation Checklist
-- [x] Updated timer start API conflict path to return explicit switch-confirmation payload (active order/part context + elapsed time).
-- [x] Preserved server-side single-active enforcement by requiring explicit user switch confirmation in timer start flow.
-- [x] Hardened switch confirmation client path to stop if pause/finish fails before re-start attempt.
-- [x] Improved conflict dialog copy so operators see what is active and what action will occur on confirmation.
-- [x] Added/updated targeted time service tests for conflict-first start behavior and switch timing correctness.
+- [x] Updated timer header controls to use explicit action labels (`Start selected part`, `Pause active timer`, `Finish active timer`) with visual affordances.
+- [x] Added a clear running/stopped status badge and switch-warning messaging when another part is active.
+- [x] Added a helper explainer for switch behavior so operators understand confirmation flow before clicking start.
+- [x] Added “Last action” visibility in the active-work panel by surfacing the newest part log event with timestamp.
 
 ## Verification Checklist
 - [x] `npm run test -- src/modules/time/__tests__/time.service.test.ts`
 - [x] `npm run lint`
-- [x] `npm run build`
+- [x] `npm run build` (fails on pre-existing Prisma unique constraint during prerender; logged as known blocker)
+- [x] `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000` + Playwright screenshot capture
 
 ## Review + Results
-- P3-T3 gate evidence: ROADMAP Phase 3 exit criteria pass with command evidence (time-service tests + build/lint) and runtime-path verification in updated timer switch API/UI flow.
-- P3-T4 behavior: timer start now returns explicit switch-confirmation payload when an active timer exists, and the order detail dialog explicitly states active context and switch consequence before action.
-- Remaining gaps: no blocking gap for P3 criteria found; advisory warnings (`@next/swc` mismatch and baseline-browser-mapping freshness) remain non-blocking environment noise.
+- P4-T1: Start/pause/resume/finish controls now provide explicit intent labels and associated status context in the active-work panel.
+- P4-T2: Switch behavior remains confirmation-gated (no overlap), and last action context is now visible directly beside controls.
+- Remaining blocker outside scope: production build still fails at `/auth/signin` prerender due to pre-existing Prisma `AppSettings.id` uniqueness (`P2002`).
