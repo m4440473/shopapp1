@@ -56,10 +56,17 @@ Goal: a scalable foundation that can grow.
 
 ## Domain Truths (so agents don’t hallucinate requirements)
 
-- LABOR and ADDON charges are per-part: partId is required for those kinds.
-- Other charge kinds may be order-level (partId optional) unless explicitly changed.
+- All charge kinds are per-part: `partId` is required for every charge kind.
 
 ## Decision Log (append newest at top)
+
+### 2026-02-23 — Add explicit next-agent and multi-agent runbook
+Decision: Add `docs/MULTI_AGENT_WORKFLOW.md` and wire references from task board/prompts/agent charter so owners can reliably assign the next agent and run parallel work with dependency-safe gates.
+Reason: Owner requested explicit instruction on what to tell the next agent and how to enable multi-agent workflows without drift.
+
+### 2026-02-23 — Orchestration standards + business-logic canon alignment
+Decision: Formalize plan-first orchestration artifacts (`tasks/todo.md`, `tasks/lessons.md`), require prior-task validation before new task execution, require build/test verification per session, and align canon with part-level charges + Orders-as-container enforcement + switch-context dialog + admin-audited closed-interval edit policy.
+Reason: Owner clarified governance and business-logic standards that must be uniform across all future task execution and architecture work.
 
 ### 2026-02-18 — Centralize sign-in callback URL normalization
 Decision: Add `src/lib/auth-redirect.ts` and route all sign-in redirects + callback parsing through shared helpers (`buildSignInRedirectPath`, `normalizeCallbackUrl`).

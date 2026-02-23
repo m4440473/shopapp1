@@ -36,10 +36,48 @@ Agents MUST update this at the end of every session.
 - Domain logic exists in src/lib/* (orders/quotes/etc.) but needs module boundaries
 
 ### Important domain note (do not regress)
-- Labor and Addon charges are already enforced as per‑part (partId required for LABOR/ADDON).
-- Order‑level charges are still allowed for non‑labor/addon kinds (e.g., shipping/fees/discounts) by design.
+- All charge kinds are now canonically per-part (`partId` required for all kinds); any order-level charge behavior is legacy drift to be removed.
 
 ## Session Log (append newest at top)
+
+### 2026-02-23 — Next-agent instructions + multi-agent workflow runbook
+- Added `docs/MULTI_AGENT_WORKFLOW.md` to provide copy/paste next-agent instructions, coordinator model, dependency-safe parallelization rules, merge sequencing, and completion gates.
+- Updated `AGENT_PROMPTS.md` with an owner-facing “What to tell the next agent” assignment shell.
+- Updated `docs/AGENT_TASK_BOARD.md` assignment quick guide to require base commit + prior-task pass/fail context and reference the multi-agent runbook.
+- Added cross-reference in `AGENTS.md` to the multi-agent runbook.
+
+Commands run:
+- rg -n "Assignment quick guide|How to run an agent season|Global constraints" docs/AGENT_TASK_BOARD.md AGENT_PROMPTS.md
+- python (doc update script)
+- npm run lint
+
+### 2026-02-23 — Governance/canon/task-board standards alignment
+- Aligned agent governance docs to ShopApp workflow orchestration standards: mandatory plan-first (`tasks/todo.md`), stop/replan behavior, verification-before-complete, and lessons loop (`tasks/lessons.md`).
+- Updated agent task board rules for prior-task validation before new work, mandatory build/test checks, and correction-driven lessons entries.
+- Corrected AGENT_PROMPTS task IDs to match task board (`P1-T1/P1-T2/P1-T3`) and added strict verification deliverables.
+- Updated CANON/ROADMAP/AGENT_CONTEXT for confirmed business rules: strict part-level charges, orders-as-container/parts-as-work-units enforcement, switch-context dialog expectation, and admin-audited closed-interval edit policy.
+- Added new required workflow artifacts: `tasks/todo.md` and `tasks/lessons.md`.
+
+Commands run:
+- rg --files -g 'AGENTS.md'
+- cat AGENTS.md
+- cat docs/AGENT_CONTEXT.md
+- cat PROGRESS_LOG.md
+- cat docs/AGENT_HANDOFF.md
+- cat docs/AGENT_TASK_BOARD.md
+- cat AGENT_PROMPTS.md
+- cat ROADMAP.md
+- cat CANON.md
+- rg --files src | head -n 120
+- python (doc update scripts)
+- rg -n "P0-T1|P0-T2|P0-T3|part-level|orders are containers|tasks/todo.md|tasks/lessons.md|TEST_MODE|admin" AGENT_PROMPTS.md docs/AGENT_TASK_BOARD.md CANON.md ROADMAP.md AGENTS.md docs/AGENT_CONTEXT.md PROGRESS_LOG.md
+- npm run lint
+- npx prisma db push
+- npm run demo:setup
+- npm run build
+
+Build note:
+- `npm run build` fails in current baseline at prerender due Prisma `appSettings.create()` unique constraint (`P2002`) on `/about`; treated as pre-existing baseline issue and logged for follow-up.
 
 
 ### 2026-02-18 — P1-T2/P1-T3 shell+mobile-nav verification and Phase 1 closeout
@@ -82,6 +120,12 @@ Commands run:
 - rg -n "auth/signin" src middleware.ts
 - npm run test -- src/lib/auth-redirect.test.ts
 - npm run lint
+- npx prisma db push
+- npm run demo:setup
+- npm run build
+
+Build note:
+- `npm run build` fails in current baseline at prerender due Prisma `appSettings.create()` unique constraint (`P2002`) on `/about`; treated as pre-existing baseline issue and logged for follow-up.
 
 ### 2026-02-18 — P0-C1 continuity docs freshness check
 - Performed a continuity freshness pass for `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_CONTEXT.md` to ensure the latest completed work is reflected consistently.

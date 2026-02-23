@@ -18,6 +18,7 @@ Execution companion docs:
 
 **Scope:**
 - Auth/session flow is single-source and consistent.
+- TEST_MODE stays operable for local/Codex/Replit validation runs.
 - Layout/providers are stable across refreshes and route changes.
 - Mobile navigation is present and usable.
 
@@ -33,28 +34,31 @@ Execution companion docs:
 - Continue domain extraction into src/modules/*.
 - Routes/API handlers call services only; services call repos only.
 - No UI imports Prisma or repos/services.
+- Orders are containers; Parts are enforced as work units in server-side contracts.
+- All charge kinds are part-level (`partId` required).
 
 **Exit criteria:**
 - Orders and Quotes domains fully follow repo/service/schema/types patterns.
 - No Prisma access outside *.repo.ts in those domains.
+- Legacy order-centric work-unit logic is removed/deprecated with explicit migration notes.
 
 ## Phase 3 — Time Tracking Core (P1)
 **Goal:** Implement interval-based time tracking consistent with canon.
 
 **Scope:**
 - One active operation per user.
-- Start/stop/pause/resume are interval-based and immutable on close.
+- Start/stop/pause/resume are interval-based with non-admin immutability on close and audited admin-edit path.
 - Totals are computed, not stored.
 
 **Exit criteria:**
 - Data model supports interval entries with proper constraints.
-- API routes enforce single-active rule and immutable closed entries.
+- API routes enforce single-active rule and closed-entry policy (non-admin immutable, admin audited edits only).
 
 ## Phase 4 — UX Flow Alignment (P1)
 **Goal:** Make core UX behavior match Fulcrum-style expectations.
 
 **Scope:**
-- Obvious start/pause/resume controls.
+- Obvious start/pause/resume controls plus clear switch-confirmation dialog context.
 - Clear visibility into the last operation and active timer.
 - Orders/parts/operations hierarchy is scannable.
 

@@ -22,13 +22,48 @@ If a prompt conflicts with CANON/ROADMAP, CANON/ROADMAP wins.
 
 ---
 
+## What to tell the next agent (owner copy/paste)
+
+Use this assignment shell:
+
+> Execute task **<TASK_ID>** from `docs/AGENT_TASK_BOARD.md`.
+> 
+> Required pre-reads (in order):
+> 1. `CANON.md`
+> 2. `ROADMAP.md`
+> 3. `docs/AGENT_CONTEXT.md`
+> 4. `PROGRESS_LOG.md`
+> 5. `docs/AGENT_HANDOFF.md`
+> 6. `docs/AGENT_TASK_BOARD.md`
+> 7. `AGENT_PROMPTS.md`
+> 8. `tasks/todo.md`
+> 9. `tasks/lessons.md`
+>
+> Additional constraints for this run:
+> - <constraint 1>
+> - <constraint 2>
+>
+> Starting point:
+> - Base commit: <hash>
+> - Prior task status: <pass/fail + short note>
+
+For multi-agent coordination, follow `docs/MULTI_AGENT_WORKFLOW.md`.
+
+---
+
 ## Global constraints (prepend mentally to every task)
 
+- Task IDs must match `docs/AGENT_TASK_BOARD.md` exactly.
 - Do only the assigned task ID. No drive-by refactors.
 - Respect module boundaries: Prisma only in `*.repo.ts`; routes thin; services contain business logic.
 - No new dependencies unless Decision Log is updated in `docs/AGENT_CONTEXT.md`.
 - Update continuity docs every session: `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
 - If task work changes canonical behavior, update CANON first, then code.
+- For non-trivial work (3+ steps, cross-file changes, architecture decisions), write/verify plan items in `tasks/todo.md` before coding.
+- If anything goes sideways (failed assumptions/tests/scope drift), stop and re-plan in `tasks/todo.md` before continuing.
+- Before starting assigned work, validate prior dependency task quality and report any unresolved gaps first.
+- If user correction or process failure occurs, append preventive rule to `tasks/lessons.md`.
+- Run build/test checks relevant to your edits; do not submit unverified changes.
 
 ---
 
@@ -46,6 +81,8 @@ Use this wrapper for every task:
 > 5. `docs/AGENT_HANDOFF.md`
 > 6. `docs/AGENT_TASK_BOARD.md`
 > 7. `AGENT_PROMPTS.md`
+> 8. `tasks/todo.md`
+> 9. `tasks/lessons.md`
 >
 > Hard constraints:
 > - Stay strictly in scope for **<TASK_ID>**.
@@ -57,31 +94,32 @@ Use this wrapper for every task:
 > - Implement **<TASK_ID>** only.
 > - Return a checklist of that task's Definition of Done with pass/fail evidence.
 > - List follow-ups as backlog notes; do not implement them.
+> - Provide build/test command output relevant to changed paths.
 
 ---
 
 ## Task prompts (one per ticket)
 
-### P0-T1 — Auth/session source-of-truth audit + convergence
+### P1-T1 — Auth/session source-of-truth audit + convergence
 
 Goal: close ROADMAP Phase 1 auth/session consistency criteria.
 
 Prompt add-on:
-> Execute **P0-T1** only. Audit all auth/session entry points, remove split patterns, and converge on one session truth path. Validate refresh behavior for logged-in and logged-out paths.
+> Execute **P1-T1** only. Audit all auth/session entry points, remove split patterns, and converge on one session truth path. Validate refresh behavior for logged-in and logged-out paths.
 
-### P0-T2 — App shell + mobile nav reliability verification
+### P1-T2 — App shell + mobile nav reliability verification
 
 Goal: close ROADMAP Phase 1 shell/nav criteria.
 
 Prompt add-on:
-> Execute **P0-T2** only. Verify shell/provider stability across refresh and route transitions, and confirm mobile nav reaches core pages without dead ends.
+> Execute **P1-T2** only. Verify shell/provider stability across refresh and route transitions, and confirm mobile nav reaches core pages without dead ends.
 
-### P0-T3 — Phase 1 gate closeout evidence
+### P1-T3 — Phase 1 gate closeout evidence
 
 Goal: produce explicit proof that Phase 1 exit criteria are met.
 
 Prompt add-on:
-> Execute **P0-T3** only. Produce an evidence checklist mapped 1:1 to ROADMAP Phase 1 exit criteria and record pass/fail in continuity docs.
+> Execute **P1-T3** only. Produce an evidence checklist mapped 1:1 to ROADMAP Phase 1 exit criteria and record pass/fail in continuity docs.
 
 ### P2-T1 — Orders boundary enforcement
 

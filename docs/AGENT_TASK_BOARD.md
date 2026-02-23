@@ -15,6 +15,10 @@ Use with:
 2. **Do tasks in dependency order.**
 3. **No phase skipping** unless an explicit owner note marks a task as intentionally deferred.
 4. **Every task must end with DoD evidence** in `PROGRESS_LOG.md` + `docs/AGENT_HANDOFF.md`.
+5. **Plan first for non-trivial tasks** in `tasks/todo.md` (3+ steps, cross-file impact, architectural decisions).
+6. **Validate prior dependency task quality before starting**; report unresolved gaps first.
+7. **Run build/test checks relevant to changed paths** before completion.
+8. **After correction/failure, append prevention rule** in `tasks/lessons.md`.
 
 ---
 
@@ -63,13 +67,15 @@ Use with:
 
 ## Phase 2 — Modularization (P2)
 
-### P2-T1 — Orders layering enforcement
-- **Why:** Establish canonical module ownership.
+### P2-T1 — Orders layering + mental model enforcement
+- **Why:** Establish canonical module ownership and canonical work model.
 - **Scope:** Orders domain only.
 - **DoD:**
   - No Orders Prisma access outside `src/modules/orders/*.repo.ts`.
   - Orders routes are thin and call services.
   - Orders services contain business logic and call repos.
+  - Server-side contracts enforce: Orders are containers; Parts are work units.
+  - Any order-centric work-unit logic is removed or explicitly deprecated.
 - **Dependencies:** P1-T3.
 
 ### P2-T2 — Quotes layering enforcement
@@ -79,6 +85,7 @@ Use with:
   - No Quotes Prisma access outside `src/modules/quotes/*.repo.ts`.
   - Quotes routes are thin and call services.
   - Quotes services contain business logic and call repos.
+  - Domain quote logic in `src/lib/*` is migrated/deprecated in favor of module-owned services.
 - **Dependencies:** P2-T1.
 
 ### P2-T3 — Customers boundary alignment
@@ -101,12 +108,13 @@ Use with:
 
 ## Phase 3 — Time Tracking Core (P1)
 
-### P3-T1 — Invariant enforcement (single-active, immutable intervals, computed totals)
+### P3-T1 — Invariant enforcement (single-active, admin-audited edits, computed totals)
 - **Why:** Time trust is a core product promise.
 - **Scope:** time model/service/repo + validation paths.
 - **DoD:**
   - One active operation per user enforced.
-  - Closed intervals are immutable.
+  - Non-admin users cannot edit closed intervals.
+  - Admin closed-interval edits are explicit, audited, and policy-gated.
   - Totals computed from intervals, not stored snapshots.
 - **Dependencies:** P2-T4.
 
@@ -126,6 +134,15 @@ Use with:
   - Any remaining gap logged as next ticket with scoped blast radius.
 - **Dependencies:** P3-T2.
 
+### P3-T4 — Switch-dialog + user context safety
+- **Why:** Preserve trust when switching operations/parts.
+- **Scope:** time start/switch UX + API response payloads.
+- **DoD:**
+  - Starting a new part/operation shows context dialog about the previous active timer.
+  - Dialog clearly identifies which part/operation was active and what action will occur.
+  - No time inflation occurs during switch confirmation path.
+- **Dependencies:** P3-T3.
+
 ---
 
 ## Phase 4 — UX Flow Alignment (P1)
@@ -136,7 +153,7 @@ Use with:
 - **DoD:**
   - Start/pause/resume controls are obvious and unambiguous.
   - Active state is clearly visible without extra navigation.
-- **Dependencies:** P3-T3.
+- **Dependencies:** P3-T4.
 
 ### P4-T2 — Switching flow safety + last-action visibility
 - **Why:** Prevent inflation and preserve operator context.
@@ -182,6 +199,9 @@ When assigning work to an agent, send:
 1. Task ID (for example `P2-T2`)
 2. Prompt wrapper from `AGENT_PROMPTS.md`
 3. Any repo-specific constraints unique to that run
+4. Last completed commit hash + pass/fail summary from prior task
 
 Example assignment:
-- "Execute `P2-T2` using `AGENT_PROMPTS.md` wrapper. Do not touch Orders domain."
+- "Execute `P2-T2` using `AGENT_PROMPTS.md` wrapper. Base from `<commit>`. Validate prior task evidence first. Do not touch Orders domain."
+
+See `docs/MULTI_AGENT_WORKFLOW.md` for coordinator checklists and parallelization rules.

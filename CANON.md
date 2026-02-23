@@ -20,7 +20,7 @@ Real‑world constraints:
 
 1) **Orders are containers** (customer, billing, status).
 2) **Parts are the real units of work** (quantity, material, specs).
-3) **Operations are where time and money live** (machine, setup, run).
+3) **Operations are where time and money live** (machine, setup, run) and always attach to a Part context.
 4) **Time is tracked as intervals** (start/stop/pause/resume), not guessed totals.
 
 If any implementation treats Orders as the primary work unit, it is wrong.
@@ -28,9 +28,11 @@ If any implementation treats Orders as the primary work unit, it is wrong.
 ## 4) Product Principles (Veto Rules)
 
 - **Auth is boring.** No feature work if auth or layout stability is broken.
-- **Intervals are immutable.** Totals are computed, not stored.
+- **Intervals are protected.** Non-admin users cannot edit closed intervals; admin edits require explicit auditability. Totals are computed, not stored.
 - **UI favors clarity over cleverness.** One obvious action beats three clever ones.
 - **Boundaries matter.** Domain logic is owned by modules, not lib or UI.
+- **All charge kinds are part-level.** `partId` is required for every charge kind.
+- **Orders are containers only.** Parts are the mandatory work units for execution and accounting.
 
 ## 5) UX Goals (Fulcrum‑level parity in behavior)
 
@@ -67,8 +69,10 @@ Layering rules:
 ## 8) Time Tracking Model
 
 - A user has **one active operation** at a time.
-- Starting a new operation auto‑pauses the current one.
-- TimeEntries are **immutable after close**.
+- Starting a new operation must present a dialog identifying the currently active part/operation and the switch consequence.
+- Starting a new operation auto‑pauses the current one after explicit user confirmation in switch flow.
+- TimeEntries are immutable after close for non-admin users.
+- Admin edits to closed intervals are allowed only with explicit auditability.
 - Totals are computed from intervals, not stored.
 
 ## 9) Roadmap (Short Horizon Only)
@@ -99,3 +103,10 @@ Phase 4 — **UI polish once logic is right**
 - Any new work must align with the mental model and principles above.
 - If a requirement is unclear, update this file first.
 - When in doubt, treat this file as the project’s constitution.
+
+
+## 12) TEST_MODE and Verification Discipline
+
+- `TEST_MODE` must remain functional for local/Codex/Replit validation workflows.
+- Agents must run build/test commands sufficient to validate their own edits before completion.
+- If environment limitations block full verification, agents must log partial validation + blocker details in continuity docs.

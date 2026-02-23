@@ -1,18 +1,25 @@
+---
 **Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
 
 # Agent Handoff (Update Every Session)
 
-Date: 2026-02-18
+Date: 2026-02-23
 Agent: ChatGPT
-Goal (1 sentence): Execute P1-T2 and P1-T3 by validating shell/provider refresh stability + mobile nav reachability, then publishing a Phase 1 closeout report with explicit pass/fail evidence.
+Goal (1 sentence): Add explicit owner-facing next-agent instructions and a multi-agent workflow runbook for dependency-safe parallel execution.
 
 ## What I changed
-- Ran runtime verification for Phase 1 stability gates (logged-out + logged-in refresh checks and mobile nav reachability checks on mobile viewport).
-- Added `docs/PHASE1_CLOSEOUT_REPORT.md` with pass/fail mapping to ROADMAP Phase 1 exit criteria and command/runtime evidence.
-- Updated continuity docs (`PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`) with this session’s work and execution trail.
+- Added `docs/MULTI_AGENT_WORKFLOW.md` with coordinator model, assignment template, parallelization boundaries, branch/merge sequence, completion gates, and failure handling.
+- Updated `AGENT_PROMPTS.md` with a copy/paste “What to tell the next agent” section.
+- Updated `docs/AGENT_TASK_BOARD.md` assignment guide to require base commit + prior-task status context and link to the new runbook.
+- Added runbook reference in `AGENTS.md`.
+- Updated continuity docs (`PROGRESS_LOG.md`, `docs/AGENT_CONTEXT.md`, `docs/AGENT_HANDOFF.md`).
 
 ## Files touched
-- docs/PHASE1_CLOSEOUT_REPORT.md
+- docs/MULTI_AGENT_WORKFLOW.md
+- AGENT_PROMPTS.md
+- docs/AGENT_TASK_BOARD.md
+- AGENTS.md
+- docs/AGENT_CONTEXT.md
 - PROGRESS_LOG.md
 - docs/AGENT_HANDOFF.md
 
@@ -23,22 +30,22 @@ Goal (1 sentence): Execute P1-T2 and P1-T3 by validating shell/provider refresh 
 - cat PROGRESS_LOG.md
 - cat docs/AGENT_HANDOFF.md
 - cat docs/AGENT_TASK_BOARD.md
-- cat ROADMAP.md
-- cat CANON.md
-- rg -n "provider|Providers|mobile nav|Mobile|Bottom|Nav|navigation" src/app src/components src/lib
-- sed -n '1,220p' src/app/layout.tsx
-- sed -n '1,260p' src/components/AppNav.tsx
-- sed -n '1,220p' src/components/Providers.tsx
+- cat AGENT_PROMPTS.md
+- rg -n "Assignment quick guide|How to run an agent season|Global constraints" docs/AGENT_TASK_BOARD.md AGENT_PROMPTS.md
+- python (doc update script)
 - npm run lint
-- npm run test -- src/lib/auth-redirect.test.ts
-- npm run demo:setup
-- npm run dev
-- Playwright runtime checks against `http://localhost:3000` (refresh behavior + mobile nav reachability)
+
+## Verification Evidence
+- Verified new runbook file exists and is referenced by AGENTS/task board/prompts.
+- Lint passed in current environment.
+
+## Diff/Review Notes
+- Scope intentionally focused on operational docs for assignment clarity and multi-agent execution.
+- No product runtime/business logic code was changed in this session.
 
 ## Notes / gotchas
-- `next dev` prints an environment/tooling warning about `@next/swc` version mismatch (15.5.7 vs Next 15.5.11); observed during checks but not functionally blocking.
-- Runtime console shows Radix sheet accessibility warning (`Missing Description` on dialog content); behaviorally non-blocking and suitable for later UX/accessibility follow-up.
+- Multi-agent safety still depends on strict one-task-per-session assignment and dependency-order merges.
 
 ## Next steps
-- [ ] Start Phase 2 work with `P2-T1` (Orders layering enforcement) per `docs/AGENT_TASK_BOARD.md` dependency order.
-- [ ] Carry forward the non-blocking sheet accessibility warning as a scoped backlog item when UX/accessibility work is in scope.
+- [ ] Use the assignment shell in `AGENT_PROMPTS.md` for the next task handoff.
+- [ ] Enforce dependency-quality validation before starting `P2-T1` runtime work.
