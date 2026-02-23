@@ -40,6 +40,31 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+
+### 2026-02-23 — Unplanned maintenance: local install docs + timer FK guard + order timer UI cleanup
+- Executed targeted maintenance scope requested by user (no broad refactors):
+  - Rewrote `README.md` local setup instructions with a clean install/migrate/seed flow and explicit demo-password setup.
+  - Added timer-start guard in `src/modules/time/time.service.ts` to map Prisma foreign-key violations (`P2003`) to a deterministic, actionable 409 message (re-login guidance instead of opaque failure).
+  - Updated order detail timer actions layout in `src/app/orders/[id]/page.tsx` to use a stacked button grid in the narrow sidebar, preventing control overlap/crowding.
+- Validation run completed with production checks and runtime UI capture.
+
+Commands run:
+- npm run seed
+- npm run set-demo-passwords
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+- npm run build
+- npm run dev
+- Playwright screenshot capture against `/orders/[id]`
+
+Verification note:
+- Seed script succeeded in this environment.
+- Time service tests passed (5/5).
+- Lint passed with no ESLint warnings/errors.
+- Build passed successfully.
+- Non-blocking advisories remain: `@next/swc` version mismatch and stale `baseline-browser-mapping` data.
+- Screenshot artifact captured: `browser:/tmp/codex_browser_invocations/1794e8d53796eb0b/artifacts/artifacts/order-timer-controls.png`.
+
 ### 2026-02-23 — P4-T3 Phase 4 gate closeout evidence
 - Executed P4-T3 only; no product-code or behavior changes.
 - Validated prior dependency quality for P4-T2 artifacts before proceeding; no unresolved blockers found.

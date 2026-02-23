@@ -1,3 +1,4 @@
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import {
   closeTimeEntryById,
   createTimeEntry,
@@ -25,6 +26,18 @@ function ok<T>(data: T): ServiceResult<T> {
 
 function fail<T>(status: number, error: string): ServiceResult<T> {
   return { ok: false, status, error };
+}
+
+
+function mapTimeEntryCreateError(error: unknown): ServiceResult<{ entry: TimeEntry }> | null {
+  if (error instanceof PrismaClientKnownRequestError && error.code === 'P2003') {
+    return fail(
+      409,
+      'Timer could not be started because your user session is out of sync with the database. Sign out and sign back in, then retry.'
+    );
+  }
+
+  return null;
 }
 
 export async function getActiveTimeEntry(userId: string): Promise<ServiceResult<{ entry: TimeEntry | null }>> {
@@ -73,15 +86,19 @@ export async function startTimeEntry(
     }
   }
 
-  const entry = await createTimeEntry({
-    userId,
-    orderId: input.orderId,
-    partId: input.partId ?? null,
-    operation: input.operation,
-    startedAt: now,
-  });
+  try {
+    const entry = await createTimeEntry({
+      userId,
+      orderId: input.orderId,
+      partId: input.partId ?? null,
+      operation: input.operation,
+      startedAt: now,
+    });
 
-  return ok({ entry });
+    return ok({ entry });
+  } catch (error) {
+    return mapTimeEntryCreateError(error) ?? fail(500, 'Failed to start timer entry.');
+  }
 }
 
 export async function startTimeEntryWithConflict(
@@ -93,15 +110,19 @@ export async function startTimeEntryWithConflict(
     return fail(409, 'Active time entry already running.');
   }
 
-  const entry = await createTimeEntry({
-    userId,
-    orderId: input.orderId,
-    partId: input.partId ?? null,
-    operation: input.operation,
-    startedAt: new Date(),
-  });
+  try {
+    const entry = await createTimeEntry({
+      userId,
+      orderId: input.orderId,
+      partId: input.partId ?? null,
+      operation: input.operation,
+      startedAt: new Date(),
+    });
 
-  return ok({ entry });
+    return ok({ entry });
+  } catch (error) {
+    return mapTimeEntryCreateError(error) ?? fail(500, 'Failed to start timer entry.');
+  }
 }
 
 export async function pauseActiveTimeEntry(
