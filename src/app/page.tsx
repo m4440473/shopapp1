@@ -102,7 +102,7 @@ export default async function Home() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active orders</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
@@ -112,7 +112,7 @@ export default async function Home() {
             <p className="text-xs text-muted-foreground">{totalOrders} total records in the shop</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Due within 7 days</CardTitle>
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
@@ -122,7 +122,7 @@ export default async function Home() {
             <p className="text-xs text-muted-foreground">Stay ahead of the hot jobs</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Unassigned tickets</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
@@ -132,7 +132,7 @@ export default async function Home() {
             <p className="text-xs text-muted-foreground">Waiting for a machinist</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Completed jobs</CardTitle>
             <CircleCheck className="h-4 w-4 text-muted-foreground" />

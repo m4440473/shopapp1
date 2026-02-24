@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
+import { authRequiredResponse, forbiddenResponse } from '@/lib/auth-api';
 import { canAccessMachinist } from '@/lib/rbac';
 import { completeChecklistAndAdvance } from '@/modules/orders/orders.service';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string; partId: string; itemId: string }> }) {
   const session = await getServerAuthSession();
-  if (!session) return new NextResponse('Unauthorized', { status: 401 });
+  if (!session) return authRequiredResponse();
   const role = (session.user as any)?.role as string | undefined;
-  if (!canAccessMachinist(role)) return new NextResponse('Forbidden', { status: 403 });
+  if (!canAccessMachinist(role)) return forbiddenResponse();
 
   const json = await req.json().catch(() => null);
   if (!json?.confirm) {

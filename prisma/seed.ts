@@ -371,13 +371,23 @@ async function main() {
   // Customers
   const acme = await prisma.customer.upsert({
     where: { name: 'ACME Corp' },
-    update: {},
-    create: { name: 'ACME Corp' },
+    update: { contact: 'Jane Engineer', email: 'jane.engineer@acme.example', phone: '555-0102' },
+    create: { name: 'ACME Corp', contact: 'Jane Engineer', email: 'jane.engineer@acme.example', phone: '555-0102' },
   });
   const wayne = await prisma.customer.upsert({
     where: { name: 'Wayne Industries' },
-    update: {},
-    create: { name: 'Wayne Industries' },
+    update: { contact: 'Luke Fox', email: 'luke.fox@wayne.example', phone: '555-0110' },
+    create: { name: 'Wayne Industries', contact: 'Luke Fox', email: 'luke.fox@wayne.example', phone: '555-0110' },
+  });
+  const stark = await prisma.customer.upsert({
+    where: { name: 'Stark Fabrication' },
+    update: { contact: 'Pepper Potts', email: 'pepper@starkfab.example', phone: '555-0121' },
+    create: { name: 'Stark Fabrication', contact: 'Pepper Potts', email: 'pepper@starkfab.example', phone: '555-0121' },
+  });
+  const oscorp = await prisma.customer.upsert({
+    where: { name: 'Oscorp Manufacturing' },
+    update: { contact: 'Norman Osborn', email: 'norman@oscorp.example', phone: '555-0135' },
+    create: { name: 'Oscorp Manufacturing', contact: 'Norman Osborn', email: 'norman@oscorp.example', phone: '555-0135' },
   });
 
   // Users
@@ -431,9 +441,10 @@ async function main() {
     customerId: string,
     assigned: string | null = null,
     business: 'STD' | 'CRM' | 'PC',
+    lifecycleStage: 'NEW' | 'MACHINING' | 'FAB' | 'PAINT' | 'COMPLETED' = 'MACHINING',
   ) {
     const orderNumber = `${business}-${1000 + idx}`;
-    const partCount = 2 + (idx % 2);
+    const partCount = 2 + (idx % 4);
     const partSeeds = Array.from({ length: partCount }).map((_, partIndex) => {
       const template = partTemplates[partIndex % partTemplates.length];
       return {
@@ -470,6 +481,14 @@ async function main() {
       include: { parts: true },
     });
 
+    const stageCompletionIndex = {
+      NEW: -1,
+      MACHINING: 0,
+      FAB: 1,
+      PAINT: 2,
+      COMPLETED: 999,
+    }[lifecycleStage];
+
     const checklistData: Prisma.OrderChecklistCreateManyInput[] = [];
     const chargeData: Prisma.OrderChargeCreateManyInput[] = [];
     ord.parts.forEach((part, partIndex) => {
@@ -480,7 +499,12 @@ async function main() {
           partId: part.id,
           addonId: addon.id,
           departmentId: addon.departmentId,
-          completed: addonIndex === 0 && idx % 3 === 0,
+          completed:
+          lifecycleStage === 'COMPLETED'
+            ? true
+            : stageCompletionIndex >= 0 && addon.departmentId === departmentRecords[stageCompletionIndex]?.id
+              ? addonIndex === 0
+              : stageCompletionIndex > departmentRecords.findIndex((dept) => dept.id === addon.departmentId),
         });
         chargeData.push({
           orderId: ord.id,
@@ -503,6 +527,33 @@ async function main() {
     if (chargeData.length) {
       await prisma.orderCharge.createMany({ data: chargeData });
     }
+
+    for (const part of ord.parts) {
+      const targetDepartment =
+        lifecycleStage === 'NEW'
+          ? null
+          : lifecycleStage === 'MACHINING'
+            ? departmentByName.get('Machining')?.id ?? null
+            : lifecycleStage === 'FAB'
+              ? departmentByName.get('Fab')?.id ?? null
+              : lifecycleStage === 'PAINT'
+                ? departmentByName.get('Paint')?.id ?? null
+                : null;
+      await prisma.orderPart.update({
+        where: { id: part.id },
+        data: {
+          currentDepartmentId: targetDepartment,
+          status: lifecycleStage === 'COMPLETED' ? 'COMPLETE' : 'IN_PROGRESS',
+        },
+      });
+    }
+
+    await prisma.order.update({
+      where: { id: ord.id },
+      data: {
+        status: lifecycleStage === 'COMPLETED' ? 'COMPLETE' : lifecycleStage === 'NEW' ? 'RECEIVED' : 'RUNNING',
+      },
+    });
 
     await prisma.timeLog.createMany({
       data: [
@@ -546,20 +597,26 @@ async function main() {
   }
 
   const orderSeeds = [
-    { idx: 1, customerId: acme.id, assigned: mach1.id, business: 'STD' },
-    { idx: 2, customerId: acme.id, assigned: mach2.id, business: 'STD' },
-    { idx: 3, customerId: wayne.id, assigned: mach1.id, business: 'CRM' },
-    { idx: 4, customerId: wayne.id, assigned: mach2.id, business: 'CRM' },
-    { idx: 5, customerId: acme.id, assigned: null, business: 'STD' },
-    { idx: 6, customerId: acme.id, assigned: null, business: 'STD' },
-    { idx: 7, customerId: wayne.id, assigned: mach1.id, business: 'PC' },
-    { idx: 8, customerId: wayne.id, assigned: mach2.id, business: 'PC' },
-    { idx: 9, customerId: acme.id, assigned: mach1.id, business: 'CRM' },
-    { idx: 10, customerId: wayne.id, assigned: mach2.id, business: 'STD' },
+    { idx: 1, customerId: acme.id, assigned: null, business: 'STD', lifecycleStage: 'NEW' as const },
+    { idx: 2, customerId: wayne.id, assigned: mach1.id, business: 'STD', lifecycleStage: 'MACHINING' as const },
+    { idx: 3, customerId: stark.id, assigned: mach2.id, business: 'CRM', lifecycleStage: 'FAB' as const },
+    { idx: 4, customerId: oscorp.id, assigned: mach1.id, business: 'PC', lifecycleStage: 'PAINT' as const },
+    { idx: 5, customerId: acme.id, assigned: mach2.id, business: 'STD', lifecycleStage: 'COMPLETED' as const },
+    { idx: 6, customerId: wayne.id, assigned: null, business: 'CRM', lifecycleStage: 'NEW' as const },
+    { idx: 7, customerId: stark.id, assigned: mach1.id, business: 'PC', lifecycleStage: 'MACHINING' as const },
+    { idx: 8, customerId: oscorp.id, assigned: mach2.id, business: 'STD', lifecycleStage: 'FAB' as const },
+    { idx: 9, customerId: acme.id, assigned: mach1.id, business: 'CRM', lifecycleStage: 'PAINT' as const },
+    { idx: 10, customerId: wayne.id, assigned: mach2.id, business: 'STD', lifecycleStage: 'COMPLETED' as const },
+    { idx: 11, customerId: stark.id, assigned: null, business: 'PC', lifecycleStage: 'NEW' as const },
+    { idx: 12, customerId: oscorp.id, assigned: mach1.id, business: 'CRM', lifecycleStage: 'MACHINING' as const },
+    { idx: 13, customerId: acme.id, assigned: mach2.id, business: 'STD', lifecycleStage: 'FAB' as const },
+    { idx: 14, customerId: wayne.id, assigned: mach1.id, business: 'PC', lifecycleStage: 'PAINT' as const },
+    { idx: 15, customerId: stark.id, assigned: mach2.id, business: 'CRM', lifecycleStage: 'COMPLETED' as const },
+    { idx: 16, customerId: oscorp.id, assigned: mach1.id, business: 'STD', lifecycleStage: 'MACHINING' as const },
   ];
 
   for (const seed of orderSeeds) {
-    await seedOrder(seed.idx, seed.customerId, seed.assigned, seed.business);
+    await seedOrder(seed.idx, seed.customerId, seed.assigned, seed.business, seed.lifecycleStage);
   }
 
   const mcmaster = vendorRecords.find((v) => v.name === 'McMaster-Carr');

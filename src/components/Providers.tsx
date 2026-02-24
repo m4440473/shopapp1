@@ -1,12 +1,19 @@
-﻿"use client";
+"use client";
 
 import type { ReactNode } from "react";
 import { SessionProvider } from "next-auth/react";
+
+import AuthRequiredDialog from '@/components/AuthRequiredDialog';
 
 interface ProvidersProps {
   children: ReactNode;
 }
 
 export default function Providers({ children }: ProvidersProps) {
-  return <SessionProvider>{children}</SessionProvider>;
+  return (
+    <SessionProvider>
+      {children}
+      <AuthRequiredDialog />
+    </SessionProvider>
+  );
 }

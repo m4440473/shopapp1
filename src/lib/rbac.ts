@@ -23,7 +23,7 @@ export function canAccessAdmin(userOrRole?: RoleInput) {
 export function canAccessMachinist(userOrRole?: RoleInput) {
   if (extractAdminFlag(userOrRole)) return true;
   const role = extractRole(userOrRole);
-  return role === 'MACHINIST';
+  return role === 'MACHINIST' || role === 'ADMIN';
 }
 
 export function canAccessViewer(userOrRole?: RoleInput) {

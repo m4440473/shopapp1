@@ -741,7 +741,14 @@ export default function OrderDetailPage() {
                 const isSelected = part.id === selectedPartId;
                 const partLabel = part.partNumber || `Part ${index + 1}`;
                 const totalSeconds = partTotals[part.id] ?? 0;
-                const status = part.status || 'IN_PROGRESS';
+                const partChecklist = (Array.isArray(item?.checklist) ? item.checklist : []).filter(
+                  (entry: any) => entry.partId === part.id && entry.isActive !== false,
+                );
+                const isChecklistComplete = partChecklist.length > 0 && partChecklist.every((entry: any) => {
+                  const override = checklistOverrides[entry.id];
+                  return typeof override === 'boolean' ? override : Boolean(entry.completed);
+                });
+                const status = isChecklistComplete ? 'COMPLETE' : (part.status || 'IN_PROGRESS');
                 const latestMetaRaw = part?.partEvents?.[0]?.meta;
                 const latestMeta = typeof latestMetaRaw === 'string' ? (() => { try { return JSON.parse(latestMetaRaw); } catch { return null; } })() : latestMetaRaw;
                 const flagged = latestMeta?.flag === true;
