@@ -1,5 +1,50 @@
 Date: 2026-02-24
 Agent: GPT-5.2-Codex
+Goal (1 sentence): Add true timer resume behavior in order detail so paused part work can continue without losing previously captured time.
+
+## What I changed
+- Added `src/app/api/timer/resume/route.ts`:
+  - Validates `TimeEntryResume` input.
+  - Returns 409 switch-confirmation payload if another timer is active.
+  - Calls `resumeTimeEntry` when no active timer exists and logs `Timer resumed.` part event metadata.
+- Updated `src/app/api/timer/active/route.ts` to include `lastPartEntries` from `getTimeEntrySummary` for selected-order part context.
+- Updated `src/app/orders/[id]/page.tsx` timer UI behavior:
+  - Added `lastPartEntries` state.
+  - Primary action now chooses resume vs start automatically for selected part.
+  - Start button label/help text now reflects resume path.
+  - Conflict follow-up action now re-runs the unified activate handler.
+- Added regression test in `src/modules/time/__tests__/time.service.test.ts` confirming pause/resume retains accumulated totals.
+- Updated continuity artifacts: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` session note.
+
+## Files touched
+- src/app/api/timer/resume/route.ts
+- src/app/api/timer/active/route.ts
+- src/app/orders/[id]/page.tsx
+- src/modules/time/__tests__/time.service.test.ts
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- docs/AGENT_TASK_BOARD.md
+
+## Commands run
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+- npm run dev
+- Playwright screenshot script against http://127.0.0.1:3000
+
+## Verification Evidence
+- Time service test suite passed (6/6), including new pause/resume retention coverage.
+- Lint passed with no ESLint warnings/errors.
+- Browser screenshot artifact captured; due auth/session limitations in this environment, capture reflects unauthenticated/new-order context rather than authenticated order-detail timer panel.
+
+## Next steps
+- [ ] Optional UX follow-up: consider exposing explicit “Resume last paused” context text with timestamp/elapsed from last entry.
+- [ ] Optional auth-e2e follow-up: stabilize scripted sign-in path for browser capture of authenticated order-detail interactions.
+
+---
+
+Date: 2026-02-24
+Agent: GPT-5.2-Codex
 Goal (1 sentence): Fix timer start 400 on order detail by sending the required `operation` field expected by `TimeEntryStart`.
 
 ## What I changed

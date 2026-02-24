@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
 import { getOrderHeaderInfo, getOrderPartSummary } from '@/modules/orders/orders.service';
-import { getActiveTimeEntry, getOrderPartTimeTotals } from '@/modules/time/time.service';
+import { getActiveTimeEntry, getOrderPartTimeTotals, getTimeEntrySummary } from '@/modules/time/time.service';
 
 export async function GET(req: NextRequest) {
   const session = await getServerAuthSession();
@@ -36,10 +36,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: totalsResult.error }, { status: totalsResult.status });
   }
 
+  const summaryResult = orderId
+    ? await getTimeEntrySummary(userId, orderId, partIds)
+    : null;
+  if (summaryResult && summaryResult.ok === false) {
+    return NextResponse.json({ error: summaryResult.error }, { status: summaryResult.status });
+  }
+
   return NextResponse.json({
     activeEntry,
     activeOrder,
     activePart,
     totals: totalsResult?.ok ? totalsResult.data.totals : {},
+    lastPartEntries: summaryResult?.ok ? summaryResult.data.lastPartEntries : {},
   });
 }

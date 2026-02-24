@@ -89,6 +89,7 @@ export default function OrderDetailPage() {
   const [activeEntry, setActiveEntry] = useState<any | null>(null);
   const [activePart, setActivePart] = useState<any | null>(null);
   const [partTotals, setPartTotals] = useState<Record<string, number>>({});
+  const [lastPartEntries, setLastPartEntries] = useState<Record<string, any | null>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [conflictState, setConflictState] = useState<ConflictState>({
     open: false,
@@ -140,6 +141,7 @@ export default function OrderDetailPage() {
     const started = new Date(activeEntry.startedAt).getTime();
     return Math.max(0, Math.floor((nowMs - started) / 1000));
   }, [activeEntry?.startedAt, nowMs]);
+
 
   useEffect(() => {
     const interval = activeEntry ? window.setInterval(() => setNowMs(Date.now()), 1000) : null;
@@ -202,6 +204,7 @@ export default function OrderDetailPage() {
       setActiveEntry(data.activeEntry ?? null);
       setActivePart(data.activePart ?? null);
       setPartTotals(data.totals ?? {});
+      setLastPartEntries(data.lastPartEntries ?? {});
       setTimerError(null);
     } catch {
       setTimerError('Failed to load timer status.');
@@ -283,6 +286,58 @@ export default function OrderDetailPage() {
     }
   };
 
+  const handleResume = async (): Promise<boolean> => {
+    if (!selectedPartId) return false;
+    const selectedPartLastEntry = lastPartEntries[selectedPartId] ?? null;
+    const entryId = selectedPartLastEntry?.id;
+    if (!entryId) return false;
+    setTimerSaving(true);
+    setTimerError(null);
+    try {
+      const res = await fetch('/api/timer/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entryId }),
+        credentials: 'include',
+      });
+      if (res.status === 409) {
+        const data = await res.json();
+        setConflictState({
+          open: true,
+          activeEntry: data.activeEntry ?? null,
+          activeOrder: data.activeOrder ?? null,
+          activePart: data.activePart ?? null,
+          elapsedSeconds: data.elapsedSeconds ?? 0,
+        });
+        return false;
+      }
+      if (!res.ok) throw res;
+      await refreshTimerSummary();
+      await loadPartEvents();
+      return true;
+    } catch {
+      setTimerError('Failed to resume timer.');
+      return false;
+    } finally {
+      setTimerSaving(false);
+    }
+  };
+
+  const handleActivateSelectedPart = async (): Promise<boolean> => {
+    const selectedPartLastEntry = selectedPartId ? lastPartEntries[selectedPartId] ?? null : null;
+    const canResume = Boolean(
+      selectedPartLastEntry?.id &&
+      selectedPartLastEntry?.endedAt &&
+      !(activeEntry?.partId && activeEntry.partId === selectedPartId)
+    );
+
+    if (canResume) {
+      return handleResume();
+    }
+
+    return handleStart();
+  };
+
   const handleFinish = async (): Promise<boolean> => {
     setTimerSaving(true);
     setTimerError(null);
@@ -305,7 +360,7 @@ export default function OrderDetailPage() {
     setConflictState((prev) => ({ ...prev, open: false }));
     const closedCurrent = action === 'pause' ? await handlePause() : await handleFinish();
     if (!closedCurrent) return;
-    await handleStart();
+    await handleActivateSelectedPart();
   };
 
   const handleAddNote = async () => {
@@ -478,12 +533,22 @@ export default function OrderDetailPage() {
   const dueDateLabel = item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'TBD';
   const statusLabel = item.status?.replace(/_/g, ' ') ?? 'Unknown';
   const activeOnSelected = Boolean(activeEntry?.partId && activeEntry.partId === selectedPartId);
+  const selectedPartLastEntry = selectedPartId ? lastPartEntries[selectedPartId] ?? null : null;
+  const canResumeSelected = Boolean(selectedPartLastEntry?.id && selectedPartLastEntry?.endedAt && !activeOnSelected);
   const hasActiveEntry = Boolean(activeEntry);
   const isSwitchAction = Boolean(activeEntry && selectedPartId && activeEntry.partId !== selectedPartId);
-  const startButtonLabel = isSwitchAction ? 'Switch to selected part' : 'Start selected part';
+  const startButtonLabel = isSwitchAction
+    ? canResumeSelected
+      ? 'Resume selected part'
+      : 'Switch to selected part'
+    : canResumeSelected
+      ? 'Resume selected part'
+      : 'Start selected part';
   const startHelperLabel = isSwitchAction
-    ? 'Starting will ask for switch confirmation to prevent timer overlap.'
-    : 'Starts a timer on the selected part.';
+    ? 'Starting or resuming will ask for switch confirmation to prevent timer overlap.'
+    : canResumeSelected
+      ? 'Resumes the selected part timer from its last paused state.'
+      : 'Starts a timer on the selected part.';
 
   return (
     <div className="space-y-6">
@@ -505,7 +570,7 @@ export default function OrderDetailPage() {
             </p>
             <p>Elapsed: {formatDuration(conflictState.elapsedSeconds)}</p>
             <p>
-              Confirming switch will close that timer, then start a new timer on{' '}
+              Confirming switch will close that timer, then activate{' '}
               <span className="font-medium text-foreground">{selectedPart?.partNumber || 'the selected part'}</span>.
             </p>
           </div>
@@ -553,7 +618,7 @@ export default function OrderDetailPage() {
                   type="button"
                   size="sm"
                   disabled={!selectedPartId || timerSaving || activeOnSelected}
-                  onClick={handleStart}
+                  onClick={handleActivateSelectedPart}
                   className="justify-start gap-2"
                 >
                   <Play className="h-4 w-4" />
