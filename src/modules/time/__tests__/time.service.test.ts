@@ -134,6 +134,42 @@ describe('time.service', () => {
     expect(totals[secondPartId]).toBe(15);
   });
 
+
+  it('resumes a paused entry as a continued segment without losing prior time', async () => {
+    vi.setSystemTime(new Date('2026-02-03T00:00:00Z'));
+    vi.resetModules();
+    const { getOrderPartTimeTotals, pauseActiveTimeEntry, resumeTimeEntry, startTimeEntry } = await import('../time.service');
+
+    const orderId = 'order_resume_test_001';
+    const partId = 'part_resume_test_001';
+
+    const startResult = await startTimeEntry('user_test_machinist', {
+      orderId,
+      partId,
+      operation: 'Part Work',
+    });
+    expect(startResult.ok).toBe(true);
+
+    vi.setSystemTime(new Date('2026-02-03T00:12:00Z'));
+    const paused = await pauseActiveTimeEntry('user_test_machinist');
+    expect(paused.ok).toBe(true);
+
+    const pausedEntry = (paused as { ok: true; data: { entry: any } }).data.entry;
+
+    vi.setSystemTime(new Date('2026-02-03T00:20:00Z'));
+    const resumed = await resumeTimeEntry('user_test_machinist', { entryId: pausedEntry.id });
+    expect(resumed.ok).toBe(true);
+
+    vi.setSystemTime(new Date('2026-02-03T00:35:00Z'));
+    const pausedAgain = await pauseActiveTimeEntry('user_test_machinist');
+    expect(pausedAgain.ok).toBe(true);
+
+    const totalsResult = await getOrderPartTimeTotals(orderId, [partId]);
+    expect(totalsResult.ok).toBe(true);
+    const totals = (totalsResult as { ok: true; data: { totals: Record<string, number> } }).data.totals;
+    expect(totals[partId]).toBe(27);
+  });
+
   it('rejects editing an active entry', async () => {
     vi.setSystemTime(new Date('2026-02-03T00:00:00Z'));
     vi.resetModules();

@@ -3,6 +3,41 @@
 ## Session Metadata
 - Date: 2026-02-24
 - Agent: GPT-5.2-Codex
+- Task ID: Unplanned timer UX fix (resume paused part timer)
+- Goal: Allow machinists to resume paused timer context for a part instead of always starting a fresh timer interaction.
+
+## Dependency Validation
+- [x] Reviewed `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No dependency blocker found for this scoped timer workflow improvement.
+
+## Plan First
+- [x] Verify current order detail timer interactions and existing resume service support.
+- [x] Add `/api/timer/resume` route + active-summary payload data needed for resume selection.
+- [x] Update order detail timer controls to show/use Resume when a paused entry exists for selected part.
+- [x] Run focused verification and capture continuity evidence.
+
+## Implementation Checklist
+- [x] Backend timer resume route created with existing switch-confirmation semantics.
+- [x] Timer active summary includes latest user entries by part for resume affordance.
+- [x] Order detail timer UI resumes paused entries for selected part.
+
+## Verification Checklist
+- [x] npm run test -- src/modules/time/__tests__/time.service.test.ts
+- [x] npm run lint
+
+## Review + Results
+- Added `/api/timer/resume` route so paused entries can be resumed from order detail with the same switch-confirmation response shape used by timer start conflicts.
+- Extended `/api/timer/active` response with `lastPartEntries` so UI can determine whether selected part should show Resume vs Start.
+- Updated order detail timer controls to route the primary action through resume when a paused selected-part entry exists; switch dialog now states it will activate selected work.
+- Added service-level regression coverage proving pause → resume → pause retains total accumulated minutes for the part.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-24
+- Agent: GPT-5.2-Codex
 - Task ID: Unplanned bugfix (timer start 400 validation)
 - Goal: Fix order detail timer start request payload so `/api/timer/start` passes schema validation.
 

@@ -40,6 +40,25 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-24 — Timer resume workflow for paused part context
+- Implemented resume workflow for order-detail timers so a paused part can be resumed (not restarted) from the same Active Work control.
+- Added `POST /api/timer/resume` route with the same 409 switch-confirmation payload semantics used by `POST /api/timer/start`, then resumed entries via `resumeTimeEntry`.
+- Extended `GET /api/timer/active` to include `lastPartEntries` so client can detect whether selected part has a paused entry to resume.
+- Updated `src/app/orders/[id]/page.tsx` to switch primary action label/behavior (`Start selected part` vs `Resume selected part`) and run resume when applicable.
+- Added `time.service` test coverage for pause → resume → pause totals retention to ensure prior worked minutes remain intact across interruptions.
+
+Commands run:
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+- npm run dev
+- Playwright screenshot capture against http://127.0.0.1:3000 (auth-limited capture)
+
+Verification note:
+- Time service tests passed (6/6).
+- Lint passed with no ESLint warnings/errors.
+- Screenshot capture succeeded, but auth/session in this environment prevented reaching an authenticated order-detail timer view during automated browser capture.
+
+
 ### 2026-02-24 — Timer start 400 fix (missing operation in order detail payload)
 - Implemented a scoped bugfix in `src/app/orders/[id]/page.tsx` to include `operation: "Part Work"` when calling `POST /api/timer/start` from the order detail Active Work controls.
 - This aligns the client payload with `TimeEntryStart` validation requirements and prevents immediate 400 rejection for missing `operation`.
