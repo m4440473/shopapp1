@@ -35,7 +35,7 @@ import { useCurrentUser } from "@/lib/use-current-user";
 const baseLinks = [
   { href: "/", label: "Shop Floor Intelligence", icon: LayoutDashboard },
   { href: "/about", label: "Overview", icon: Info },
-  { href: "/orders", label: "Orders", icon: ClipboardList },
+  { href: "/", label: "Queue", icon: ClipboardList },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/orders/new", label: "New Order", icon: PlusCircle },
 ];

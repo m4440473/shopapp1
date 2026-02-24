@@ -428,7 +428,7 @@ export async function listPartEventsForPart(orderId: string, partId: string) {
 }
 
 export async function runInTransaction<T>(fn: (tx: any) => Promise<T>) {
-  return prisma.$transaction((tx) => fn(tx));
+  return prisma.$transaction((tx) => fn(tx), { maxWait: 20_000, timeout: 20_000 });
 }
 
 export async function findChecklistForRoutingById(checklistId: string, db: DbClient = prisma) {
@@ -778,8 +778,8 @@ export async function findActiveDepartmentById(departmentId: string) {
   });
 }
 
-export async function listDepartmentsOrdered() {
-  return prisma.department.findMany({
+export async function listDepartmentsOrdered(db: DbClient = prisma) {
+  return db.department.findMany({
     where: { isActive: true },
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     select: { id: true, name: true, slug: true, sortOrder: true, isActive: true },
@@ -910,8 +910,8 @@ export async function listAddonsByIds(addonIds: string[]) {
   });
 }
 
-export async function listReadyOrderPartsForDepartment(departmentId: string, includeCompleted = false) {
-  return prisma.orderPart.findMany({
+export async function listReadyOrderPartsForDepartment(departmentId: string, includeCompleted = false, db: DbClient = prisma) {
+  return db.orderPart.findMany({
     where: {
       currentDepartmentId: departmentId,
       ...(includeCompleted
@@ -932,8 +932,20 @@ export async function listReadyOrderPartsForDepartment(departmentId: string, inc
       quantity: true,
       orderId: true,
       partEvents: {
+        where: { type: { in: ['DEPARTMENT_REWORKED', 'DEPARTMENT_SET_MANUAL', 'DEPARTMENT_ADVANCED'] } },
         orderBy: { createdAt: 'desc' },
-        take: 1,
+        take: 5,
+        select: { id: true, createdAt: true, meta: true, type: true },
+      },
+      checklistItems: {
+        where: {
+          departmentId,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          completed: true,
+        },
       },
       order: {
         select: {
@@ -942,6 +954,7 @@ export async function listReadyOrderPartsForDepartment(departmentId: string, inc
           dueDate: true,
           status: true,
           customer: { select: { name: true } },
+          assignedMachinist: { select: { id: true, name: true, email: true } },
           parts: { select: { id: true } },
         },
       },

@@ -91,16 +91,27 @@ export { generateNextOrderNumber, syncChecklistForOrder };
 export type { OrderFilterState, OrderListItem, OrderWithMeta };
 export { isPartReadyForDepartment };
 
-export type DepartmentFeedPart = { id: string; partNumber: string | null; quantity: number | null; flagged: boolean; reasonText: string | null };
+export type DepartmentFeedPart = {
+  id: string;
+  partNumber: string | null;
+  quantity: number | null;
+  flagged: boolean;
+  reasonText: string | null;
+  checklistDoneCount: number;
+  checklistTotalCount: number;
+};
 export type DepartmentFeedOrder = {
   orderId: string;
   orderNumber: string;
   customerName: string | null;
   dueDate: Date | string | null;
   status: string;
-  totalParts: number;
-  readyParts: DepartmentFeedPart[];
-  readyPartsCount: number;
+  assignedMachinistName: string | null;
+  partsInDeptCount: number;
+  openChecklistCount: number;
+  flaggedCount: number;
+  latestActivityAt: Date | string | null;
+  parts: DepartmentFeedPart[];
 };
 
 type OrderCreateInput = z.infer<typeof OrderCreate>;
@@ -147,7 +158,10 @@ export const DEFAULT_ORDER_FILTERS: OrderFilterState = {
   staleStatus: false,
 };
 
-async function recordPartEvent({ orderId, partId, userId, type, message, meta }: PartEventInput) {
+async function recordPartEvent(
+  { orderId, partId, userId, type, message, meta }: PartEventInput,
+  db?: any,
+) {
   return createPartEvent({
     orderId,
     partId,
@@ -155,7 +169,7 @@ async function recordPartEvent({ orderId, partId, userId, type, message, meta }:
     type,
     message,
     meta: meta ?? null,
-  });
+  }, db);
 }
 
 function parseDate(value: string | Date | null | undefined) {
@@ -650,7 +664,7 @@ export async function recomputePartDepartment(
   } = {},
 ) {
   if (!partId) return fail(400, 'Part is required');
-  const departments = await listDepartmentsOrdered();
+  const departments = await listDepartmentsOrdered(tx);
   const part = await findPartForRouting(partId, tx);
   if (!part) return fail(404, 'Part not found');
 
@@ -691,7 +705,7 @@ export async function recomputePartDepartment(
       flag: flagged,
       transitionType: manual ? 'manual' : backwards ? 'rework' : 'auto',
     },
-  });
+  }, tx);
 
   return ok({ partId, orderId: part.orderId, currentDepartmentId: toDepartmentId, changed: true, flagged });
 }
@@ -1361,6 +1375,12 @@ export async function completeOrderPart({
   const part = await findOrderPart(orderId, partId);
   if (!part) return fail(404, 'Part not found');
 
+  const checklistItems = await listChecklistItems(orderId);
+  const hasIncompleteChecklist = checklistItems.some((item: any) => item.partId === partId && item.isActive !== false && item.completed === false);
+  if (hasIncompleteChecklist) {
+    return fail(409, 'Cannot complete part: checklist items remain.');
+  }
+
   const updated = await updateOrderPart(partId, { status: 'COMPLETE' });
 
   await recordPartEvent({
@@ -1475,9 +1495,25 @@ export async function getOrderDepartmentFeed(
   const readyParts = await listReadyOrderPartsForDepartment(departmentId, includeCompleted);
   const orders = new Map<string, DepartmentFeedOrder>();
 
-  readyParts.forEach((part) => {
+  readyParts.forEach((part: any) => {
     const order = part.order;
     if (!order) return;
+
+    const parsedEvents = (part.partEvents ?? []).map((event: any) => {
+      if (typeof event.meta === 'string') {
+        try {
+          return { ...event, meta: JSON.parse(event.meta) as Record<string, unknown> };
+        } catch {
+          return { ...event, meta: null };
+        }
+      }
+      return { ...event, meta: (event.meta ?? null) as Record<string, unknown> | null };
+    });
+    const flaggedEvent = parsedEvents.find((event: any) => event.meta?.flag === true) ?? null;
+    const checklistItems = Array.isArray(part.checklistItems) ? part.checklistItems : [];
+    const checklistTotalCount = checklistItems.length;
+    const checklistDoneCount = checklistItems.filter((item: any) => item.completed === true).length;
+
     const existing =
       orders.get(order.id) ??
       {
@@ -1486,27 +1522,53 @@ export async function getOrderDepartmentFeed(
         customerName: order.customer?.name ?? null,
         dueDate: order.dueDate ?? null,
         status: order.status,
-        totalParts: order.parts?.length ?? 0,
-        readyParts: [],
-        readyPartsCount: 0,
+        assignedMachinistName: order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? null,
+        partsInDeptCount: 0,
+        openChecklistCount: 0,
+        flaggedCount: 0,
+        latestActivityAt: null,
+        parts: [],
       };
-    const latestMeta = (part.partEvents?.[0] as any)?.meta as Record<string, unknown> | null | undefined;
-    existing.readyParts.push({
+
+    existing.parts.push({
       id: part.id,
       partNumber: part.partNumber ?? null,
       quantity: part.quantity ?? null,
-      flagged: latestMeta?.flag === true,
-      reasonText: typeof latestMeta?.reasonText === 'string' ? latestMeta.reasonText : null,
+      flagged: Boolean(flaggedEvent),
+      reasonText: typeof flaggedEvent?.meta?.reasonText === 'string' ? String(flaggedEvent.meta.reasonText) : null,
+      checklistDoneCount,
+      checklistTotalCount,
     });
-    existing.readyPartsCount += 1;
+    existing.partsInDeptCount += 1;
+    existing.openChecklistCount += Math.max(checklistTotalCount - checklistDoneCount, 0);
+    if (flaggedEvent) existing.flaggedCount += 1;
+
+    const eventAt = flaggedEvent?.createdAt ? new Date(flaggedEvent.createdAt) : null;
+    if (eventAt && !Number.isNaN(eventAt.getTime())) {
+      const current = existing.latestActivityAt ? new Date(existing.latestActivityAt) : null;
+      if (!current || Number.isNaN(current.getTime()) || eventAt.getTime() > current.getTime()) {
+        existing.latestActivityAt = eventAt;
+      }
+    }
+
     orders.set(order.id, existing);
   });
 
-  const items = Array.from(orders.values()).sort((a, b) => {
-    const aDue = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-    const bDue = b.dueDate ? new Date(b.dueDate).getTime() : 0;
-    return aDue - bDue;
-  });
+  const items = Array.from(orders.values())
+    .sort((a, b) => {
+      if (a.flaggedCount !== b.flaggedCount) return b.flaggedCount - a.flaggedCount;
+      const aDue = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
+      const bDue = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
+      if (aDue !== bDue) return aDue - bDue;
+      return a.orderNumber.localeCompare(b.orderNumber, undefined, { numeric: true, sensitivity: 'base' });
+    })
+    .map((order) => ({
+      ...order,
+      parts: [...order.parts].sort((a, b) => {
+        if (a.flagged !== b.flagged) return a.flagged ? -1 : 1;
+        return (a.partNumber ?? '').localeCompare((b.partNumber ?? ''), undefined, { numeric: true, sensitivity: 'base' });
+      }),
+    }));
 
   return ok({ items });
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpDown, LayoutGrid, LayoutList, MonitorPlay, SlidersHorizontal } from 'lucide-react';
+import { ArrowUpDown, LayoutGrid, LayoutList, MonitorPlay, Rows3, SlidersHorizontal } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
@@ -25,25 +25,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters, type OrderWithMeta } from '@/modules/orders/orders.service';
+import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters, type DepartmentFeedOrder, type OrderWithMeta } from '@/modules/orders/orders.service';
+import { WorkQueueOrderCard } from '@/components/work-queue/WorkQueueOrderCard';
 
-type LayoutOption = 'grid' | 'handoff' | 'machinist';
+type LayoutOption = 'grid' | 'handoff' | 'machinist' | 'workQueue';
 
 type Props = {
   orders: OrderWithMeta[];
   machinists: Array<{ id: string | null; name?: string | null; email?: string | null }>;
   departments: Array<{ id: string; name: string; sortOrder?: number | null }>;
   initialDepartmentId: string | null;
-  initialDepartmentFeed: Array<{
-    orderId: string;
-    orderNumber: string;
-    customerName: string | null;
-    dueDate: string | Date | null;
-    status: string;
-    totalParts: number;
-    readyParts: Array<{ id: string; partNumber: string | null; quantity: number | null; flagged: boolean; reasonText: string | null }>;
-    readyPartsCount: number;
-  }>;
+  initialDepartmentFeed: DepartmentFeedOrder[];
 };
 
 const SORT_KEYS = ['dueDate', 'priority', 'status', 'quantity'] as const;
@@ -181,12 +173,6 @@ export function ShopFloorLayouts({
     });
   };
 
-  const formatReadyPartLabel = (part: { id: string; partNumber: string | null }) => {
-    const partNumber = part.partNumber?.trim();
-    if (partNumber) return partNumber;
-    return `#${part.id.slice(0, 6)}`;
-  };
-
   return (
     <div className="space-y-4 rounded-xl border border-border/60 bg-card/70 p-4 backdrop-blur">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -219,6 +205,14 @@ export function ShopFloorLayouts({
             onClick={() => setLayout('handoff')}
           >
             <MonitorPlay className="mr-2 h-4 w-4" /> Ready for fab
+          </Button>
+          <Button
+            variant={layout === 'workQueue' ? 'default' : 'secondary'}
+            className="rounded-full"
+            size="sm"
+            onClick={() => setLayout('workQueue')}
+          >
+            <Rows3 className="mr-2 h-4 w-4" /> Work queue
           </Button>
           <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
             <DialogTrigger asChild>
@@ -376,89 +370,42 @@ export function ShopFloorLayouts({
         </div>
       </div>
 
-      <div className="space-y-3 rounded-lg border border-border/60 bg-background/70 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Department feed</p>
-            <p className="text-sm text-foreground">Focus the shop queue by the department in charge.</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Department</Label>
-            <Select
-              value={departmentId}
-              onValueChange={(value) => setDepartmentId(value)}
-              disabled={!departments.length}
-            >
-              <SelectTrigger className="w-[200px] border-border/60 bg-background/80">
-                <SelectValue placeholder="Select department" />
-              </SelectTrigger>
-              <SelectContent>
-                {departments.map((department) => (
-                  <SelectItem key={department.id} value={department.id}>
-                    {department.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      {layout === 'workQueue' && (
+        <div className="space-y-3 rounded-lg border border-border/60 bg-background/70 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Department work queue</p>
+              <p className="text-sm text-foreground">Focus the shop queue by the department in charge.</p>
+            </div>
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <Checkbox checked={includeCompleted} onCheckedChange={(value) => setIncludeCompleted(value === true)} />
-              Include completed
+              Include completed work in this department
             </label>
           </div>
+          <div className="flex flex-wrap gap-2">
+            {departments.map((department) => (
+              <Button key={department.id} size="sm" className="rounded-full" variant={departmentId === department.id ? 'default' : 'secondary'} onClick={() => setDepartmentId(department.id)}>
+                {department.name}
+              </Button>
+            ))}
+          </div>
+          {departmentError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {departmentError}
+            </div>
+          ) : null}
+          {departmentLoading ? (
+            <p className="text-sm text-muted-foreground">Loading department feed…</p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {departmentFeed.map((order) => <WorkQueueOrderCard key={order.orderId} order={order} />)}
+              {!departmentFeed.length && !departmentError && (
+                <p className="col-span-full text-sm text-muted-foreground">No parts are ready for the selected department.</p>
+              )}
+            </div>
+          )}
         </div>
-        {departmentError ? (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {departmentError}
-          </div>
-        ) : null}
-        {departmentLoading ? (
-          <p className="text-sm text-muted-foreground">Loading department feed…</p>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {departmentFeed.map((order) => {
-              const preview = order.readyParts.slice(0, 3);
-              const remaining = Math.max(order.readyPartsCount - preview.length, 0);
-              return (
-                <div
-                  key={order.orderId}
-                  className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/10 p-4"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <Link href={`/orders/${order.orderId}`} className="text-base font-semibold text-primary hover:underline">
-                      #{order.orderNumber}
-                    </Link>
-                    <Badge variant="outline" className="rounded-full px-3 py-1 text-[0.7rem] uppercase tracking-wide">
-                      {formatStatusLabel(order.status)}
-                    </Badge>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {order.customerName ?? 'Unknown customer'} •{' '}
-                    {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : 'No due date'}
-                  </div>
-                  <div className="grid gap-1 text-xs uppercase tracking-wide text-muted-foreground">
-                    <span>Contains {order.totalParts} parts</span>
-                    <span className="text-foreground">Ready now: {order.readyPartsCount} parts</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    {preview.map((part) => (
-                      <span key={part.id} className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2 py-1" title={part.reasonText ?? undefined}>
-                        {formatReadyPartLabel(part)}
-                        {part.flagged ? <span className="rounded bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-300">REWORK</span> : null}
-                      </span>
-                    ))}
-                    {remaining > 0 ? <span className="text-xs text-muted-foreground">+{remaining} more</span> : null}
-                  </div>
-                </div>
-              );
-            })}
-            {!departmentFeed.length && !departmentError && (
-              <p className="col-span-full text-sm text-muted-foreground">
-                No parts are ready for the selected department.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <Label className="text-xs uppercase tracking-wide text-muted-foreground">Status</Label>

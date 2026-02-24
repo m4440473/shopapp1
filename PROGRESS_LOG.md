@@ -745,3 +745,19 @@ Next steps (immediate)
 - Backlog notes (not implemented):
   - Replace browser-native `confirm/prompt` interactions in order checklist with first-class shadcn modal forms for richer validation/UX parity.
   - Add focused service tests for `recomputePartDepartment`, `previewChecklistComplete`, and backward-reason enforcement branches.
+
+## 2026-02-24
+- Summary: Consolidated intelligence + orders queue behavior, fixed interactive Prisma transaction usage/timeouts, upgraded department work-queue layout/cards, and corrected timer stop/elapsed semantics.
+- Scope highlights:
+  - Ensured part-event writes in department recompute/complete-and-advance can run on the same transaction client and raised interactive transaction timeout/wait to 20s for SQLite contention resilience.
+  - Deprecated `/orders` list route via redirect to `/`; updated intelligence/nav actions to treat home as the canonical queue page.
+  - Preserved KPI/header/layout brain and added Work Queue as an additional layout with department tabs and include-completed toggle.
+  - Replaced work queue tiles with a reusable customers-style card (`WorkQueueOrderCard`) including order metrics + per-part rows + REWORK surfacing.
+  - Changed timer totals to seconds (`totalsSeconds`), made selected-part elapsed persistent across pause/resume, and removed implicit part completion from timer finish.
+  - Added checklist gating in `completeOrderPart` returning 409 when active checklist items remain.
+- Tests run:
+  - `npm run lint`
+  - `npm run test`
+  - `npm run build`
+- Notes:
+  - Browser automation login selector path failed in this environment; captured auth-gate screenshot artifact instead.

@@ -138,3 +138,31 @@
 - Confirmed completions atomically mark checklist complete and recompute department in a transaction path.
 - Reopen actions that move work backward now require reason and log flagged rework events.
 - Department feed supports include-completed toggle and now carries per-part flag/reason metadata for badge display.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-24
+- Agent: GPT-5.2-Codex
+- Task ID: Consolidated queue/intelligence + tx timeout + timer semantics
+- Goal: Keep intelligence dashboard intact while integrating work queue layout, fix SQLite tx timeout pathing, merge /orders list into home, and correct timer semantics/persistence.
+
+## Dependency Validation
+- [x] Reviewed required continuity docs (`docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`) and task board artifacts.
+- [x] Validated no unresolved blocker from prior dependency tasks before implementation.
+
+## Plan First
+- [x] Fix transaction plumbing (`tx` client propagation + timeout increase) in complete-and-advance path.
+- [x] Deprecate `/orders` list via redirect and re-point queue navigation/actions to `/`.
+- [x] Add Work Queue as an additional Shop Floor layout (tabs/toggle) without removing KPI + existing layouts.
+- [x] Replace work queue tiles with customers-style reusable order cards.
+- [x] Update timer totals to seconds + persistent selected-part elapsed UX + stop/finish semantics + completion gate.
+- [x] Validate with lint/test/build and capture a browser screenshot artifact attempt.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test`
+- [x] `npm run build`
+- [x] Browser tool attempted for screenshot capture (auth-gated route screenshot captured after login automation failed).
