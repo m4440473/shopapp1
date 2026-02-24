@@ -1,5 +1,41 @@
 Date: 2026-02-24
 Agent: GPT-5.2-Codex
+Goal (1 sentence): Fix timer start validation drift and resume foreign-key crash behavior with minimal server-side changes.
+
+## What I changed
+- Updated `src/modules/time/time.schema.ts`:
+  - `TimeEntryStart.operation` is now optional with default `Part Work`.
+  - This preserves compatibility for clients that send only `orderId` + `partId`.
+- Updated `src/modules/time/time.service.ts`:
+  - Added `try/catch` around `createTimeEntry` in `resumeTimeEntry`.
+  - Reused FK error mapping (`P2003`) for resume, returning deterministic conflict responses.
+  - Refined FK error message text to include missing linked order/part/user record scenarios.
+- Updated continuity artifacts: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `docs/AGENT_TASK_BOARD.md`.
+
+## Files touched
+- src/modules/time/time.schema.ts
+- src/modules/time/time.service.ts
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- docs/AGENT_TASK_BOARD.md
+
+## Commands run
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+
+## Verification Evidence
+- Time service tests passed (6/6).
+- Lint passed with no ESLint warnings/errors.
+
+## Next steps
+- [ ] Optional: add route-level/API integration tests that assert `/api/timer/start` accepts payloads without `operation`.
+- [ ] Optional: emit structured telemetry when FK mapping is triggered to speed production root-cause triage.
+
+---
+
+Date: 2026-02-24
+Agent: GPT-5.2-Codex
 Goal (1 sentence): Add true timer resume behavior in order detail so paused part work can continue without losing previously captured time.
 
 ## What I changed

@@ -12,6 +12,7 @@ Use with:
 
 ## Session Status Notes
 
+- 2026-02-24: Completed unplanned timer reliability patch for start/resume paths (default `operation` compatibility + resume FK handling). Evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
 - 2026-02-24: Completed unplanned timer resume workflow update (order-detail start vs resume behavior + `/api/timer/resume` endpoint + coverage). Evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
 - 2026-02-23: Completed unplanned maintenance scope (outside numbered roadmap ticket) for local install/readme, timer start FK failure handling, and order-detail timer control layout overlap. Verification evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
 

@@ -40,6 +40,22 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-24 — Timer start compatibility + resume FK reliability
+- Implemented a scoped timer reliability fix for two reported failures:
+  - Made `TimeEntryStart.operation` optional with a default (`Part Work`) so `/api/timer/start` no longer rejects payloads that omit operation.
+  - Added Prisma FK (`P2003`) handling to `resumeTimeEntry` so pause/resume failures return deterministic service errors instead of uncaught exceptions.
+- Updated FK user-facing error message to cover missing linked order/part/user records and include refresh/re-login guidance.
+- No broad refactors or dependency changes were made.
+
+Commands run:
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+- npm run lint
+
+Verification note:
+- Time service tests passed (6/6).
+- Lint passed with no ESLint warnings/errors.
+
+
 ### 2026-02-24 — Timer resume workflow for paused part context
 - Implemented resume workflow for order-detail timers so a paused part can be resumed (not restarted) from the same Active Work control.
 - Added `POST /api/timer/resume` route with the same 409 switch-confirmation payload semantics used by `POST /api/timer/start`, then resumed entries via `resumeTimeEntry`.

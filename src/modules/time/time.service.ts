@@ -33,7 +33,7 @@ function mapTimeEntryCreateError(error: unknown): ServiceResult<{ entry: TimeEnt
   if (error instanceof PrismaClientKnownRequestError && error.code === 'P2003') {
     return fail(
       409,
-      'Timer could not be started because your user session is out of sync with the database. Sign out and sign back in, then retry.'
+      'Timer could not be started because the linked order, part, or user record is no longer available. Refresh and retry; if it persists, sign out and sign back in.'
     );
   }
 
@@ -211,15 +211,19 @@ export async function resumeTimeEntry(
     }
   }
 
-  const entry = await createTimeEntry({
-    userId,
-    orderId: previous.orderId,
-    partId: previous.partId,
-    operation: previous.operation,
-    startedAt: now,
-  });
+  try {
+    const entry = await createTimeEntry({
+      userId,
+      orderId: previous.orderId,
+      partId: previous.partId,
+      operation: previous.operation,
+      startedAt: now,
+    });
 
-  return ok({ entry });
+    return ok({ entry });
+  } catch (error) {
+    return mapTimeEntryCreateError(error) ?? fail(500, 'Failed to resume timer entry.');
+  }
 }
 
 export async function getOrderPartTimeTotals(
