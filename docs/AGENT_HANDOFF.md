@@ -509,3 +509,63 @@ Goal (1 sentence): Deliver department auto-advance confirmation and centralized 
 ## Next steps
 - [ ] Add focused unit/integration tests for new routing recompute, preview, and backward-reason branches.
 - [ ] Replace native `window.confirm/window.prompt` with dedicated UI modal patterns for consistency and accessibility.
+
+## Session Handoff — 2026-02-24 (Consolidated queue/tx/timer pass)
+
+## Goal
+Implement consolidated P0-P5 pass: transaction timeout/client consistency fix, merge orders list into home intelligence queue, add integrated Work Queue layout + customers-style cards, and timer semantics corrections.
+
+## Scope completed
+- Transaction path hardening:
+  - `recordPartEvent` now accepts optional db/tx client and passes through to repo.
+  - `recomputePartDepartment` now reads departments + writes part events using the provided tx client.
+  - `runInTransaction` now uses `maxWait: 20_000` and `timeout: 20_000`.
+- Queue consolidation:
+  - `/orders` list replaced with redirect to `/`.
+  - Home actions/nav links updated to avoid duplicate queue-page behavior.
+- Intelligence UI:
+  - Existing KPI and prior layouts retained.
+  - Added `workQueue` layout mode in `ShopFloorLayouts` with department tabs and include-completed toggle.
+  - Added reusable customers-style `WorkQueueOrderCard` tile component and wired department feed shape/sorting updates.
+- Timer behavior:
+  - `getOrderPartTimeTotals` now returns second-level totals (`totalsSeconds`).
+  - `/api/timer/active` now returns `totalsSeconds`.
+  - Order detail timer panel now shows persistent selected-part elapsed (stored totals + live delta).
+  - `/api/timer/finish` now stops timer and logs event without completing the part.
+  - `completeOrderPart` now rejects with 409 if active checklist items remain incomplete.
+- Tests:
+  - Updated time service tests for seconds-based totals.
+  - Added orders service test for checklist-completion gate.
+
+## Files touched
+- `src/modules/orders/orders.repo.ts`
+- `src/modules/orders/orders.service.ts`
+- `src/repos/mock/orders.ts`
+- `src/app/page.tsx`
+- `src/app/orders/page.tsx`
+- `src/components/AppNav.tsx`
+- `src/components/ShopFloorLayouts.tsx`
+- `src/components/work-queue/WorkQueueOrderCard.tsx`
+- `src/app/api/timer/active/route.ts`
+- `src/app/api/timer/finish/route.ts`
+- `src/modules/time/time.service.ts`
+- `src/modules/time/__tests__/time.service.test.ts`
+- `src/modules/orders/__tests__/orders.service.test.ts`
+- plus minor route-link updates in order/machinist pages.
+
+## Commands run
+- `npm run lint`
+- `npm run test`
+- `npm run build`
+- `npm run dev` (temporary for screenshot attempt)
+- `npm run set-demo-passwords` (to support local login automation)
+
+## Verification evidence
+- Lint: passed.
+- Tests: passed (full vitest suite).
+- Build: passed (Next production build + standalone asset copy).
+- Browser capture: automation login path failed on selector discovery; auth-gate screenshot artifact captured instead.
+
+## Next steps / follow-up
+- If desired, add robust Playwright auth helper for deterministic screenshot capture on authenticated pages.
+- Optional: refine work queue “latest activity” to include non-flagged operational events beyond rework/dept transitions.

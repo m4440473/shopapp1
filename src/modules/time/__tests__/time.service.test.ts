@@ -129,9 +129,9 @@ describe('time.service', () => {
 
     const totalsResult = await getOrderPartTimeTotals(switchOrderId, [firstPartId, secondPartId]);
     expect(totalsResult.ok).toBe(true);
-    const totals = (totalsResult as { ok: true; data: { totals: Record<string, number> } }).data.totals;
-    expect(totals[firstPartId]).toBe(10);
-    expect(totals[secondPartId]).toBe(15);
+    const totals = (totalsResult as { ok: true; data: { totalsSeconds: Record<string, number> } }).data.totalsSeconds;
+    expect(totals[firstPartId]).toBe(600);
+    expect(totals[secondPartId]).toBe(900);
   });
 
 
@@ -166,8 +166,8 @@ describe('time.service', () => {
 
     const totalsResult = await getOrderPartTimeTotals(orderId, [partId]);
     expect(totalsResult.ok).toBe(true);
-    const totals = (totalsResult as { ok: true; data: { totals: Record<string, number> } }).data.totals;
-    expect(totals[partId]).toBe(27);
+    const totals = (totalsResult as { ok: true; data: { totalsSeconds: Record<string, number> } }).data.totalsSeconds;
+    expect(totals[partId]).toBe(1620);
   });
 
   it('rejects editing an active entry', async () => {

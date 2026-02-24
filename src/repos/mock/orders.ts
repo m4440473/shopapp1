@@ -334,7 +334,7 @@ export function createMockOrdersRepo() {
       };
     },
 
-    async createPartEvent(data: { orderId: string; partId: string; userId?: string | null; type: string; message: string; meta?: Record<string, unknown> | null }) {
+    async createPartEvent(data: { orderId: string; partId: string; userId?: string | null; type: string; message: string; meta?: Record<string, unknown> | null }, _db?: any) {
       const event = {
         id: nextId('partEvent'),
         orderId: data.orderId,
@@ -591,7 +591,7 @@ export function createMockOrdersRepo() {
       return dept ?? null;
     },
 
-    async listDepartmentsOrdered() {
+    async listDepartmentsOrdered(_db?: any) {
       return [...state.departments].sort((a, b) => a.sortOrder - b.sortOrder);
     },
 
@@ -722,7 +722,7 @@ export function createMockOrdersRepo() {
       return state.addons.filter((addon) => addonIds.includes(addon.id));
     },
 
-    async listReadyOrderPartsForDepartment(departmentId: string, includeCompleted = false) {
+    async listReadyOrderPartsForDepartment(departmentId: string, includeCompleted = false, _db?: any) {
       return state.orderParts
         .filter((part) => {
           if (part.currentDepartmentId !== departmentId) return false;
@@ -736,7 +736,10 @@ export function createMockOrdersRepo() {
             partNumber: part.partNumber,
             quantity: part.quantity,
             orderId: part.orderId,
-            partEvents: state.partEvents.filter((event) => event.partId === part.id).sort((a,b)=>b.createdAt.getTime()-a.createdAt.getTime()).slice(0,1),
+            partEvents: state.partEvents.filter((event) => event.partId === part.id).sort((a,b)=>b.createdAt.getTime()-a.createdAt.getTime()).slice(0,5),
+            checklistItems: state.orderChecklist
+              .filter((item) => item.partId === part.id && item.departmentId === departmentId && item.isActive)
+              .map((item) => ({ id: item.id, completed: item.completed })),
             order: order
               ? {
                   id: order.id,
@@ -744,6 +747,7 @@ export function createMockOrdersRepo() {
                   dueDate: order.dueDate,
                   status: order.status,
                   customer: state.customers.find((customer) => customer.id === order.customerId) ?? null,
+                  assignedMachinist: state.users.find((user) => user.id === order.assignedMachinistId) ?? null,
                   parts: findOrderParts(order.id).map((entry) => ({ id: entry.id })),
                 }
               : null,

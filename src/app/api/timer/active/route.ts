@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     activeEntry,
     activeOrder,
     activePart,
-    totals: totalsResult?.ok ? totalsResult.data.totals : {},
+    totalsSeconds: totalsResult?.ok ? totalsResult.data.totalsSeconds : {},
     lastPartEntries: summaryResult?.ok ? summaryResult.data.lastPartEntries : {},
   });
 }

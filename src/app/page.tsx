@@ -93,10 +93,10 @@ export default async function Home() {
         </div>
         <div className="flex items-center gap-3">
           <Button asChild variant="secondary" className="rounded-full border border-primary/40 bg-primary/15 text-primary">
-            <Link href="/orders/new">Schedule work</Link>
+            <Link href="/orders/new">New Order</Link>
           </Button>
           <Button asChild className="rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/40">
-            <Link href="/orders">View all orders</Link>
+            <Link href="/">Open queue</Link>
           </Button>
         </div>
       </div>
@@ -160,8 +160,8 @@ export default async function Home() {
               <CardDescription>Latest order activity pulled straight from the floor.</CardDescription>
             </div>
             <Button asChild size="sm" className="ml-auto gap-1 rounded-full bg-primary/90 text-primary-foreground">
-              <Link href="/orders">
-                View all
+              <Link href="/">
+                View queue
                 <ArrowUpRight className="h-4 w-4" />
               </Link>
             </Button>

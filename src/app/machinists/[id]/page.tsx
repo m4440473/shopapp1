@@ -246,7 +246,7 @@ export default async function MachinistProfilePage({ params }: { params: Promise
               <CardDescription>Live queue of assigned work with due dates and statuses.</CardDescription>
             </div>
             <Button asChild variant="outline" size="sm">
-              <Link href={`/orders?assignedMachinistId=${id}`}>
+              <Link href='/'>
                 View in orders queue
               </Link>
             </Button>
