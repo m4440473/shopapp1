@@ -3,6 +3,40 @@
 ## Session Metadata
 - Date: 2026-02-24
 - Agent: GPT-5.2-Codex
+- Task ID: Unplanned timer reliability fix (start validation compatibility + resume FK handling)
+- Goal: Prevent timer start 400s from missing `operation` payloads and make resume path gracefully handle FK violations.
+
+## Dependency Validation
+- [x] Reviewed `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No unresolved dependency blocker found for this scoped timer reliability fix.
+
+## Plan First
+- [x] Inspect timer start schema/route and resume service error handling to confirm failing paths.
+- [x] Implement minimal server-side compatibility fix for missing `operation` and reuseable FK error handling.
+- [x] Run focused verification (`time.service` tests + lint) and record evidence.
+- [x] Update continuity artifacts (`PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `docs/AGENT_TASK_BOARD.md`).
+
+## Implementation Checklist
+- [x] Made `TimeEntryStart.operation` optional with server default of `Part Work`.
+- [x] Added FK error handling to `resumeTimeEntry` so resume failures return deterministic API errors instead of uncaught exceptions.
+- [x] Updated FK message text to cover missing order/part/user linkage, not only stale session wording.
+
+## Verification Checklist
+- [x] `npm run test -- src/modules/time/__tests__/time.service.test.ts`
+- [x] `npm run lint`
+
+## Review + Results
+- `/api/timer/start` now accepts older payloads without `operation` and defaults to `Part Work`, eliminating immediate 400 validation failures on that contract drift path.
+- Resume flows now catch Prisma FK violations and return controlled service errors, preventing raw crash behavior when linked records are invalid/deleted.
+- No dependency/package changes or unrelated refactors were introduced.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-24
+- Agent: GPT-5.2-Codex
 - Task ID: Unplanned timer UX fix (resume paused part timer)
 - Goal: Allow machinists to resume paused timer context for a part instead of always starting a fresh timer interaction.
 
