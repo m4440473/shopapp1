@@ -40,6 +40,18 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-24 — Timer start 400 fix (missing operation in order detail payload)
+- Implemented a scoped bugfix in `src/app/orders/[id]/page.tsx` to include `operation: "Part Work"` when calling `POST /api/timer/start` from the order detail Active Work controls.
+- This aligns the client payload with `TimeEntryStart` validation requirements and prevents immediate 400 rejection for missing `operation`.
+- No additional refactors or dependency changes were made.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed successfully.
+- Timer start payload now includes required `operation` field on this code path.
+
 
 ### 2026-02-23 — Unplanned maintenance: local install docs + timer FK guard + order timer UI cleanup
 - Executed targeted maintenance scope requested by user (no broad refactors):

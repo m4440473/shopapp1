@@ -1,6 +1,35 @@
 # tasks/todo.md — Session Plan + Verification
 
 ## Session Metadata
+- Date: 2026-02-24
+- Agent: GPT-5.2-Codex
+- Task ID: Unplanned bugfix (timer start 400 validation)
+- Goal: Fix order detail timer start request payload so `/api/timer/start` passes schema validation.
+
+## Dependency Validation
+- [x] Reviewed `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No dependency blocker found for this scoped bugfix.
+
+## Plan First
+- [x] Confirm the failing payload path and schema requirement.
+- [x] Apply minimal UI payload fix without broad refactors.
+- [x] Run focused verification and capture evidence.
+- [x] Update continuity artifacts (`PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`).
+
+## Implementation Checklist
+- [x] Added required `operation` field to the order detail timer start request body.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Order detail timer start now sends `{ orderId, partId, operation: "Part Work" }`, matching `TimeEntryStart` validation and preventing the immediate 400 schema rejection path.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
 - Date: 2026-02-23
 - Agent: GPT-5.2-Codex
 - Task ID: Unplanned maintenance (README local install + timer start failure + order timer controls UI)
