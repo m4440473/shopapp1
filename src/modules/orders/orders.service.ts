@@ -51,12 +51,17 @@ import {
   findOrderWithDetails,
   findPartAttachment,
   findPartById,
+  findPartForRouting,
+  findChecklistForRoutingById,
   findPartWithOrderInfo,
   findUserById,
   listPartEventsForPart,
   listAddons,
   listAddonsByIds,
   listChecklistItems,
+  runInTransaction,
+  setChecklistCompletion,
+  updatePartCurrentDepartment,
   listDepartmentsOrdered,
   listOrderLevelDepartmentChecklistItems,
   listOrderCharges,
@@ -86,7 +91,7 @@ export { generateNextOrderNumber, syncChecklistForOrder };
 export type { OrderFilterState, OrderListItem, OrderWithMeta };
 export { isPartReadyForDepartment };
 
-export type DepartmentFeedPart = { id: string; partNumber: string | null; quantity: number | null };
+export type DepartmentFeedPart = { id: string; partNumber: string | null; quantity: number | null; flagged: boolean; reasonText: string | null };
 export type DepartmentFeedOrder = {
   orderId: string;
   orderNumber: string;
@@ -161,24 +166,49 @@ function parseDate(value: string | Date | null | undefined) {
 
 type DepartmentSortEntry = { id: string; name?: string | null; sortOrder: number };
 
-function selectDepartmentForPart(
+export function selectDepartmentForPart(
   checklistItems: Array<{
     departmentId?: string | null;
     isActive?: boolean | null;
     completed?: boolean | null;
+    addon?: { isChecklistItem?: boolean | null } | null;
+    charge?: { addon?: { isChecklistItem?: boolean | null } | null } | null;
   }>,
   departments: DepartmentSortEntry[],
 ) {
   if (!checklistItems.length) return null;
+  const scopedItems = checklistItems.filter((item) => isChecklistRoutingItem(item));
   for (const department of departments) {
-    const entries = checklistItems.filter(
-      (item) => item.departmentId === department.id && item.isActive !== false,
-    );
+    const entries = scopedItems.filter((item) => item.departmentId === department.id);
     if (!entries.length) continue;
     const hasIncomplete = entries.some((item) => item.completed === false);
     if (hasIncomplete) return department.id;
   }
   return null;
+}
+
+
+function isChecklistRoutingItem(item: {
+  isActive?: boolean | null;
+  addon?: { isChecklistItem?: boolean | null } | null;
+  charge?: { addon?: { isChecklistItem?: boolean | null } | null } | null;
+}) {
+  if (item.isActive === false) return false;
+  return item.addon?.isChecklistItem === true || item.charge?.addon?.isChecklistItem === true;
+}
+
+function isBackwardsMove(fromDepartmentId: string | null | undefined, toDepartmentId: string | null | undefined, departments: DepartmentSortEntry[]) {
+  if (!fromDepartmentId || !toDepartmentId) return false;
+  const rank = new Map(departments.map((dept, idx) => [dept.id, dept.sortOrder ?? idx]));
+  const fromRank = rank.get(fromDepartmentId);
+  const toRank = rank.get(toDepartmentId);
+  if (typeof fromRank !== 'number' || typeof toRank !== 'number') return false;
+  return toRank < fromRank;
+}
+
+function getDepartmentName(departments: DepartmentSortEntry[], departmentId: string | null | undefined) {
+  if (!departmentId) return 'Done';
+  return departments.find((dept) => dept.id === departmentId)?.name ?? departmentId;
 }
 
 export function decorateOrder(order: OrderListItem): OrderWithMeta {
@@ -603,6 +633,119 @@ export async function addOrderNote(
   return ok({ note });
 }
 
+export async function recomputePartDepartment(
+  partId: string,
+  {
+    actorUserId,
+    reasonCode,
+    reasonText,
+    transitionType,
+    tx,
+  }: {
+    actorUserId?: string | null;
+    reasonCode?: string;
+    reasonText?: string;
+    transitionType?: 'auto' | 'manual';
+    tx?: any;
+  } = {},
+) {
+  if (!partId) return fail(400, 'Part is required');
+  const departments = await listDepartmentsOrdered();
+  const part = await findPartForRouting(partId, tx);
+  if (!part) return fail(404, 'Part not found');
+
+  const fromDepartmentId = part.currentDepartmentId ?? null;
+  const toDepartmentId = selectDepartmentForPart(part.checklistItems ?? [], departments);
+
+  if (fromDepartmentId === toDepartmentId) {
+    return ok({ partId, orderId: part.orderId, currentDepartmentId: fromDepartmentId, changed: false, flagged: false });
+  }
+
+  const backwards = isBackwardsMove(fromDepartmentId, toDepartmentId, departments);
+  const manual = transitionType === 'manual';
+  if ((manual || backwards) && !reasonCode && !reasonText?.trim()) {
+    return fail(400, 'Reason is required for rework/backward/manual department transitions.');
+  }
+
+  await updatePartCurrentDepartment(partId, toDepartmentId, tx);
+
+  let type = 'DEPARTMENT_ADVANCED';
+  if (manual) type = 'DEPARTMENT_SET_MANUAL';
+  else if (backwards) type = 'DEPARTMENT_REWORKED';
+
+  const fromLabel = getDepartmentName(departments, fromDepartmentId);
+  const toLabel = getDepartmentName(departments, toDepartmentId);
+  const flagged = backwards || (manual && backwards);
+
+  await recordPartEvent({
+    orderId: part.orderId,
+    partId,
+    userId: actorUserId ?? null,
+    type,
+    message: `Department moved from ${fromLabel} to ${toLabel}.`,
+    meta: {
+      fromDepartmentId,
+      toDepartmentId,
+      reasonCode: reasonCode ?? null,
+      reasonText: reasonText?.trim() || null,
+      flag: flagged,
+      transitionType: manual ? 'manual' : backwards ? 'rework' : 'auto',
+    },
+  });
+
+  return ok({ partId, orderId: part.orderId, currentDepartmentId: toDepartmentId, changed: true, flagged });
+}
+
+export async function previewChecklistComplete({ orderId, partId, checklistId }: { orderId: string; partId: string; checklistId: string }) {
+  const departments = await listDepartmentsOrdered();
+  const checklist = await findChecklistForRoutingById(checklistId);
+  if (!checklist || checklist.orderId !== orderId || checklist.partId !== partId) return fail(404, 'Checklist item not found');
+  const part = checklist.part;
+  if (!part) return fail(404, 'Part not found');
+
+  const currentDepartmentId = part.currentDepartmentId ?? selectDepartmentForPart(part.checklistItems ?? [], departments);
+  const simulatedItems = (part.checklistItems ?? []).map((item) =>
+    item.id === checklistId ? { ...item, completed: true } : item,
+  );
+  const nextDepartmentId = selectDepartmentForPart(simulatedItems, departments);
+
+  const willCompleteDepartment = Boolean(currentDepartmentId) &&
+    !simulatedItems.some(
+      (item) => item.departmentId === currentDepartmentId && isChecklistRoutingItem(item) && item.completed === false,
+    );
+
+  return ok({
+    willCompleteDepartment,
+    currentDepartmentId: currentDepartmentId ?? null,
+    currentDepartmentName: getDepartmentName(departments, currentDepartmentId ?? null),
+    nextDepartmentId: nextDepartmentId ?? null,
+    nextDepartmentName: getDepartmentName(departments, nextDepartmentId ?? null),
+    doneIfConfirmed: nextDepartmentId === null,
+  });
+}
+
+export async function completeChecklistAndAdvance({ orderId, partId, checklistId, actorUserId }: { orderId: string; partId: string; checklistId: string; actorUserId?: string }) {
+  const result = await runInTransaction(async (tx) => {
+    const checklist = await findChecklistForRoutingById(checklistId, tx);
+    if (!checklist || checklist.orderId !== orderId || checklist.partId !== partId) {
+      throw new Error('CHECKLIST_NOT_FOUND');
+    }
+
+    await setChecklistCompletion({ checklistId, checked: true, toggledById: actorUserId ?? null, chargeId: checklist.chargeId }, tx);
+    const recompute = await recomputePartDepartment(partId, { actorUserId, tx });
+    if (recompute.ok === false) {
+      throw new Error(typeof recompute.error === 'string' ? recompute.error : 'Failed to recompute department');
+    }
+    return recompute.data;
+  }).catch((error: any) => {
+    if (error?.message === 'CHECKLIST_NOT_FOUND') return null;
+    throw error;
+  });
+
+  if (!result) return fail(404, 'Checklist item not found');
+  return ok({ part: { id: partId, currentDepartmentId: result.currentDepartmentId, flagged: result.flagged } });
+}
+
 export async function toggleChecklistItem({
   orderId,
   checklistId,
@@ -612,6 +755,8 @@ export async function toggleChecklistItem({
   checked,
   employeeName,
   togglerId,
+  reasonCode,
+  reasonText,
 }: {
   orderId: string;
   checklistId?: string;
@@ -621,10 +766,10 @@ export async function toggleChecklistItem({
   checked: boolean;
   employeeName?: string;
   togglerId?: string;
+  reasonCode?: string;
+  reasonText?: string;
 }) {
-  if (!checklistId && !chargeId && !addonId) {
-    return fail(400, 'Missing checklistId');
-  }
+  if (!checklistId && !chargeId && !addonId) return fail(400, 'Missing checklistId');
   if (typeof checked !== 'boolean') return fail(400, 'Missing checked state');
 
   const orderExists = await findOrderById(orderId);
@@ -635,30 +780,31 @@ export async function toggleChecklistItem({
     : chargeId
       ? await findChecklistByCharge(orderId, chargeId)
       : await findChecklistByAddon(orderId, addonId as string, typeof partId === 'string' ? partId : null);
-  if (!existingChecklist || existingChecklist.orderId !== orderId) {
-    return fail(404, 'Checklist item not found');
-  }
-  if (existingChecklist.departmentId && !existingChecklist.partId) {
-    return fail(400, 'Department checklist items must be tied to a part.');
-  }
+  if (!existingChecklist || existingChecklist.orderId !== orderId) return fail(404, 'Checklist item not found');
+  if (existingChecklist.departmentId && !existingChecklist.partId) return fail(400, 'Department checklist items must be tied to a part.');
 
   const charge = existingChecklist.chargeId ? await findChargeById(existingChecklist.chargeId) : null;
-
   const addonExists = existingChecklist.addonId ? await findAddonById(existingChecklist.addonId) : null;
+  if (existingChecklist.chargeId && !charge) return fail(404, 'Charge not found');
+  if (existingChecklist.addonId && !addonExists) return fail(404, 'Addon not found');
 
-  if (existingChecklist.chargeId && !charge) {
-    return fail(404, 'Charge not found');
-  }
-  if (existingChecklist.addonId && !addonExists) {
-    return fail(404, 'Addon not found');
-  }
-
-  const previousState = existingChecklist?.completed ?? false;
-
+  const previousState = existingChecklist.completed ?? false;
   const toggler = togglerId ? await findUserById(togglerId) : null;
   const toggledById = toggler ? toggler.id : null;
 
-  await updateChecklistCompletion({
+  const departments = await listDepartmentsOrdered();
+  const partSnapshot = existingChecklist.partId ? await findPartForRouting(existingChecklist.partId) : null;
+  const fromDepartmentId = partSnapshot?.currentDepartmentId ?? null;
+  const simulatedItems = (partSnapshot?.checklistItems ?? []).map((item) =>
+    item.id === existingChecklist.id ? { ...item, completed: checked } : item,
+  );
+  const simulatedDepartmentId = partSnapshot ? selectDepartmentForPart(simulatedItems, departments) : null;
+  const causesBackwards = Boolean(partSnapshot) && isBackwardsMove(fromDepartmentId, simulatedDepartmentId, departments);
+  if (!checked && causesBackwards && !reasonCode && !reasonText?.trim()) {
+    return fail(400, 'Reason is required when reopening work moves a part backward.');
+  }
+
+  await setChecklistCompletion({
     checklistId: existingChecklist.id,
     checked,
     toggledById,
@@ -685,6 +831,13 @@ export async function toggleChecklistItem({
       message: `${label} ${checked ? 'checked' : 'unchecked'}.`,
       meta: { checklistId: existingChecklist.id, checked },
     });
+
+    const recompute = await recomputePartDepartment(existingChecklist.partId, {
+      actorUserId: toggledById ?? undefined,
+      reasonCode: !checked && causesBackwards ? reasonCode : undefined,
+      reasonText: !checked && causesBackwards ? reasonText : undefined,
+    });
+    if (recompute.ok === false) return recompute;
   }
 
   return ok({ ok: true });
@@ -778,14 +931,21 @@ export async function assignPartDepartment({
   orderId,
   partId,
   departmentId,
+  actorUserId,
+  reasonCode,
+  reasonText,
 }: {
   orderId: string;
   partId: string;
   departmentId: string;
+  actorUserId?: string;
+  reasonCode?: string;
+  reasonText?: string;
 }) {
   if (!orderId) return fail(400, 'Order is required');
   if (!partId) return fail(400, 'Part is required');
   if (!departmentId) return fail(400, 'Department is required');
+  if (!reasonCode && !reasonText?.trim()) return fail(400, 'Reason is required for manual department transitions.');
 
   const order = await findOrderById(orderId);
   if (!order) return fail(404, 'Order not found');
@@ -793,10 +953,28 @@ export async function assignPartDepartment({
   const part = await findOrderPart(orderId, partId);
   if (!part) return fail(404, 'Part not found for this order');
 
-  const department = await findActiveDepartmentById(departmentId);
+  const [department, departments] = await Promise.all([findActiveDepartmentById(departmentId), listDepartmentsOrdered()]);
   if (!department) return fail(400, 'Department not found');
 
+  const fromDepartmentId = part.currentDepartmentId ?? null;
+  const isBackward = isBackwardsMove(fromDepartmentId, departmentId, departments);
+
   await updateOrderPart(part.id, { currentDepartmentId: departmentId });
+  await recordPartEvent({
+    orderId,
+    partId,
+    userId: actorUserId ?? null,
+    type: 'DEPARTMENT_SET_MANUAL',
+    message: `Department manually set to ${department.name ?? departmentId}.`,
+    meta: {
+      fromDepartmentId,
+      toDepartmentId: departmentId,
+      reasonCode: reasonCode ?? null,
+      reasonText: reasonText?.trim() || null,
+      flag: isBackward,
+      transitionType: 'manual',
+    },
+  });
   return ok({ ok: true });
 }
 
@@ -1291,9 +1469,10 @@ export async function searchOrders(query: string) {
 
 export async function getOrderDepartmentFeed(
   departmentId: string,
+  includeCompleted = false,
 ): Promise<ServiceResult<{ items: DepartmentFeedOrder[] }>> {
   if (!departmentId) return fail(400, 'Department is required');
-  const readyParts = await listReadyOrderPartsForDepartment(departmentId);
+  const readyParts = await listReadyOrderPartsForDepartment(departmentId, includeCompleted);
   const orders = new Map<string, DepartmentFeedOrder>();
 
   readyParts.forEach((part) => {
@@ -1311,10 +1490,13 @@ export async function getOrderDepartmentFeed(
         readyParts: [],
         readyPartsCount: 0,
       };
+    const latestMeta = (part.partEvents?.[0] as any)?.meta as Record<string, unknown> | null | undefined;
     existing.readyParts.push({
       id: part.id,
       partNumber: part.partNumber ?? null,
       quantity: part.quantity ?? null,
+      flagged: latestMeta?.flag === true,
+      reasonText: typeof latestMeta?.reasonText === 'string' ? latestMeta.reasonText : null,
     });
     existing.readyPartsCount += 1;
     orders.set(order.id, existing);
@@ -1336,6 +1518,8 @@ export async function transitionPartsDepartment({
   partIds,
   employeeName,
   togglerId,
+  reasonCode,
+  reasonText,
 }: {
   orderId: string;
   fromDepartmentId: string;
@@ -1343,6 +1527,8 @@ export async function transitionPartsDepartment({
   partIds: string[];
   employeeName: string;
   togglerId?: string;
+  reasonCode?: string;
+  reasonText?: string;
 }) {
   if (!orderId) return fail(400, 'Order is required');
   if (!fromDepartmentId) return fail(400, 'Missing fromDepartmentId');
@@ -1353,7 +1539,10 @@ export async function transitionPartsDepartment({
   const orderExists = await findOrderById(orderId);
   if (!orderExists) return fail(404, 'Order not found');
 
-  const targetDepartment = await findActiveDepartmentById(toDepartmentId);
+  const [targetDepartment, departments] = await Promise.all([
+    findActiveDepartmentById(toDepartmentId),
+    listDepartmentsOrdered(),
+  ]);
   if (!targetDepartment) return fail(400, 'Target department not found');
 
   const parts = await listOrderPartsByIds(orderId, partIds);
@@ -1361,6 +1550,11 @@ export async function transitionPartsDepartment({
 
   const invalidPart = parts.find((part) => part.currentDepartmentId !== fromDepartmentId);
   if (invalidPart) return fail(400, 'Part is not in the expected department');
+
+  const isBackward = isBackwardsMove(fromDepartmentId, toDepartmentId, departments);
+  if (!reasonCode && !reasonText?.trim()) {
+    return fail(400, 'Reason is required for manual department transitions.');
+  }
 
   const fromDepartment = await findDepartmentById(fromDepartmentId);
   const fromLabel = fromDepartment?.name ?? fromDepartmentId;
@@ -1377,6 +1571,24 @@ export async function transitionPartsDepartment({
       reason: `Moved ${partIds.length} part${partIds.length === 1 ? '' : 's'} from ${fromLabel} to ${toLabel} by ${employeeName}`,
     },
   });
+
+  await Promise.all(partIds.map((partId) =>
+    recordPartEvent({
+      orderId,
+      partId,
+      userId: togglerId ?? null,
+      type: 'DEPARTMENT_SET_MANUAL',
+      message: `Department manually moved from ${fromLabel} to ${toLabel}.`,
+      meta: {
+        fromDepartmentId,
+        toDepartmentId,
+        reasonCode: reasonCode ?? null,
+        reasonText: reasonText?.trim() || null,
+        flag: isBackward,
+        transitionType: 'manual',
+      },
+    }),
+  ));
 
   return ok({ ok: true });
 }

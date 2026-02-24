@@ -8,6 +8,11 @@ import { assignPartDepartment } from '@/modules/orders/orders.service';
 const AssignPayload = z.object({
   partId: z.string().trim().min(1),
   departmentId: z.string().trim().min(1),
+  reasonCode: z.string().trim().optional(),
+  reasonText: z.string().trim().optional(),
+}).refine((value) => Boolean(value.reasonCode?.trim() || value.reasonText?.trim()), {
+  message: 'Reason is required',
+  path: ['reasonText'],
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -27,6 +32,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     orderId: id,
     partId: parsed.data.partId,
     departmentId: parsed.data.departmentId,
+    actorUserId: (session.user as any)?.id as string | undefined,
+    reasonCode: parsed.data.reasonCode,
+    reasonText: parsed.data.reasonText,
   });
 
   if (result.ok === false) {
