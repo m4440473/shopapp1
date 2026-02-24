@@ -200,3 +200,34 @@
 - [x] `npm run test`
 - [x] `npm run build`
 - [x] Browser tool attempted for screenshot capture (auth-gated route screenshot captured after login automation failed).
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-24
+- Agent: GPT-5.2-Codex
+- Task ID: Unplanned bugfix (AppNav duplicate key + timer false-active conflict UX)
+- Goal: Remove duplicate React key warning in AppNav and harden timer start/resume conflict handling with actionable navigation context.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No blocking dependency gaps identified for this scoped bugfix.
+
+## Plan First
+- [x] Inspect navigation link mapping and timer start/resume conflict flow.
+- [x] Implement key uniqueness fix and conflict payload/UI improvements.
+- [x] Run lint/tests and record evidence.
+- [x] Update continuity docs (`PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`).
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test -- src/modules/time/__tests__/time.service.test.ts`
+- [ ] `npm run build` (fails currently with prisma appSettings unique-constraint during prerender of /403 in this environment)
+- [x] Browser screenshot captured for navigation/timer UI touchpoint.
+
+## Review + Results
+- AppNav now uses composite keys (`href+label`) so duplicate `'/'` links no longer trigger React key collisions.
+- Timer conflict payloads now include `activeOrderHref`; order page conflict dialog surfaces a direct navigation link to the active timer context.
+- When timer API returns 409 without switch-confirmation action, UI now shows a sync/refresh error instead of opening misleading conflict dialog.

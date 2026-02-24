@@ -45,6 +45,7 @@ type ConflictState = {
   activeEntry: any | null;
   activeOrder: any | null;
   activePart: any | null;
+  activeOrderHref: string | null;
   elapsedSeconds: number;
 };
 
@@ -88,6 +89,7 @@ export default function OrderDetailPage() {
     activeEntry: null,
     activeOrder: null,
     activePart: null,
+    activeOrderHref: null,
     elapsedSeconds: 0,
   });
   const [attachmentForm, setAttachmentForm] = useState<AttachmentFormState>({
@@ -240,11 +242,18 @@ export default function OrderDetailPage() {
       });
       if (res.status === 409) {
         const data = await res.json();
+        if (data.requiredAction !== 'switch_confirmation') {
+          setTimerError(typeof data.error === 'string' ? data.error : 'Timer state is out of sync. Refresh and try again.');
+          await refreshTimerSummary();
+          return false;
+        }
+
         setConflictState({
           open: true,
           activeEntry: data.activeEntry ?? null,
           activeOrder: data.activeOrder ?? null,
           activePart: data.activePart ?? null,
+          activeOrderHref: data.activeOrderHref ?? null,
           elapsedSeconds: data.elapsedSeconds ?? 0,
         });
         return false;
@@ -294,11 +303,18 @@ export default function OrderDetailPage() {
       });
       if (res.status === 409) {
         const data = await res.json();
+        if (data.requiredAction !== 'switch_confirmation') {
+          setTimerError(typeof data.error === 'string' ? data.error : 'Timer state is out of sync. Refresh and try again.');
+          await refreshTimerSummary();
+          return false;
+        }
+
         setConflictState({
           open: true,
           activeEntry: data.activeEntry ?? null,
           activeOrder: data.activeOrder ?? null,
           activePart: data.activePart ?? null,
+          activeOrderHref: data.activeOrderHref ?? null,
           elapsedSeconds: data.elapsedSeconds ?? 0,
         });
         return false;
@@ -605,6 +621,14 @@ export default function OrderDetailPage() {
               .
             </p>
             <p>Elapsed: {formatDuration(conflictState.elapsedSeconds)}</p>
+            {conflictState.activeOrderHref ? (
+              <p>
+                Manage it here:{' '}
+                <Link href={conflictState.activeOrderHref} className="font-medium text-primary underline-offset-2 hover:underline">
+                  Open active timer context
+                </Link>
+              </p>
+            ) : null}
             <p>
               Confirming switch will close that timer, then activate{' '}
               <span className="font-medium text-foreground">{selectedPart?.partNumber || 'the selected part'}</span>.

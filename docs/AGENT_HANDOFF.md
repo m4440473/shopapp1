@@ -605,3 +605,43 @@ Implement consolidated P0-P5 pass: transaction timeout/client consistency fix, m
 ## Next steps / follow-up
 - If desired, add robust Playwright auth helper for deterministic screenshot capture on authenticated pages.
 - Optional: refine work queue “latest activity” to include non-flagged operational events beyond rework/dept transitions.
+
+## Session Handoff — 2026-02-24 (AppNav key + timer conflict UX fix)
+
+## Goal
+Resolve reported UI/runtime bugs: duplicate React key warning in navigation and repeated “active timer” conflict without actionable context.
+
+## Scope completed
+- Updated `AppNav` map keys to use a composite (`href` + `label`) to prevent duplicate-key collisions when multiple links share `/`.
+- Updated `/api/timer/start` conflict handling:
+  - includes `activeOrderHref` in switch-confirmation payloads;
+  - returns explicit `requiredAction: refresh` when 409 occurs but no active entry can be resolved.
+- Updated `/api/timer/resume` conflict handling to include `activeOrderHref`.
+- Updated order detail timer UI:
+  - conflict state now stores `activeOrderHref`;
+  - conflict dialog includes link to open active timer context;
+  - start/resume handlers treat non-switch 409 responses as sync errors (no misleading conflict modal).
+
+## Files touched
+- `src/components/AppNav.tsx`
+- `src/app/api/timer/start/route.ts`
+- `src/app/api/timer/resume/route.ts`
+- `src/app/orders/[id]/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run lint`
+- `npm run test -- src/modules/time/__tests__/time.service.test.ts`
+- `npm run build`
+- `npm run dev` (temporary for screenshot capture)
+
+## Verification evidence
+- Lint passed with zero ESLint errors/warnings.
+- Time service unit suite passed.
+- Build failed in this environment due Prisma unique constraint (`appSettings.id`) during prerender of `/403`.
+- Screenshot captured at `browser:/tmp/codex_browser_invocations/0002efd80d6b7b20/artifacts/artifacts/nav-timer-fix-home.png`.
+
+## Next steps
+- Investigate build-time app settings seeding/idempotency causing `P2002` on `/403` prerender in this environment.
