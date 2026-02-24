@@ -41,7 +41,7 @@ type Props = {
     dueDate: string | Date | null;
     status: string;
     totalParts: number;
-    readyParts: Array<{ id: string; partNumber: string | null; quantity: number | null }>;
+    readyParts: Array<{ id: string; partNumber: string | null; quantity: number | null; flagged: boolean; reasonText: string | null }>;
     readyPartsCount: number;
   }>;
 };
@@ -91,18 +91,20 @@ export function ShopFloorLayouts({
   const [departmentFeed, setDepartmentFeed] = useState(initialDepartmentFeed ?? []);
   const [departmentLoading, setDepartmentLoading] = useState(false);
   const [departmentError, setDepartmentError] = useState<string | null>(null);
+  const [includeCompleted, setIncludeCompleted] = useState(false);
 
   useEffect(() => {
     setDepartmentId(initialDepartmentId ?? '');
     setDepartmentFeed(initialDepartmentFeed ?? []);
   }, [initialDepartmentId, initialDepartmentFeed]);
 
-  const loadDepartmentFeed = useCallback(async (nextDepartmentId: string) => {
+  const loadDepartmentFeed = useCallback(async (nextDepartmentId: string, includeCompletedValue: boolean) => {
     if (!nextDepartmentId) return;
     setDepartmentLoading(true);
     setDepartmentError(null);
     try {
-      const res = await fetch(`/api/intelligence/department-feed?departmentId=${encodeURIComponent(nextDepartmentId)}`, {
+      const params = new URLSearchParams({ departmentId: nextDepartmentId, includeCompleted: String(includeCompletedValue) });
+      const res = await fetch(`/api/intelligence/department-feed?${params.toString()}`, {
         credentials: 'include',
       });
       if (!res.ok) {
@@ -130,8 +132,8 @@ export function ShopFloorLayouts({
       setDepartmentError(null);
       return;
     }
-    loadDepartmentFeed(departmentId);
-  }, [departmentId, initialDepartmentId, initialDepartmentFeed, loadDepartmentFeed]);
+    loadDepartmentFeed(departmentId, includeCompleted);
+  }, [departmentId, includeCompleted, initialDepartmentId, initialDepartmentFeed, loadDepartmentFeed]);
 
   const filtered = useMemo(() => {
     const decoratedOrders = orders.map((order) => decorateOrder(order));
@@ -341,7 +343,7 @@ export function ShopFloorLayouts({
                       />
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-4">
                     <Checkbox
                       id="sfi-requires-addons"
                       checked={filters.requiresAddons}
@@ -351,7 +353,7 @@ export function ShopFloorLayouts({
                       Requires addons
                     </Label>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-4">
                     <Checkbox
                       id="sfi-stale-status"
                       checked={filters.staleStatus}
@@ -380,7 +382,7 @@ export function ShopFloorLayouts({
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Department feed</p>
             <p className="text-sm text-foreground">Focus the shop queue by the department in charge.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Department</Label>
             <Select
               value={departmentId}
@@ -398,6 +400,10 @@ export function ShopFloorLayouts({
                 ))}
               </SelectContent>
             </Select>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Checkbox checked={includeCompleted} onCheckedChange={(value) => setIncludeCompleted(value === true)} />
+              Include completed
+            </label>
           </div>
         </div>
         {departmentError ? (
@@ -435,8 +441,9 @@ export function ShopFloorLayouts({
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                     {preview.map((part) => (
-                      <span key={part.id} className="rounded-full border border-border/60 bg-background/70 px-2 py-1">
+                      <span key={part.id} className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 px-2 py-1" title={part.reasonText ?? undefined}>
                         {formatReadyPartLabel(part)}
+                        {part.flagged ? <span className="rounded bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-300">REWORK</span> : null}
                       </span>
                     ))}
                     {remaining > 0 ? <span className="text-xs text-muted-foreground">+{remaining} more</span> : null}

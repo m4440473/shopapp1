@@ -729,3 +729,19 @@ Next steps (immediate)
 ## 2026-01-21
 - Summary: Added template selection for order print previews and disabled webpack caching in dev to avoid missing .next cache warnings.
 - Tests run: `npm run lint`
+
+## 2026-02-24
+- Summary: Implemented department auto-advance confirmation flow for checklist completion, centralized part department recompute logic, and reason/flag logging for rework/backward/manual transitions.
+- Scope highlights:
+  - Added checklist preview + complete-and-advance API endpoints for order-part checklist items.
+  - Added `recomputePartDepartment` service and routing-aware checklist filtering (`isChecklistItem` only).
+  - Added reason-required enforcement for backward snap-back and manual department transitions with flagged `PartEvent` meta.
+  - Updated order detail checklist behavior to avoid optimistic check on last-item completion and to request reason on backward reopen.
+  - Updated intelligence department feed to support include-completed and surfaced REWORK badges for flagged parts.
+- Tests run:
+  - `npm run lint`
+  - `npm run test -- src/modules/orders/__tests__/department-routing.test.ts`
+  - `npm run build`
+- Backlog notes (not implemented):
+  - Replace browser-native `confirm/prompt` interactions in order checklist with first-class shadcn modal forms for richer validation/UX parity.
+  - Add focused service tests for `recomputePartDepartment`, `previewChecklistComplete`, and backward-reason enforcement branches.

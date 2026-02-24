@@ -1,3 +1,4 @@
+import type { PrismaClient } from '@prisma/client';
 import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
 import { prisma } from '@/lib/prisma';
 
@@ -8,6 +9,8 @@ type ChecklistKey = {
 function buildChecklistKey(value: ChecklistKey) {
   return value.chargeId;
 }
+
+type DbClient = PrismaClient | any;
 
 export async function generateNextOrderNumber(business: BusinessCode): Promise<string> {
   const recent = await prisma.order.findMany({
@@ -241,7 +244,7 @@ export async function findOrderWithDetails(id: string) {
     where: { id },
     include: {
       customer: true,
-      parts: { include: { material: true, attachments: true, charges: { include: { department: true } } } },
+      parts: { include: { material: true, attachments: true, charges: { include: { department: true } }, partEvents: { orderBy: { createdAt: 'desc' }, take: 1 } } },
       checklist: { include: { addon: true, department: true, part: true, charge: true } },
       charges: { include: { department: true, part: true }, orderBy: { sortOrder: 'asc' } },
       statusHistory: { orderBy: { createdAt: 'asc' } },
@@ -399,8 +402,8 @@ export async function createPartEvent(data: {
   type: string;
   message: string;
   meta?: Record<string, unknown> | null;
-}) {
-  return prisma.partEvent.create({
+}, db: DbClient = prisma) {
+  return db.partEvent.create({
     data: {
       orderId: data.orderId,
       partId: data.partId,
@@ -422,6 +425,73 @@ export async function listPartEventsForPart(orderId: string, partId: string) {
     ...event,
     meta: parsePartEventMeta(event.meta),
   }));
+}
+
+export async function runInTransaction<T>(fn: (tx: any) => Promise<T>) {
+  return prisma.$transaction((tx) => fn(tx));
+}
+
+export async function findChecklistForRoutingById(checklistId: string, db: DbClient = prisma) {
+  return db.orderChecklist.findUnique({
+    where: { id: checklistId },
+    include: {
+      addon: { select: { id: true, name: true, isChecklistItem: true } },
+      charge: { select: { id: true, addon: { select: { id: true, isChecklistItem: true } } } },
+      part: {
+        select: {
+          id: true,
+          orderId: true,
+          currentDepartmentId: true,
+          checklistItems: {
+            where: { isActive: true },
+            include: {
+              addon: { select: { id: true, isChecklistItem: true } },
+              charge: { select: { id: true, addon: { select: { id: true, isChecklistItem: true } } } },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function findPartForRouting(partId: string, db: DbClient = prisma) {
+  return db.orderPart.findUnique({
+    where: { id: partId },
+    select: {
+      id: true,
+      orderId: true,
+      currentDepartmentId: true,
+      checklistItems: {
+        where: { isActive: true },
+        include: {
+          addon: { select: { id: true, isChecklistItem: true } },
+          charge: { select: { id: true, addon: { select: { id: true, isChecklistItem: true } } } },
+        },
+      },
+    },
+  });
+}
+
+export async function updatePartCurrentDepartment(partId: string, currentDepartmentId: string | null, db: DbClient = prisma) {
+  return db.orderPart.update({ where: { id: partId }, data: { currentDepartmentId } });
+}
+
+export async function setChecklistCompletion(
+  { checklistId, checked, toggledById, chargeId }: { checklistId: string; checked: boolean; toggledById: string | null; chargeId?: string | null },
+  db: DbClient = prisma,
+) {
+  await db.orderChecklist.update({
+    where: { id: checklistId },
+    data: { completed: checked, toggledById },
+  });
+
+  if (chargeId) {
+    await db.orderCharge.update({
+      where: { id: chargeId },
+      data: { completedAt: checked ? new Date() : null },
+    });
+  }
 }
 
 export async function createOrderPartWithCharges({
@@ -840,23 +910,31 @@ export async function listAddonsByIds(addonIds: string[]) {
   });
 }
 
-export async function listReadyOrderPartsForDepartment(departmentId: string) {
+export async function listReadyOrderPartsForDepartment(departmentId: string, includeCompleted = false) {
   return prisma.orderPart.findMany({
     where: {
       currentDepartmentId: departmentId,
-      checklistItems: {
-        some: {
-          departmentId,
-          isActive: true,
-          completed: false,
-        },
-      },
+      ...(includeCompleted
+        ? {}
+        : {
+            checklistItems: {
+              some: {
+                departmentId,
+                isActive: true,
+                completed: false,
+              },
+            },
+          }),
     },
     select: {
       id: true,
       partNumber: true,
       quantity: true,
       orderId: true,
+      partEvents: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
       order: {
         select: {
           id: true,

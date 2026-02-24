@@ -18,7 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const json = await req.json().catch(() => null);
-    const { checklistId, chargeId, addonId, partId, departmentId, checked } = json ?? {};
+    const { checklistId, chargeId, addonId, partId, departmentId, checked, reasonCode, reasonText } = json ?? {};
     if (!checklistId && !chargeId && !addonId) {
       return NextResponse.json({ error: 'Missing checklistId' }, { status: 400 });
     }
@@ -48,6 +48,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       checked,
       employeeName: togglerName,
       togglerId,
+      reasonCode,
+      reasonText,
     });
 
     if (result.ok === false) {
@@ -57,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(result.data);
   } catch (error) {
     console.error('Checklist toggle error', error);
     return NextResponse.json({ error: 'Failed to toggle checklist item.' }, { status: 500 });

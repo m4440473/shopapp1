@@ -10,6 +10,11 @@ const TransitionPayload = z.object({
   toDepartmentId: z.string().trim().min(1),
   partIds: z.array(z.string().trim().min(1)).min(1),
   employeeName: z.string().trim().min(1),
+  reasonCode: z.string().trim().optional(),
+  reasonText: z.string().trim().optional(),
+}).refine((value) => Boolean(value.reasonCode?.trim() || value.reasonText?.trim()), {
+  message: 'Reason is required',
+  path: ['reasonText'],
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

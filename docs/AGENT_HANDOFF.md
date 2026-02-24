@@ -450,3 +450,62 @@ Goal (1 sentence): Execute P2-T3 and P2-T4 by aligning Customers to repo/service
 ## Next steps
 - [ ] Start P3-T1 (time model invariants verification) only after owner confirms Phase 2 gate acceptance.
 - [ ] Optional docs-only follow-up: consolidate legacy order-centric deprecation/migration notes into a single appendix for future gate audits.
+
+---
+Date: 2026-02-24
+Agent: GPT-5.2-Codex
+Goal (1 sentence): Deliver department auto-advance confirmation and centralized routing recompute with required reason/flag logging for backward/rework/manual transitions.
+
+## What I changed
+- Added new checklist APIs:
+  - `POST /api/orders/[id]/parts/[partId]/checklist/[itemId]/preview-complete`
+  - `POST /api/orders/[id]/parts/[partId]/checklist/[itemId]/complete-and-advance`
+- Extended Orders service routing logic:
+  - Introduced `recomputePartDepartment(...)` as the routing source of truth.
+  - Added `previewChecklistComplete(...)` and `completeChecklistAndAdvance(...)` service flows.
+  - Updated `toggleChecklistItem(...)` to recompute routing on toggle and enforce reason on backward reopen.
+  - Updated manual transition paths (`assignPartDepartment`, `transitionPartsDepartment`) to require reason and emit department events with flag metadata.
+- Extended repo layer:
+  - Added routing-oriented fetch/update helpers and transaction wrapper used by service layer.
+  - Enhanced department feed repo query to support optional include-completed behavior + latest part event.
+- UI updates:
+  - Order detail checklist now calls preview API before check; last-item completion is guarded by user confirmation and no optimistic checkbox flip.
+  - Reopen that triggers backward move now requests reason and retries mutation with reason payload.
+  - Part list tiles and intelligence feed part chips show `REWORK` badge when latest event meta has `flag: true`.
+  - Intelligence feed added include-completed toggle and forwards query parameter to API.
+
+## Files touched
+- `src/modules/orders/orders.service.ts`
+- `src/modules/orders/orders.repo.ts`
+- `src/repos/orders.ts`
+- `src/repos/mock/orders.ts`
+- `src/app/api/orders/[id]/checklist/route.ts`
+- `src/app/api/orders/[id]/parts/assign-department/route.ts`
+- `src/app/api/orders/[id]/parts/transition/route.ts`
+- `src/app/api/intelligence/department-feed/route.ts`
+- `src/app/api/orders/[id]/parts/[partId]/checklist/[itemId]/preview-complete/route.ts`
+- `src/app/api/orders/[id]/parts/[partId]/checklist/[itemId]/complete-and-advance/route.ts`
+- `src/app/orders/[id]/page.tsx`
+- `src/components/ShopFloorLayouts.tsx`
+- `PROGRESS_LOG.md`
+- `tasks/todo.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- npm run lint
+- npm run test -- src/modules/orders/__tests__/department-routing.test.ts
+- npm run build
+- npm run dev (temporary, for screenshot capture)
+
+## Verification Evidence
+- Lint passed with zero ESLint errors/warnings.
+- Existing department-routing unit tests passed.
+- Full Next.js production build passed after type-check.
+
+## Diff/Review Notes
+- Scoped to Orders/checklist/department-feed workflows only (no broad architecture refactor).
+- Backlog follow-up intentionally deferred: replace native confirm/prompt dialogs with richer in-app modal components.
+
+## Next steps
+- [ ] Add focused unit/integration tests for new routing recompute, preview, and backward-reason branches.
+- [ ] Replace native `window.confirm/window.prompt` with dedicated UI modal patterns for consistency and accessibility.

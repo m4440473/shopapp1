@@ -99,3 +99,42 @@
 - Local install docs now include required password seeding for demo login reliability (`set-demo-passwords` / `demo:setup`).
 - Timer controls no longer force a 3-column layout in the narrow order sidebar, preventing visual overlap/crowding.
 - Verification evidence recorded in continuity docs; build/test/lint all passed (with non-blocking environment advisories).
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-24
+- Agent: GPT-5.2-Codex
+- Task ID: Unplanned feature (department auto-advance confirmation + rework reason/flag routing)
+- Goal: Implement preview-confirm complete flow for last checklist item, central department recompute routing, and flagged reason logging for backward/manual moves.
+
+## Dependency Validation
+- [x] Reviewed `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No dependency blocker found; proceeded with scoped Orders-domain changes only.
+
+## Plan First
+- [x] Inspect checklist toggle, routing helpers, and department feed endpoints.
+- [x] Add centralized routing recompute service + atomic complete-and-advance path.
+- [x] Add preview endpoint and UI confirmation/reason prompts with no optimistic pre-check on last-item completion.
+- [x] Update intelligence feed payload/filter behavior and surface rework flag badges.
+- [x] Verify with lint/tests/build and record evidence.
+
+## Implementation Checklist
+- [x] Added `preview-complete` + `complete-and-advance` checklist endpoints for per-part items.
+- [x] Implemented `recomputePartDepartment` service and reused `selectDepartmentForPart` as routing source of truth.
+- [x] Enforced reason requirements for snap-back reopen + manual transitions, with flagged `PartEvent` meta.
+- [x] Updated order detail checklist UI to preview last-item completion and gate mutation behind confirmation.
+- [x] Added rework badge surfacing on part list cards and department feed part pills.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test -- src/modules/orders/__tests__/department-routing.test.ts`
+- [x] `npm run build`
+
+## Review + Results
+- Last checklist-item completion now requires confirmation before mutation; cancel keeps checkbox unchanged.
+- Confirmed completions atomically mark checklist complete and recompute department in a transaction path.
+- Reopen actions that move work backward now require reason and log flagged rework events.
+- Department feed supports include-completed toggle and now carries per-part flag/reason metadata for badge display.

@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing departmentId' }, { status: 400 });
   }
 
-  const result = await getOrderDepartmentFeed(departmentId);
+  const includeCompleted = searchParams.get('includeCompleted') === 'true';
+  const result = await getOrderDepartmentFeed(departmentId, includeCompleted);
   if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

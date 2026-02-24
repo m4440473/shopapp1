@@ -349,6 +349,84 @@ export function createMockOrdersRepo() {
       return event;
     },
 
+
+    async runInTransaction<T>(fn: (tx: any) => Promise<T>) {
+      return fn({});
+    },
+
+    async findChecklistForRoutingById(checklistId: string) {
+      const checklist = state.orderChecklist.find((item) => item.id === checklistId);
+      if (!checklist) return null;
+      const part = checklist.partId ? state.orderParts.find((item) => item.id === checklist.partId) : null;
+      return {
+        ...checklist,
+        addon: checklist.addonId ? state.addons.find((addon) => addon.id === checklist.addonId) ?? null : null,
+        charge: checklist.chargeId
+          ? (() => {
+              const charge = state.orderCharges.find((item) => item.id === checklist.chargeId);
+              const chargeAddon = charge?.addonId ? state.addons.find((addon) => addon.id === charge.addonId) ?? null : null;
+              return charge ? { ...charge, addon: chargeAddon } : null;
+            })()
+          : null,
+        part: part
+          ? {
+              ...part,
+              checklistItems: state.orderChecklist
+                .filter((item) => item.partId === part.id && item.isActive)
+                .map((item) => ({
+                  ...item,
+                  addon: item.addonId ? state.addons.find((addon) => addon.id === item.addonId) ?? null : null,
+                  charge: item.chargeId
+                    ? (() => {
+                        const charge = state.orderCharges.find((entry) => entry.id === item.chargeId);
+                        const chargeAddon = charge?.addonId ? state.addons.find((addon) => addon.id === charge.addonId) ?? null : null;
+                        return charge ? { ...charge, addon: chargeAddon } : null;
+                      })()
+                    : null,
+                })),
+            }
+          : null,
+      };
+    },
+
+    async findPartForRouting(partId: string) {
+      const part = state.orderParts.find((item) => item.id === partId);
+      if (!part) return null;
+      return {
+        ...part,
+        checklistItems: state.orderChecklist
+          .filter((item) => item.partId === part.id && item.isActive)
+          .map((item) => ({
+            ...item,
+            addon: item.addonId ? state.addons.find((addon) => addon.id === item.addonId) ?? null : null,
+            charge: item.chargeId
+              ? (() => {
+                  const charge = state.orderCharges.find((entry) => entry.id === item.chargeId);
+                  const chargeAddon = charge?.addonId ? state.addons.find((addon) => addon.id === charge.addonId) ?? null : null;
+                  return charge ? { ...charge, addon: chargeAddon } : null;
+                })()
+              : null,
+          })),
+      };
+    },
+
+    async updatePartCurrentDepartment(partId: string, currentDepartmentId: string | null) {
+      const part = state.orderParts.find((item) => item.id === partId);
+      if (!part) throw new Error('Part not found');
+      part.currentDepartmentId = currentDepartmentId;
+      return part;
+    },
+
+    async setChecklistCompletion({ checklistId, checked, toggledById, chargeId }: { checklistId: string; checked: boolean; toggledById: string | null; chargeId?: string | null }) {
+      const checklist = state.orderChecklist.find((item) => item.id === checklistId);
+      if (!checklist) return;
+      checklist.completed = checked;
+      if (chargeId) {
+        const charge = state.orderCharges.find((item) => item.id === chargeId);
+        if (charge) charge.completedAt = checked ? new Date() : null;
+      }
+    },
+
     async listPartEventsForPart(orderId: string, partId: string) {
       return state.partEvents
         .filter((event) => event.orderId === orderId && event.partId === partId)
@@ -644,9 +722,13 @@ export function createMockOrdersRepo() {
       return state.addons.filter((addon) => addonIds.includes(addon.id));
     },
 
-    async listReadyOrderPartsForDepartment(departmentId: string) {
+    async listReadyOrderPartsForDepartment(departmentId: string, includeCompleted = false) {
       return state.orderParts
-        .filter((part) => part.currentDepartmentId === departmentId)
+        .filter((part) => {
+          if (part.currentDepartmentId !== departmentId) return false;
+          if (includeCompleted) return true;
+          return state.orderChecklist.some((item) => item.partId === part.id && item.departmentId === departmentId && item.isActive && !item.completed);
+        })
         .map((part) => {
           const order = state.orders.find((item) => item.id === part.orderId);
           return {
@@ -654,6 +736,7 @@ export function createMockOrdersRepo() {
             partNumber: part.partNumber,
             quantity: part.quantity,
             orderId: part.orderId,
+            partEvents: state.partEvents.filter((event) => event.partId === part.id).sort((a,b)=>b.createdAt.getTime()-a.createdAt.getTime()).slice(0,1),
             order: order
               ? {
                   id: order.id,

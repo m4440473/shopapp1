@@ -470,47 +470,89 @@ export default function OrderDetailPage() {
     }
   };
 
+  const postChecklistToggle = async (
+    entry: any,
+    checked: boolean,
+    extra: { reasonCode?: string; reasonText?: string } = {},
+  ) => {
+    const res = await fetch(`/api/orders/${id}/checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        checklistId: entry.id,
+        checked,
+        partId: selectedPartId,
+        ...extra,
+      }),
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const errorBody = await res.json().catch(() => null);
+      const message = typeof errorBody?.error === 'string' ? errorBody.error : 'Failed to toggle checklist item.';
+      throw new Error(message);
+    }
+  };
+
   const handleChecklistToggle = async (entry: any, checked: boolean) => {
     if (!selectedPartId) return;
     setChecklistError(null);
-    setChecklistOverrides((prev) => ({ ...prev, [entry.id]: checked }));
+
     try {
-      const res = await fetch(`/api/orders/${id}/checklist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          checklistId: entry.id,
-          checked,
-          partId: selectedPartId,
-        }),
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        const errorBody = await res.json().catch(() => null);
-        const message =
-          typeof errorBody?.error === 'string'
-            ? errorBody.error
-            : 'Failed to toggle checklist item.';
-        throw new Error(message);
+      if (checked) {
+        const previewRes = await fetch(
+          `/api/orders/${id}/parts/${selectedPartId}/checklist/${entry.id}/preview-complete`,
+          { method: 'POST', credentials: 'include' },
+        );
+        if (!previewRes.ok) throw new Error('Failed to preview checklist completion.');
+        const preview = await previewRes.json();
+        if (preview?.willCompleteDepartment) {
+          const message = preview?.doneIfConfirmed
+            ? `This is the last open checklist item for ${preview.currentDepartmentName}. Confirm to mark this part done?`
+            : `This is the last open checklist item for ${preview.currentDepartmentName}. Confirm to move this part to ${preview.nextDepartmentName}?`;
+          const confirmed = window.confirm(message);
+          if (!confirmed) return;
+          const completeRes = await fetch(
+            `/api/orders/${id}/parts/${selectedPartId}/checklist/${entry.id}/complete-and-advance`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ confirm: true }),
+              credentials: 'include',
+            },
+          );
+          if (!completeRes.ok) {
+            if (completeRes.status === 409) {
+              await load();
+              toast.push('Checklist state changed. Refreshed latest data.', 'error');
+              return;
+            }
+            const errorBody = await completeRes.json().catch(() => null);
+            throw new Error(typeof errorBody?.error === 'string' ? errorBody.error : 'Failed to complete checklist item.');
+          }
+        } else {
+          await postChecklistToggle(entry, checked);
+        }
+      } else {
+        try {
+          await postChecklistToggle(entry, checked);
+        } catch (err: any) {
+          if (typeof err?.message === 'string' && err.message.includes('Reason is required')) {
+            const reasonText = window.prompt('Reopening this item moves the part backward. Enter a reason:')?.trim();
+            if (!reasonText) return;
+            await postChecklistToggle(entry, checked, { reasonText, reasonCode: 'REWORK' });
+          } else {
+            throw err;
+          }
+        }
       }
+
       await load();
       await loadPartEvents();
     } catch (err: any) {
       const message = err?.message || 'Failed to toggle checklist item.';
-      setChecklistOverrides((prev) => {
-        const next = { ...prev };
-        delete next[entry.id];
-        return next;
-      });
       setChecklistError(message);
       toast.push(message, 'error');
-      return;
     }
-    setChecklistOverrides((prev) => {
-      const next = { ...prev };
-      delete next[entry.id];
-      return next;
-    });
   };
 
   if (loading) {
@@ -682,6 +724,9 @@ export default function OrderDetailPage() {
                 const partLabel = part.partNumber || `Part ${index + 1}`;
                 const totalMinutes = partTotals[part.id];
                 const status = part.status || 'IN_PROGRESS';
+                const latestMetaRaw = part?.partEvents?.[0]?.meta;
+                const latestMeta = typeof latestMetaRaw === 'string' ? (() => { try { return JSON.parse(latestMetaRaw); } catch { return null; } })() : latestMetaRaw;
+                const flagged = latestMeta?.flag === true;
                 return (
                   <button
                     key={part.id}
@@ -700,6 +745,7 @@ export default function OrderDetailPage() {
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <Badge className={statusBadgeStyles[status] || 'bg-muted text-foreground'}>{status}</Badge>
+                        {flagged ? <Badge variant="destructive" title={typeof latestMeta?.reasonText === 'string' ? latestMeta.reasonText : 'Rework / manual backward move'}>REWORK</Badge> : null}
                         <span className="text-xs text-muted-foreground">
                           {Number.isFinite(totalMinutes) ? formatMinutes(totalMinutes) : '—'}
                         </span>
