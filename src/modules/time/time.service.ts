@@ -225,20 +225,20 @@ export async function resumeTimeEntry(
 export async function getOrderPartTimeTotals(
   orderId: string,
   partIds: string[]
-): Promise<ServiceResult<{ totals: Record<string, number> }>> {
-  if (!partIds.length) return ok({ totals: {} });
+ ): Promise<ServiceResult<{ totalsSeconds: Record<string, number> }>> {
+  if (!partIds.length) return ok({ totalsSeconds: {} });
   const entries = await listTimeEntriesForOrderParts(orderId, partIds);
 
-  const totals: Record<string, number> = {};
+  const totalsSeconds: Record<string, number> = {};
   entries.forEach((entry) => {
     if (!entry.partId || !entry.endedAt) return;
     const diffMs = entry.endedAt.getTime() - entry.startedAt.getTime();
     if (diffMs <= 0) return;
-    const minutes = Math.round(diffMs / 60000);
-    totals[entry.partId] = (totals[entry.partId] ?? 0) + minutes;
+    const seconds = Math.floor(diffMs / 1000);
+    totalsSeconds[entry.partId] = (totalsSeconds[entry.partId] ?? 0) + seconds;
   });
 
-  return ok({ totals });
+  return ok({ totalsSeconds });
 }
 
 export function computeEntryMinutes(entries: Array<Pick<TimeEntry, 'startedAt' | 'endedAt'>>) {

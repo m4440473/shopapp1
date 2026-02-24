@@ -1,3 +1,47 @@
+## Session Handoff — 2026-02-24 (tx timeout + queue merge + timer semantics)
+
+### Goal
+Implement a consolidated PR that fixes Prisma/SQLite interactive transaction timeout flow, merges list surfaces into a single Work Queue on home, corrects department queue sorting/behavior, and repairs timer persistence/finish semantics without removing core functionality.
+
+### Scope Completed
+- Orders transaction flow: tx propagation + 20s interactive transaction helper timeout.
+- Queue UX consolidation: Home as canonical Work Queue, `/orders` redirect to `/`, nav link updates.
+- Department feed behavior: order-grouped queue with include-completed support and business-rule sorting.
+- Timer behavior: totals in seconds, persistent selected-part elapsed display, finish no longer auto-completes, explicit completion endpoint with checklist gate.
+- Tests: updated time totals expectations and added completion guardrail unit test.
+
+### Files Touched
+- `src/modules/orders/orders.repo.ts`
+- `src/modules/orders/orders.service.ts`
+- `src/repos/orders.ts`
+- `src/repos/mock/orders.ts`
+- `src/app/api/orders/[id]/parts/[partId]/complete/route.ts`
+- `src/app/api/timer/active/route.ts`
+- `src/app/api/timer/finish/route.ts`
+- `src/modules/time/time.service.ts`
+- `src/modules/time/__tests__/time.service.test.ts`
+- `src/modules/orders/__tests__/orders.service.test.ts`
+- `src/app/page.tsx`
+- `src/components/ShopFloorLayouts.tsx`
+- `src/app/orders/page.tsx`
+- `src/components/AppNav.tsx`
+- `src/app/orders/new/page.tsx`
+- `src/app/orders/[id]/page.tsx`
+- `tasks/todo.md`
+
+### Commands Run
+- `npm run test -- src/modules/time/__tests__/time.service.test.ts src/modules/orders/__tests__/orders.service.test.ts`
+- `npm run lint`
+- `npm run test`
+- `npm run build`
+- `npm run dev -- --port 3000` (for screenshot attempt)
+- Browser tool Playwright script attempt against `http://127.0.0.1:3000` (failed: Chromium SIGSEGV)
+
+### Verification Summary
+- Lint and full test suite passed.
+- Build compiles but fails during prerender on `/about` because Prisma `appSettings.create` hits existing unique key in this environment.
+- Screenshot attempt failed due browser container crash; retry when browser tool is stable.
+
 Date: 2026-02-24
 Agent: GPT-5.2-Codex
 Goal (1 sentence): Add true timer resume behavior in order detail so paused part work can continue without losing previously captured time.

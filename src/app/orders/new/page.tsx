@@ -684,7 +684,7 @@ function NewOrderForm() {
       setMessage('Order created! Choose what to do next.');
       setCreatedOrderId(newId);
       if (!newId) {
-        router.push('/orders');
+        router.push('/');
       }
       setCustomerId('');
       setVendorId('');
@@ -1426,7 +1426,7 @@ function NewOrderForm() {
                     {loading ? 'Submitting…' : 'Create order'}
                   </Button>
                   <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
-                    <Link href="/orders">Cancel</Link>
+                    <Link href="/">Cancel</Link>
                   </Button>
                 </div>
               </CardFooter>
@@ -1453,7 +1453,7 @@ function NewOrderForm() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => router.push('/orders')}
+                        onClick={() => router.push('/')}
                         className="rounded-full border-border/60 bg-background/80"
                       >
                         Back to orders

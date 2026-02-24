@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
-import { completeOrderPart, logPartEvent } from '@/modules/orders/orders.service';
+import { logPartEvent } from '@/modules/orders/orders.service';
 import { getActiveTimeEntry, stopActiveTimeEntry } from '@/modules/time/time.service';
 
 export async function POST() {
@@ -40,16 +40,5 @@ export async function POST() {
     meta: { timeEntryId: entry.id },
   });
 
-  const completeResult = await completeOrderPart({
-    orderId: entry.orderId,
-    partId: entry.partId!,
-    userId,
-  });
-
-  if (completeResult.ok === false) {
-    return NextResponse.json({ error: completeResult.error }, { status: completeResult.status });
-  }
-
-  const part = (completeResult.data as { part: unknown }).part;
-  return NextResponse.json({ entry, part });
+  return NextResponse.json({ entry });
 }

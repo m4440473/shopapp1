@@ -24,6 +24,7 @@ import {
   createOrderPartWithCharges,
   createOrderWithCustomFields,
   createPartEvent,
+  countIncompleteActiveChecklistItemsForPart,
   countOrderParts,
   createPartAttachment,
   createStatusHistoryEntry,
@@ -91,7 +92,7 @@ export { generateNextOrderNumber, syncChecklistForOrder };
 export type { OrderFilterState, OrderListItem, OrderWithMeta };
 export { isPartReadyForDepartment };
 
-export type DepartmentFeedPart = { id: string; partNumber: string | null; quantity: number | null; flagged: boolean; reasonText: string | null };
+export type DepartmentFeedPart = { id: string; partNumber: string | null; quantity: number | null; flagged: boolean; reasonText: string | null; hasOpenWork: boolean; createdAt?: Date | string | null };
 export type DepartmentFeedOrder = {
   orderId: string;
   orderNumber: string;
@@ -113,6 +114,7 @@ type OrderAttachmentCreateInput = z.infer<typeof OrderAttachmentCreate>;
 type PartAttachmentCreateInput = z.infer<typeof PartAttachmentCreate>;
 type PartAttachmentUpdateInput = z.infer<typeof PartAttachmentUpdate>;
 type PartEventInput = {
+  db?: any;
   orderId: string;
   partId: string;
   userId?: string | null;
@@ -147,7 +149,7 @@ export const DEFAULT_ORDER_FILTERS: OrderFilterState = {
   staleStatus: false,
 };
 
-async function recordPartEvent({ orderId, partId, userId, type, message, meta }: PartEventInput) {
+async function recordPartEvent({ orderId, partId, userId, type, message, meta, db }: PartEventInput) {
   return createPartEvent({
     orderId,
     partId,
@@ -155,7 +157,7 @@ async function recordPartEvent({ orderId, partId, userId, type, message, meta }:
     type,
     message,
     meta: meta ?? null,
-  });
+  }, db);
 }
 
 function parseDate(value: string | Date | null | undefined) {
@@ -650,7 +652,7 @@ export async function recomputePartDepartment(
   } = {},
 ) {
   if (!partId) return fail(400, 'Part is required');
-  const departments = await listDepartmentsOrdered();
+  const departments = await listDepartmentsOrdered(tx);
   const part = await findPartForRouting(partId, tx);
   if (!part) return fail(404, 'Part not found');
 
@@ -678,6 +680,7 @@ export async function recomputePartDepartment(
   const flagged = backwards || (manual && backwards);
 
   await recordPartEvent({
+    db: tx,
     orderId: part.orderId,
     partId,
     userId: actorUserId ?? null,
@@ -1358,20 +1361,33 @@ export async function completeOrderPart({
   partId: string;
   userId?: string | null;
 }) {
-  const part = await findOrderPart(orderId, partId);
-  if (!part) return fail(404, 'Part not found');
+  const result = await runInTransaction(async (tx) => {
+    const part = await findOrderPart(orderId, partId, tx);
+    if (!part) return { error: 'PART_NOT_FOUND' } as const;
 
-  const updated = await updateOrderPart(partId, { status: 'COMPLETE' });
+    const remainingChecklist = await countIncompleteActiveChecklistItemsForPart(orderId, partId, tx);
+    if (remainingChecklist > 0) return { error: 'CHECKLIST_REMAINING' } as const;
 
-  await recordPartEvent({
-    orderId,
-    partId,
-    userId: userId ?? null,
-    type: 'PART_COMPLETED',
-    message: 'Part marked complete.',
+    const updated = await updateOrderPart(partId, { status: 'COMPLETE' }, tx);
+
+    await recordPartEvent({
+      db: tx,
+      orderId,
+      partId,
+      userId: userId ?? null,
+      type: 'PART_COMPLETED',
+      message: 'Part marked complete.',
+    });
+
+    return { part: updated } as const;
   });
 
-  return ok({ part: updated });
+  if ('error' in result) {
+    if (result.error === 'PART_NOT_FOUND') return fail(404, 'Part not found');
+    if (result.error === 'CHECKLIST_REMAINING') return fail(409, 'Cannot complete part: checklist items remain.');
+  }
+
+  return ok({ part: result.part });
 }
 
 export async function listPartEvents({
@@ -1497,16 +1513,37 @@ export async function getOrderDepartmentFeed(
       quantity: part.quantity ?? null,
       flagged: latestMeta?.flag === true,
       reasonText: typeof latestMeta?.reasonText === 'string' ? latestMeta.reasonText : null,
+      hasOpenWork: (part.checklistItems?.length ?? 0) > 0,
+      createdAt: (part as any).createdAt ?? null,
     });
     existing.readyPartsCount += 1;
     orders.set(order.id, existing);
   });
 
-  const items = Array.from(orders.values()).sort((a, b) => {
-    const aDue = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-    const bDue = b.dueDate ? new Date(b.dueDate).getTime() : 0;
-    return aDue - bDue;
-  });
+  const items = Array.from(orders.values())
+    .map((entry) => ({
+      ...entry,
+      readyParts: entry.readyParts.sort((a, b) => {
+        if (a.flagged !== b.flagged) return a.flagged ? -1 : 1;
+        const aPart = (a.partNumber ?? '').trim();
+        const bPart = (b.partNumber ?? '').trim();
+        if (aPart && bPart) return aPart.localeCompare(bPart, undefined, { numeric: true, sensitivity: 'base' });
+        if (aPart) return -1;
+        if (bPart) return 1;
+        const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
+        const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
+        return aCreated - bCreated;
+      }),
+    }))
+    .sort((a, b) => {
+      const aFlagged = a.readyParts.some((part) => part.flagged);
+      const bFlagged = b.readyParts.some((part) => part.flagged);
+      if (aFlagged !== bFlagged) return aFlagged ? -1 : 1;
+      const aDue = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+      const bDue = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+      if (aDue !== bDue) return aDue - bDue;
+      return a.orderNumber.localeCompare(b.orderNumber, undefined, { numeric: true, sensitivity: 'base' });
+    });
 
   return ok({ items });
 }

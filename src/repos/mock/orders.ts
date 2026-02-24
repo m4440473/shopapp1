@@ -334,7 +334,7 @@ export function createMockOrdersRepo() {
       };
     },
 
-    async createPartEvent(data: { orderId: string; partId: string; userId?: string | null; type: string; message: string; meta?: Record<string, unknown> | null }) {
+    async createPartEvent(data: { orderId: string; partId: string; userId?: string | null; type: string; message: string; meta?: Record<string, unknown> | null }, _db?: any) {
       const event = {
         id: nextId('partEvent'),
         orderId: data.orderId,
@@ -461,7 +461,7 @@ export function createMockOrdersRepo() {
       return part;
     },
 
-    async findOrderPart(orderId: string, partId: string) {
+    async findOrderPart(orderId: string, partId: string, _db?: any) {
       return findOrderPartById(orderId, partId);
     },
 
@@ -507,11 +507,16 @@ export function createMockOrdersRepo() {
       return { count };
     },
 
-    async updateOrderPart(partId: string, data: Record<string, unknown>) {
+    async updateOrderPart(partId: string, data: Record<string, unknown>, _db?: any) {
       const part = state.orderParts.find((item) => item.id === partId);
       if (!part) throw new Error('Part not found');
       Object.assign(part, data);
       return part;
+    },
+
+
+    async countIncompleteActiveChecklistItemsForPart(orderId: string, partId: string, _db?: any) {
+      return state.orderChecklist.filter((item) => item.orderId === orderId && item.partId === partId && item.isActive && !item.completed).length;
     },
 
     async countOrderParts(orderId: string) {
@@ -591,7 +596,7 @@ export function createMockOrdersRepo() {
       return dept ?? null;
     },
 
-    async listDepartmentsOrdered() {
+    async listDepartmentsOrdered(_db?: any) {
       return [...state.departments].sort((a, b) => a.sortOrder - b.sortOrder);
     },
 
@@ -736,6 +741,7 @@ export function createMockOrdersRepo() {
             partNumber: part.partNumber,
             quantity: part.quantity,
             orderId: part.orderId,
+            checklistItems: state.orderChecklist.filter((item) => item.partId === part.id && item.departmentId === departmentId && item.isActive && !item.completed).slice(0,1),
             partEvents: state.partEvents.filter((event) => event.partId === part.id).sort((a,b)=>b.createdAt.getTime()-a.createdAt.getTime()).slice(0,1),
             order: order
               ? {

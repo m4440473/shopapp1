@@ -60,6 +60,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-02-24 — Work Queue consolidation + transactional discipline for Orders flows
+Decision: Treat home (`/`) as the canonical department-driven Work Queue, redirect `/orders` list to `/`, and enforce transaction-client propagation for complete-and-advance/recompute/event writes with a 20s interactive transaction timeout for SQLite.
+Reason: Prevent SQLite interactive transaction lock timeouts (P1008/P2028), eliminate duplicate queue surfaces, and keep queue behavior aligned to department routing and operator expectations.
+
 ### 2026-02-23 — Closed-interval admin edit path must be API-gated and audited
 Decision: Add an admin-only `PATCH /api/time/entries/[entryId]` path that permits closed-interval edits only when a reason is supplied; emit a part event audit record (`TIME_ENTRY_EDITED`) for part-linked edits.
 Reason: P3-T1/P3-T2 require explicit admin-audited edit policy enforcement on the server side and deterministic rule handling independent of UI behavior.
