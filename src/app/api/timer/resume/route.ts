@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
     const activePartResult = activeEntry.partId
       ? await getOrderPartSummary(activeEntry.orderId, activeEntry.partId)
       : null;
+    const activeOrder = activeOrderResult?.ok ? (activeOrderResult.data as { order: any }).order : null;
+    const activePart = activePartResult?.ok ? (activePartResult.data as { part: any }).part : null;
+    const activeOrderHref = activeOrder?.id ? `/orders/${activeOrder.id}` : `/orders/${activeEntry.orderId}`;
     const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(activeEntry.startedAt).getTime()) / 1000));
 
     return NextResponse.json(
@@ -37,8 +40,9 @@ export async function POST(req: NextRequest) {
         requiredAction: 'switch_confirmation',
         switchAction: 'pause_or_finish',
         activeEntry,
-        activeOrder: activeOrderResult?.ok ? (activeOrderResult.data as { order: unknown }).order : null,
-        activePart: activePartResult?.ok ? (activePartResult.data as { part: unknown }).part : null,
+        activeOrder,
+        activePart,
+        activeOrderHref,
         elapsedSeconds,
       },
       { status: 409 }

@@ -777,3 +777,11 @@ Next steps (immediate)
   - `npm run build`
 - Notes:
   - Browser automation login selector path failed in this environment; captured auth-gate screenshot artifact instead.
+
+## 2026-02-24
+- Summary: Fixed AppNav duplicate-key warning for root links and improved timer conflict handling by adding active-context links plus out-of-sync 409 handling that no longer shows a false active-timer dialog.
+- Tests run:
+  - `npm run lint`
+  - `npm run test -- src/modules/time/__tests__/time.service.test.ts`
+  - `npm run build` *(fails in this environment: Prisma P2002 on appSettings.id while prerendering /403)*
+  - Browser screenshot: `browser:/tmp/codex_browser_invocations/0002efd80d6b7b20/artifacts/artifacts/nav-timer-fix-home.png`

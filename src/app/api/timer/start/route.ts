@@ -49,14 +49,29 @@ export async function POST(req: NextRequest) {
         ? Math.max(0, Math.floor((Date.now() - new Date(activeEntry.startedAt).getTime()) / 1000))
         : 0;
 
+      const activeOrder = activeOrderResult?.ok ? (activeOrderResult.data as { order: any }).order : null;
+      const activePart = activePartResult?.ok ? (activePartResult.data as { part: any }).part : null;
+      const activeOrderHref = activeOrder?.id ? `/orders/${activeOrder.id}` : activeEntry ? `/orders/${activeEntry.orderId}` : null;
+
+      if (!activeEntry) {
+        return NextResponse.json(
+          {
+            error: 'Timer state is out of sync. Refresh and try again.',
+            requiredAction: 'refresh',
+          },
+          { status: 409 }
+        );
+      }
+
       return NextResponse.json(
         {
           error: result.error,
           requiredAction: 'switch_confirmation',
           switchAction: 'pause_or_finish',
           activeEntry,
-          activeOrder: activeOrderResult?.ok ? (activeOrderResult.data as { order: unknown }).order : null,
-          activePart: activePartResult?.ok ? (activePartResult.data as { part: unknown }).part : null,
+          activeOrder,
+          activePart,
+          activeOrderHref,
           elapsedSeconds,
         },
         { status: 409 }

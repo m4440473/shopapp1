@@ -109,7 +109,7 @@ export default function AppNav({ companyName, initials, logoUrl }: AppNavProps) 
                     : pathname === link.href || pathname.startsWith(`${link.href}/`);
                 const Icon = link.icon;
                 return (
-                  <SheetClose asChild key={link.href}>
+                  <SheetClose asChild key={`${link.href}-${link.label}`}>
                     <Link
                       href={link.href}
                       className={cn(
@@ -166,7 +166,7 @@ export default function AppNav({ companyName, initials, logoUrl }: AppNavProps) 
               : pathname === link.href || pathname.startsWith(`${link.href}/`);
           return (
             <Link
-              key={link.href}
+              key={`${link.href}-${link.label}`}
               href={link.href}
               className={cn(
                 "transition-colors hover:text-primary",
