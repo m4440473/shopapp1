@@ -39,6 +39,7 @@ export const listOrderPartsByIds = repo.listOrderPartsByIds;
 export const listOrderPartsMissingCurrentDepartment = repo.listOrderPartsMissingCurrentDepartment;
 export const moveOrderPartsToDepartment = repo.moveOrderPartsToDepartment;
 export const updateOrderPart = repo.updateOrderPart;
+export const countIncompleteActiveChecklistItemsForPart = repo.countIncompleteActiveChecklistItemsForPart;
 export const countOrderParts = repo.countOrderParts;
 export const findOrderPartWithCharges = repo.findOrderPartWithCharges;
 export const deleteOrderPartWithRelations = repo.deleteOrderPartWithRelations;

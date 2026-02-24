@@ -57,14 +57,6 @@ const formatDuration = (seconds: number) => {
   return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
 };
 
-const formatMinutes = (minutes: number) => {
-  if (!Number.isFinite(minutes)) return '—';
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const remaining = minutes % 60;
-  return `${hours}h ${remaining}m`;
-};
-
 const statusBadgeStyles: Record<string, string> = {
   COMPLETE: 'bg-emerald-500/15 text-emerald-200',
   IN_PROGRESS: 'bg-blue-500/15 text-blue-200',
@@ -88,7 +80,7 @@ export default function OrderDetailPage() {
   const [timerSaving, setTimerSaving] = useState(false);
   const [activeEntry, setActiveEntry] = useState<any | null>(null);
   const [activePart, setActivePart] = useState<any | null>(null);
-  const [partTotals, setPartTotals] = useState<Record<string, number>>({});
+  const [partTotalsSeconds, setPartTotalsSeconds] = useState<Record<string, number>>({});
   const [lastPartEntries, setLastPartEntries] = useState<Record<string, any | null>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [conflictState, setConflictState] = useState<ConflictState>({
@@ -203,7 +195,7 @@ export default function OrderDetailPage() {
       const data = await res.json();
       setActiveEntry(data.activeEntry ?? null);
       setActivePart(data.activePart ?? null);
-      setPartTotals(data.totals ?? {});
+      setPartTotalsSeconds(data.totalsSeconds ?? {});
       setLastPartEntries(data.lastPartEntries ?? {});
       setTimerError(null);
     } catch {
@@ -576,6 +568,11 @@ export default function OrderDetailPage() {
   const statusLabel = item.status?.replace(/_/g, ' ') ?? 'Unknown';
   const activeOnSelected = Boolean(activeEntry?.partId && activeEntry.partId === selectedPartId);
   const selectedPartLastEntry = selectedPartId ? lastPartEntries[selectedPartId] ?? null : null;
+  const selectedPartStoredSeconds = selectedPartId ? (partTotalsSeconds[selectedPartId] ?? 0) : 0;
+  const selectedPartTotalElapsedSeconds = selectedPartStoredSeconds + (activeOnSelected ? activeElapsedSeconds : 0);
+  const timerStateLabel = activeOnSelected ? 'Running' : selectedPartStoredSeconds > 0 ? 'Paused' : 'No time yet';
+  const selectedChecklistIncompleteCount = selectedChecklist.filter((entry: any) => !entry.completed).length;
+  const canCompleteSelectedPart = Boolean(selectedPartId && selectedChecklistIncompleteCount === 0 && selectedPart?.status !== 'COMPLETE');
   const canResumeSelected = Boolean(selectedPartLastEntry?.id && selectedPartLastEntry?.endedAt && !activeOnSelected);
   const hasActiveEntry = Boolean(activeEntry);
   const isSwitchAction = Boolean(activeEntry && selectedPartId && activeEntry.partId !== selectedPartId);
@@ -641,7 +638,7 @@ export default function OrderDetailPage() {
                     {selectedPart?.partNumber || 'No part selected'}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {hasActiveEntry ? `Elapsed ${formatDuration(activeElapsedSeconds)}` : 'No active timer'}
+                    Total elapsed {formatDuration(selectedPartTotalElapsedSeconds)} · {timerStateLabel}
                   </div>
                 </div>
                 <Badge className={hasActiveEntry ? 'bg-emerald-500/15 text-emerald-200' : 'bg-muted text-foreground'}>
@@ -688,6 +685,33 @@ export default function OrderDetailPage() {
                   <Square className="h-4 w-4" />
                   Finish active timer
                 </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!canCompleteSelectedPart || timerSaving}
+                  onClick={async () => {
+                    if (!selectedPartId) return;
+                    setTimerSaving(true);
+                    try {
+                      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/complete`, { method: 'POST', credentials: 'include' });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to complete part.');
+                      toast.push('Part marked complete.', 'success');
+                      await load();
+                      await loadPartEvents();
+                    } catch (err: any) {
+                      const message = err?.message || 'Failed to complete part.';
+                      setTimerError(message);
+                      toast.push(message, 'error');
+                    } finally {
+                      setTimerSaving(false);
+                    }
+                  }}
+                  className="justify-start gap-2"
+                >
+                  Complete selected part
+                </Button>
               </div>
 
               <div className="grid gap-2 rounded-md border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground md:grid-cols-2">
@@ -722,7 +746,7 @@ export default function OrderDetailPage() {
               {parts.map((part: any, index: number) => {
                 const isSelected = part.id === selectedPartId;
                 const partLabel = part.partNumber || `Part ${index + 1}`;
-                const totalMinutes = partTotals[part.id];
+                const totalSeconds = partTotalsSeconds[part.id] ?? 0;
                 const status = part.status || 'IN_PROGRESS';
                 const latestMetaRaw = part?.partEvents?.[0]?.meta;
                 const latestMeta = typeof latestMetaRaw === 'string' ? (() => { try { return JSON.parse(latestMetaRaw); } catch { return null; } })() : latestMetaRaw;
@@ -747,7 +771,7 @@ export default function OrderDetailPage() {
                         <Badge className={statusBadgeStyles[status] || 'bg-muted text-foreground'}>{status}</Badge>
                         {flagged ? <Badge variant="destructive" title={typeof latestMeta?.reasonText === 'string' ? latestMeta.reasonText : 'Rework / manual backward move'}>REWORK</Badge> : null}
                         <span className="text-xs text-muted-foreground">
-                          {Number.isFinite(totalMinutes) ? formatMinutes(totalMinutes) : '—'}
+                          {formatDuration(totalSeconds)}
                         </span>
                       </div>
                     </div>
@@ -766,7 +790,7 @@ export default function OrderDetailPage() {
                 <div className="text-2xl font-semibold text-foreground">{item.customer?.name ?? 'Customer'}</div>
               </div>
               <Button asChild variant="outline" size="sm">
-                <Link href="/orders">Exit Order</Link>
+                <Link href="/">Exit Order</Link>
               </Button>
             </div>
             <div className="flex flex-wrap items-center gap-3">

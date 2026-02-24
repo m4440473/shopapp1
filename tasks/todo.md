@@ -3,6 +3,48 @@
 ## Session Metadata
 - Date: 2026-02-24
 - Agent: GPT-5.2-Codex
+- Task ID: Unplanned consolidation (tx timeout fix + work-queue merge + timer semantics)
+- Goal: Fix transaction client propagation/timeouts, consolidate queue to home page, correct department feed sorting behavior, and repair timer persistence/finish semantics.
+
+## Dependency Validation
+- [x] Reviewed `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before starting.
+- [x] No unresolved dependency blocker detected for this scoped implementation.
+
+## Plan First
+- [x] Patch Orders tx safety: pass tx/db through part event + department recompute path and increase transaction helper timeout values.
+- [x] Consolidate queue surface: make home page canonical Work Queue and redirect `/orders` list route to `/`.
+- [x] Rework department feed sorting/data mapping + simplify Home queue UI around department-first workflow.
+- [x] Fix timer totals/readout semantics and finish-vs-pause behavior without auto-completing parts.
+- [x] Add/adjust tests for second-based totals and checklist gate on part completion.
+- [x] Run verification (`npm run lint`, `npm run test`, `npm run build`) and capture front-end screenshot evidence.
+- [x] Update continuity docs (`PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`) with outcomes/evidence.
+
+## Implementation Checklist
+- [x] Tx-safe checklist complete-and-advance flow (no global prisma usage inside transaction).
+- [x] Interactive transaction timeout increased for SQLite resilience.
+- [x] `/orders` list deprecated via redirect to home queue.
+- [x] Work Queue tabs/toggle/order-grouped part list sorted by business rules.
+- [x] Timer UI shows persistent elapsed totals across pause/resume.
+- [x] Finish timer no longer auto-completes parts; explicit completion validates checklist completeness.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test`
+- [x] `npm run build`
+- [x] Playwright screenshot of updated Work Queue UI (attempted; browser tool crashed with SIGSEGV in container).
+
+## Review + Results
+- Implemented tx client propagation + tx timeout increase, merged queue onto home page with `/orders` redirect, updated department queue sorting/flags, switched timer totals to seconds with persistent selected-part elapsed readout, and split finish timer from explicit part completion with checklist guardrails.
+- Verification: lint and test passed; build compiles but static prerender fails in this environment due existing Prisma `appSettings` unique constraint during `/about` prerender.
+- Screenshot attempt performed via browser tool but failed due Chromium SIGSEGV in container (no artifact generated).
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-24
+- Agent: GPT-5.2-Codex
 - Task ID: Unplanned timer UX fix (resume paused part timer)
 - Goal: Allow machinists to resume paused timer context for a part instead of always starting a fresh timer interaction.
 

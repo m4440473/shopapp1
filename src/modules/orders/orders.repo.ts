@@ -428,7 +428,7 @@ export async function listPartEventsForPart(orderId: string, partId: string) {
 }
 
 export async function runInTransaction<T>(fn: (tx: any) => Promise<T>) {
-  return prisma.$transaction((tx) => fn(tx));
+  return prisma.$transaction((tx) => fn(tx), { maxWait: 20_000, timeout: 20_000 });
 }
 
 export async function findChecklistForRoutingById(checklistId: string, db: DbClient = prisma) {
@@ -579,8 +579,8 @@ export async function createOrderPartWithCharges({
   });
 }
 
-export async function findOrderPart(orderId: string, partId: string) {
-  return prisma.orderPart.findFirst({ where: { id: partId, orderId } });
+export async function findOrderPart(orderId: string, partId: string, db: DbClient = prisma) {
+  return db.orderPart.findFirst({ where: { id: partId, orderId } });
 }
 
 export async function listOrderPartsByIds(orderId: string, partIds: string[]) {
@@ -645,8 +645,21 @@ export async function moveOrderPartsToDepartment({
   });
 }
 
-export async function updateOrderPart(partId: string, data: Record<string, unknown>) {
-  return prisma.orderPart.update({ where: { id: partId }, data });
+export async function updateOrderPart(partId: string, data: Record<string, unknown>, db: DbClient = prisma) {
+  return db.orderPart.update({ where: { id: partId }, data });
+}
+
+
+
+export async function countIncompleteActiveChecklistItemsForPart(orderId: string, partId: string, db: DbClient = prisma) {
+  return db.orderChecklist.count({
+    where: {
+      orderId,
+      partId,
+      isActive: true,
+      completed: false,
+    },
+  });
 }
 
 export async function countOrderParts(orderId: string) {
@@ -778,8 +791,8 @@ export async function findActiveDepartmentById(departmentId: string) {
   });
 }
 
-export async function listDepartmentsOrdered() {
-  return prisma.department.findMany({
+export async function listDepartmentsOrdered(db: DbClient = prisma) {
+  return db.department.findMany({
     where: { isActive: true },
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     select: { id: true, name: true, slug: true, sortOrder: true, isActive: true },
@@ -926,11 +939,18 @@ export async function listReadyOrderPartsForDepartment(departmentId: string, inc
             },
           }),
     },
+    orderBy: [{ order: { dueDate: 'asc' } }, { order: { orderNumber: 'asc' } }, { partNumber: 'asc' }, { createdAt: 'asc' }],
     select: {
       id: true,
       partNumber: true,
       quantity: true,
       orderId: true,
+      createdAt: true,
+      checklistItems: {
+        where: { departmentId, isActive: true, completed: false },
+        select: { id: true },
+        take: 1,
+      },
       partEvents: {
         orderBy: { createdAt: 'desc' },
         take: 1,

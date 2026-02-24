@@ -1,3 +1,23 @@
+## 2026-02-24 — Unplanned consolidation: tx timeout fix + single Work Queue + timer semantics
+
+### Completed
+- Fixed Orders transaction safety by propagating transaction client usage through department recompute + part event creation paths used by checklist complete-and-advance, and increased interactive Prisma transaction `maxWait`/`timeout` to `20_000ms` for SQLite stability.
+- Consolidated list experience into Home Work Queue: added New Order action on `/`, replaced legacy `/orders` list with redirect to `/`, and updated navigation/back-links to point at `/`.
+- Reworked department queue behavior to department-tab + include-completed flow, grouped by order with part rows, and service-level sorting aligned to business rules (rework-flagged first, due date asc null-last, order number asc, part-level flagged then partNumber).
+- Updated timer behavior to second-level totals and persistent selected-part elapsed display (stored total + active segment), separated Finish timer from part completion, and added explicit Complete Part action gated by checklist completeness.
+- Added checklist-gated completion API route (`POST /api/orders/[id]/parts/[partId]/complete`) and server-side validation that returns 409 when checklist work remains.
+- Added/updated tests for second-based totals and completion guardrail.
+
+### Verification
+- `npm run lint` ✅
+- `npm run test` ✅
+- `npm run build` ⚠️ (type/build compile passes, but static prerender fails at `/about` due existing Prisma `appSettings` unique constraint in this environment)
+- Browser screenshot attempt ⚠️ (Playwright Chromium crashed with SIGSEGV in container, no artifact produced)
+
+### Next
+- Investigate `/about` prerender side-effect creating duplicate `appSettings` records in build-time execution path.
+- If browser container stability improves, capture updated Work Queue screenshot artifact for visual audit.
+
 **Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
 
 # Progress Log
