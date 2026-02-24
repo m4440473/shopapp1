@@ -645,3 +645,54 @@ Resolve reported UI/runtime bugs: duplicate React key warning in navigation and 
 
 ## Next steps
 - Investigate build-time app settings seeding/idempotency causing `P2002` on `/403` prerender in this environment.
+
+## Session Handoff — 2026-02-24 (FK/auth modal/status+seed+style)
+
+Goal (1 sentence): Resolve test-mode FK/auth edge cases and UX auth prompting, ensure final-checklist completion reflects completed status, diversify demo seed flow, and align home metric card styling.
+
+### What changed
+- Test mode auth session now resolves to a persisted DB user (`test@local`) with stable admin role and returns that real `user.id` in session payload.
+- Added centralized auth-required response helpers and updated timer/checklist protected endpoints to emit structured auth payloads.
+- Added global shared auth interception (`window.fetch` wrapper + `fetchJson` fallback event emit) and a reusable sign-in modal dialog in app-wide providers.
+- Updated order detail part badge logic to compute completion from active checklist item completion and render `COMPLETE` for fully completed parts.
+- Expanded seed customers/orders with broader lifecycle-stage variety and more part/checklist distributions.
+- Updated homepage intelligence metric cards with the same visual card treatment used on Customers page cards.
+
+### Files touched
+- `src/lib/auth-session.ts`
+- `src/lib/auth-api.ts`
+- `src/lib/auth-required.ts`
+- `src/lib/fetchJson.ts`
+- `src/components/AuthRequiredDialog.tsx`
+- `src/components/Providers.tsx`
+- `src/app/api/timer/start/route.ts`
+- `src/app/api/orders/[id]/parts/[partId]/checklist/[itemId]/complete-and-advance/route.ts`
+- `src/lib/rbac.ts`
+- `src/app/orders/[id]/page.tsx`
+- `src/app/page.tsx`
+- `prisma/seed.ts`
+- `prisma/seed.js`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- npm run prisma:push
+- npm run seed
+- npm run lint
+- npm run test
+- npm run build
+- node -e 'const {PrismaClient}=require("@prisma/client"); ... groupBy ...'
+- TEST_MODE=true npm run dev -- --port 3000 (screenshot capture)
+
+### Verification evidence
+- Prisma push + seed completed without FK errors.
+- Lint passed clean.
+- Vitest suite passed.
+- Build still fails in this environment due known `AppSettings.id` unique collision during prerender (`/about`).
+- Screenshot captured for home metric card styling parity.
+
+### Next steps
+- [ ] Consider centralizing auth response helpers across remaining protected API routes for fully uniform payload shape.
+- [ ] Add a focused integration test for auth-required modal event handling on protected actions.
+- [ ] Investigate/resolve environment-level `AppSettings.id` prerender build conflict.

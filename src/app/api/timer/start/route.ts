@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
+import { authRequiredResponse } from '@/lib/auth-api';
 
 import { getOrderHeaderInfo, getOrderPartSummary, logPartEvent } from '@/modules/orders/orders.service';
 import { TimeEntryStart } from '@/modules/time/time.schema';
@@ -7,10 +8,10 @@ import { getActiveTimeEntry, startTimeEntryWithConflict } from '@/modules/time/t
 
 export async function POST(req: NextRequest) {
   const session = await getServerAuthSession();
-  if (!session) return new NextResponse('Unauthorized', { status: 401 });
+  if (!session) return authRequiredResponse();
 
   const userId = (session.user as any)?.id as string | undefined;
-  if (!userId) return new NextResponse('Unauthorized', { status: 401 });
+  if (!userId) return authRequiredResponse();
 
   const json = await req.json().catch(() => null);
   const parsed = TimeEntryStart.safeParse(json);

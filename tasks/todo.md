@@ -231,3 +231,40 @@
 - AppNav now uses composite keys (`href+label`) so duplicate `'/'` links no longer trigger React key collisions.
 - Timer conflict payloads now include `activeOrderHref`; order page conflict dialog surfaces a direct navigation link to the active timer context.
 - When timer API returns 409 without switch-confirmation action, UI now shows a sync/refresh error instead of opening misleading conflict dialog.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-24
+- Agent: GPT-5.2-Codex
+- Task ID: FK/auth modal/status-complete/seed-diversity/intelligence-card-style
+- Goal: Apply minimal mechanical fixes for FK/auth failures, shared auth-required modal UX, part completion status badge logic, richer seed diversity, and home metric card styling parity.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and existing task board context before edits.
+- [x] Scoped changes to requested files/flows only; no drive-by refactors.
+
+## Plan First
+- [x] Update test-mode auth session identity to ensure DB-backed user IDs for FK columns.
+- [x] Add shared auth-required response/handler + global sign-in popup interception.
+- [x] Update part status badge logic to show complete when all active checklist items are done.
+- [x] Expand seed dataset diversity and lifecycle distribution.
+- [x] Apply Customers card class styling to home intelligence metric cards.
+- [x] Verify with prisma push/seed/lint/test/build + screenshot.
+
+## Verification Checklist
+- [x] `npm run prisma:push`
+- [x] `npm run seed`
+- [x] `npm run lint`
+- [x] `npm run test`
+- [ ] `npm run build` *(fails in current environment with existing Prisma P2002 on AppSettings.id during prerender of /about)*
+- [x] Browser screenshot captured for home metric cards
+
+## Review + Results
+- Test mode now returns a real persisted DB `User.id`, preventing FK violations from placeholder IDs.
+- Protected-action auth failures now trigger a shared sign-in dialog via centralized fetch interception.
+- Part list status badge reflects checklist completion (`COMPLETE` when all active items are complete).
+- Seed data now includes more customers/orders and mixed lifecycle stages for realistic demos.
+- Home metric cards now visually match Customers card styling.

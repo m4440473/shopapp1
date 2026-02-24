@@ -785,3 +785,21 @@ Next steps (immediate)
   - `npm run test -- src/modules/time/__tests__/time.service.test.ts`
   - `npm run build` *(fails in this environment: Prisma P2002 on appSettings.id while prerendering /403)*
   - Browser screenshot: `browser:/tmp/codex_browser_invocations/0002efd80d6b7b20/artifacts/artifacts/nav-timer-fix-home.png`
+
+## 2026-02-24
+- Summary: Fixed test-mode FK failures by DB-backing session user IDs, added shared auth-required sign-in modal interception, updated part status badge completion logic, diversified seed data/stages, and aligned home metric card styling with Customers cards.
+- Scope highlights:
+  - `getServerAuthSession()` now upserts/uses a real `User` row for TEST MODE (`test@local`) so FK writes (e.g., `TimeEntry.userId`, `OrderChecklist.toggledById`) use valid IDs.
+  - Added shared auth-required event + fetch interception and a global sign-in dialog for 401/403 or `AUTH_REQUIRED` payloads.
+  - Updated timer start + checklist complete-and-advance endpoints to return structured auth payloads for client interception.
+  - Part cards on order detail now show `COMPLETE` when all active checklist items for that part are complete.
+  - Expanded seed fixtures with additional customers/orders/parts and lifecycle-stage spread (new, in-progress, completed) plus varied checklist completion states.
+  - Applied Customers-style card classes to Shop Floor Intelligence metric cards.
+- Tests run:
+  - `npm run prisma:push`
+  - `npm run seed`
+  - `npm run lint`
+  - `npm run test`
+  - `npm run build` *(fails in this environment with existing Prisma P2002 on AppSettings.id while prerendering /about)*
+  - `node -e '...groupBy...'` seed distribution check
+  - Browser screenshot: `browser:/tmp/codex_browser_invocations/f0d023415cbf5e1d/artifacts/artifacts/home-metric-cards.png`
