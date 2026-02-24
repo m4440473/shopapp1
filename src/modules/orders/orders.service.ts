@@ -92,7 +92,7 @@ export { generateNextOrderNumber, syncChecklistForOrder };
 export type { OrderFilterState, OrderListItem, OrderWithMeta };
 export { isPartReadyForDepartment };
 
-export type DepartmentFeedPart = { id: string; partNumber: string | null; quantity: number | null; flagged: boolean; reasonText: string | null; hasOpenWork: boolean; createdAt?: Date | string | null };
+export type DepartmentFeedPart = { id: string; partNumber: string | null; quantity: number | null; flagged: boolean; reasonText: string | null; hasOpenWork: boolean };
 export type DepartmentFeedOrder = {
   orderId: string;
   orderNumber: string;
@@ -1514,7 +1514,6 @@ export async function getOrderDepartmentFeed(
       flagged: latestMeta?.flag === true,
       reasonText: typeof latestMeta?.reasonText === 'string' ? latestMeta.reasonText : null,
       hasOpenWork: (part.checklistItems?.length ?? 0) > 0,
-      createdAt: (part as any).createdAt ?? null,
     });
     existing.readyPartsCount += 1;
     orders.set(order.id, existing);
@@ -1530,9 +1529,7 @@ export async function getOrderDepartmentFeed(
         if (aPart && bPart) return aPart.localeCompare(bPart, undefined, { numeric: true, sensitivity: 'base' });
         if (aPart) return -1;
         if (bPart) return 1;
-        const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
-        const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
-        return aCreated - bCreated;
+        return a.id.localeCompare(b.id);
       }),
     }))
     .sort((a, b) => {

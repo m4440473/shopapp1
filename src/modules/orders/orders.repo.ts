@@ -939,13 +939,12 @@ export async function listReadyOrderPartsForDepartment(departmentId: string, inc
             },
           }),
     },
-    orderBy: [{ order: { dueDate: 'asc' } }, { order: { orderNumber: 'asc' } }, { partNumber: 'asc' }, { createdAt: 'asc' }],
+    orderBy: [{ order: { dueDate: 'asc' } }, { order: { orderNumber: 'asc' } }, { partNumber: 'asc' }, { id: 'asc' }],
     select: {
       id: true,
       partNumber: true,
       quantity: true,
       orderId: true,
-      createdAt: true,
       checklistItems: {
         where: { departmentId, isActive: true, completed: false },
         select: { id: true },

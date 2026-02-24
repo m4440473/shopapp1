@@ -60,6 +60,20 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-24 — Department feed Prisma validation fix (`OrderPart.createdAt`)
+- Fixed runtime crash in Orders department feed by removing stale `createdAt` usage from `listReadyOrderPartsForDepartment` query in `orders.repo.ts`.
+- Updated feed ordering fallback to use stable `id` ordering where part numbers are absent, preserving deterministic output without relying on non-existent schema fields.
+- Removed stale `createdAt` plumbing from `DepartmentFeedPart` in `orders.service.ts`.
+
+Commands run:
+- npm run lint
+- npm run test -- src/modules/orders/__tests__/department-routing.test.ts
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Department routing test suite passed (4/4), confirming scoped Orders service/repo behavior remains healthy after query fix.
+
+
 ### 2026-02-24 — Timer resume workflow for paused part context
 - Implemented resume workflow for order-detail timers so a paused part can be resumed (not restarted) from the same Active Work control.
 - Added `POST /api/timer/resume` route with the same 409 switch-confirmation payload semantics used by `POST /api/timer/start`, then resumed entries via `resumeTimeEntry`.

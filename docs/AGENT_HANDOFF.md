@@ -1,3 +1,30 @@
+## Session Handoff — 2026-02-24 (department feed Prisma validation fix)
+
+### Goal
+Fix the home department feed runtime Prisma validation error by removing unsupported `OrderPart.createdAt` query usage.
+
+### Scope Completed
+- Updated `listReadyOrderPartsForDepartment` query ordering/select fields to align with current Prisma schema (`OrderPart` has no `createdAt`).
+- Updated department feed service type/fallback sorting to remove stale `createdAt` assumptions.
+- Updated continuity artifacts for this scoped bugfix.
+
+### Files Touched
+- `src/modules/orders/orders.repo.ts`
+- `src/modules/orders/orders.service.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands Run
+- `npm run lint`
+- `npm run test -- src/modules/orders/__tests__/department-routing.test.ts`
+
+### Verification Summary
+- Lint passed with no ESLint warnings/errors.
+- Orders department routing tests passed (4/4).
+
+---
+
 ## Session Handoff — 2026-02-24 (tx timeout + queue merge + timer semantics)
 
 ### Goal

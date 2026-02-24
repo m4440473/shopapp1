@@ -3,6 +3,37 @@
 ## Session Metadata
 - Date: 2026-02-24
 - Agent: GPT-5.2-Codex
+- Task ID: Unplanned bugfix (department feed Prisma validation error)
+- Goal: Resolve `Unknown argument createdAt` crash in department feed query by aligning Orders repo/service sort fields with current Prisma schema.
+
+## Dependency Validation
+- [x] Reviewed `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No dependency blocker found for this scoped Orders-domain bugfix.
+
+## Plan First
+- [x] Inspect runtime stack path (`getOrderDepartmentFeed` -> `listReadyOrderPartsForDepartment`) and confirm invalid Prisma field usage.
+- [x] Apply minimal repo/service fix to remove unsupported `OrderPart.createdAt` usage while preserving deterministic feed ordering.
+- [x] Run targeted verification and record evidence in continuity docs.
+
+## Implementation Checklist
+- [x] Replaced invalid `orderBy: { createdAt: 'asc' }` in ready-parts query with stable fallback ordering by `id`.
+- [x] Removed `createdAt` from ready-part select payload and from department-feed part type/sorting fallback.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test -- src/modules/orders/__tests__/department-routing.test.ts`
+
+## Review + Results
+- Root cause confirmed: `OrderPart` no longer has a `createdAt` column in Prisma schema, but department-feed ready-parts query still ordered/selected by that field.
+- Department feed now uses schema-valid sorting (`dueDate`, `orderNumber`, `partNumber`, `id`) and no longer reads missing fields, eliminating the runtime Prisma validation error.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-24
+- Agent: GPT-5.2-Codex
 - Task ID: Unplanned consolidation (tx timeout fix + work-queue merge + timer semantics)
 - Goal: Fix transaction client propagation/timeouts, consolidate queue to home page, correct department feed sorting behavior, and repair timer persistence/finish semantics.
 
