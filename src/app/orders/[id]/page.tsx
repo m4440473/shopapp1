@@ -240,7 +240,7 @@ export default function OrderDetailPage() {
       const res = await fetch('/api/timer/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: id, partId: selectedPartId }),
+        body: JSON.stringify({ orderId: id, partId: selectedPartId, operation: 'Part Work' }),
         credentials: 'include',
       });
       if (res.status === 409) {

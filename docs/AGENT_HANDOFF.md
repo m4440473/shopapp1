@@ -1,3 +1,34 @@
+Date: 2026-02-24
+Agent: GPT-5.2-Codex
+Goal (1 sentence): Fix timer start 400 on order detail by sending the required `operation` field expected by `TimeEntryStart`.
+
+## What I changed
+- Updated `src/app/orders/[id]/page.tsx` so `handleStart` sends `operation: 'Part Work'` in the `/api/timer/start` JSON body.
+- Updated continuity artifacts for this session: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`.
+
+## Files touched
+- src/app/orders/[id]/page.tsx
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+## Commands run
+- npm run lint
+
+## Verification Evidence
+- Lint passed.
+- The order detail timer start request payload now includes all required schema fields (`orderId`, `partId`, `operation`) for `/api/timer/start`.
+
+## DoD Checklist
+- [x] Reproduced/confirmed root cause from code path (missing `operation` in payload).
+- [x] Applied minimal scoped fix without unrelated refactors.
+- [x] Ran verification command and logged evidence.
+
+## Next steps
+- [ ] Optional follow-up: unify overlapping `/api/time/start` and `/api/timer/start` contract expectations to reduce drift risk.
+
+---
+
 Date: 2026-02-23
 Agent: GPT-5.2-Codex
 Goal (1 sentence): Resolve local setup friction and timer/order-detail issues by updating install docs, handling timer FK failures gracefully, and fixing order timer control overlap.
