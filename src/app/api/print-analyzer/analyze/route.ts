@@ -46,7 +46,10 @@ export async function POST(req: Request) {
               type: 'input_text',
               text: [
                 'You are reading a manufacturing drawing/print image.',
-                'Return ONLY valid JSON matching exactly this schema (no markdown, no prose):',
+                'Return a single JSON object with EXACTLY these top-level keys: units, holes, radii, generalTolerances, tappedHoles, warnings (include empty arrays when none).',
+                'Do not include markdown fences, commentary, or extra keys.',
+                'All numeric fields must be numbers (no strings).',
+                'JSON contract:',
                 '{',
                 '  "units": "inch" | "mm" | "unknown",',
                 '  "holes": [{"diameter": number, "count": number, "notes"?: string, "tolerance"?: {"plus"?: number, "minus"?: number, "fit"?: string, "note"?: string}, "confidence": number}],',
@@ -80,14 +83,29 @@ export async function POST(req: Request) {
 
     const rawText = response.output_text ?? '';
     const jsonText = extractJsonText(rawText);
-    const parsed = JSON.parse(jsonText || '{}');
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonText || '{}');
+    } catch {
+      return NextResponse.json(
+        {
+          error: 'Model output was not valid JSON.',
+          rawModelText: rawText.slice(0, RAW_MODEL_TEXT_LIMIT),
+          extractedJsonText: jsonText.slice(0, RAW_MODEL_TEXT_LIMIT),
+        },
+        { status: 502 }
+      );
+    }
+
     const validation = printAnalyzerResultSchema.safeParse(parsed);
 
     if (!validation.success) {
       return NextResponse.json(
         {
           error: 'Model output failed schema validation.',
-          issues: validation.error.flatten(),
+          issues: validation.error.issues,
+          rawParsed: parsed,
           rawModelText: rawText.slice(0, RAW_MODEL_TEXT_LIMIT),
         },
         { status: 502 }
