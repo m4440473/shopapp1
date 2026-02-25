@@ -40,6 +40,22 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-25 — Timer elapsed display reset + Department queue transparency follow-up
+- Implemented a scoped follow-up fix for two reported UI issues:
+  - Timer display on order detail now shows active-entry elapsed seconds while running (instead of adding prior accumulated total during active run), preventing the visual “starts around 40s” behavior when beginning a fresh interval.
+  - Department Work Queue wrapper background was changed to transparent to match the previous border-removal intent.
+- No dependency/package changes or broader refactors were introduced.
+
+Commands run:
+- npm run lint
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot capture against http://127.0.0.1:3000 (firefox engine)
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Screenshot artifact captured: `browser:/tmp/codex_browser_invocations/329e7c491ac33201/artifacts/artifacts/dashboard-workqueue-transparent-bg.png`.
+
+
 ### 2026-02-25 — Dashboard follow-up: border cleanup + button relocation
 - Updated Dashboard visual hierarchy per feedback:
   - Kept border on the overall `Shop floor layouts` container.

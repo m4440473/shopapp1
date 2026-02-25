@@ -584,7 +584,7 @@ export default function OrderDetailPage() {
   const statusLabel = item.status?.replace(/_/g, ' ') ?? 'Unknown';
   const activeOnSelected = Boolean(activeEntry?.partId && activeEntry.partId === selectedPartId);
   const selectedPartStoredSeconds = selectedPartId ? partTotals[selectedPartId] ?? 0 : 0;
-  const selectedPartElapsedSeconds = selectedPartStoredSeconds + (activeOnSelected ? activeElapsedSeconds : 0);
+  const selectedPartElapsedSeconds = activeOnSelected ? activeElapsedSeconds : selectedPartStoredSeconds;
   const selectedPartLastEntry = selectedPartId ? lastPartEntries[selectedPartId] ?? null : null;
   const canResumeSelected = Boolean(selectedPartLastEntry?.id && selectedPartLastEntry?.endedAt && !activeOnSelected);
   const hasActiveEntry = Boolean(activeEntry);

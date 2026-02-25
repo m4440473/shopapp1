@@ -3,6 +3,34 @@
 ## Session Metadata
 - Date: 2026-02-25
 - Agent: GPT-5.2-Codex
+- Task ID: Unplanned bugfix (timer elapsed reset + Department queue wrapper transparency)
+- Goal: Ensure active timer display starts from zero for new active intervals and make Department Work Queue wrapper background transparent.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No dependency blockers found for this scoped follow-up fix.
+- [x] Applied relevant lesson: verify all requested visual surfaces (border + background) for wrapper-style changes.
+
+## Plan First
+- [x] Locate timer elapsed calculation path and confirm why active timer display appears to start with pre-existing seconds.
+- [x] Apply minimal elapsed-display fix so running timer shows active-entry elapsed time while preserving paused total context.
+- [x] Remove Department Work Queue wrapper background fill (transparent wrapper).
+- [x] Run lint and record continuity evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Updated order detail elapsed math to show only active-entry elapsed seconds while timer is actively running, preventing new runs from visually inheriting previously accumulated part totals.
+- Updated Department Work Queue wrapper container styling to use a transparent background (`bg-transparent`).
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-25
+- Agent: GPT-5.2-Codex
 - Task ID: Follow-up UI polish (Dashboard border/buttons/admin New Order location)
 - Goal: Remove Department Work Queue container border, remove homepage quick-action buttons, and relocate New Order access to Admin quotes actions.
 

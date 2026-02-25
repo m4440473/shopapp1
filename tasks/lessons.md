@@ -1,3 +1,7 @@
+## 2026-02-25 — Verify full wrapper surface requests (border + background)
+- When user asks to remove a wrapper border, explicitly verify whether they also expect background removal/transparency before closing the task.
+- For UI wrapper tweaks, audit the full class list (`border`, `bg-*`, shadow) so visual intent is fully satisfied in one pass.
+
 # tasks/lessons.md — Anti-Repeat Rules
 
 Record lessons after user corrections or process failures.
