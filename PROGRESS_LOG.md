@@ -40,6 +40,29 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-25 — New sealed Print Analyzer page + API feature
+- Added isolated private route UI at `/private/print-analyzer` with local CSS module only, file upload + preview, analyze action, loading/error handling, and structured result rendering sections (units, general tolerances, holes, radii, tapped holes with recommended tap drill, warnings, raw JSON details).
+- Added `POST /api/print-analyzer/analyze` Node route with strict input validation (`data:image/...`), OpenAI Responses API vision call, JSON-only response format instruction, zod contract validation, tap-drill enrichment, and capped raw-model debug payload in 502 schema-failure cases.
+- Added feature helpers under `src/lib/printAnalyzer/`: schema contract typing, whitespace/number normalization utilities, and normalized thread/tap-drill mapping attachment.
+- Added feature documentation (`docs/PRINT_ANALYZER.md`) and `.env.example` key guidance (`OPENAI_API_KEY`).
+- Added Decision Log entry for the new `openai` dependency.
+
+Commands run:
+- npm install openai@^6.25.0
+- npm run lint
+- npm run build
+- npm run dev -- --hostname 0.0.0.0 --port 3000
+- curl -s -o /tmp/pa_invalid.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/print-analyzer/analyze -H 'Content-Type: application/json' -d '{"foo":"bar"}'
+- curl -s -o /tmp/pa_valid.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/print-analyzer/analyze -H 'Content-Type: application/json' -d '{"dataUrl":"data:image/png;base64,..."}'
+- curl -s -o /tmp/pa_page.html -w '%{http_code}' http://127.0.0.1:3000/private/print-analyzer
+- Browser tool Playwright screenshot attempts against http://127.0.0.1:3000/private/print-analyzer
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Build passed successfully.
+- Manual runtime checks passed for page accessibility and API error handling (400 invalid payload, 500 missing OpenAI key).
+- Screenshot capture was attempted but failed due browser-tool Chromium SIGSEGV crash in this environment (no artifact produced).
+
 ### 2026-02-25 — Dashboard follow-up fix: restore Fab/Shipping department visibility in touch counts
 - Investigated follow-up feedback and confirmed root cause: Dashboard grid `Departments` metric used checklist `departmentId`, but the dashboard order query payload did not include checklist department IDs; it also lacked part `currentDepartmentId`, so Fab/Shipping routing context was not reflected.
 - Updated orders repo selections used by Dashboard to include:
