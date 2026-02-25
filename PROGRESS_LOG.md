@@ -40,6 +40,38 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-25 — Dashboard follow-up fix: restore Fab/Shipping department visibility in touch counts
+- Investigated follow-up feedback and confirmed root cause: Dashboard grid `Departments` metric used checklist `departmentId`, but the dashboard order query payload did not include checklist department IDs; it also lacked part `currentDepartmentId`, so Fab/Shipping routing context was not reflected.
+- Updated orders repo selections used by Dashboard to include:
+  - `checklist.departmentId`
+  - `parts.currentDepartmentId`
+- Updated dashboard `departmentTouchesByOrder` logic to union department IDs from both checklist entries and parts’ current department IDs.
+
+Commands run:
+- npm run lint
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot attempt against http://127.0.0.1:3000
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Browser screenshot attempt failed due environment/runtime issues (`chromium` SIGSEGV in browser tool and local TEST_MODE runtime DB open-file error), so no new artifact captured this session.
+
+
+### 2026-02-25 — Dashboard cleanup: remove Ready for fab + show department touch count
+- Updated `ShopFloorLayouts` on Dashboard to remove the `Ready for fab` layout option and its associated render branch so only Grid digest, By machinist, and Work queue remain.
+- Added a new Grid digest tile metric (`Departments`) that shows how many distinct departments each order touches, based on checklist department IDs.
+- Captured an updated Dashboard screenshot artifact to verify the control/tile changes.
+
+Commands run:
+- npm run lint
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot capture against http://127.0.0.1:3000
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Screenshot artifact captured: `browser:/tmp/codex_browser_invocations/692d07767d918caa/artifacts/artifacts/dashboard-readyfab-removed.png`.
+
+
 ### 2026-02-25 — Timer elapsed display reset + Department queue transparency follow-up
 - Implemented a scoped follow-up fix for two reported UI issues:
   - Timer display on order detail now shows active-entry elapsed seconds while running (instead of adding prior accumulated total during active run), preventing the visual “starts around 40s” behavior when beginning a fresh interval.

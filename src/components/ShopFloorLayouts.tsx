@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpDown, LayoutGrid, LayoutList, MonitorPlay, Rows3, SlidersHorizontal } from 'lucide-react';
+import { ArrowUpDown, LayoutGrid, LayoutList, Rows3, SlidersHorizontal } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
@@ -28,7 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters, type DepartmentFeedOrder, type OrderWithMeta } from '@/modules/orders/orders.service';
 import { WorkQueueOrderCard } from '@/components/work-queue/WorkQueueOrderCard';
 
-type LayoutOption = 'grid' | 'handoff' | 'machinist' | 'workQueue';
+type LayoutOption = 'grid' | 'machinist' | 'workQueue';
 
 type Props = {
   orders: OrderWithMeta[];
@@ -151,7 +151,6 @@ export function ShopFloorLayouts({
     return list;
   }, [filtered, sortKey, sortDir]);
 
-  const handoffOrders = sorted.filter((order) => order.status === 'COMPLETE' && (order.openAddonCount ?? 0) > 0);
 
   const machinistBuckets = useMemo(() => {
     const buckets: Record<string, OrderWithMeta[]> = {};
@@ -160,6 +159,21 @@ export function ShopFloorLayouts({
       buckets[key] = buckets[key] ? [...buckets[key], order] : [order];
     });
     return buckets;
+  }, [sorted]);
+
+  const departmentTouchesByOrder = useMemo(() => {
+    return new Map(
+      sorted.map((order) => {
+        const touched = new Set<string>();
+        (order.checklist ?? []).forEach((item) => {
+          if (item.departmentId) touched.add(item.departmentId);
+        });
+        (order.parts ?? []).forEach((part) => {
+          if (part.currentDepartmentId) touched.add(part.currentDepartmentId);
+        });
+        return [order.id, touched.size] as const;
+      }),
+    );
   }, [sorted]);
 
   const handleSortChange = (column: (typeof SORT_KEYS)[number]) => {
@@ -197,14 +211,6 @@ export function ShopFloorLayouts({
             onClick={() => setLayout('machinist')}
           >
             <LayoutList className="mr-2 h-4 w-4" /> By machinist
-          </Button>
-          <Button
-            variant={layout === 'handoff' ? 'default' : 'secondary'}
-            className="rounded-full"
-            size="sm"
-            onClick={() => setLayout('handoff')}
-          >
-            <MonitorPlay className="mr-2 h-4 w-4" /> Ready for fab
           </Button>
           <Button
             variant={layout === 'workQueue' ? 'default' : 'secondary'}
@@ -484,6 +490,10 @@ export function ShopFloorLayouts({
                     {order.checklist?.length ? `${order.checklist.length - (order.openAddonCount ?? 0)}/${order.checklist.length} done` : 'None'}
                   </p>
                 </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide">Departments</p>
+                  <p className="text-foreground">{departmentTouchesByOrder.get(order.id) ?? 0} touched</p>
+                </div>
               </div>
             </div>
           ))}
@@ -541,49 +551,6 @@ export function ShopFloorLayouts({
             </div>
           ))}
           {!Object.keys(machinistBuckets).length && <p className="text-sm text-muted-foreground">No assignments to display.</p>}
-        </div>
-      )}
-
-      {layout === 'handoff' && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Running/complete but addons open</p>
-              <p className="text-xs text-muted-foreground">
-                Use this for the fabrication crew to grab parts that are ready for the next step.
-              </p>
-            </div>
-            <Badge variant="secondary" className="rounded-full border border-lime-300/60 bg-lime-300/15 text-lime-100">
-              {handoffOrders.length} highlighted
-            </Badge>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {handoffOrders.map((order) => (
-              <div
-                key={order.id}
-                className="space-y-2 rounded-lg border border-lime-300/60 bg-lime-500/10 p-4 shadow-sm shadow-lime-400/20"
-              >
-                <div className="flex items-center justify-between">
-                  <Link href={`/orders/${order.id}`} className="text-lg font-semibold text-lime-100 hover:underline">
-                    #{order.orderNumber}
-                  </Link>
-                  <Badge variant="outline" className="border-lime-300/60 bg-lime-300/20 text-lime-50">
-                    {formatStatusLabel(order.status)}
-                  </Badge>
-                </div>
-                <p className="text-sm text-lime-100">
-                  {order.customer?.name ?? 'Unknown customer'} •{' '}
-                  {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
-                </p>
-                <p className="text-xs font-medium uppercase tracking-wide text-lime-200">
-                  {order.openAddonCount} addon{order.openAddonCount === 1 ? '' : 's'} remaining
-                </p>
-              </div>
-            ))}
-            {!handoffOrders.length && (
-              <p className="col-span-full text-sm text-muted-foreground">No running/completed orders with addons outstanding.</p>
-            )}
-          </div>
         </div>
       )}
     </div>
