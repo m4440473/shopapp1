@@ -38,6 +38,16 @@ const confidenceSchema = z
   }, z.coerce.number())
   .transform((value) => Math.min(1, Math.max(0, value)));
 
+const setupCountSchema = z.preprocess((value) => {
+  if (value === undefined || value === null || value === '') return 1;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const match = value.match(/\d+/);
+    if (match) return Number.parseInt(match[0], 10);
+  }
+  return value;
+}, z.coerce.number().int().min(1));
+
 const holeToleranceSchema = z
   .object({
     plus: optionalCoercedNumberSchema,
@@ -63,6 +73,22 @@ const recommendedTapDrillSchema = z
   })
   .optional();
 
+const generalToleranceItemSchema = z.object({
+  note: z.string().min(1),
+  confidence: confidenceSchema,
+});
+
+const setupNormalSchema = z.object({
+  label: z.string().min(1),
+  angleDegFromPrimary: optionalCoercedNumberSchema,
+  evidence: z.string().min(1),
+});
+
+export const titleBlockTolerancePassSchema = z.object({
+  generalTolerances: z.array(generalToleranceItemSchema).default([]),
+  warnings: z.array(z.string()).default([]),
+});
+
 export const printAnalyzerResultSchema = z.object({
   units: z.enum(['inch', 'mm', 'unknown']),
   holes: z
@@ -87,14 +113,7 @@ export const printAnalyzerResultSchema = z.object({
       })
     )
     .default([]),
-  generalTolerances: z
-    .array(
-      z.object({
-        note: z.string().min(1),
-        confidence: confidenceSchema,
-      })
-    )
-    .default([]),
+  generalTolerances: z.array(generalToleranceItemSchema).default([]),
   tappedHoles: z
     .array(
       z.object({
@@ -107,7 +126,16 @@ export const printAnalyzerResultSchema = z.object({
       })
     )
     .default([]),
+  setup: z.object({
+    estimatedSetups: setupCountSchema,
+    estimatedFlips: z.coerce.number().int().min(0).default(0),
+    assumedMachine: z.enum(['3-axis', '4-axis']).default('3-axis'),
+    normals: z.array(setupNormalSchema).default([]),
+    reasoning: z.array(z.string().min(1)).default([]),
+    assumptions: z.array(z.string().min(1)).default([]),
+  }),
   warnings: z.array(z.string()).default([]),
 });
 
 export type PrintAnalyzerResult = z.infer<typeof printAnalyzerResultSchema>;
+export type TitleBlockTolerancePassResult = z.infer<typeof titleBlockTolerancePassSchema>;
