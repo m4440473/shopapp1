@@ -371,7 +371,7 @@ export function ShopFloorLayouts({
       </div>
 
       {layout === 'workQueue' && (
-        <div className="space-y-3 rounded-lg bg-background/70 p-4">
+        <div className="space-y-3 rounded-lg bg-transparent p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Department work queue</p>

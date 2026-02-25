@@ -1,3 +1,37 @@
+## Session — 2026-02-25 (timer elapsed reset + department wrapper transparency)
+
+Goal (1 sentence): Fix timer elapsed UI so active runs start at zero visual elapsed and remove Department Work Queue wrapper background fill.
+
+What changed:
+- Updated `src/app/orders/[id]/page.tsx` elapsed computation:
+  - `selectedPartElapsedSeconds` now uses active-entry elapsed only while the timer is running on the selected part.
+  - Paused/non-active selected parts still show stored cumulative seconds.
+- Updated `src/components/ShopFloorLayouts.tsx`:
+  - Department Work Queue wrapper container now uses `bg-transparent`.
+
+Files touched:
+- src/app/orders/[id]/page.tsx
+- src/components/ShopFloorLayouts.tsx
+- tasks/todo.md
+- tasks/lessons.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+Commands run:
+- `npm run lint`
+- `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000`
+- Playwright screenshot capture script against `http://127.0.0.1:3000`
+
+Verification results:
+- Lint passed (no ESLint warnings/errors).
+- Runtime screenshot captured for dashboard/work queue transparency check:
+  - `browser:/tmp/codex_browser_invocations/329e7c491ac33201/artifacts/artifacts/dashboard-workqueue-transparent-bg.png`
+
+Open follow-ups:
+- [ ] Optional: add a focused UI/integration check for timer elapsed rendering semantics (active interval vs stored cumulative total).
+
+---
+
 Date: 2026-02-24
 Agent: GPT-5.2-Codex
 Goal (1 sentence): Fix timer start validation drift and resume foreign-key crash behavior with minimal server-side changes.
