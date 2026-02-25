@@ -3,6 +3,40 @@
 ## Session Metadata
 - Date: 2026-02-25
 - Agent: GPT-5.2-Codex
+- Task ID: Unplanned order-part BOM tab integration
+- Goal: Integrate existing Print Analyzer API into Order → Part detail as a native BOM tab with dark-theme cards/tables and deterministic tolerance/thread helpers.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated scope constraints: no DB/schema/global CSS changes, no unrelated refactors, use existing `/api/print-analyzer/analyze`.
+- [x] Applied relevant lessons: plan first for cross-file UI work and keep verification evidence explicit.
+
+## Plan First
+- [x] Add a dedicated `PartBomTab` client component under `src/app/orders/[id]/` with upload/select-image input, analyze action, loading/error states, and results cards/tables.
+- [x] Implement UI-local helpers for unit conversion/formatting, thread-pitch parsing, and deterministic tight-tolerance heuristics.
+- [x] Wire BOM into order-part tabs in `src/app/orders/[id]/page.tsx` without changing existing tab behavior.
+- [x] Update `docs/PRINT_ANALYZER.md` with BOM-tab integration note.
+- [x] Run `npm run lint` and `npm run build`; capture BOM tab screenshot evidence if app runtime allows.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [!] `npm run build` (fails in current repo baseline: missing `openai` package for pre-existing `src/app/api/print-analyzer/analyze/route.ts` import)
+- [!] Manual/browser verification: UI screenshot captured, but auth/data constraints in this environment prevented drilling into a real order part with BOM tab active.
+
+## Review + Results
+- Added `PartBomTab` as a native order-part tab panel using existing app cards/tables/badges and analyzer endpoint integration.
+- Added deterministic BOM helper logic for unit conversion display, thread-pitch parsing (metric + imperial), and tight-tolerance flagging with fit-based heuristics.
+- Integrated `bom` into part tabs in order detail without modifying existing tab workflows.
+- Updated Print Analyzer docs with an order-detail BOM integration note.
+- Screenshot evidence captured in dev mode: `browser:/tmp/codex_browser_invocations/bec823ec399c834f/artifacts/artifacts/bom-tab-testmode-orders.png`.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-25
+- Agent: GPT-5.2-Codex
 - Task ID: Unplanned feature build (sealed Print Analyzer page + API)
 - Goal: Add a fully isolated `/private/print-analyzer` feature with upload UI, OpenAI vision API analysis, validated JSON contract, tap-drill enrichment, and scoped styling only.
 

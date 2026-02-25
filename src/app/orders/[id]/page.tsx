@@ -25,8 +25,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/Textarea';
 import { useToast } from '@/components/ui/Toast';
+import { PartBomTab } from './PartBomTab';
 
-const PART_TABS = ['overview', 'notes', 'checklist', 'log'] as const;
+const PART_TABS = ['overview', 'notes', 'checklist', 'log', 'bom'] as const;
 const PART_ATTACHMENT_KINDS = ['DWG', 'STEP', 'PDF', 'PO', 'IMAGE', 'OTHER'] as const;
 
 type PartTab = (typeof PART_TABS)[number];
@@ -807,7 +808,9 @@ export default function OrderDetailPage() {
                       ? 'Notes & Files'
                       : tab === 'checklist'
                         ? 'To-do / Checklist'
-                        : 'Log';
+                        : tab === 'log'
+                          ? 'Log'
+                          : 'BOM';
                 const isActive = activeTab === tab;
                 return (
                   <button
@@ -1086,6 +1089,15 @@ export default function OrderDetailPage() {
                 )}
               </div>
             )}
+
+            {activeTab === 'bom' && selectedPartId && (
+              <PartBomTab
+                orderId={id}
+                partId={selectedPartId}
+                attachments={selectedAttachments}
+              />
+            )}
+
 
             {activeTab === 'log' && (
               <div className="space-y-3">
