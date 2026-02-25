@@ -40,6 +40,41 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-25 — Dashboard follow-up: border cleanup + button relocation
+- Updated Dashboard visual hierarchy per feedback:
+  - Kept border on the overall `Shop floor layouts` container.
+  - Kept borders on work-order tiles.
+  - Removed border only from the `Department work queue` wrapper section.
+- Removed Dashboard hero quick-action buttons (`New Order`, `Open dashboard`).
+- Removed `New Order` from global top nav and moved that action to Admin Quotes controls beside `New quote`.
+- Captured an updated Dashboard screenshot artifact for verification.
+
+Commands run:
+- npm run lint
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot capture against http://127.0.0.1:3000 (firefox engine)
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Screenshot artifact captured: `browser:/tmp/codex_browser_invocations/1beb2a2aeb55c846/artifacts/artifacts/dashboard-border-button-fix.png`.
+
+
+### 2026-02-25 — Dashboard nav consolidation + default Work Queue layout
+- Consolidated top navigation at `/` to a single `Dashboard` item by removing duplicate `Shop Floor Intelligence` and `Queue` entries.
+- Set `ShopFloorLayouts` default layout state to `workQueue` so landing on Dashboard opens directly to the Work Queue layout.
+- Aligned homepage hero/action copy to `Dashboard` naming (`Dashboard`, `Open dashboard`, `View dashboard`) to reduce stale label drift.
+- Captured updated Dashboard UI screenshot in TEST_MODE for visual verification.
+
+Commands run:
+- npm run lint
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot capture against http://127.0.0.1:3000
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Screenshot artifact captured: `browser:/tmp/codex_browser_invocations/5b2f1381157b8568/artifacts/artifacts/dashboard-nav-workqueue.png`.
+
+
 ### 2026-02-24 — Timer start compatibility + resume FK reliability
 - Implemented a scoped timer reliability fix for two reported failures:
   - Made `TimeEntryStart.operation` optional with a default (`Part Work`) so `/api/timer/start` no longer rejects payloads that omit operation.

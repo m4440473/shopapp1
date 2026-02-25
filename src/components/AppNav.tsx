@@ -6,11 +6,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BadgeCheck,
-  ClipboardList,
   Info,
   LayoutDashboard,
   Menu,
-  PlusCircle,
   Search,
   UserRound,
   Users,
@@ -33,11 +31,9 @@ import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/lib/use-current-user";
 
 const baseLinks = [
-  { href: "/", label: "Shop Floor Intelligence", icon: LayoutDashboard },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/about", label: "Overview", icon: Info },
-  { href: "/", label: "Queue", icon: ClipboardList },
   { href: "/customers", label: "Customers", icon: Users },
-  { href: "/orders/new", label: "New Order", icon: PlusCircle },
 ];
 
 type AppNavProps = {

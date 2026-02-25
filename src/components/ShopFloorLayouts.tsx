@@ -72,7 +72,7 @@ export function ShopFloorLayouts({
   initialDepartmentId,
   initialDepartmentFeed,
 }: Props) {
-  const [layout, setLayout] = useState<LayoutOption>('grid');
+  const [layout, setLayout] = useState<LayoutOption>('workQueue');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'closed'>('active');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'HOT' | 'RUSH' | 'NORMAL' | 'LOW'>('all');
   const [filters, setFilters] = useState({ ...DEFAULT_ORDER_FILTERS });
@@ -371,7 +371,7 @@ export function ShopFloorLayouts({
       </div>
 
       {layout === 'workQueue' && (
-        <div className="space-y-3 rounded-lg border border-border/60 bg-background/70 p-4">
+        <div className="space-y-3 rounded-lg bg-background/70 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Department work queue</p>

@@ -696,3 +696,63 @@ Goal (1 sentence): Resolve test-mode FK/auth edge cases and UX auth prompting, e
 - [ ] Consider centralizing auth response helpers across remaining protected API routes for fully uniform payload shape.
 - [ ] Add a focused integration test for auth-required modal event handling on protected actions.
 - [ ] Investigate/resolve environment-level `AppSettings.id` prerender build conflict.
+
+## Session Handoff — 2026-02-25 (Dashboard nav dedupe + default Work Queue)
+
+Goal (1 sentence): Replace duplicate dashboard/queue nav entries with a single `Dashboard` nav item and make Dashboard open on Work Queue layout by default.
+
+### What changed
+- Updated top-level navigation links to keep one `/` item labeled `Dashboard`; removed duplicate `Shop Floor Intelligence` and `Queue` nav entries.
+- Changed `ShopFloorLayouts` initial `layout` state from `grid` to `workQueue` so Dashboard lands on Work Queue without extra clicks.
+- Updated homepage copy using old naming (`Shop floor intelligence`, `Open queue`, `View queue`) to `Dashboard` wording.
+
+### Files touched
+- `src/components/AppNav.tsx`
+- `src/components/ShopFloorLayouts.tsx`
+- `src/app/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+- `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000`
+- Playwright screenshot capture against `http://127.0.0.1:3000`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+- Dashboard screenshot captured: `browser:/tmp/codex_browser_invocations/5b2f1381157b8568/artifacts/artifacts/dashboard-nav-workqueue.png`.
+
+### Next steps
+- [ ] If desired, consider renaming internal `Queue filters` label text in `ShopFloorLayouts` to `Dashboard filters` for naming consistency (not required for this user request).
+
+## Session Handoff — 2026-02-25 (Dashboard border cleanup + button relocation)
+
+Goal (1 sentence): Apply requested Dashboard visual/button follow-up by removing the Department Work Queue wrapper border, removing homepage quick-action buttons, and relocating New Order access to Admin Quotes actions.
+
+### What changed
+- Removed only the border from the `Department work queue` section wrapper in `ShopFloorLayouts` while preserving the outer shop-floor layout border and per-order tile borders.
+- Removed Dashboard hero quick-action buttons (`New Order`, `Open dashboard`) from `src/app/page.tsx`.
+- Removed `New Order` from global top navigation.
+- Added `New order` button next to `New quote` in Admin Quotes action controls (`/admin/quotes`).
+
+### Files touched
+- `src/components/ShopFloorLayouts.tsx`
+- `src/app/page.tsx`
+- `src/components/AppNav.tsx`
+- `src/app/admin/quotes/client.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+- `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000`
+- Playwright screenshot capture against `http://127.0.0.1:3000` (firefox)
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+- Updated screenshot captured: `browser:/tmp/codex_browser_invocations/1beb2a2aeb55c846/artifacts/artifacts/dashboard-border-button-fix.png`.
+
+### Next steps
+- [ ] If desired, align remaining label text `Queue filters` to `Dashboard filters` for full naming consistency.
