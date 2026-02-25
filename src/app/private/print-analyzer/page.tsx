@@ -138,6 +138,56 @@ export default function PrintAnalyzerPage() {
             </section>
 
             <section className={styles.card}>
+              <h2>Setup / Flips</h2>
+              <p>
+                <strong>Estimated setups:</strong> {result.setup.estimatedSetups}
+              </p>
+              <p>
+                <strong>Estimated flips:</strong> {result.setup.estimatedFlips}
+              </p>
+              <p>
+                <strong>Assumed machine:</strong> {result.setup.assumedMachine}
+              </p>
+
+              <h3>Normals / planes</h3>
+              {result.setup.normals.length ? (
+                <ul className={styles.list}>
+                  {result.setup.normals.map((normal, index) => (
+                    <li key={`${normal.label}-${index}`}>
+                      <strong>{normal.label}</strong>
+                      {typeof normal.angleDegFromPrimary === 'number' ? ` (${normal.angleDegFromPrimary}° from primary)` : ''}
+                      : {normal.evidence}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No setup normals detected.</p>
+              )}
+
+              <h3>Reasoning</h3>
+              {result.setup.reasoning.length ? (
+                <ul className={styles.list}>
+                  {result.setup.reasoning.map((entry, index) => (
+                    <li key={`${entry}-${index}`}>{entry}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No setup reasoning provided.</p>
+              )}
+
+              <h3>Assumptions</h3>
+              {result.setup.assumptions.length ? (
+                <ul className={styles.list}>
+                  {result.setup.assumptions.map((entry, index) => (
+                    <li key={`${entry}-${index}`}>{entry}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No setup assumptions provided.</p>
+              )}
+            </section>
+
+            <section className={styles.card}>
               <h2>Holes</h2>
               <table className={styles.table}>
                 <thead>
