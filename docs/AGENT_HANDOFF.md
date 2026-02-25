@@ -1,3 +1,72 @@
+Date: 2026-02-25
+Agent: GPT-5.2-Codex
+Goal (1 sentence): Fix dashboard department-touch counting so Fab/Shipping department context is represented again.
+
+## What I changed
+- Updated `src/modules/orders/orders.repo.ts` dashboard/list query selections:
+  - Added `parts.currentDepartmentId` to order list/dashboard payloads.
+  - Added `checklist.departmentId` to order list/dashboard payloads.
+- Updated `src/modules/orders/orders.types.ts` to include optional `currentDepartmentId` on parts and `departmentId` on checklist items.
+- Updated `src/components/ShopFloorLayouts.tsx` `departmentTouchesByOrder` to count distinct department IDs from both checklist items and parts.
+- Updated continuity artifacts for this session: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `docs/AGENT_TASK_BOARD.md`.
+
+## Files touched
+- src/modules/orders/orders.repo.ts
+- src/modules/orders/orders.types.ts
+- src/components/ShopFloorLayouts.tsx
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- docs/AGENT_TASK_BOARD.md
+
+## Commands run
+- npm run lint
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot script against http://127.0.0.1:3000 (attempted)
+
+## Verification Evidence
+- Lint passed with no ESLint warnings/errors.
+- Screenshot capture attempt failed due browser/runtime environment issues:
+  - browser tool chromium launch SIGSEGV
+  - TEST_MODE runtime hit Prisma DB open-file error
+
+## Next steps
+- [ ] Optional: add a focused unit-level assertion around dashboard order payload shape so future changes don’t drop department identifiers used by UI metrics.
+
+---
+
+Date: 2026-02-25
+Agent: GPT-5.2-Codex
+Goal (1 sentence): Remove the Dashboard Ready-for-fab option and add department-touch counts to Grid digest tiles.
+
+## What I changed
+- Updated `src/components/ShopFloorLayouts.tsx`:
+  - Removed the `Ready for fab` layout toggle and removed the associated handoff layout render section.
+  - Added `departmentTouchesByOrder` memoized computation using checklist `departmentId` values.
+  - Added a `Departments` field in Grid digest cards showing `<count> touched` per order.
+- Updated continuity artifacts for this session: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `docs/AGENT_TASK_BOARD.md`.
+
+## Files touched
+- src/components/ShopFloorLayouts.tsx
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- docs/AGENT_TASK_BOARD.md
+
+## Commands run
+- npm run lint
+- TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot script against http://127.0.0.1:3000
+
+## Verification Evidence
+- Lint passed with no ESLint warnings/errors.
+- Dashboard screenshot artifact captured showing `Grid digest`, `By machinist`, and `Work queue` controls plus the new `Departments` row in digest cards.
+
+## Next steps
+- [ ] Optional: if desired, broaden department-touch counting to include order-level department charges in addition to checklist-linked departments.
+
+---
+
 ## Session — 2026-02-25 (timer elapsed reset + department wrapper transparency)
 
 Goal (1 sentence): Fix timer elapsed UI so active runs start at zero visual elapsed and remove Department Work Queue wrapper background fill.

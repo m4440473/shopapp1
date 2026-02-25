@@ -3,6 +3,65 @@
 ## Session Metadata
 - Date: 2026-02-25
 - Agent: GPT-5.2-Codex
+- Task ID: Unplanned dashboard follow-up (restore Fab/Shipping in department touch visibility)
+- Goal: Fix department-touch counting so dashboard grid reflects real departments touched, including Fab/Shipping paths.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated prior dashboard task and identified follow-up gap: touch counter used fields not present in list query payload.
+- [x] Applied relevant lesson: keep fix scoped and validate data wiring end-to-end (repo select -> type -> UI).
+
+## Plan First
+- [x] Update orders list query select to expose department identifiers needed for dashboard touch counting.
+- [x] Update order list types and grid touch counting logic to include checklist and part department sources.
+- [x] Run lint and record verification evidence.
+- [x] Update continuity artifacts with root cause + fix details.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Root cause confirmed: dashboard touch counter relied on checklist `departmentId`, but the order-list query feeding Dashboard did not select `departmentId` (or part current department IDs), so touched counts under-reported and missed Fab/Shipping routing context.
+- Updated order list/dashboard query selects to include checklist `departmentId` and part `currentDepartmentId`.
+- Updated dashboard grid touch counter to combine both checklist and part department sources so Fab/Shipping transitions are represented again.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-25
+- Agent: GPT-5.2-Codex
+- Task ID: Unplanned dashboard UX cleanup (remove Ready for fab + add department touch count)
+- Goal: Remove the Ready for fab layout option from Dashboard and show per-order department-touch counts on Grid digest tiles.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No dependency blockers found for this scoped dashboard UI update.
+- [x] Applied relevant lesson: keep changes minimal and verify requested visual surfaces with screenshot evidence.
+
+## Plan First
+- [x] Remove the `Ready for fab` layout toggle and dead-path rendering from `ShopFloorLayouts`.
+- [x] Add a department-touch metric in Grid digest tiles (count distinct departments represented on each order).
+- [x] Run lint and capture an updated Dashboard screenshot artifact.
+- [x] Update continuity artifacts with commands and verification evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] Browser screenshot captured for updated Dashboard controls and digest tiles
+
+## Review + Results
+- Removed the `Ready for fab` layout toggle and corresponding handoff render path from Dashboard layout controls.
+- Added a `Departments` metric to Grid digest tiles that counts distinct department IDs present on each order checklist.
+- Captured updated Dashboard screenshot artifact: `browser:/tmp/codex_browser_invocations/692d07767d918caa/artifacts/artifacts/dashboard-readyfab-removed.png`.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-25
+- Agent: GPT-5.2-Codex
 - Task ID: Unplanned bugfix (timer elapsed reset + Department queue wrapper transparency)
 - Goal: Ensure active timer display starts from zero for new active intervals and make Department Work Queue wrapper background transparent.
 

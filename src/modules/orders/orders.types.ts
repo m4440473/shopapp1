@@ -8,8 +8,8 @@ export type OrderListItem = {
   receivedDate: string | Date | null;
   customer?: { name?: string | null } | null;
   assignedMachinist?: { id?: string; name?: string | null; email?: string | null } | null;
-  parts?: Array<{ quantity: number | null }>;
-  checklist?: Array<{ completed: boolean; addon?: { name?: string | null } | null }>;
+  parts?: Array<{ quantity: number | null; currentDepartmentId?: string | null }>;
+  checklist?: Array<{ completed: boolean; departmentId?: string | null; addon?: { name?: string | null } | null }>;
   statusHistory?: Array<{ createdAt: string | Date }>;
 };
 

@@ -166,11 +166,12 @@ export async function listOrders({
       assignedMachinist: { select: { id: true, name: true, email: true } },
       materialNeeded: true,
       materialOrdered: true,
-      parts: { select: { quantity: true } },
+      parts: { select: { quantity: true, currentDepartmentId: true } },
       checklist: {
         where: { isActive: true },
         select: {
           completed: true,
+          departmentId: true,
           addon: { select: { name: true } },
         },
       },
@@ -971,8 +972,8 @@ export async function getDashboardOrderOverview() {
       include: {
         customer: { select: { name: true } },
         assignedMachinist: { select: { id: true, name: true, email: true } },
-        parts: { select: { quantity: true } },
-        checklist: { select: { completed: true, addon: { select: { name: true } } } },
+        parts: { select: { quantity: true, currentDepartmentId: true } },
+        checklist: { select: { completed: true, departmentId: true, addon: { select: { name: true } } } },
         statusHistory: { select: { createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 },
       },
       orderBy: [{ dueDate: 'asc' }, { orderNumber: 'asc' }],
