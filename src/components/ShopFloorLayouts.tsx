@@ -72,7 +72,7 @@ export function ShopFloorLayouts({
   initialDepartmentId,
   initialDepartmentFeed,
 }: Props) {
-  const [layout, setLayout] = useState<LayoutOption>('grid');
+  const [layout, setLayout] = useState<LayoutOption>('workQueue');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'closed'>('active');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'HOT' | 'RUSH' | 'NORMAL' | 'LOW'>('all');
   const [filters, setFilters] = useState({ ...DEFAULT_ORDER_FILTERS });

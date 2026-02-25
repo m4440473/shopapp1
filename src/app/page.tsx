@@ -86,7 +86,7 @@ export default async function Home() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.4em] text-primary/70">Overview</p>
-          <h1 className="text-4xl font-semibold text-foreground">Shop floor intelligence</h1>
+          <h1 className="text-4xl font-semibold text-foreground">Dashboard</h1>
           <p className="max-w-xl text-sm text-muted-foreground">
             Track every order, deadline, and machinist assignment in one navy-drenched control center built entirely with shadcn blocks.
           </p>
@@ -96,7 +96,7 @@ export default async function Home() {
             <Link href="/orders/new">New Order</Link>
           </Button>
           <Button asChild className="rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/40">
-            <Link href="/">Open queue</Link>
+            <Link href="/">Open dashboard</Link>
           </Button>
         </div>
       </div>
@@ -161,7 +161,7 @@ export default async function Home() {
             </div>
             <Button asChild size="sm" className="ml-auto gap-1 rounded-full bg-primary/90 text-primary-foreground">
               <Link href="/">
-                View queue
+                View dashboard
                 <ArrowUpRight className="h-4 w-4" />
               </Link>
             </Button>
