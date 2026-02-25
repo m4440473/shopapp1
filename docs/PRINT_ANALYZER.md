@@ -48,3 +48,7 @@ The Print Analyzer is an isolated internal page for extracting structured manufa
 - Heavily stylized title blocks and handwritten notes can be misread.
 - Tap-drill recommendations use a starter common chart and may not cover uncommon thread standards.
 - Confidence scores are model-estimated and should be reviewed by an engineer before production use.
+
+
+## Integration note
+- BOM tab integrated into Order Part detail (`/orders/[id]` → Part tabs → `BOM`) using existing `POST /api/print-analyzer/analyze`.

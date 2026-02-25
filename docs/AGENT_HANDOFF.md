@@ -920,3 +920,39 @@ Goal (1 sentence): Apply requested Dashboard visual/button follow-up by removing
 
 ### Next steps
 - [ ] If desired, align remaining label text `Queue filters` to `Dashboard filters` for full naming consistency.
+
+## Session Handoff — 2026-02-25 (Order Part BOM tab integration)
+
+Goal (1 sentence): Integrate the existing Print Analyzer into Order → Part detail as a new BOM tab with native order-detail styling and deterministic conversion/tolerance helpers.
+
+### What changed
+- Added `PartBomTab` client component under `src/app/orders/[id]/` for BOM analysis UI inside order detail.
+- Implemented image upload plus optional existing IMAGE attachment selection as analyzer input.
+- Wired API call to existing `POST /api/print-analyzer/analyze` with `credentials: include`, handling success + error/debug payloads.
+- Added helper logic for mm/inch conversion formatting, thread pitch parsing, tolerance rendering, and deterministic tight-tolerance flagging (`TIGHT TOL` + reamer suggestion).
+- Integrated `bom` into part tab controls/rendering in `src/app/orders/[id]/page.tsx`.
+- Updated `docs/PRINT_ANALYZER.md` with a BOM-tab integration note.
+
+### Files touched
+- `src/app/orders/[id]/PartBomTab.tsx`
+- `src/app/orders/[id]/page.tsx`
+- `docs/PRINT_ANALYZER.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+- `npm run build`
+- `npm run dev -- --hostname 0.0.0.0 --port 3000`
+- `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000`
+- Playwright screenshot captures against `http://127.0.0.1:3000`
+
+### Verification evidence
+- Lint passed.
+- Build failed due to existing baseline issue: missing `openai` package for pre-existing `src/app/api/print-analyzer/analyze/route.ts` import.
+- Screenshot artifact captured: `browser:/tmp/codex_browser_invocations/bec823ec399c834f/artifacts/artifacts/bom-tab-testmode-orders.png`.
+
+### Next steps
+- [ ] Seed or access a concrete order/part in this environment to capture a BOM-tab-active screenshot and end-to-end analyzer interaction evidence on `/orders/[id]`.
+- [ ] Resolve pre-existing missing `openai` package baseline issue if full production build verification is required in this workspace.

@@ -12,6 +12,7 @@ Use with:
 
 ## Session Status Notes
 
+- 2026-02-25: Completed unplanned Order→Part BOM tab integration using existing print-analyzer API, including deterministic unit/thread/tight-tolerance helpers and continuity evidence updates.
 - 2026-02-25: Completed dashboard follow-up fix for department-touch visibility (added checklist/part department IDs to dashboard payload + UI union count) after Fab/Shipping feedback. Evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
 - 2026-02-25: Completed unplanned dashboard cleanup (removed Ready for fab layout option, added per-order department-touch count on grid digest). Evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
 - 2026-02-24: Completed unplanned timer reliability patch for start/resume paths (default `operation` compatibility + resume FK handling). Evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.

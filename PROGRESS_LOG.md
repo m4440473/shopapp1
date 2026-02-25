@@ -909,3 +909,16 @@ Next steps (immediate)
   - `npm run build` *(fails in this environment with existing Prisma P2002 on AppSettings.id while prerendering /about)*
   - `node -e '...groupBy...'` seed distribution check
   - Browser screenshot: `browser:/tmp/codex_browser_invocations/f0d023415cbf5e1d/artifacts/artifacts/home-metric-cards.png`
+
+## 2026-02-25
+- Summary: Integrated the existing Print Analyzer into Order → Part detail as a new BOM tab with native dark-theme card/table styling and no schema/global-style changes.
+- Scope highlights:
+  - Added `src/app/orders/[id]/PartBomTab.tsx` client component for BOM upload/select image, analyzer request handling (`POST /api/print-analyzer/analyze`), inline loading/errors, and structured result rendering.
+  - Added deterministic UI helpers for mm↔inch conversion/formatting, thread pitch parsing (`M..x..` + imperial TPI), and tight-tolerance/re-ream suggestion flags.
+  - Wired `bom` into `PART_TABS` and tab panel rendering in order detail while preserving existing Overview/Notes/Checklist/Log behavior.
+  - Updated `docs/PRINT_ANALYZER.md` with BOM tab integration note.
+- Tests run:
+  - `npm run lint`
+  - `npm run build` *(fails in current baseline because pre-existing analyzer API route imports `openai` but package is missing in this environment)*
+- Verification notes:
+  - Browser screenshot captured in dev mode, but environment auth/data constraints prevented navigating to a concrete order part instance with BOM panel visible.
