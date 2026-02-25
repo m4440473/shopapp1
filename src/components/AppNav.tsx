@@ -9,7 +9,6 @@ import {
   Info,
   LayoutDashboard,
   Menu,
-  PlusCircle,
   Search,
   UserRound,
   Users,
@@ -35,7 +34,6 @@ const baseLinks = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/about", label: "Overview", icon: Info },
   { href: "/customers", label: "Customers", icon: Users },
-  { href: "/orders/new", label: "New Order", icon: PlusCircle },
 ];
 
 type AppNavProps = {

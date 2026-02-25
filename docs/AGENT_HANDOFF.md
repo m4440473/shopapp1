@@ -725,3 +725,34 @@ Goal (1 sentence): Replace duplicate dashboard/queue nav entries with a single `
 
 ### Next steps
 - [ ] If desired, consider renaming internal `Queue filters` label text in `ShopFloorLayouts` to `Dashboard filters` for naming consistency (not required for this user request).
+
+## Session Handoff — 2026-02-25 (Dashboard border cleanup + button relocation)
+
+Goal (1 sentence): Apply requested Dashboard visual/button follow-up by removing the Department Work Queue wrapper border, removing homepage quick-action buttons, and relocating New Order access to Admin Quotes actions.
+
+### What changed
+- Removed only the border from the `Department work queue` section wrapper in `ShopFloorLayouts` while preserving the outer shop-floor layout border and per-order tile borders.
+- Removed Dashboard hero quick-action buttons (`New Order`, `Open dashboard`) from `src/app/page.tsx`.
+- Removed `New Order` from global top navigation.
+- Added `New order` button next to `New quote` in Admin Quotes action controls (`/admin/quotes`).
+
+### Files touched
+- `src/components/ShopFloorLayouts.tsx`
+- `src/app/page.tsx`
+- `src/components/AppNav.tsx`
+- `src/app/admin/quotes/client.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+- `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000`
+- Playwright screenshot capture against `http://127.0.0.1:3000` (firefox)
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+- Updated screenshot captured: `browser:/tmp/codex_browser_invocations/1beb2a2aeb55c846/artifacts/artifacts/dashboard-border-button-fix.png`.
+
+### Next steps
+- [ ] If desired, align remaining label text `Queue filters` to `Dashboard filters` for full naming consistency.

@@ -215,9 +215,14 @@ export default function Client({ initial, initialRole, initialAdmin }: ClientPro
         </Button>
         <div className="flex-1" />
         {isAdmin && (
-          <Button asChild>
-            <Link href="/admin/quotes/new">New quote</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline">
+              <Link href="/orders/new">New order</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/admin/quotes/new">New quote</Link>
+            </Button>
+          </div>
         )}
       </div>
 

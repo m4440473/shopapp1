@@ -3,6 +3,38 @@
 ## Session Metadata
 - Date: 2026-02-25
 - Agent: GPT-5.2-Codex
+- Task ID: Follow-up UI polish (Dashboard border/buttons/admin New Order location)
+- Goal: Remove Department Work Queue container border, remove homepage quick-action buttons, and relocate New Order access to Admin quotes actions.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No dependency blockers found for this scoped follow-up UI change.
+- [x] Applied relevant lesson: keep edits minimal and use approved file editing workflow.
+
+## Plan First
+- [x] Update `ShopFloorLayouts` to keep overall/tile borders but remove Department Work Queue section border wrapper.
+- [x] Remove `New Order`/`Open dashboard` buttons from Dashboard hero and remove `New Order` from top nav.
+- [x] Add `New order` action beside Admin Quotes `New quote` action.
+- [x] Run lint and capture updated screenshot.
+- [x] Update continuity docs with verification evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] Browser screenshot captured for updated Dashboard layout
+
+## Review + Results
+- Removed the border around the Department Work Queue wrapper while keeping the parent Shop Floor Layout card border and work-order tile borders intact.
+- Removed hero quick-action buttons from Dashboard and removed `New Order` from top nav to avoid duplicate entry points.
+- Added `New order` action next to `New quote` in Admin Quotes so order creation is still available in the requested admin location.
+- Captured updated screenshot artifact: `browser:/tmp/codex_browser_invocations/1beb2a2aeb55c846/artifacts/artifacts/dashboard-border-button-fix.png`.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-25
+- Agent: GPT-5.2-Codex
 - Task ID: Unplanned nav cleanup (Dashboard naming + default work queue layout)
 - Goal: Replace duplicate top-nav entries with a single Dashboard link and make Work Queue the default Dashboard layout.
 

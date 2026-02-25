@@ -91,14 +91,6 @@ export default async function Home() {
             Track every order, deadline, and machinist assignment in one navy-drenched control center built entirely with shadcn blocks.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button asChild variant="secondary" className="rounded-full border border-primary/40 bg-primary/15 text-primary">
-            <Link href="/orders/new">New Order</Link>
-          </Button>
-          <Button asChild className="rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/40">
-            <Link href="/">Open dashboard</Link>
-          </Button>
-        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
