@@ -3,6 +3,68 @@
 ## Session Metadata
 - Date: 2026-02-26
 - Agent: GPT-5.2-Codex
+- Task ID: Follow-up bugfix (QA findings remediation)
+- Goal: Fix high-priority issues discovered in prior QA pass: duplicate order number risk, TEST_MODE repo split-brain, and timer TEST_MODE mismatch.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md`.
+- [x] Scope limited to proven flow defects; no unrelated refactors/dependencies.
+
+## Plan First
+- [x] Make TEST_MODE repo selection explicit (`TEST_MODE_USE_MOCK_REPOS`) to keep runtime API flows DB-consistent.
+- [x] Move quote→order number generation into conversion transaction and enforce schema uniqueness on `Order.orderNumber`.
+- [x] Re-run quote conversion tests and full suite; live-verify conversion + timer active/pause flow in TEST_MODE dev.
+- [x] Update continuity docs with fix evidence and remaining risks.
+
+## Verification Checklist
+- [x] `npm run test`
+- [x] `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000`
+- [x] Runtime python/curl script for quote conversion + order fetch + timer start/active/pause
+
+## Review + Results
+- Fixed conversion to generate order numbers inside DB transaction and return generated number from conversion service.
+- Added `@unique` constraint to `Order.orderNumber` in Prisma schema as a hard guard.
+- Fixed TEST_MODE split-brain by defaulting repos to Prisma unless `TEST_MODE_USE_MOCK_REPOS=true`; Vitest now sets the mock flag via setup file to preserve existing unit test behavior.
+- Runtime verification confirms converted order is now visible to `/api/orders/{id}` and timer start/active/pause are consistent in TEST_MODE dev.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-26
+- Agent: GPT-5.2-Codex
+- Task ID: QA architecture pass (quote/order/admin flow verification)
+- Goal: Reverse-engineer implemented business workflow, add executable tests for high-risk transitions, run runtime verification, and log prioritized bugs for admin/backend flow correctness.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scope constrained to QA/testing plus minimal bug fixes only when proven by failing tests.
+- [x] Applied lessons: plan-first for cross-file work and evidence-backed reporting.
+
+## Plan First
+- [x] Inventory stack/run commands and existing tests (Phase 0).
+- [x] Map actual implemented workflow for quote create/approval/print-data/conversion/custom fields and department transitions (Phase 1).
+- [x] Add tests for happy paths and edge cases in those workflows (Phase 2).
+- [x] Run tests and live local flow checks via app/API (Phase 3).
+- [x] Document prioritized bugs with repro + code refs; update continuity docs (Phase 4).
+
+## Verification Checklist
+- [x] `npm run test`
+- [x] `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000`
+
+## Review + Results
+- Added route-level Vitest coverage for quote conversion and approval endpoints with mocked auth/settings/service boundaries.
+- Executed full Vitest suite and runtime API flow scripts in TEST_MODE to validate quote creation, conversion gating behavior, department transition guards, and timer lifecycle behavior.
+- Identified critical flow defects in TEST_MODE runtime (quote conversion duplicate order numbers, timer active-state mismatch, and conversion route bypassing orders mock repo).
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-26
+- Agent: GPT-5.2-Codex
 - Task ID: Unplanned bugfix (BOM part attachment retrieval path)
 - Goal: Fix BOM analyzer failure by making `/attachments/<storagePath>` resolve part-level attachments used by Notes & Files uploads.
 

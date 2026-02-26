@@ -14,8 +14,12 @@ let mockOrdersRepo: OrdersRepo | null = null;
 let mockTimeRepo: TimeRepo | null = null;
 let mockUsersRepo: UsersRepo | null = null;
 
+function shouldUseMockRepos() {
+  return isTestMode() && process.env.TEST_MODE_USE_MOCK_REPOS === 'true';
+}
+
 export function getOrdersRepo(): OrdersRepo {
-  if (!isTestMode()) {
+  if (!shouldUseMockRepos()) {
     return prismaOrdersRepo;
   }
   if (!mockOrdersRepo) {
@@ -25,7 +29,7 @@ export function getOrdersRepo(): OrdersRepo {
 }
 
 export function getTimeRepo(): TimeRepo {
-  if (!isTestMode()) {
+  if (!shouldUseMockRepos()) {
     return prismaTimeRepo;
   }
   if (!mockTimeRepo) {
@@ -35,7 +39,7 @@ export function getTimeRepo(): TimeRepo {
 }
 
 export function getUsersRepo(): UsersRepo {
-  if (!isTestMode()) {
+  if (!shouldUseMockRepos()) {
     return prismaUsersRepo;
   }
   if (!mockUsersRepo) {

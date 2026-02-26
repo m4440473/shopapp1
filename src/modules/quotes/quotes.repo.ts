@@ -3,6 +3,7 @@ import 'server-only';
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '@/lib/prisma';
+import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
 import {
   DEFAULT_QUOTE_METADATA,
   mergeQuoteMetadata,
@@ -573,10 +574,35 @@ export async function findActiveOrderCustomFields({
   });
 }
 
+function parseOrderNumberNumericValue(orderNumber: string) {
+  const numeric = Number.parseInt(orderNumber.replace(/[^0-9]/g, ''), 10);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric;
+}
+
+async function generateNextOrderNumberInTx(tx: Prisma.TransactionClient, business: BusinessCode) {
+  const recent = await tx.order.findMany({
+    where: { business },
+    select: { orderNumber: true },
+    orderBy: { orderNumber: 'desc' },
+    take: 200,
+  });
+
+  let maxValue = 1000;
+  for (const candidate of recent) {
+    const numeric = parseOrderNumberNumericValue(candidate.orderNumber);
+    if (typeof numeric === 'number') {
+      maxValue = Math.max(maxValue, numeric);
+    }
+  }
+
+  const prefix = BUSINESS_PREFIX_BY_CODE[business] ?? business;
+  return `${prefix}-${maxValue + 1}`;
+}
+
 export async function convertQuoteToOrder({
   quote,
   metadata,
-  orderNumber,
   now,
   dueDate,
   priority,
@@ -594,7 +620,6 @@ export async function convertQuoteToOrder({
 }: {
   quote: any;
   metadata: any;
-  orderNumber: string;
   now: Date;
   dueDate: Date;
   priority: string;
@@ -623,6 +648,8 @@ export async function convertQuoteToOrder({
   normalizedCustomFieldValues: { fieldId: string; value: string }[];
 }) {
   return prisma.$transaction(async (tx) => {
+    const orderNumber = await generateNextOrderNumberInTx(tx, quote.business as BusinessCode);
+
     const order = await tx.order.create({
       data: {
         orderNumber,
@@ -757,8 +784,7 @@ export async function convertQuoteToOrder({
       ...metadata,
       conversion: {
         orderId: order.id,
-        orderNumber,
-        convertedAt: now.toISOString(),
+              convertedAt: now.toISOString(),
       },
       approval: metadata.approval,
     });
@@ -770,6 +796,6 @@ export async function convertQuoteToOrder({
       },
     });
 
-    return { orderId: order.id, metadata: updatedMetadata };
+    return { orderId: order.id, orderNumber, metadata: updatedMetadata };
   });
 }
