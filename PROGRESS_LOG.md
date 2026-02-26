@@ -40,6 +40,26 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+
+### 2026-02-26 — Order-detail BOM/file workflow, nav cleanup, and sign-in-first routing
+- Updated Order Detail part tabs so `BOM` is directly adjacent to `Notes & Files` and added a dedicated Files & print-drawings guidance block that tells users to tag analyzer source files as `PRINT`.
+- Expanded part attachment kinds to include `PRINT`; BOM tab now reads Notes & Files image attachments, prioritizes PRINT-tagged files first, and labels them in the source picker.
+- Updated quote creation attachments UI with an explicit analyzer-role checkbox (`Use as print image for BOM analyzer`) that persists as a `[PRINT]` label tag for downstream workflows.
+- Removed `Overview` from top navigation without deleting the page.
+- Enforced sign-in-first behavior for `/about`: unauthenticated users now redirect to `/auth/signin` with dashboard callback.
+- Updated print-analyzer prompts to explicitly extract lower-right title-block decimal tolerance rows (`.X`, `.XX`, `.XXX` with +/- values).
+
+Commands run:
+- npm run lint
+- npm run test -- src/lib/auth-redirect.test.ts
+- npm run dev
+- Browser Playwright screenshot scripts against `/auth/signin`, `/`, `/about`, and `/orders/...`
+
+Verification note:
+- Lint passed.
+- Focused auth redirect tests passed.
+- Browser screenshots were captured as requested, but runtime currently returns Next.js 500 error shell on these routes in this environment; artifacts still recorded for evidence.
+
 ### 2026-02-25 — New sealed Print Analyzer page + API feature
 - Added isolated private route UI at `/private/print-analyzer` with local CSS module only, file upload + preview, analyze action, loading/error handling, and structured result rendering sections (units, general tolerances, holes, radii, tapped holes with recommended tap drill, warnings, raw JSON details).
 - Added `POST /api/print-analyzer/analyze` Node route with strict input validation (`data:image/...`), OpenAI Responses API vision call, JSON-only response format instruction, zod contract validation, tap-drill enrichment, and capped raw-model debug payload in 502 schema-failure cases.

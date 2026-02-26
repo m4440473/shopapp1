@@ -1,3 +1,55 @@
+## Session — 2026-02-26 (order-detail BOM/file workflow + nav/auth updates)
+
+Goal (1 sentence): Move BOM next to Notes & Files, tie analyzer sourcing to print-designated attachments, hide Overview from nav, and ensure sign-in-first routing behavior.
+
+What changed:
+- Updated `src/app/orders/[id]/page.tsx`:
+  - Reordered part tabs to `overview -> notes -> bom -> checklist -> log`.
+  - Added new part attachment kind option `PRINT`.
+  - Renamed files heading to `Files & print drawings` and added explicit print-image guidance block for analyzer source designation.
+- Updated `src/modules/orders/orders.schema.ts` to allow `PRINT` in `PART_ATTACHMENT_KINDS` validation.
+- Updated `src/app/orders/[id]/PartBomTab.tsx`:
+  - Uses Notes & Files attachments tagged as `PRINT`/`IMAGE` (or image MIME types).
+  - Sorts source options so PRINT-tagged attachments appear first.
+  - Clarified UI labels to indicate Notes & Files-backed print image sources.
+- Updated `src/app/admin/quotes/QuoteEditor.tsx`:
+  - Added per-attachment analyzer role checkbox to mark uploads as print images.
+  - Persists print intent by applying `[PRINT]` label prefix in payload serialization.
+  - Updated attachments description copy to explain analyzer prioritization.
+- Updated `src/components/AppNav.tsx` to remove the Overview nav item while keeping route availability.
+- Updated `src/app/about/page.tsx` to redirect unauthenticated users to sign-in (`callbackUrl=/`) for sign-in-first behavior.
+- Updated `src/app/api/print-analyzer/analyze/route.ts` prompts to explicitly target lower-right title-block decimal tolerance legend extraction (`.X/.XX/.XXX` with +/- values).
+- Updated continuity docs: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`.
+
+Files touched:
+- src/app/orders/[id]/page.tsx
+- src/app/orders/[id]/PartBomTab.tsx
+- src/modules/orders/orders.schema.ts
+- src/app/admin/quotes/QuoteEditor.tsx
+- src/components/AppNav.tsx
+- src/app/about/page.tsx
+- src/app/api/print-analyzer/analyze/route.ts
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+Commands run:
+- `npm run lint`
+- `npm run test -- src/lib/auth-redirect.test.ts`
+- `npm run dev`
+- Playwright screenshot scripts against `http://127.0.0.1:3000/auth/signin`, `/`, `/about`, and `/orders/...`
+
+Verification results:
+- Lint passed with no ESLint errors.
+- Focused auth redirect tests passed (4/4).
+- Screenshot artifacts captured, but this runtime currently serves a Next.js 500 error shell on tested routes (artifacts retained for evidence).
+
+Next steps:
+- [ ] Investigate and resolve current runtime 500 error shell (`/__next_error__`) to enable full visual QA capture of BOM/Notes tabs after sign-in.
+- [ ] Optional: during quote→order conversion, map `[PRINT]` quote attachment labels into order/part attachment kind metadata if full end-to-end propagation is desired.
+
+---
+
 Date: 2026-02-25
 Agent: GPT-5.2-Codex
 Goal (1 sentence): Build a sealed, non-linked Print Analyzer page + API that extracts structured drawing data via server-side OpenAI vision and shows results in an isolated UI.
