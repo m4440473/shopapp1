@@ -1,3 +1,65 @@
+Date: 2026-02-26
+Agent: GPT-5.2-Codex
+Goal (1 sentence): Fix BOM tab image-analysis failures by allowing `/attachments/<storagePath>` to resolve part-level file records.
+
+## What I changed
+- Updated `src/app/(public)/attachments/[...path]/route.ts` to include a `prisma.partAttachment.findFirst({ where: { storagePath } })` fallback when quote and order attachment lookups miss.
+- Kept existing restricted-label visibility gate and file path safety checks unchanged.
+- Updated continuity artifacts (`tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`) and logged a tooling-prevention lesson in `tasks/lessons.md` per user correction.
+
+## Files touched
+- src/app/(public)/attachments/[...path]/route.ts
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- tasks/lessons.md
+
+## Commands run
+- npm run lint
+
+## Verification Evidence
+- `npm run lint` passed.
+- Route now recognizes `PartAttachment` storage paths, addressing the exact 404 gap identified in the prior diagnosis.
+
+## Next steps
+- [ ] Verify end-to-end in an authenticated runtime: upload part file in Notes & Files, then analyze it from BOM tab.
+- [ ] If needed, add route-level regression coverage for attachment record source precedence.
+
+---
+
+Date: 2026-02-26
+Agent: GPT-5.2-Codex
+Goal (1 sentence): Diagnose BOM tab image analysis failures (`Failed to load selected image attachment`) and report root cause without implementing a fix.
+
+## What I changed
+- Performed diagnosis-only trace across BOM client logic, attachment-serving route, and Prisma models.
+- Confirmed the failing edge is attachment retrieval, not analyzer parsing:
+  - BOM client fetches selected part file via `/attachments/${storagePath}`.
+  - Public attachment route only resolves `QuoteAttachment` and legacy `Attachment` rows.
+  - Part uploads are persisted as `PartAttachment`, which the route does not currently query.
+- Updated continuity artifacts (`tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`) with evidence and next-step recommendation.
+
+## Files touched
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+## Commands run
+- rg -n "Failed to load selected image attachment|/attachments/|storagePath" src/app src/lib prisma -g '*.ts*'
+- sed -n '1,220p' src/app/orders/[id]/PartBomTab.tsx
+- sed -n '1,220p' 'src/app/(public)/attachments/[...path]/route.ts'
+- sed -n '180,340p' prisma/schema.prisma
+
+## Verification Evidence
+- Client-side throw path, route lookup constraints, and schema ownership collectively prove the failure mechanism without code changes.
+- Behavior matches report: both pre-existing and newly uploaded part files fail in BOM tab because the retrieval route cannot resolve `PartAttachment` rows.
+
+## Next steps
+- [ ] Implement a targeted retrieval fix in `src/app/(public)/attachments/[...path]/route.ts` so part-file requests can resolve `PartAttachment` by `storagePath` (while keeping existing auth/restricted-label checks).
+- [ ] Re-test BOM tab analyze flow with (a) existing part attachment and (b) newly uploaded part attachment.
+
+---
+
 # AGENT_HANDOFF — 2026-02-26 (Part BOM analyzer attachment fix + conversion audit)
 
 Goal (1 sentence): Fix Part BOM analyzer failures for Files/Notes attachments and validate quote→order conversion flow health.
@@ -78,6 +140,35 @@ Verification results:
 Next steps:
 - [ ] Investigate and resolve current runtime 500 error shell (`/__next_error__`) to enable full visual QA capture of BOM/Notes tabs after sign-in.
 - [ ] Optional: during quote→order conversion, map `[PRINT]` quote attachment labels into order/part attachment kind metadata if full end-to-end propagation is desired.
+
+---
+
+Date: 2026-02-26
+Agent: GPT-5.2-Codex
+Goal (1 sentence): Fix BOM tab image-analysis failures by allowing `/attachments/<storagePath>` to resolve part-level file records.
+
+## What I changed
+- Updated `src/app/(public)/attachments/[...path]/route.ts` to include a `prisma.partAttachment.findFirst({ where: { storagePath } })` fallback when quote and order attachment lookups miss.
+- Kept existing restricted-label visibility gate and file path safety checks unchanged.
+- Updated continuity artifacts (`tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`) and logged a tooling-prevention lesson in `tasks/lessons.md` per user correction.
+
+## Files touched
+- src/app/(public)/attachments/[...path]/route.ts
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- tasks/lessons.md
+
+## Commands run
+- npm run lint
+
+## Verification Evidence
+- `npm run lint` passed.
+- Route now recognizes `PartAttachment` storage paths, addressing the exact 404 gap identified in the prior diagnosis.
+
+## Next steps
+- [ ] Verify end-to-end in an authenticated runtime: upload part file in Notes & Files, then analyze it from BOM tab.
+- [ ] If needed, add route-level regression coverage for attachment record source precedence.
 
 ---
 

@@ -3,6 +3,68 @@
 ## Session Metadata
 - Date: 2026-02-26
 - Agent: GPT-5.2-Codex
+- Task ID: Unplanned bugfix (BOM part attachment retrieval path)
+- Goal: Fix BOM analyzer failure by making `/attachments/<storagePath>` resolve part-level attachments used by Notes & Files uploads.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated scope is a minimal server route fix only; no schema/dependency changes.
+- [x] Applied relevant lessons: keep fix narrow and verify with lint.
+
+## Plan First
+- [x] Update attachment-serving route to include `PartAttachment` lookup by `storagePath`.
+- [x] Preserve existing auth/restricted-label behavior and route file-serving path checks.
+- [x] Run lint and record verification evidence.
+- [x] Update continuity docs and lessons after user tool-usage correction.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Updated `src/app/(public)/attachments/[...path]/route.ts` to resolve `prisma.partAttachment` records when quote/order attachment lookups miss.
+- This unblocks BOM analyzer retrieval for Notes & Files uploads because part files are stored in `PartAttachment`.
+- Preserved existing attachment visibility checks and response behavior.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-26
+- Agent: GPT-5.2-Codex
+- Task ID: Unplanned investigation (BOM tab image analysis failure)
+- Goal: Diagnose why BOM tab image analysis fails with `Failed to load selected image attachment` for existing and newly uploaded files, without implementing a fix.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before investigation.
+- [x] Scope constrained to diagnosis/evidence only (no behavior changes).
+- [x] Applied relevant lessons: plan first for multi-step work and provide evidence-backed root cause.
+
+## Plan First
+- [x] Trace BOM analyzer client path from selected attachment → attachment fetch → print analyzer API request.
+- [x] Trace server attachment-serving route and verify whether part attachments are resolvable by storage path.
+- [x] Correlate findings with user-observed error text and identify single root cause chain.
+- [x] Update continuity docs with root cause and next-step recommendation (no code fix this session).
+
+## Verification Checklist
+- [x] `rg -n "Failed to load selected image attachment|/attachments/|storagePath" src/app src/lib prisma -g '*.ts*'`
+- [x] `sed -n '1,220p' src/app/orders/[id]/PartBomTab.tsx`
+- [x] `sed -n '1,220p' 'src/app/(public)/attachments/[...path]/route.ts'`
+- [x] `sed -n '180,340p' prisma/schema.prisma`
+
+## Review + Results
+- Confirmed BOM tab throws `Failed to load selected image attachment.` when fetch to `/attachments/<storagePath>` is non-OK.
+- Confirmed the public attachment-serving route checks `QuoteAttachment` and legacy order-level `Attachment` records only.
+- Confirmed part Notes & Files uploads are stored as `PartAttachment` records, which are not queried by the attachment-serving route.
+- Diagnosis: part attachment uploads can succeed, but retrieval via `/attachments/<storagePath>` returns 404 because `PartAttachment` is omitted in lookup, causing BOM analysis to fail before analyzer API is called.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-26
+- Agent: GPT-5.2-Codex
 - Task ID: Unplanned bugfix (Part BOM analyzer attachment handling + quote→order conversion audit)
 - Goal: Fix Part BOM analyzer failures when selecting Notes & Files attachments and audit quote-to-order conversion flow for obvious logic gaps.
 

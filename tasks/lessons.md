@@ -1,3 +1,9 @@
+## 2026-02-26 — User correction: use dedicated patch tool (not shell wrapper)
+- Trigger: User warning that `apply_patch` was executed through `exec_command`.
+- Mistake pattern: I used shell-invoked patching instead of the environment’s preferred dedicated patch workflow.
+- Preventive rule: Use the dedicated patch tool/workflow directly when available; avoid wrapping patch commands inside generic shell execution.
+- Applied in next session where: BOM part-attachment retrieval fix session.
+
 ## 2026-02-25 — Verify full wrapper surface requests (border + background)
 - When user asks to remove a wrapper border, explicitly verify whether they also expect background removal/transparency before closing the task.
 - For UI wrapper tweaks, audit the full class list (`border`, `bg-*`, shadow) so visual intent is fully satisfied in one pass.
