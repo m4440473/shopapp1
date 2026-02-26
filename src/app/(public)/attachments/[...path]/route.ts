@@ -40,7 +40,14 @@ export async function GET(
         select: { mimeType: true, label: true },
       });
 
-  const attachment = quoteAttachment ?? orderAttachment;
+  const partAttachment = quoteAttachment || orderAttachment
+    ? null
+    : await prisma.partAttachment.findFirst({
+        where: { storagePath: relativePath },
+        select: { mimeType: true, label: true },
+      });
+
+  const attachment = quoteAttachment ?? orderAttachment ?? partAttachment;
 
   if (attachment && !isAdmin && matchesRestrictedAttachmentLabel(attachment.label)) {
     return new NextResponse('Forbidden', { status: 403 });

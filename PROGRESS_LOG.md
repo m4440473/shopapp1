@@ -40,6 +40,37 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-26 — BOM analyzer fix: part attachment retrieval now resolved
+- Implemented the runtime fix for BOM attachment retrieval failures.
+- Updated public attachment route (`/attachments/[...path]`) to query `PartAttachment` by `storagePath` when quote/order attachment records are not found.
+- This aligns serving behavior with how Order Part Notes & Files uploads are persisted (`PartAttachment`), so BOM tab can fetch selected files before analyzer API call.
+- Kept existing restricted-label and auth visibility checks intact.
+- Added a lessons entry after user correction about tool usage expectations.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
+
+### 2026-02-26 — BOM tab image-analysis failure investigation (diagnosis only)
+- Investigated the BOM tab runtime error: `Failed to analyze image: Failed to load selected image attachment.`
+- Traced client flow in `PartBomTab`: selecting a Notes & Files item causes fetch to `/attachments/${storagePath}`; any non-OK response throws `Failed to load selected image attachment.`
+- Traced server attachment route and confirmed lookup gap: it resolves storage paths against `QuoteAttachment` and legacy order-level `Attachment`, but not `PartAttachment`.
+- Root cause: part uploads are stored in `PartAttachment`, so retrieval for BOM analysis (and any part-file open link using `/attachments/...`) fails with 404 despite successful upload metadata.
+- No code fix applied in this session (user requested diagnosis only).
+
+Commands run:
+- rg -n "Failed to load selected image attachment|/attachments/|storagePath" src/app src/lib prisma -g '*.ts*'
+- sed -n '1,220p' src/app/orders/[id]/PartBomTab.tsx
+- sed -n '1,220p' 'src/app/(public)/attachments/[...path]/route.ts'
+- sed -n '180,340p' prisma/schema.prisma
+
+Verification note:
+- Static code-path evidence is internally consistent with the reported behavior across existing files and newly uploaded files in BOM tab.
+
+
 ### 2026-02-26 — Part BOM analyzer attachment fix + quote→order conversion audit
 - Fixed Part BOM analyzer attachment ingestion when selecting files from Part `Notes & Files`.
 - Root cause: analyzer source list included PRINT attachments with explicit non-image MIME values, and selected-file MIME logic used non-image blob MIME values that violate `/api/print-analyzer/analyze` image payload requirements.
