@@ -135,8 +135,10 @@ export function PartBomTab({
         const attachmentKind = (attachment.kind ?? '').toUpperCase();
         const isPrintKind = attachmentKind === 'PRINT';
         const isImageKind = attachmentKind === 'IMAGE';
-        const mimeType = attachment.mimeType ?? '';
+        const mimeType = (attachment.mimeType ?? '').toLowerCase();
         const isImageMime = mimeType.startsWith('image/');
+        const isExplicitNonImageMime = Boolean(mimeType && !isImageMime);
+        if (isExplicitNonImageMime) return false;
         return isPrintKind || isImageKind || isImageMime;
       }),
     [attachments]
@@ -225,7 +227,17 @@ export function PartBomTab({
     if (!response.ok) throw new Error('Failed to load selected image attachment.');
 
     const blob = await response.blob();
-    const contentType = blob.type || target.mimeType || 'image/png';
+    const hintedMimeType = (target.mimeType ?? '').toLowerCase();
+    const blobMimeType = (blob.type ?? '').toLowerCase();
+    const contentType = hintedMimeType.startsWith('image/')
+      ? hintedMimeType
+      : blobMimeType.startsWith('image/')
+      ? blobMimeType
+      : 'image/png';
+
+    if (!hintedMimeType.startsWith('image/') && !blobMimeType.startsWith('image/')) {
+      throw new Error('Selected file is not an image. Choose a PNG/JPG/WEBP file in Notes & Files.');
+    }
 
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
