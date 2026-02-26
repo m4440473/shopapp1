@@ -3,6 +3,40 @@
 ## Session Metadata
 - Date: 2026-02-26
 - Agent: GPT-5.2-Codex
+- Task ID: Unplanned bugfix (Part BOM analyzer attachment handling + quote→order conversion audit)
+- Goal: Fix Part BOM analyzer failures when selecting Notes & Files attachments and audit quote-to-order conversion flow for obvious logic gaps.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated this scope is limited to BOM analyzer attachment ingestion and conversion-path review (no schema/dependency changes).
+- [x] Applied relevant lessons: plan first for multi-step work, verify behavior with lint + runtime evidence.
+
+## Plan First
+- [x] Reproduce/read BOM analyzer attachment source path and identify why Files/Notes uploads fail.
+- [x] Apply a minimal Part BOM fix so only valid image attachments are analyzed and MIME selection is resilient.
+- [x] Audit quote→order conversion flow (`/api/admin/quotes/[id]/convert` + repo conversion transaction) and record findings.
+- [x] Run lint and capture screenshot evidence for the affected front-end flow.
+- [x] Update continuity docs with commands, evidence, and remaining follow-ups.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run dev -- --hostname 0.0.0.0 --port 3000` (runtime smoke)
+- [x] Playwright screenshot capture via browser tool
+
+## Review + Results
+- Root cause for BOM analyzer failure: the Part BOM attachment picker admitted PRINT attachments with explicit non-image MIME types and preferred `blob.type`, which can be non-image; this created invalid `data:` payloads for `/api/print-analyzer/analyze`.
+- Updated Part BOM attachment filtering to exclude explicit non-image MIME attachments from analyzer source options.
+- Updated selected-attachment MIME resolution to prefer known image MIME hints, then image blob MIME, with an explicit error when the selected file is not image content.
+- Audited quote→order conversion flow and confirmed core transaction behavior remains: order create, parts create, attachment copy, charge/checklist carry-over, and quote metadata conversion stamp are wired as expected in current scope.
+- Captured runtime screenshot artifact (sign-in route reached from app root redirect in this environment): `browser:/tmp/codex_browser_invocations/a282bb14452d16f9/artifacts/artifacts/bom-tab-update.png`.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-02-26
+- Agent: GPT-5.2-Codex
 - Task ID: Unplanned UX/auth/print-analyzer alignment
 - Goal: Reorder order-detail tabs, wire BOM analyzer to print-file workflow, add quote-time print upload designation, remove Overview from nav, and ensure sign-in-first routing to dashboard.
 

@@ -40,6 +40,24 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-26 — Part BOM analyzer attachment fix + quote→order conversion audit
+- Fixed Part BOM analyzer attachment ingestion when selecting files from Part `Notes & Files`.
+- Root cause: analyzer source list included PRINT attachments with explicit non-image MIME values, and selected-file MIME logic used non-image blob MIME values that violate `/api/print-analyzer/analyze` image payload requirements.
+- Updated `PartBomTab` to:
+  - Exclude explicit non-image MIME attachments from analyzer options.
+  - Prefer known image MIME hints (attachment metadata first, then blob MIME) and throw a clear UI error when selected content is not an image.
+- Audited quote→order conversion code path (`src/app/api/admin/quotes/[id]/convert/route.ts` + `src/modules/quotes/quotes.repo.ts` transaction): confirmed existing flow still performs order creation, parts creation, attachment copy, checklist/charge carry-over, and quote conversion metadata stamp as designed.
+
+Commands run:
+- npm run lint
+- npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot script against http://127.0.0.1:3000/
+
+Verification note:
+- Lint passed.
+- Runtime smoke check passed (app booted; redirected to sign-in as expected for unauthenticated root route).
+- Screenshot captured: `browser:/tmp/codex_browser_invocations/a282bb14452d16f9/artifacts/artifacts/bom-tab-update.png`.
+
 
 ### 2026-02-26 — Order-detail BOM/file workflow, nav cleanup, and sign-in-first routing
 - Updated Order Detail part tabs so `BOM` is directly adjacent to `Notes & Files` and added a dedicated Files & print-drawings guidance block that tells users to tag analyzer source files as `PRINT`.

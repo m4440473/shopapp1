@@ -1,3 +1,34 @@
+# AGENT_HANDOFF — 2026-02-26 (Part BOM analyzer attachment fix + conversion audit)
+
+Goal (1 sentence): Fix Part BOM analyzer failures for Files/Notes attachments and validate quote→order conversion flow health.
+
+Scope (what changed):
+- Updated Part BOM attachment option filtering to skip explicit non-image MIME attachments.
+- Updated selected attachment MIME resolution to enforce image payloads before calling `/api/print-analyzer/analyze`.
+- Audited quote→order conversion path for structural issues without changing conversion transaction logic in this session.
+
+Files touched:
+- src/app/orders/[id]/PartBomTab.tsx
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+Commands run:
+- npm run lint
+- npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot capture script (browser tool) against `http://127.0.0.1:3000/`
+
+Verification results:
+- `npm run lint` passed.
+- Dev server started successfully; unauthenticated root redirected to sign-in as expected.
+- Screenshot artifact captured: `browser:/tmp/codex_browser_invocations/a282bb14452d16f9/artifacts/artifacts/bom-tab-update.png`.
+
+Open follow-ups / next steps:
+- Validate analyzer behavior on a real order part in a seeded/authenticated environment to capture a BOM-tab-specific screenshot.
+- If quote→order concerns persist, capture a reproducible failing quote ID and expected-vs-actual conversion outcome so we can target a narrow server-side fix.
+
+---
+
 ## Session — 2026-02-26 (order-detail BOM/file workflow + nav/auth updates)
 
 Goal (1 sentence): Move BOM next to Notes & Files, tie analyzer sourcing to print-designated attachments, hide Overview from nav, and ensure sign-in-first routing behavior.
