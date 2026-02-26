@@ -132,7 +132,7 @@ const DecimalString = z.string().trim().refine((value) => DECIMAL_REGEX.test(val
 export const CHARGE_KINDS = ['LABOR', 'ADDON', 'MATERIAL', 'FEE', 'SHIPPING', 'DISCOUNT'] as const;
 export const ChargeKind = z.enum(CHARGE_KINDS);
 
-export const PART_ATTACHMENT_KINDS = ['DWG', 'STEP', 'PDF', 'PO', 'IMAGE', 'OTHER'] as const;
+export const PART_ATTACHMENT_KINDS = ['DWG', 'STEP', 'PDF', 'PO', 'PRINT', 'IMAGE', 'OTHER'] as const;
 export const PartAttachmentKind = z.enum(PART_ATTACHMENT_KINDS);
 
 export const OrderChargeCreate = z

@@ -111,6 +111,7 @@ type AttachmentState = {
   storagePath: string;
   label: string;
   mimeType: string;
+  isPrintForBom: boolean;
   uploading?: boolean;
 };
 
@@ -355,6 +356,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       storagePath: attachment.storagePath ?? '',
       label: attachment.label ?? '',
       mimeType: attachment.mimeType ?? '',
+      isPrintForBom: Boolean((attachment.label ?? '').toUpperCase().includes('[PRINT]')),
       uploading: false,
     }))
   );
@@ -587,7 +589,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   function addAttachment() {
     setAttachments((prev) => [
       ...prev,
-      { key: createKey(), url: '', storagePath: '', label: '', mimeType: '', uploading: false },
+      { key: createKey(), url: '', storagePath: '', label: '', mimeType: '', isPrintForBom: false, uploading: false },
     ]);
   }
 
@@ -814,7 +816,14 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       .map((attachment) => ({
         url: attachment.url.trim() ? attachment.url.trim() : undefined,
         storagePath: attachment.storagePath.trim() ? attachment.storagePath.trim() : undefined,
-        label: attachment.label || undefined,
+        label: (() => {
+          const rawLabel = attachment.label.trim();
+          if (!attachment.isPrintForBom) {
+            return rawLabel || undefined;
+          }
+          const stripped = rawLabel.replace(/^\s*\[PRINT\]\s*/i, '').trim();
+          return stripped ? `[PRINT] ${stripped}` : '[PRINT] Print image';
+        })(),
         mimeType: attachment.mimeType || undefined,
       })),
     customFieldValues: customFields
@@ -1467,7 +1476,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           <Card>
             <CardHeader>
               <CardTitle>Attachments</CardTitle>
-              <CardDescription>Upload assembly drawings or general quote files.</CardDescription>
+              <CardDescription>Upload assembly drawings or general quote files. Mark print images so BOM analyzer workflows can prioritize them after conversion.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-2 md:w-1/2">
@@ -1522,6 +1531,22 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                         }
                         placeholder="application/pdf"
                       />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Analyzer role</Label>
+                      <label className="flex items-center gap-2 rounded border border-border/50 bg-muted/20 px-3 py-2 text-sm">
+                        <Checkbox
+                          checked={attachment.isPrintForBom}
+                          onCheckedChange={(checked) =>
+                            setAttachments((prev) =>
+                              prev.map((row) =>
+                                row.key === attachment.key ? { ...row, isPrintForBom: checked === true } : row
+                              )
+                            )
+                          }
+                        />
+                        <span>Use as print image for BOM analyzer (adds <code className="font-mono">[PRINT]</code> tag).</span>
+                      </label>
                     </div>
                     <div className="grid gap-2 md:col-span-2">
                       <Label>Link URL</Label>

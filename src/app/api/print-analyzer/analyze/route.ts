@@ -209,6 +209,8 @@ function passOnePrompt(): string {
     'Extract holes with diameters/counts and notes like THRU, DEPTH, CSK, CBORE.',
     'Extract radii with counts and notes like TYP/ALL AROUND.',
     'Extract tapped hole callouts with thread + class/fit + depth notes.',
+    'Pay special attention to title-block/general tolerance legends in the lower-right area near the title block.',
+    'Specifically extract decimal-place tolerance rows formatted like .X / .XX / .XXX with +/- values.',
     'Identify unique machining orientations for a 3-axis mill.',
     'List all unique planes/feature normals implied by the drawing (for example primary face and angled face at 20 degrees).',
     'Estimate setups as the number of unique machining normals for a 3-axis mill.',
@@ -228,6 +230,8 @@ function passTwoPrompt(): string {
     '  "generalTolerances": [{"note": string, "confidence": number}],',
     '  "warnings": string[]',
     '}',
+    'Look for general tolerance tables near the title block, especially bottom-right legends with .X, .XX, .XXX plus/minus values.',
+    'If found, emit each row as a separate generalTolerances note preserving the decimal-level mapping and signs.',
     'If tolerance text is unreadable, include warning(s) and keep confidence low.',
   ].join('\n');
 }

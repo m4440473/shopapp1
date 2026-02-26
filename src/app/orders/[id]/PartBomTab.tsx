@@ -132,21 +132,29 @@ export function PartBomTab({
   const imageAttachments = useMemo(
     () =>
       attachments.filter((attachment) => {
-        const isImageKind = (attachment.kind ?? '').toUpperCase() === 'IMAGE';
+        const attachmentKind = (attachment.kind ?? '').toUpperCase();
+        const isPrintKind = attachmentKind === 'PRINT';
+        const isImageKind = attachmentKind === 'IMAGE';
         const mimeType = attachment.mimeType ?? '';
         const isImageMime = mimeType.startsWith('image/');
-        return isImageKind || isImageMime;
+        return isPrintKind || isImageKind || isImageMime;
       }),
     [attachments]
   );
 
   const attachmentOptions = useMemo(
     () =>
-      imageAttachments.map((attachment) => ({
-        id: attachment.id,
-        label: attachment.label?.trim() || 'Image attachment',
-        mimeType: attachment.mimeType ?? 'image/*',
-      })),
+      imageAttachments
+        .map((attachment) => {
+          const attachmentKind = (attachment.kind ?? '').toUpperCase();
+          return {
+            id: attachment.id,
+            label: attachment.label?.trim() || 'Image attachment',
+            mimeType: attachment.mimeType ?? 'image/*',
+            isPreferredPrint: attachmentKind === 'PRINT',
+          };
+        })
+        .sort((a, b) => Number(b.isPreferredPrint) - Number(a.isPreferredPrint)),
     [imageAttachments]
   );
 
@@ -289,15 +297,15 @@ export function PartBomTab({
           <div className="grid gap-4 md:grid-cols-2">
             {attachmentOptions.length ? (
               <div className="grid gap-2">
-                <Label htmlFor="bom-attachment">Use existing part image</Label>
+                <Label htmlFor="bom-attachment">Use existing Notes & Files print image</Label>
                 <Select value={selectedAttachmentId} onValueChange={setSelectedAttachmentId}>
                   <SelectTrigger id="bom-attachment" className="border-border/60 bg-background/80">
-                    <SelectValue placeholder="Choose existing image (optional)" />
+                    <SelectValue placeholder="Choose stored print image (optional)" />
                   </SelectTrigger>
                   <SelectContent>
                     {attachmentOptions.map((attachment) => (
                       <SelectItem key={attachment.id} value={attachment.id}>
-                        {attachment.label} ({attachment.mimeType})
+                        {attachment.label}{attachment.isPreferredPrint ? ' • PRINT' : ''} ({attachment.mimeType})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -318,7 +326,7 @@ export function PartBomTab({
                   setResult(null);
                 }}
               />
-              <p className="text-xs text-muted-foreground">PNG/JPG/WEBP screenshots or photos of the print.</p>
+              <p className="text-xs text-muted-foreground">PNG/JPG/WEBP screenshots or photos of the print. Files marked PRINT in Notes & Files are listed first above.</p>
             </div>
           </div>
 

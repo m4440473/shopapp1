@@ -1,10 +1,13 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { CheckCircle2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { getAppSettings } from '@/lib/app-settings';
+import { getServerAuthSession } from '@/lib/auth-session';
+import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 
 const FEATURES = [
   'Centralized quotes, orders, and approvals to eliminate paper trails.',
@@ -24,6 +27,11 @@ const SCREENSHOTS = [
 ];
 
 export default async function AboutPage() {
+  const session = await getServerAuthSession();
+  if (!session) {
+    redirect(buildSignInRedirectPath('/'));
+  }
+
   const settings = await getAppSettings();
 
   return (

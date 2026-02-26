@@ -27,8 +27,8 @@ import { Textarea } from '@/components/ui/Textarea';
 import { useToast } from '@/components/ui/Toast';
 import { PartBomTab } from './PartBomTab';
 
-const PART_TABS = ['overview', 'notes', 'checklist', 'log', 'bom'] as const;
-const PART_ATTACHMENT_KINDS = ['DWG', 'STEP', 'PDF', 'PO', 'IMAGE', 'OTHER'] as const;
+const PART_TABS = ['overview', 'notes', 'bom', 'checklist', 'log'] as const;
+const PART_ATTACHMENT_KINDS = ['DWG', 'STEP', 'PDF', 'PO', 'PRINT', 'IMAGE', 'OTHER'] as const;
 
 type PartTab = (typeof PART_TABS)[number];
 
@@ -913,7 +913,7 @@ export default function OrderDetailPage() {
 
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                    <FileText className="h-4 w-4 text-muted-foreground" /> Files
+                    <FileText className="h-4 w-4 text-muted-foreground" /> Files & print drawings
                   </div>
                   <div className="space-y-3">
                     {selectedAttachments.length ? (
@@ -942,8 +942,12 @@ export default function OrderDetailPage() {
                         );
                       })
                     ) : (
-                      <p className="text-sm text-muted-foreground">No files yet for this part.</p>
+                      <p className="text-sm text-muted-foreground">No files yet for this part. Upload a file with type <span className="font-medium text-foreground">PRINT</span> to make it the preferred BOM analyzer source.</p>
                     )}
+                  </div>
+                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+                    <p className="font-medium text-foreground">Print image slot for BOM analyzer</p>
+                    <p className="mt-1">Set file type to <span className="font-medium text-foreground">PRINT</span> for drawings/photos you want the BOM tab to auto-prioritize.</p>
                   </div>
                   <Separator />
                   {canEditParts ? (

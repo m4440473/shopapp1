@@ -1,6 +1,42 @@
 # tasks/todo.md — Session Plan + Verification
 
 ## Session Metadata
+- Date: 2026-02-26
+- Agent: GPT-5.2-Codex
+- Task ID: Unplanned UX/auth/print-analyzer alignment
+- Goal: Reorder order-detail tabs, wire BOM analyzer to print-file workflow, add quote-time print upload designation, remove Overview from nav, and ensure sign-in-first routing to dashboard.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No dependency blockers found for this scoped cross-file UX/auth update.
+- [x] Applied relevant lessons: plan first for multi-step changes and verify full requested UI surfaces with screenshots.
+
+## Plan First
+- [x] Move order-part BOM tab next to Notes & Files and update Notes & Files headings to include a dedicated print-image section used by BOM analyzer.
+- [x] Update BOM tab source selection to prioritize/use dedicated print images from part attachments; expand attachment kind options accordingly.
+- [x] Add a quote-creation attachment option to mark uploads as print images for downstream analyzer workflows.
+- [x] Hide Overview route from main nav without deleting the page.
+- [x] Enforce sign-in-first UX (redirect unauthenticated `/about` to sign-in, then return to dashboard).
+- [x] Run lint/tests (or focused checks), capture multiple screenshots, and update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test -- src/lib/auth-redirect.test.ts`
+- [x] Browser screenshots captured for nav/auth/order routes (runtime currently returns 500 error shell in this environment).
+
+## Review + Results
+- Reordered order-part tabs so BOM appears immediately after Notes & Files and added a dedicated print-image guidance slot under Files & print drawings.
+- Added `PRINT` as a first-class part attachment kind and updated BOM attachment chooser to prioritize/label PRINT-tagged sources from Notes & Files.
+- Added a quote attachment-level analyzer role checkbox that marks uploads with a `[PRINT]` label tag for downstream print selection workflows.
+- Removed Overview from primary app nav and added unauthenticated redirect on `/about` to sign-in with dashboard callback.
+- Strengthened print analyzer prompts to explicitly extract lower-right title-block decimal-place tolerances (`.X`, `.XX`, `.XXX`).
+- Verification: lint + focused auth redirect tests passed; browser screenshots captured but pages currently render 500 error state in this runtime environment.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
 - Date: 2026-02-25
 - Agent: GPT-5.2-Codex
 - Task ID: Unplanned order-part BOM tab integration
