@@ -12,7 +12,6 @@ import {
   mergeQuoteMetadata,
   parseQuoteMetadata,
 } from '@/lib/quote-metadata';
-import { generateNextOrderNumber } from '@/modules/orders/orders.service';
 import { canAccessAdmin } from '@/lib/rbac';
 import { businessNameFromCode, type BusinessCode, type BusinessName } from '@/lib/businesses';
 import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
@@ -229,8 +228,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Customer information is required before conversion.' }, { status: 400 });
   }
 
-  const orderNumber = await generateNextOrderNumber(businessCode);
-
   const now = new Date();
   const dueDate = overrides?.dueDate ? new Date(overrides.dueDate) : new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
   if (Number.isNaN(dueDate.getTime())) {
@@ -243,7 +240,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       attachments: quote.attachments,
       businessName,
       customerName,
-      orderNumber,
+      orderNumber: quote.quoteNumber,
       rootDir: settings.attachmentsDir,
     });
   } catch (error: any) {
@@ -303,7 +300,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const result = await convertQuoteToOrder({
     quote,
     metadata,
-    orderNumber,
     now,
     dueDate,
     priority,
@@ -325,7 +321,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json({
     ok: true,
     orderId: result.orderId,
-    orderNumber,
+    orderNumber: result.orderNumber,
     metadata: result.metadata,
   });
 }

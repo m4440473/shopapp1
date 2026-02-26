@@ -1130,3 +1130,79 @@ Goal (1 sentence): Integrate the existing Print Analyzer into Order → Part det
 ### Next steps
 - [ ] Seed or access a concrete order/part in this environment to capture a BOM-tab-active screenshot and end-to-end analyzer interaction evidence on `/orders/[id]`.
 - [ ] Resolve pre-existing missing `openai` package baseline issue if full production build verification is required in this workspace.
+
+## Session Handoff — 2026-02-26 (QA flow mapping + regression tests)
+
+Goal (1 sentence): Reverse-engineer actual quote/admin/backend workflow behavior, codify critical transitions as executable tests, and validate flow correctness with live local API exercises.
+
+### What changed
+- Added route-level Vitest coverage for quote conversion flow (`/api/admin/quotes/[id]/convert`) including:
+  - already-converted conflict path (`409`),
+  - PO-required gating path (`400`),
+  - successful conversion with order custom-field allowlisting.
+- Added route-level Vitest coverage for quote approval flow (`/api/admin/quotes/[id]/approval`) validating `requirePOForQuoteApproval` forwarding and service validation propagation.
+- Performed live runtime checks in `TEST_MODE` for quote create/approve/convert, department assign/transition, and timer start/pause/resume/finish behavior.
+- Logged high-priority backend flow defects discovered during runtime verification.
+
+### Files touched
+- `src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+- `src/app/api/admin/quotes/[id]/approval/__tests__/route.test.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run test -- src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts src/app/api/admin/quotes/[id]/approval/__tests__/route.test.ts`
+- `npm run test`
+- `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000`
+- Runtime verification scripts:
+  - `python` + `curl` flow scripts for admin quote APIs, order department transition APIs, and timer APIs.
+
+### Verification evidence
+- New route tests passed and full Vitest suite passed.
+- Runtime API verification succeeded for quote creation/conversion request paths and department transition guard behavior.
+- Runtime API verification exposed test-mode state inconsistencies in timer lifecycle and cross-domain quote→order visibility.
+
+### Next steps
+- [ ] Add transactional/DB-backed conversion guard to prevent duplicate `orderNumber` creation under contention.
+- [ ] Unify `TEST_MODE` storage strategy across quote/orders/time flows (all mock or all DB-backed) to avoid split-brain runtime behavior.
+- [ ] Fix timer `TEST_MODE` user identity mismatch (auth user id vs mock seed user id) so active/pause/resume/finish behave coherently after start.
+
+## Session Handoff — 2026-02-26 (QA findings remediation)
+
+Goal (1 sentence): Fix the highest-impact backend issues identified in QA by hardening quote→order numbering and removing TEST_MODE state divergence.
+
+### What changed
+- Changed TEST_MODE repo behavior to use Prisma repos by default, with mock repos now opt-in only via `TEST_MODE_USE_MOCK_REPOS=true`.
+- Added Vitest setup file (`src/test/setup-env.ts`) to keep test runs on mock repos without changing production/test-mode runtime behavior.
+- Moved quote→order `orderNumber` generation into the conversion transaction in `convertQuoteToOrder`.
+- Updated conversion route to return generated `orderNumber` from conversion result.
+- Added `@unique` guard to `Order.orderNumber` in Prisma schema.
+
+### Files touched
+- `src/repos/index.ts`
+- `vitest.config.ts`
+- `src/test/setup-env.ts`
+- `src/modules/quotes/quotes.repo.ts`
+- `src/app/api/admin/quotes/[id]/convert/route.ts`
+- `src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+- `prisma/schema.prisma`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run test`
+- `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000`
+- Runtime script: python/curl for quote create/convert/order fetch and timer start/active/pause.
+
+### Verification evidence
+- Full Vitest suite passed after repo-selection and conversion changes.
+- Runtime TEST_MODE verification showed:
+  - successful quote conversion returns order id + number,
+  - `/api/orders/{id}` resolves converted order,
+  - timer start/active/pause flow remains coherent.
+
+### Next steps
+- [ ] Run `prisma migrate dev` to materialize the new `Order.orderNumber` uniqueness constraint in migration history.
+- [ ] Consider honoring requested `operation` in `/api/timer/start` (currently hardcoded to `Part Work`).

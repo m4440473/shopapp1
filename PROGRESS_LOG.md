@@ -991,3 +991,34 @@ Next steps (immediate)
   - `npm run build` *(fails in current baseline because pre-existing analyzer API route imports `openai` but package is missing in this environment)*
 - Verification notes:
   - Browser screenshot captured in dev mode, but environment auth/data constraints prevented navigating to a concrete order part instance with BOM panel visible.
+
+## 2026-02-26
+- Summary: Completed a QA-focused workflow audit on quote/admin/backend flows and added route-level regression tests for quote conversion + approval guards.
+- Scope highlights:
+  - Mapped implemented process transitions for quote create/approval/print-data/conversion, custom field filtering, and department transition APIs using source-of-truth code.
+  - Added `vitest` route tests for `/api/admin/quotes/[id]/convert` and `/api/admin/quotes/[id]/approval` covering already-converted conflict, PO-required conversion gate, and custom-field allowlisting.
+  - Executed runtime API flow checks in `TEST_MODE` for quote creation/conversion, department assignment/transition (including reason-required guard), and timer lifecycle endpoints.
+- Tests/checks run:
+  - `npm run test -- src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts src/app/api/admin/quotes/[id]/approval/__tests__/route.test.ts`
+  - `npm run test`
+  - `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000`
+  - Python/curl API flow exercises against local dev server.
+- Bugs found (logged for follow-up):
+  - Duplicate order numbers possible during quote conversion because order number generation is not transactionally reserved and `Order.orderNumber` lacks uniqueness.
+  - In `TEST_MODE`, quote conversion writes to Prisma DB while orders/time APIs read from isolated mock repos, producing inconsistent runtime behavior.
+  - In `TEST_MODE`, timer `start` can return success but `active/pause/finish` report no active timer due to user-id mismatch between auth-session (Prisma user id) and mock seeded repo user ids.
+
+## 2026-02-26
+- Summary: Implemented follow-up fixes for QA-discovered backend flow defects (quote conversion numbering + TEST_MODE consistency).
+- Scope highlights:
+  - Moved quote→order `orderNumber` generation into the conversion transaction (`convertQuoteToOrder`) so order IDs are allocated atomically at write time.
+  - Added Prisma schema uniqueness guard on `Order.orderNumber`.
+  - Updated repo selection logic so TEST_MODE uses Prisma repos by default; mock repos are now opt-in via `TEST_MODE_USE_MOCK_REPOS=true`.
+  - Added Vitest setup env file to keep existing unit tests on mock repos.
+- Tests/checks run:
+  - `npm run test`
+  - `TEST_MODE=true npm run dev -- --hostname 0.0.0.0 --port 3000`
+  - Runtime API verification script (quote create/convert → order fetch, timer start/active/pause).
+- Runtime verification notes:
+  - Converted orders are now visible through `/api/orders/{id}` in TEST_MODE dev.
+  - Timer `start` now aligns with `active` and `pause` behavior in TEST_MODE dev.

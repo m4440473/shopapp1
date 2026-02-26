@@ -68,7 +68,7 @@ model Vendor {
 
 model Order {
   id               String   @id @default(cuid())
-  orderNumber      String
+  orderNumber      String   @unique
   business         String   @default("STD")
   customerId       String
   customer         Customer @relation(fields: [customerId], references: [id])
