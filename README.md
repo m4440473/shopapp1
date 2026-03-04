@@ -6,8 +6,47 @@ ShopApp1 is a Next.js + Prisma shop operations app (orders, parts, checklist, qu
 
 - Node.js 18+ (Node 20 LTS recommended)
 - npm (project uses `package-lock.json`)
+- Docker + Docker Compose (optional, only for container install target)
 
-## Local install + first run
+## One-script installers (recommended)
+
+From repo root:
+
+```bash
+bash scripts/install.sh --target local --seed basic
+```
+
+Installer options:
+
+- `--target local|docker`
+- `--seed basic|demo`
+- `--start` (local target only; starts `npm run dev` after setup)
+
+Examples:
+
+```bash
+# Local machine with minimal functional data
+bash scripts/install.sh --target local --seed basic
+
+# Local machine with full demo data
+bash scripts/install.sh --target local --seed demo
+
+# Docker install with demo data
+bash scripts/install.sh --target docker --seed demo
+```
+
+## Seed profiles
+
+- **Basic seed** (`npm run seed:basic`): foundational data only (core users/materials/vendors/departments/add-ons/customer) for functionality and smoke-testing.
+- **Demo seed** (`npm run seed:demo`): full pre-populated dataset with multiple orders, quotes, custom fields/templates, and richer workflow content.
+
+For demo accounts to sign in, run:
+
+```bash
+npm run set-demo-passwords
+```
+
+## Manual local install + first run
 
 1. Install dependencies:
 
@@ -21,29 +60,23 @@ ShopApp1 is a Next.js + Prisma shop operations app (orders, parts, checklist, qu
    cp .env.example .env
    ```
 
-3. Generate Prisma client and apply local migrations:
+3. Generate Prisma client and apply migrations:
 
    ```bash
    npm run prisma:generate
-   npm run prisma:migrate -- --name init
+   npx prisma migrate deploy
    ```
 
-4. Seed demo data:
+4. Seed data:
 
    ```bash
-   npm run seed
+   npm run seed:basic   # or npm run seed:demo
    ```
 
-5. (Optional, recommended) Set demo passwords so seeded users can sign in:
+5. (Optional, recommended for demo data) set demo passwords:
 
    ```bash
    npm run set-demo-passwords
-   ```
-
-   Or run both in one command:
-
-   ```bash
-   npm run demo:setup
    ```
 
 6. Start the app:
@@ -78,13 +111,8 @@ Use this sequence from the repo root:
 
 ```bash
 npm run prisma:generate
-npm run prisma:migrate -- --name init
-npm run seed
-```
-
-If login fails after seeding, run:
-
-```bash
+npx prisma migrate deploy
+npm run seed:demo
 npm run set-demo-passwords
 ```
 

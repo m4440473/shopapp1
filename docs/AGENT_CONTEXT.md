@@ -60,6 +60,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-02-26 — Dual seed profiles + one-script installer workflow
+Decision: Introduce `seed:basic` (functionality baseline) and `seed:demo` (pre-populated showcase dataset) plus `scripts/install.sh` to orchestrate local/Docker installation with explicit `--seed` selection.
+Reason: Operators need a predictable quick-start path for either lightweight functional validation or full demo walkthroughs without manual command choreography.
+
 ### 2026-02-25 — Add OpenAI SDK dependency for isolated Print Analyzer vision route
 Decision: Add `openai` npm dependency and implement OpenAI Responses API usage only inside `src/app/api/print-analyzer/analyze/route.ts` for server-side vision extraction.
 Reason: The new sealed Print Analyzer feature requires a server-side vision-capable LLM call without exposing API keys to the client.
