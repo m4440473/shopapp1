@@ -13,8 +13,8 @@ services:
       ATTACHMENTS_DIR: /app/storage
       DATABASE_URL: ${DATABASE_URL:-file:/app/data/shopapp1.db}
     volumes:
-      - /mnt/user/appdata/shopapp1/uploads:/app/storage
-      - /mnt/user/appdata/shopapp1/db:/app/data
+      - shopapp1_uploads:/app/storage
+      - shopapp1_db:/app/data
     profiles:
       - sqlite
       - mysql
@@ -31,6 +31,11 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - /mnt/user/appdata/shopapp1-mysql:/var/lib/mysql
+      - shopapp1_mysql:/var/lib/mysql
     profiles:
       - mysql
+
+volumes:
+  shopapp1_uploads:
+  shopapp1_db:
+  shopapp1_mysql:

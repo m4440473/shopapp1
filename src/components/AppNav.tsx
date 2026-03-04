@@ -57,7 +57,7 @@ export default function AppNav({ companyName, initials, logoUrl }: AppNavProps) 
       items.push({ href: "/account/password", label: "Account", icon: UserRound });
     }
     if (user && canAccessAdmin(user)) {
-      items.push({ href: "/admin/users", label: "Admin", icon: BadgeCheck });
+      items.push({ href: "/admin", label: "Admin", icon: BadgeCheck });
     }
     return items;
   }, [user]);
@@ -98,7 +98,7 @@ export default function AppNav({ companyName, initials, logoUrl }: AppNavProps) 
             <nav className="flex flex-col gap-2">
               {links.map((link) => {
                 const active =
-                  link.href === "/admin/users"
+                  link.href === "/admin"
                     ? pathname.startsWith("/admin")
                     : pathname === link.href || pathname.startsWith(`${link.href}/`);
                 const Icon = link.icon;
@@ -155,7 +155,7 @@ export default function AppNav({ companyName, initials, logoUrl }: AppNavProps) 
       <nav className="hidden items-center gap-4 text-sm font-medium text-muted-foreground md:flex">
         {links.map((link) => {
           const active =
-            link.href === "/admin/users"
+            link.href === "/admin"
               ? pathname.startsWith("/admin")
               : pathname === link.href || pathname.startsWith(`${link.href}/`);
           return (

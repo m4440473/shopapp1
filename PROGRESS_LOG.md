@@ -40,6 +40,32 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-02-26 — Admin IA cleanup + installer with basic/demo seed modes
+- Replaced `/admin` redirect behavior with a dedicated Admin Center landing page that groups controls into clear sections (People, Catalog, Quote Ops, Settings) and links directly into each admin area.
+- Reworked `NavTabs` into grouped, icon-based rows with a wrapped layout, making admin navigation easier to scan now that the UI styling is cleaner.
+- Updated global app nav admin link target from `/admin/users` to `/admin` so users always land on the new control-center overview first.
+- Added `prisma/seed-basic.js` as a functionality-only seed profile and split package scripts into `seed:basic` and `seed:demo` (`seed` defaults to demo profile).
+- Added `scripts/install.sh` one-script installer supporting `--target local|docker` and `--seed basic|demo`, plus updated README and Docker compose defaults for local portability via named volumes.
+- Captured visual verification screenshot of the new admin landing page after authenticated sign-in.
+
+Commands run:
+- npm run lint
+- npx prisma migrate deploy
+- npm run seed:basic
+- npm run seed:demo
+- npm run set-demo-passwords
+- bash scripts/install.sh --help
+- npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot script against `/auth/signin` and `/admin`
+
+Verification note:
+- Lint passed.
+- Prisma migrations applied successfully on local SQLite.
+- Both seed modes executed successfully.
+- Installer CLI help/argument wiring verified.
+- Screenshot artifact: `browser:/tmp/codex_browser_invocations/2e98785689018ddb/artifacts/artifacts/admin-center.png`.
+
+
 ### 2026-02-26 — BOM analyzer fix: part attachment retrieval now resolved
 - Implemented the runtime fix for BOM attachment retrieval failures.
 - Updated public attachment route (`/attachments/[...path]`) to query `PartAttachment` by `storagePath` when quote/order attachment records are not found.

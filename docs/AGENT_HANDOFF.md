@@ -1,5 +1,55 @@
 Date: 2026-02-26
 Agent: GPT-5.2-Codex
+Goal (1 sentence): Clean up admin information architecture and ship a one-script installer with selectable basic/demo seed profiles for local and Docker installs.
+
+## What I changed
+- Replaced `src/app/admin/page.tsx` redirect behavior with a full Admin Center overview page containing grouped cards and direct links to all admin sections.
+- Reworked `src/components/Admin/NavTabs.tsx` into grouped, icon-backed navigation rows (Overview/People/Catalog/Quote Ops) for improved scanability.
+- Updated `src/components/AppNav.tsx` so the global Admin link points to `/admin` and active-state checks treat `/admin` as the section root.
+- Added `prisma/seed-basic.js` for foundational functionality-only seed data and split package scripts into `seed:basic` and `seed:demo` modes.
+- Added `scripts/install.sh` one-step installer (`--target local|docker`, `--seed basic|demo`, `--start`) and updated `README.md` installation/seed docs.
+- Updated `docker-compose.yml` to use named volumes for portable local Docker setup.
+- Updated continuity artifacts (`tasks/todo.md`, `PROGRESS_LOG.md`, `tasks/lessons.md`, `docs/AGENT_HANDOFF.md`).
+
+## Files touched
+- src/app/admin/page.tsx
+- src/components/Admin/NavTabs.tsx
+- src/components/AppNav.tsx
+- prisma/seed-basic.js
+- scripts/install.sh
+- package.json
+- README.md
+- docker-compose.yml
+- tasks/todo.md
+- tasks/lessons.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+## Commands run
+- npm run lint
+- npx prisma migrate deploy
+- npm run seed:basic
+- npm run seed:demo
+- npm run set-demo-passwords
+- bash scripts/install.sh --help
+- npm run dev -- --hostname 0.0.0.0 --port 3000
+- Playwright screenshot script (signin + admin page capture)
+
+## Verification Evidence
+- Lint passed without ESLint errors.
+- Local SQLite migrations applied successfully.
+- `seed:basic` and `seed:demo` both completed successfully.
+- Installer help output confirmed target/seed options are wired.
+- Screenshot artifact captured: `browser:/tmp/codex_browser_invocations/2e98785689018ddb/artifacts/artifacts/admin-center.png`.
+
+## Next steps
+- [ ] Consider adding a non-interactive installer smoke test in CI that runs `scripts/install.sh --target local --seed basic` in TEST_MODE.
+- [ ] Optional: extend demo seed docs with explicit sample order/quote counts so operators know expected baseline content.
+
+---
+
+Date: 2026-02-26
+Agent: GPT-5.2-Codex
 Goal (1 sentence): Fix BOM tab image-analysis failures by allowing `/attachments/<storagePath>` to resolve part-level file records.
 
 ## What I changed

@@ -3,6 +3,37 @@
 ## Session Metadata
 - Date: 2026-02-26
 - Agent: GPT-5.2-Codex
+- Task ID: Admin IA cleanup + installer/seed orchestration
+- Goal: Clean up admin navigation/landing UX and add a single installer entrypoint with basic vs demo seed modes for local or Docker setups.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scope limited to admin IA/UI organization, seed mode tooling, and installation workflow docs/scripts.
+
+## Plan First
+- [x] Rework admin information architecture: add an admin landing page and grouped tab navigation that is easier to scan.
+- [x] Add seed-mode split (`basic` functionality seed vs `demo` populated seed) with scripts that remain deterministic.
+- [x] Add one-command installer script supporting local machine bootstrap and Docker bootstrap with selectable seed mode.
+- [x] Verify with lint + seed dry run command + screenshot evidence; then update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run seed:basic`
+- [x] `npm run seed:demo`
+- [x] `bash scripts/install.sh --help`
+
+## Review + Results
+- Added a dedicated `/admin` landing page with grouped admin control cards and improved navigation clarity for the newly polished UI style.
+- Refactored admin tab navigation into grouped sections (Overview, People, Catalog, Quote Ops) with icons and wrapped layout for cleaner scanning.
+- Added a one-command installer (`scripts/install.sh`) supporting `--target local|docker` and `--seed basic|demo` with clear help/validation.
+- Added a new `prisma/seed-basic.js` foundational seed and split package scripts into `seed:basic` and `seed:demo` modes.
+- Captured updated admin UI screenshot artifact after signing in with seeded admin credentials.
+
+---
+
+## Session Metadata
+- Date: 2026-02-26
+- Agent: GPT-5.2-Codex
 - Task ID: Follow-up bugfix (QA findings remediation)
 - Goal: Fix high-priority issues discovered in prior QA pass: duplicate order number risk, TEST_MODE repo split-brain, and timer TEST_MODE mismatch.
 
