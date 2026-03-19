@@ -1,6 +1,46 @@
 # tasks/todo.md — Session Plan + Verification
 
 ## Session Metadata
+- Date: 2026-03-19
+- Agent: GPT-5.2-Codex
+- Task ID: Unplanned bugfix (order create validation, sign-in discoverability, LAN-safe auth URLs)
+- Goal: Fix the order creation Prisma validation failure, expose an obvious sign-in entry point, and make auth/base-URL handling work more reliably when the app is opened from a local-network IP.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scope constrained to the reported order-create/auth/LAN access issues plus required continuity/doc updates.
+- [x] Applied relevant lessons: plan first for cross-file work and keep the fix narrow.
+
+## Plan First
+- [x] Inspect the failing order-create path and Prisma schema mismatch to confirm the root cause.
+- [x] Implement the minimal order-create fix and LAN-aware auth/base-URL handling.
+- [x] Add/adjust visible sign-in navigation so unauthenticated users have a clear click path.
+- [x] Run targeted verification, then update continuity docs with evidence and instructions.
+
+## Verification Checklist
+- [x] npm run prisma:generate
+- [x] npx prisma migrate deploy
+- [x] node - <<'JS' ... PRAGMA table_info("OrderPart") ... JS
+- [x] npm run lint
+- [x] npm run test -- src/lib/auth-redirect.test.ts src/lib/base-url.test.ts
+- [x] npm run dev -- --hostname 0.0.0.0 --port 3000
+- [x] curl -I --max-time 20 http://127.0.0.1:3000/about
+- [x] curl -I --max-time 20 'http://127.0.0.1:3000/auth/signin?callbackUrl=%2F'
+- [x] curl -I --max-time 20 http://127.0.0.1:3000/
+
+## Review + Results
+- Root cause of the order-create 500: `orders.service.ts` selected nested `parts` ordered by `createdAt`, but `OrderPart` did not actually have `createdAt` / `updatedAt` columns in the Prisma schema or SQLite DB, so Prisma rejected `order.create()` before writing the order.
+- Added `createdAt` / `updatedAt` to `OrderPart`, created a SQLite-safe table-redefinition migration, regenerated Prisma Client, and confirmed the columns exist in `OrderPart` after migration.
+- Added a shared base-URL resolver so auth redirects/sign-out prefer the incoming request origin when env vars still point at loopback (`localhost`) but the app is being opened from a LAN IP.
+- Made `/about` publicly reachable, added it to main navigation, and preserved sign-in/dashboard CTAs so unauthenticated users now have an obvious page with a clickable sign-in path.
+- Hardened `getAppSettings()` with `upsert()` after runtime verification exposed a singleton-create race when multiple requests hit a fresh database.
+- Browser screenshot capture was not performed because the required browser screenshot tool was not available in this environment.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
 - Date: 2026-02-26
 - Agent: GPT-5.2-Codex
 - Task ID: Admin IA cleanup + installer/seed orchestration

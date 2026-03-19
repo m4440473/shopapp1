@@ -60,6 +60,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-03-19 — LAN-aware auth base URL fallback
+Decision: Add shared `src/lib/base-url.ts` and use it for auth redirect/sign-out base URL resolution; when configured env URLs still point at loopback (`localhost`/`127.0.0.1`) but the request/base URL is a LAN origin, prefer the request origin.
+Reason: Local-network dev access was bouncing auth flows back to loopback URLs, so auth needed one shared rule that still preserves explicit non-loopback env config.
+
 ### 2026-02-26 — Dual seed profiles + one-script installer workflow
 Decision: Introduce `seed:basic` (functionality baseline) and `seed:demo` (pre-populated showcase dataset) plus `scripts/install.sh` to orchestrate local/Docker installation with explicit `--seed` selection.
 Reason: Operators need a predictable quick-start path for either lightweight functional validation or full demo walkthroughs without manual command choreography.

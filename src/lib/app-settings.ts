@@ -20,11 +20,10 @@ export type AppSettingsRecord = {
 };
 
 export async function getAppSettings(): Promise<AppSettingsRecord> {
-  const existing = await prisma.appSettings.findUnique({ where: { id: APP_SETTINGS_SINGLETON_ID } });
-  if (existing) return existing;
-
-  return prisma.appSettings.create({
-    data: {
+  return prisma.appSettings.upsert({
+    where: { id: APP_SETTINGS_SINGLETON_ID },
+    update: {},
+    create: {
       id: APP_SETTINGS_SINGLETON_ID,
     },
   });
