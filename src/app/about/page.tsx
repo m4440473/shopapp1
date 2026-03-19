@@ -1,6 +1,5 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { CheckCircle2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/Button';
@@ -28,11 +27,11 @@ const SCREENSHOTS = [
 
 export default async function AboutPage() {
   const session = await getServerAuthSession();
-  if (!session) {
-    redirect(buildSignInRedirectPath('/'));
-  }
-
   const settings = await getAppSettings();
+  const dashboardHref = '/';
+  const signInHref = buildSignInRedirectPath('/');
+  const primaryHref = session ? dashboardHref : signInHref;
+  const primaryLabel = session ? 'Open dashboard' : 'Sign in';
 
   return (
     <div className="space-y-12">
@@ -48,10 +47,10 @@ export default async function AboutPage() {
           </p>
           <div className="flex flex-wrap gap-3">
             <Button asChild size="lg" className="rounded-full">
-              <Link href="/auth/signin">Sign in</Link>
+              <Link href={primaryHref}>{primaryLabel}</Link>
             </Button>
             <Button asChild variant="secondary" size="lg" className="rounded-full">
-              <Link href="/auth/signin">Go to dashboard</Link>
+              <Link href={dashboardHref}>Go to dashboard</Link>
             </Button>
           </div>
         </div>
@@ -137,10 +136,10 @@ export default async function AboutPage() {
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
           <Button asChild size="lg" className="rounded-full">
-            <Link href="/auth/signin">Sign in</Link>
+            <Link href={primaryHref}>{primaryLabel}</Link>
           </Button>
           <Button asChild variant="secondary" size="lg" className="rounded-full">
-            <Link href="/auth/signin">Open dashboard</Link>
+            <Link href={dashboardHref}>Open dashboard</Link>
           </Button>
         </div>
       </section>

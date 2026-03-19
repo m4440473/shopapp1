@@ -1,3 +1,58 @@
+# AGENT_HANDOFF — 2026-03-19 (order-create Prisma fix + sign-in visibility + LAN auth fallback)
+
+Goal (1 sentence): Fix the reported order-create Prisma validation error, expose a clear sign-in entry point, and make auth redirects safer for local-network IP access.
+
+Scope (what changed):
+- Added `createdAt` / `updatedAt` to `OrderPart` in Prisma schema and shipped/apply-tested a SQLite-safe migration that rebuilds the table with those timestamp columns.
+- Added shared `src/lib/base-url.ts` and used it in auth redirect + sign-out base URL resolution so LAN requests can override loopback env origins.
+- Made `/about` public, added it to main nav, and kept explicit sign-in/dashboard CTAs for unauthenticated users.
+- Switched `getAppSettings()` to `upsert()` to avoid singleton-create races exposed by runtime verification.
+- Updated README LAN startup/env instructions and refreshed continuity artifacts.
+
+Files touched:
+- prisma/schema.prisma
+- prisma/migrations/20260319120000_add_order_part_timestamps/migration.sql
+- src/lib/base-url.ts
+- src/lib/base-url.test.ts
+- src/lib/auth.ts
+- src/app/(public)/auth/signout/route.ts
+- src/components/AppNav.tsx
+- src/app/about/page.tsx
+- src/lib/app-settings.ts
+- README.md
+- docs/AGENT_CONTEXT.md
+- tasks/todo.md
+- tasks/lessons.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+Commands run:
+- npm run prisma:generate
+- npx prisma migrate resolve --rolled-back 20260319120000_add_order_part_timestamps
+- npx prisma migrate deploy
+- node - <<'JS' ... PRAGMA table_info("OrderPart") ... JS
+- npm run lint
+- npm run test -- src/lib/auth-redirect.test.ts src/lib/base-url.test.ts
+- npm run dev -- --hostname 0.0.0.0 --port 3000
+- curl -I --max-time 20 http://127.0.0.1:3000/about
+- curl -I --max-time 20 'http://127.0.0.1:3000/auth/signin?callbackUrl=%2F'
+- curl -I --max-time 20 http://127.0.0.1:3000/
+
+Verification results:
+- Prisma Client regenerated successfully.
+- Migration applied successfully after converting the initial failing SQLite `ALTER TABLE` attempt into a table-redefinition migration.
+- `PRAGMA table_info("OrderPart")` confirms `createdAt` and `updatedAt` now exist.
+- Lint passed.
+- Targeted tests passed (7/7).
+- Runtime smoke checks passed for public about/sign-in pages and unauthenticated root redirect.
+- Browser screenshot capture was not possible because the required browser screenshot tool was unavailable in this environment.
+
+Open follow-ups / next steps:
+- Ask the operator to re-run `npx prisma migrate deploy` (or the installer) before testing order creation on their machine so the new `OrderPart` timestamp columns exist locally.
+- If LAN auth still redirects incorrectly on a specific device, confirm the browser is opening the same origin that is configured in `.env` and check for stale cookies from a previous `localhost` session.
+
+---
+
 Date: 2026-02-26
 Agent: GPT-5.2-Codex
 Goal (1 sentence): Clean up admin information architecture and ship a one-script installer with selectable basic/demo seed profiles for local and Docker installs.

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BadgeCheck,
+  Info,
   LayoutDashboard,
   Menu,
   Search,
@@ -31,6 +32,7 @@ import { useCurrentUser } from "@/lib/use-current-user";
 
 const baseLinks = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/about", label: "About", icon: Info },
   { href: "/customers", label: "Customers", icon: Users },
 ];
 

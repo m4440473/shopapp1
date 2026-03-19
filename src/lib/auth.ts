@@ -3,6 +3,7 @@ import type { JWT } from 'next-auth/jwt';
 import Credentials from 'next-auth/providers/credentials';
 import { prisma } from './prisma';
 import { compare } from 'bcryptjs';
+import { resolveBaseUrl } from '@/lib/base-url';
 
 const DEFAULT_ROLE = 'MACHINIST';
 
@@ -65,14 +66,12 @@ const applyTokenToSessionUser = (sessionUser: SessionUserInput, token: JWT): Ses
   };
 };
 
-const resolveAuthBaseUrl = (fallback: string) => {
-  const envBase =
-    process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_BASE_URL ?? process.env.APP_BASE_URL;
-  if (envBase && envBase.length > 0) {
-    return envBase;
-  }
-  return fallback;
-};
+const resolveAuthBaseUrl = (fallback: string) =>
+  resolveBaseUrl({
+    envBaseUrl:
+      process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_BASE_URL ?? process.env.APP_BASE_URL,
+    fallbackBaseUrl: fallback,
+  }) || fallback;
 
 export const authOptions: NextAuthOptions & { trustHost?: boolean } = {
   trustHost: true,

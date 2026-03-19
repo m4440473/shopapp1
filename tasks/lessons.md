@@ -1,3 +1,9 @@
+## 2026-03-19 — SQLite migration default-value trap
+- Trigger: Prisma migrate failed while adding timestamp columns with `DEFAULT CURRENT_TIMESTAMP` via `ALTER TABLE` on SQLite.
+- Mistake pattern: I assumed SQLite could add non-null timestamp columns with non-constant defaults directly.
+- Preventive rule: For SQLite schema changes that introduce non-null timestamp defaults, use a table-redefinition migration pattern up front instead of `ALTER TABLE ... ADD COLUMN ... DEFAULT CURRENT_TIMESTAMP`.
+- Applied in next session where: OrderPart timestamp migration (`20260319120000_add_order_part_timestamps`).
+
 ## 2026-02-26 — Repeat tooling warning: patch workflow via shell
 - Trigger: User warning repeated that patch edits were invoked through shell command execution.
 - Mistake pattern: I slipped back to shell-mediated patch operations during iterative edits.

@@ -82,7 +82,7 @@ npm run set-demo-passwords
 6. Start the app:
 
    ```bash
-   npm run dev
+   npm run dev -- --hostname 0.0.0.0 --port 3000
    ```
 
 ## Demo users
@@ -95,6 +95,28 @@ After `npm run set-demo-passwords`:
 - `viewer@example.com`
 
 (Passwords are set by `scripts/set-demo-passwords.js`.)
+
+## Local-network access (LAN)
+
+If you want to open the dev server from another device on your network:
+
+1. Start Next on all interfaces:
+
+   ```bash
+   npm run dev -- --hostname 0.0.0.0 --port 3000
+   ```
+
+2. Set the base URL env vars in `.env` to the exact LAN origin you will open in the browser, for example:
+
+   ```env
+   APP_BASE_URL="http://192.168.1.25:3000"
+   NEXTAUTH_URL="http://192.168.1.25:3000"
+   NEXT_PUBLIC_BASE_URL="http://192.168.1.25:3000"
+   ```
+
+3. Re-start the dev server after changing `.env`.
+
+Note: the app now falls back to the incoming request host when those env vars still point at `localhost`, but setting them to the real LAN IP is still the most reliable option for sign-in and sign-out redirects.
 
 ## Troubleshooting
 

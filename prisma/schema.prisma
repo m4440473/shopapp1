@@ -110,6 +110,8 @@ model OrderPart {
   stockSize           String?
   cutLength           String?
   status              String      @default("IN_PROGRESS")
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
   charges             OrderCharge[]
   attachments         PartAttachment[]
   checklistItems      OrderChecklist[]

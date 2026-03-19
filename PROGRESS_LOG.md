@@ -40,6 +40,34 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-03-19 — Order-create Prisma fix + sign-in visibility + LAN auth fallback
+- Fixed the reported order-create failure by restoring missing `OrderPart.createdAt` / `updatedAt` fields in Prisma schema and shipping a SQLite-safe migration (`20260319120000_add_order_part_timestamps`); this makes the existing nested `parts.orderBy.createdAt` selection valid again.
+- Regenerated Prisma Client, applied the migration locally, and verified `PRAGMA table_info("OrderPart")` now shows both timestamp columns.
+- Added shared `src/lib/base-url.ts` and routed auth redirect + sign-out base-URL resolution through it so LAN requests can prefer the incoming request origin when env URLs still point to loopback.
+- Made `/about` publicly accessible, added it to the main nav, and preserved explicit sign-in/dashboard CTAs so unauthenticated users now have a visible place to click into auth.
+- Hardened `getAppSettings()` from `findUnique()+create()` to `upsert()` after runtime verification exposed a singleton race causing `/about` to 500 on a fresh DB.
+- Added README LAN instructions covering `npm run dev -- --hostname 0.0.0.0 --port 3000` and the required `.env` base URL values for IP-based access.
+
+Commands run:
+- npm run prisma:generate
+- npx prisma migrate deploy
+- node - <<'JS' ... PRAGMA table_info("OrderPart") ... JS
+- npm run lint
+- npm run test -- src/lib/auth-redirect.test.ts src/lib/base-url.test.ts
+- npm run dev -- --hostname 0.0.0.0 --port 3000
+- curl -I --max-time 20 http://127.0.0.1:3000/about
+- curl -I --max-time 20 'http://127.0.0.1:3000/auth/signin?callbackUrl=%2F'
+- curl -I --max-time 20 http://127.0.0.1:3000/
+
+Verification note:
+- Prisma client generation passed.
+- Migration applied successfully after converting the new timestamp migration to SQLite table redefinition.
+- Targeted tests passed (7/7).
+- Lint passed.
+- Runtime smoke checks returned `200` for `/about`, `200` for `/auth/signin?callbackUrl=%2F`, and `307` redirect from `/` to sign-in when unauthenticated.
+- Browser screenshot capture was skipped because the required browser screenshot tool was unavailable in this environment.
+
+
 ### 2026-02-26 — Admin IA cleanup + installer with basic/demo seed modes
 - Replaced `/admin` redirect behavior with a dedicated Admin Center landing page that groups controls into clear sections (People, Catalog, Quote Ops, Settings) and links directly into each admin area.
 - Reworked `NavTabs` into grouped, icon-based rows with a wrapped layout, making admin navigation easier to scan now that the UI styling is cleaner.
