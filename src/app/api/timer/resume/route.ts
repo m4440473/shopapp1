@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
-import { getOrderHeaderInfo, getOrderPartSummary, logPartEvent } from '@/modules/orders/orders.service';
+import { getOrderHeaderInfo, getOrderPartSummary, logPartEvent, syncOrderWorkflowStatus } from '@/modules/orders/orders.service';
 import { TimeEntryResume } from '@/modules/time/time.schema';
 import { getActiveTimeEntry, resumeTimeEntry } from '@/modules/time/time.service';
 
@@ -64,7 +64,9 @@ export async function POST(req: NextRequest) {
       message: 'Timer resumed.',
       meta: { timeEntryId: entry.id, resumedFromEntryId: parsed.data.entryId },
     });
+    await syncOrderWorkflowStatus(entry.orderId, { userId });
   }
 
   return NextResponse.json({ entry });
 }
+

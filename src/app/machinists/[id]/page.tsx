@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/Button';
 
-const TRACKED_STATUS_SET = new Set(['PROGRAMMING', 'RUNNING', 'READY_FOR_ADDONS']);
+const TRACKED_STATUS_SET = new Set(['IN_PROGRESS']);
 
 function formatDuration(ms: number) {
   if (!Number.isFinite(ms) || ms <= 0) return 'Not enough data';

@@ -40,6 +40,29 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+
+### 2026-03-23 — Order workflow status simplification + admin override alignment
+- Simplified manager-facing order statuses to the new workflow set: `RECEIVED`, `IN_PROGRESS`, `COMPLETE`, and `CLOSED`.
+- Added workflow-status normalization/rollup helpers in Orders service so legacy statuses collapse into the new set for dashboard/search display and future filtering.
+- Added order-status auto-sync after part progress signals (checklist completion/toggle, timer start/resume/finish, manual department moves, charge/part mutations, and manual part completion) while preserving `CLOSED` as the terminal admin state.
+- Updated department-routing persistence so part status stays aligned with department state (`IN_PROGRESS` when routed into work, `COMPLETE` when the part is done).
+- Replaced the old order-status API behavior with an admin-only manual status override flow that requires a reason and records status-history audit text using the signed-in admin identity.
+- Added an admin order-status editor to the order detail header with explicit override guidance, and updated dashboard/search/filter surfaces to use the simplified status set.
+- Updated seed/mock data to emit the simplified status set and added focused order workflow status helper coverage.
+- Applied a small build-compatibility fix in `src/modules/quotes/quotes.repo.ts` by loosening a stale `Prisma.TransactionClient` annotation to `any` so type-check/build can complete in this dependency baseline.
+
+Commands run:
+- npm run lint
+- npm run test -- src/modules/orders/__tests__/department-routing.test.ts src/modules/orders/__tests__/orders.service.test.ts src/modules/orders/__tests__/orders.status.test.ts
+- npm run build
+- npx tsc --noEmit
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Targeted Orders Vitest coverage passed (10/10 tests).
+- Production build passed and standalone assets were copied successfully.
+- Browser screenshot capture was not performed because the required browser screenshot tool is unavailable in this environment.
+
 ### 2026-03-19 — Order-create Prisma fix + sign-in visibility + LAN auth fallback
 - Fixed the reported order-create failure by restoring missing `OrderPart.createdAt` / `updatedAt` fields in Prisma schema and shipping a SQLite-safe migration (`20260319120000_add_order_part_timestamps`); this makes the existing nested `parts.orderBy.createdAt` selection valid again.
 - Regenerated Prisma Client, applied the migration locally, and verified `PRAGMA table_info("OrderPart")` now shows both timestamp columns.

@@ -5,19 +5,14 @@ import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 import { Search as SearchIcon } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
-import { searchOrders } from '@/modules/orders/orders.service';
+import { ORDER_STATUS_LABELS, searchOrders } from '@/modules/orders/orders.service';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const STATUS_STYLES: Record<string, string> = {
   RECEIVED: 'border-primary/40 bg-primary/10 text-primary',
-  PROGRAMMING: 'border-blue-400/40 bg-blue-400/15 text-blue-200',
-  SETUP: 'border-sky-400/40 bg-sky-400/15 text-sky-200',
-  RUNNING: 'border-emerald-400/40 bg-emerald-400/15 text-emerald-200',
-  FINISHING: 'border-amber-400/40 bg-amber-400/15 text-amber-100',
-  DONE_MACHINING: 'border-violet-400/40 bg-violet-400/15 text-violet-200',
-  INSPECTION: 'border-lime-300/60 bg-lime-300/20 text-lime-100',
-  SHIPPING: 'border-cyan-400/40 bg-cyan-400/15 text-cyan-100',
+  IN_PROGRESS: 'border-blue-400/40 bg-blue-400/15 text-blue-200',
+  COMPLETE: 'border-emerald-400/40 bg-emerald-400/15 text-emerald-200',
   CLOSED: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200',
 };
 
@@ -119,7 +114,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                               STATUS_STYLES[order.status] ?? 'border-border/60 bg-secondary/40 text-foreground'
                             }`}
                           >
-                            {order.status.replace(/_/g, ' ')}
+                            {ORDER_STATUS_LABELS[order.status] ?? order.status.replace(/_/g, ' ')}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{formatDate(order.dueDate)}</TableCell>

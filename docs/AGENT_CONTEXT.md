@@ -60,6 +60,11 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+
+### 2026-03-23 — Simplify order status to workflow rollup with admin override
+Decision: Standardize manager-facing order statuses to `RECEIVED`, `IN_PROGRESS`, `COMPLETE`, and `CLOSED`; auto-sync them from part activity/checklist completion while keeping admin-only manual status edits with required reasons.
+Reason: The shop-floor workflow is already part/department-driven, so the order status should act as a simple searchable dashboard rollup instead of a second operational workflow that drifts from parts.
+
 ### 2026-03-19 — LAN-aware auth base URL fallback
 Decision: Add shared `src/lib/base-url.ts` and use it for auth redirect/sign-out base URL resolution; when configured env URLs still point at loopback (`localhost`/`127.0.0.1`) but the request/base URL is a LAN origin, prefer the request origin.
 Reason: Local-network dev access was bouncing auth flows back to loopback URLs, so auth needed one shared rule that still preserves explicit non-loopback env config.

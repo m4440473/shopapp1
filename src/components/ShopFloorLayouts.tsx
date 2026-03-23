@@ -257,7 +257,7 @@ export function ShopFloorLayouts({
                   <div className="space-y-2">
                     <Label className="text-xs uppercase tracking-wide text-muted-foreground">Status</Label>
                     <div className="grid grid-cols-2 gap-2">
-                      {['RECEIVED', 'PROGRAMMING', 'SETUP', 'RUNNING', 'FINISHING', 'DONE_MACHINING', 'INSPECTION', 'SHIPPING', 'CLOSED'].map((status) => {
+                      {['RECEIVED', 'IN_PROGRESS', 'COMPLETE', 'CLOSED'].map((status) => {
                         const active = filters.statuses?.includes(status);
                         return (
                           <button

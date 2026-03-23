@@ -580,7 +580,7 @@ function parseOrderNumberNumericValue(orderNumber: string) {
   return numeric;
 }
 
-async function generateNextOrderNumberInTx(tx: Prisma.TransactionClient, business: BusinessCode) {
+async function generateNextOrderNumberInTx(tx: any, business: BusinessCode) {
   const recent = await tx.order.findMany({
     where: { business },
     select: { orderNumber: true },
