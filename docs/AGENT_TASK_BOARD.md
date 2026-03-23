@@ -12,6 +12,7 @@ Use with:
 
 ## Session Status Notes
 
+- 2026-03-23: Completed unplanned isolated `sterling-site/` marketing-site scaffold (premium one-page manufacturing landing page with standalone tooling/docs). Evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
 - 2026-02-26: Completed unplanned Part BOM analyzer attachment-ingestion bugfix (non-image MIME guard + image MIME resolution hardening) and documented quote→order conversion audit evidence.
 - 2026-02-25: Completed unplanned Order→Part BOM tab integration using existing print-analyzer API, including deterministic unit/thread/tight-tolerance helpers and continuity evidence updates.
 - 2026-02-25: Completed dashboard follow-up fix for department-touch visibility (added checklist/part department IDs to dashboard payload + UI union count) after Fab/Shipping feedback. Evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
