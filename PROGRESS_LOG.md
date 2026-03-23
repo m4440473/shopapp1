@@ -41,6 +41,27 @@ Agents MUST update this at the end of every session.
 ## Session Log (append newest at top)
 
 
+### 2026-03-23 — Standalone premium manufacturing marketing site scaffolded
+- Added a new isolated `sterling-site/` subproject with its own `package.json`, Vite config, TypeScript config, and entrypoint so it can be run/deployed independently of the main Next.js app.
+- Built a one-page scrolling marketing site for Sterling Tool & Die, C & R Machine and Fabrication, and Preferred Kustom Powder with a sticky nav, smooth section scrolling, responsive layouts, semantic sections, and premium industrial copy.
+- Added a motion system combining an animated ambient mesh background, hero parallax movement, and reveal-on-scroll transitions to give the site a live modern feel without introducing extra animation libraries.
+- Centralized editable site content in `sterling-site/src/siteContent.ts`, kept media easy to swap, and added `sterling-site/README.md` covering run/build/deploy/integration guidance.
+- Installed the subproject's isolated dependencies locally and verified type-check, production build, and a direct-link HTTP smoke response from the Vite dev server.
+
+Commands run:
+- cd sterling-site && npm install
+- cd sterling-site && npm run build
+- cd sterling-site && npm run check
+- cd sterling-site && npm run dev -- --host 127.0.0.1 --port 4173
+- curl -I --max-time 15 http://127.0.0.1:4173/
+
+Verification note:
+- Standalone dependency install completed successfully.
+- Production build passed and emitted static assets to `sterling-site/dist`.
+- Type-check passed.
+- Local Vite dev server responded `200 OK` for the direct-link root path.
+- Browser screenshot capture was not possible because the required browser screenshot tool is unavailable in this environment.
+
 ### 2026-03-23 — Order workflow status simplification + admin override alignment
 - Simplified manager-facing order statuses to the new workflow set: `RECEIVED`, `IN_PROGRESS`, `COMPLETE`, and `CLOSED`.
 - Added workflow-status normalization/rollup helpers in Orders service so legacy statuses collapse into the new set for dashboard/search display and future filtering.

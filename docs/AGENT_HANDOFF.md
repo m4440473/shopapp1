@@ -1,4 +1,57 @@
 
+# AGENT_HANDOFF — 2026-03-23 (standalone premium manufacturing marketing site)
+
+Goal (1 sentence): Create a fully isolated one-page premium manufacturing marketing website in its own repo subfolder so it can be previewed and deployed by direct URL without coupling to the main shop app.
+
+Scope (what changed):
+- Added a dedicated `sterling-site/` Vite + React + TypeScript subproject with its own package manifest, TS configs, Vite config, HTML entrypoint, and lockfile.
+- Built a responsive one-page site covering hero, brand identity, capabilities, why-us, trust, materials, equipment, gallery, and CTA/contact sections.
+- Implemented sticky top navigation with smooth anchor scrolling and active-section highlighting.
+- Added motion treatment via animated ambient mesh background, parallax hero visual movement, and intersection-observer reveal transitions without bringing in extra animation dependencies.
+- Centralized editable site data/media references in `sterling-site/src/siteContent.ts` and documented run/build/deploy/media swap guidance in `sterling-site/README.md`.
+- Kept the project isolated from the main app: no shared components, styles, auth, DB wiring, APIs, or shared runtime config.
+
+Files touched:
+- sterling-site/package.json
+- sterling-site/package-lock.json
+- sterling-site/tsconfig.json
+- sterling-site/tsconfig.app.json
+- sterling-site/tsconfig.node.json
+- sterling-site/vite.config.ts
+- sterling-site/index.html
+- sterling-site/README.md
+- sterling-site/src/main.tsx
+- sterling-site/src/App.tsx
+- sterling-site/src/siteContent.ts
+- sterling-site/src/styles.css
+- docs/AGENT_CONTEXT.md
+- docs/AGENT_TASK_BOARD.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- tasks/todo.md
+
+Commands run:
+- cd sterling-site && npm install
+- cd sterling-site && npm run build
+- cd sterling-site && npm run check
+- cd sterling-site && npm run dev -- --host 127.0.0.1 --port 4173
+- curl -I --max-time 15 http://127.0.0.1:4173/
+
+Verification results:
+- Standalone dependency installation succeeded.
+- Production build passed and emitted the static site to `sterling-site/dist`.
+- Type-check passed.
+- Direct-link dev-server smoke check returned `200 OK`.
+- Browser screenshot capture was not possible because the required browser screenshot tool is unavailable in this environment.
+
+Open follow-ups / next steps:
+- Replace placeholder quote/contact details with real production contact endpoints before public launch.
+- Swap the stock gallery/hero media with real shop photography when available.
+- When ready, add a single direct URL link from the main app or deploy `sterling-site/` as a separate project/subdomain without sharing runtime code.
+
+---
+
+
 # AGENT_HANDOFF — 2026-03-23 (order workflow status simplification + admin override)
 
 Goal (1 sentence): Convert order status into a simple manager-facing workflow rollup (`RECEIVED` / `IN_PROGRESS` / `COMPLETE` / `CLOSED`) that auto-syncs from part activity while remaining admin-editable with audit reasons.

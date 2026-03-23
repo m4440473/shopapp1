@@ -61,6 +61,10 @@ Goal: a scalable foundation that can grow.
 ## Decision Log (append newest at top)
 
 
+### 2026-03-23 — Isolated marketing site lives as its own Vite subproject
+Decision: Build the new manufacturing marketing website in a dedicated `sterling-site/` folder with its own Vite/React/TypeScript toolchain, package manifest, styling, and content files rather than coupling it to the existing Next.js app.
+Reason: The requested site must stay deployable by direct URL and remain isolated from the main shop app's navigation, components, styles, logic, config, and dependency graph while the marketing experience evolves independently.
+
 ### 2026-03-23 — Simplify order status to workflow rollup with admin override
 Decision: Standardize manager-facing order statuses to `RECEIVED`, `IN_PROGRESS`, `COMPLETE`, and `CLOSED`; auto-sync them from part activity/checklist completion while keeping admin-only manual status edits with required reasons.
 Reason: The shop-floor workflow is already part/department-driven, so the order status should act as a simple searchable dashboard rollup instead of a second operational workflow that drifts from parts.

@@ -1,3 +1,37 @@
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-03-23
+- Agent: GPT-5.2-Codex
+- Task ID: Unplanned standalone marketing site
+- Goal: Create an isolated one-page premium manufacturing marketing site in a dedicated subfolder with its own tooling, polished motion, responsive sections, and delivery docs.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated this work is isolated from the main app and will live in its own subfolder with separate config/dependencies.
+- [x] Applied relevant lessons: plan first for multi-file work, keep edits scoped, and record verification evidence explicitly.
+
+## Plan First
+- [x] Choose the isolated frontend stack/folder structure and scaffold the standalone site without coupling to the main app.
+- [x] Build the one-page responsive experience, sticky nav, section content, motion system, and easy-to-swap media/content structure.
+- [x] Add standalone project README plus continuity/decision-log updates for the new subproject.
+- [x] Verify install/build behavior, then update continuity docs, commit, and prepare PR metadata.
+
+## Verification Checklist
+- [x] `npm install`
+- [x] `npm run build`
+- [x] `npm run check`
+- [x] Screenshot capture attempt for the new marketing site
+
+## Review + Results
+- Added an isolated `sterling-site/` Vite + React + TypeScript subproject with its own package/config files so the marketing site does not share the main app's runtime, styles, or dependencies.
+- Built a premium one-page manufacturing site with a sticky section nav, smooth scrolling, reveal animations, animated ambient mesh/parallax motion, and all requested content sections.
+- Centralized editable marketing copy/data in `sterling-site/src/siteContent.ts` and documented run/build/deploy/media-swap instructions in `sterling-site/README.md`.
+- Verified install, type-check, production build, and local HTTP smoke response for the standalone site.
+- Screenshot capture could not be completed because the required browser screenshot tool is unavailable in this environment.
+
+---
+
 
 # tasks/todo.md — Session Plan + Verification
 
