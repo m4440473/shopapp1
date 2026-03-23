@@ -49,6 +49,7 @@ import {
   findOrderStatus,
   findOrderSummary,
   findOrderWithDetails,
+  findOrderForWorkflowStatus,
   findPartAttachment,
   findPartById,
   findPartForRouting,
@@ -132,22 +133,30 @@ type PartEventInput = {
   meta?: Record<string, unknown> | null;
 };
 
+export const ORDER_WORKFLOW_STATUSES = ['RECEIVED', 'IN_PROGRESS', 'COMPLETE', 'CLOSED'] as const;
+
 export const ORDER_STATUS_LABELS: Record<string, string> = {
-  NEW: 'New',
   RECEIVED: 'Received',
-  PROGRAMMING: 'Programming',
-  RUNNING: 'Running',
-  INSPECTING: 'Inspecting',
-  READY_FOR_ADDONS: 'Ready for addons',
+  IN_PROGRESS: 'In progress',
   COMPLETE: 'Complete',
   CLOSED: 'Closed',
-  SETUP: 'Setup',
-  FINISHING: 'Finishing',
-  DONE_MACHINING: 'Machining Done',
-  INSPECTION: 'Inspection',
-  SHIPPING: 'Shipping',
 };
 
+const LEGACY_RECEIVED_STATUSES = new Set(['NEW', 'RECEIVED']);
+const LEGACY_COMPLETE_STATUSES = new Set(['COMPLETE']);
+const LEGACY_CLOSED_STATUSES = new Set(['CLOSED']);
+const LEGACY_IN_PROGRESS_STATUSES = new Set([
+  'PROGRAMMING',
+  'SETUP',
+  'RUNNING',
+  'FINISHING',
+  'DONE_MACHINING',
+  'INSPECTING',
+  'INSPECTION',
+  'READY_FOR_ADDONS',
+  'SHIPPING',
+  'IN_PROGRESS',
+]);
 export const STALE_STATUS_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const DEFAULT_ORDER_FILTERS: OrderFilterState = {
@@ -225,6 +234,70 @@ function getDepartmentName(departments: DepartmentSortEntry[], departmentId: str
   return departments.find((dept) => dept.id === departmentId)?.name ?? departmentId;
 }
 
+export function normalizeOrderWorkflowStatus(status: string | null | undefined) {
+  const value = (status ?? '').trim().toUpperCase();
+  if (LEGACY_CLOSED_STATUSES.has(value)) return 'CLOSED';
+  if (LEGACY_COMPLETE_STATUSES.has(value)) return 'COMPLETE';
+  if (LEGACY_IN_PROGRESS_STATUSES.has(value)) return 'IN_PROGRESS';
+  if (LEGACY_RECEIVED_STATUSES.has(value)) return 'RECEIVED';
+  return 'RECEIVED';
+}
+
+function isPartComplete(part: { id?: string | null; status?: string | null }, checklist: Array<{ partId?: string | null; completed?: boolean | null; isActive?: boolean | null }>) {
+  if (normalizeOrderWorkflowStatus(part.status) === 'COMPLETE') return true;
+  const partChecklist = checklist.filter((item) => item.partId === part.id && item.isActive !== false);
+  return partChecklist.length > 0 && partChecklist.every((item) => item.completed === true);
+}
+
+export function deriveWorkflowStatusFromSnapshot(order: {
+  status?: string | null;
+  parts?: Array<{ id: string; status?: string | null }>;
+  checklist?: Array<{ partId?: string | null; completed?: boolean | null; isActive?: boolean | null }>;
+  timeEntries?: Array<{ id: string }>;
+  partEvents?: Array<{ id: string }>;
+}) {
+  const current = normalizeOrderWorkflowStatus(order.status);
+  if (current === 'CLOSED') return 'CLOSED';
+
+  const parts = Array.isArray(order.parts) ? order.parts : [];
+  const checklist = Array.isArray(order.checklist) ? order.checklist : [];
+  if (parts.length > 0 && parts.every((part) => isPartComplete(part, checklist))) {
+    return 'COMPLETE';
+  }
+
+  const hasCompletedChecklist = checklist.some((item) => item.completed === true);
+  const hasTrackedActivity = Boolean(order.timeEntries?.length || order.partEvents?.length);
+  const hasProgress = current === 'IN_PROGRESS' || hasCompletedChecklist || hasTrackedActivity;
+
+  return hasProgress ? 'IN_PROGRESS' : 'RECEIVED';
+}
+
+export async function syncOrderWorkflowStatus(orderId: string, { userId, tx }: { userId?: string | null; tx?: any } = {}) {
+  const order = await findOrderForWorkflowStatus(orderId, tx);
+  if (!order) return fail(404, 'Order not found');
+
+  const nextStatus = deriveWorkflowStatusFromSnapshot(order);
+  const currentStatus = normalizeOrderWorkflowStatus(order.status);
+  if (currentStatus === nextStatus && order.status === nextStatus) {
+    return ok({ orderId, status: nextStatus, changed: false });
+  }
+
+  if (currentStatus === nextStatus && order.status !== nextStatus) {
+    await updateOrderStatus(orderId, nextStatus);
+    return ok({ orderId, status: nextStatus, changed: true });
+  }
+
+  await updateOrderStatus(orderId, nextStatus);
+  await createStatusHistoryEntry({
+    orderId,
+    from: order.status ?? currentStatus,
+    to: nextStatus,
+    userId: userId ?? null,
+    reason: 'Workflow status auto-synced from part activity.',
+  });
+  return ok({ orderId, status: nextStatus, changed: true });
+}
+
 export function decorateOrder(order: OrderListItem): OrderWithMeta {
   const totalQuantity = (order.parts ?? []).reduce((sum, part) => sum + (part.quantity ?? 0), 0);
   const addonCount = order.checklist?.length ?? 0;
@@ -234,6 +307,7 @@ export function decorateOrder(order: OrderListItem): OrderWithMeta {
 
   return {
     ...order,
+    status: normalizeOrderWorkflowStatus(order.status),
     totalQuantity,
     addonCount,
     openAddonCount,
@@ -342,7 +416,13 @@ export async function listOrdersForQuery(params: {
       { customer: { name: { contains: q, mode: 'insensitive' } } },
     ];
   }
-  if (status) where.status = status;
+  if (status) {
+    const normalizedStatus = normalizeOrderWorkflowStatus(status);
+    if (normalizedStatus === 'CLOSED') where.status = { in: ['CLOSED'] };
+    else if (normalizedStatus === 'COMPLETE') where.status = { in: ['COMPLETE'] };
+    else if (normalizedStatus === 'RECEIVED') where.status = { in: ['NEW', 'RECEIVED'] };
+    else where.status = { in: Array.from(LEGACY_IN_PROGRESS_STATUSES) };
+  }
   if (priority) where.priority = priority;
   if (assignedMachinistId) where.assignedMachinistId = assignedMachinistId;
   if (customerId) where.customerId = customerId;
@@ -534,15 +614,23 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
     }
   }
 
+  await syncOrderWorkflowStatus(created.id, { userId: userId ?? null });
   return ok({ id: created.id });
 }
 
 export async function getOrderDetails(id: string, isAdmin: boolean) {
   const order = await findOrderWithDetails(id);
   if (!order) return fail(404, 'Not found');
+
+  const sanitized = sanitizePricingForNonAdmin(order, isAdmin) as any;
+  sanitized.status = normalizeOrderWorkflowStatus(sanitized.status);
+  sanitized.parts = Array.isArray(sanitized.parts)
+    ? sanitized.parts.map((part: any) => ({ ...part, status: part.status === 'COMPLETE' ? 'COMPLETE' : 'IN_PROGRESS' }))
+    : sanitized.parts;
+
   return ok({
-    item: sanitizePricingForNonAdmin(order, isAdmin),
-    permissions: { canEditParts: isAdmin },
+    item: sanitized,
+    permissions: { canEditParts: isAdmin, canEditOrderStatus: isAdmin },
   });
 }
 
@@ -586,31 +674,37 @@ export async function updateOrderDetails(id: string, payload: OrderUpdateInput) 
   return ok({ ok: true });
 }
 
-export async function updateOrderStatusForEmployee({
+export async function updateOrderWorkflowStatusByAdmin({
   orderId,
   status,
-  employeeName,
+  reason,
   userId,
+  actorName,
 }: {
   orderId: string;
   status: string;
-  employeeName: string;
+  reason: string;
   userId?: string;
+  actorName?: string | null;
 }) {
-  const allowed = ['NEW', 'PROGRAMMING', 'RUNNING', 'INSPECTING', 'READY_FOR_ADDONS', 'COMPLETE', 'CLOSED'];
-  if (!status || !allowed.includes(status)) return fail(400, 'Invalid status');
-  if (!employeeName) return fail(400, 'Employee name is required');
+  const requestedStatus = (status ?? '').trim().toUpperCase();
+  if (!ORDER_WORKFLOW_STATUSES.includes(requestedStatus as (typeof ORDER_WORKFLOW_STATUSES)[number])) {
+    return fail(400, 'Invalid status');
+  }
+  const normalizedStatus = requestedStatus as (typeof ORDER_WORKFLOW_STATUSES)[number];
+  if (!reason.trim()) return fail(400, 'Reason is required');
 
   const existingOrder = await findOrderStatus(orderId);
   if (!existingOrder) return fail(404, 'Order not found');
 
-  const updatedOrder = await updateOrderStatus(orderId, status);
+  const updatedOrder = await updateOrderStatus(orderId, normalizedStatus);
+  const actorLabel = actorName?.trim() || userId || 'Admin';
   await createStatusHistoryEntry({
     orderId,
-    from: existingOrder.status,
-    to: status,
+    from: normalizeOrderWorkflowStatus(existingOrder.status),
+    to: normalizedStatus,
     userId,
-    reason: `Status changed by ${employeeName}`,
+    reason: `Admin status change by ${actorLabel}: ${reason.trim()}`,
   });
   return ok({ order: updatedOrder });
 }
@@ -619,6 +713,7 @@ export async function assignMachinistToOrder(orderId: string, machinistId: strin
   const order = await updateOrderAssignee(orderId, machinistId);
   return ok({ item: order });
 }
+
 
 export async function addOrderNote(
   orderId: string,
@@ -670,8 +765,13 @@ export async function recomputePartDepartment(
 
   const fromDepartmentId = part.currentDepartmentId ?? null;
   const toDepartmentId = selectDepartmentForPart(part.checklistItems ?? [], departments);
+  const desiredPartStatus = toDepartmentId ? 'IN_PROGRESS' : 'COMPLETE';
 
   if (fromDepartmentId === toDepartmentId) {
+    if (part.status !== desiredPartStatus) {
+      await updateOrderPart(partId, { status: desiredPartStatus });
+      return ok({ partId, orderId: part.orderId, currentDepartmentId: fromDepartmentId, changed: true, flagged: false });
+    }
     return ok({ partId, orderId: part.orderId, currentDepartmentId: fromDepartmentId, changed: false, flagged: false });
   }
 
@@ -757,6 +857,7 @@ export async function completeChecklistAndAdvance({ orderId, partId, checklistId
   });
 
   if (!result) return fail(404, 'Checklist item not found');
+  await syncOrderWorkflowStatus(orderId, { userId: actorUserId ?? null });
   return ok({ part: { id: partId, currentDepartmentId: result.currentDepartmentId, flagged: result.flagged } });
 }
 
@@ -854,6 +955,7 @@ export async function toggleChecklistItem({
     if (recompute.ok === false) return recompute;
   }
 
+  await syncOrderWorkflowStatus(orderId, { userId: toggledById ?? undefined });
   return ok({ ok: true });
 }
 
@@ -876,7 +978,7 @@ async function initializeCurrentDepartmentForParts({ orderId }: { orderId?: stri
   for (const part of parts) {
     const targetDepartmentId = selectDepartmentForPart(part.checklistItems ?? [], departments);
     if (!targetDepartmentId) continue;
-    await updateOrderPart(part.id, { currentDepartmentId: targetDepartmentId });
+    await updateOrderPart(part.id, { currentDepartmentId: targetDepartmentId, status: 'IN_PROGRESS' });
     updatedCount += 1;
   }
 
@@ -973,7 +1075,7 @@ export async function assignPartDepartment({
   const fromDepartmentId = part.currentDepartmentId ?? null;
   const isBackward = isBackwardsMove(fromDepartmentId, departmentId, departments);
 
-  await updateOrderPart(part.id, { currentDepartmentId: departmentId });
+  await updateOrderPart(part.id, { currentDepartmentId: departmentId, status: 'IN_PROGRESS' });
   await recordPartEvent({
     orderId,
     partId,
@@ -989,6 +1091,7 @@ export async function assignPartDepartment({
       transitionType: 'manual',
     },
   });
+  await syncOrderWorkflowStatus(orderId, { userId: actorUserId ?? null });
   return ok({ ok: true });
 }
 
@@ -1060,6 +1163,7 @@ export async function addOrderPart({
     await initializeCurrentDepartmentForParts({ orderId });
   }
 
+  await syncOrderWorkflowStatus(orderId, { userId: userId ?? null });
   return ok({ part: result.part, copiedCharges: result.copiedCharges });
 }
 
@@ -1132,6 +1236,7 @@ export async function deleteOrderPartDetails({
   });
 
   await syncChecklistForOrder(orderId);
+  await syncOrderWorkflowStatus(orderId, { userId: userId ?? null });
   return ok({ ok: true });
 }
 
@@ -1185,6 +1290,7 @@ export async function createChargeForOrder({
 
   await syncChecklistForOrder(orderId);
   await initializeCurrentDepartmentForParts({ orderId });
+  await syncOrderWorkflowStatus(orderId);
   return ok({ charge: serializeCharge(charge) });
 }
 
@@ -1241,6 +1347,7 @@ export async function updateChargeForOrder({
   const updated = await updateOrderCharge(chargeId, data);
   await syncChecklistForOrder(orderId);
   await initializeCurrentDepartmentForParts({ orderId });
+  await syncOrderWorkflowStatus(orderId);
   return ok({ charge: serializeCharge(updated) });
 }
 
@@ -1250,6 +1357,7 @@ export async function deleteChargeForOrder({ orderId, chargeId }: { orderId: str
 
   await deleteOrderChargeWithChecklist(chargeId);
   await syncChecklistForOrder(orderId);
+  await syncOrderWorkflowStatus(orderId);
   return ok({ ok: true });
 }
 
@@ -1381,7 +1489,7 @@ export async function completeOrderPart({
     return fail(409, 'Cannot complete part: checklist items remain.');
   }
 
-  const updated = await updateOrderPart(partId, { status: 'COMPLETE' });
+  const updated = await updateOrderPart(partId, { status: 'COMPLETE', currentDepartmentId: null });
 
   await recordPartEvent({
     orderId,
@@ -1391,6 +1499,7 @@ export async function completeOrderPart({
     message: 'Part marked complete.',
   });
 
+  await syncOrderWorkflowStatus(orderId, { userId: userId ?? null });
   return ok({ part: updated });
 }
 
@@ -1467,7 +1576,11 @@ export async function getDepartmentsOrdered() {
 
 export async function getHomeDashboardData() {
   const overview = await getDashboardOrderOverview();
-  return ok(overview);
+  return ok({
+    ...overview,
+    activeOrders: overview.activeOrders.map((order: any) => ({ ...order, status: normalizeOrderWorkflowStatus(order.status) })),
+    recentOrders: overview.recentOrders.map((order: any) => ({ ...order, status: normalizeOrderWorkflowStatus(order.status) })),
+  });
 }
 
 export async function searchOrders(query: string) {
@@ -1484,8 +1597,9 @@ export async function searchOrders(query: string) {
   );
 
   const orders = await searchOrdersByTerm(normalized, variants);
-  return ok({ orders });
+  return ok({ orders: orders.map((order: any) => ({ ...order, status: normalizeOrderWorkflowStatus(order.status) })) });
 }
+
 
 export async function getOrderDepartmentFeed(
   departmentId: string,
@@ -1521,7 +1635,7 @@ export async function getOrderDepartmentFeed(
         orderNumber: order.orderNumber,
         customerName: order.customer?.name ?? null,
         dueDate: order.dueDate ?? null,
-        status: order.status,
+        status: normalizeOrderWorkflowStatus(order.status),
         assignedMachinistName: order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? null,
         partsInDeptCount: 0,
         openChecklistCount: 0,
@@ -1652,6 +1766,7 @@ export async function transitionPartsDepartment({
     }),
   ));
 
+  await syncOrderWorkflowStatus(orderId, { userId: togglerId ?? null });
   return ok({ ok: true });
 }
 

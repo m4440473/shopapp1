@@ -60,8 +60,10 @@ const formatDuration = (seconds: number) => {
 };
 
 const statusBadgeStyles: Record<string, string> = {
+  RECEIVED: 'bg-primary/10 text-primary',
   COMPLETE: 'bg-emerald-500/15 text-emerald-200',
   IN_PROGRESS: 'bg-blue-500/15 text-blue-200',
+  CLOSED: 'bg-slate-500/20 text-slate-200',
 };
 
 export default function OrderDetailPage() {
@@ -75,6 +77,11 @@ export default function OrderDetailPage() {
   const [activeTab, setActiveTab] = useState<PartTab>('overview');
   const [noteText, setNoteText] = useState('');
   const [canEditParts, setCanEditParts] = useState(false);
+  const [canEditOrderStatus, setCanEditOrderStatus] = useState(false);
+  const [statusDraft, setStatusDraft] = useState<'RECEIVED' | 'IN_PROGRESS' | 'COMPLETE' | 'CLOSED'>('RECEIVED');
+  const [statusReason, setStatusReason] = useState('');
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [partEvents, setPartEvents] = useState<any[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [timerError, setTimerError] = useState<string | null>(null);
@@ -154,6 +161,9 @@ export default function OrderDetailPage() {
       const data = await res.json();
       setItem(data.item);
       setCanEditParts(Boolean(data?.permissions?.canEditParts));
+      setCanEditOrderStatus(Boolean(data?.permissions?.canEditOrderStatus));
+      setStatusDraft((data?.item?.status ?? 'RECEIVED') as 'RECEIVED' | 'IN_PROGRESS' | 'COMPLETE' | 'CLOSED');
+      setStatusError(null);
       setError(null);
       return data.item;
     } catch (err: any) {
@@ -372,6 +382,34 @@ export default function OrderDetailPage() {
     await handleActivateSelectedPart();
   };
 
+
+  const handleSaveStatus = async () => {
+    if (!id || !canEditOrderStatus) return;
+    setStatusSaving(true);
+    setStatusError(null);
+    try {
+      const res = await fetch(`/api/orders/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: statusDraft, reason: statusReason }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to update order status.');
+      }
+      setStatusReason('');
+      await load();
+      toast.push('Order status updated.', 'success');
+    } catch (err: any) {
+      const message = err?.message || 'Failed to update order status.';
+      setStatusError(message);
+      toast.push(message, 'error');
+    } finally {
+      setStatusSaving(false);
+    }
+  };
+
   const handleAddNote = async () => {
     if (!noteText.trim() || !selectedPartId) return;
     try {
@@ -582,7 +620,13 @@ export default function OrderDetailPage() {
 
   const orderTitle = `Order ${item.orderNumber}`;
   const dueDateLabel = item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'TBD';
-  const statusLabel = item.status?.replace(/_/g, ' ') ?? 'Unknown';
+  const statusLabel = item.status
+    ? String(item.status)
+        .toLowerCase()
+        .split('_')
+        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+        .join(' ')
+    : 'Unknown';
   const activeOnSelected = Boolean(activeEntry?.partId && activeEntry.partId === selectedPartId);
   const selectedPartStoredSeconds = selectedPartId ? partTotals[selectedPartId] ?? 0 : 0;
   const selectedPartElapsedSeconds = activeOnSelected ? activeElapsedSeconds : selectedPartStoredSeconds;
@@ -795,9 +839,60 @@ export default function OrderDetailPage() {
                 <Link href="/">Exit Order</Link>
               </Button>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge className="bg-primary/10 text-primary">{statusLabel}</Badge>
-              <span className="text-sm text-muted-foreground">Due {dueDateLabel}</span>
+            <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/10 p-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge className={statusBadgeStyles[item.status || 'RECEIVED'] || 'bg-primary/10 text-primary'}>{statusLabel}</Badge>
+                <span className="text-sm text-muted-foreground">Due {dueDateLabel}</span>
+              </div>
+              {canEditOrderStatus ? (
+                <div className="grid gap-3 lg:grid-cols-[200px_minmax(0,1fr)_auto] lg:items-end">
+                  <div className="grid gap-2">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">Order status</Label>
+                    <Select
+                      value={statusDraft}
+                      onValueChange={(value) => {
+                        setStatusDraft(value as 'RECEIVED' | 'IN_PROGRESS' | 'COMPLETE' | 'CLOSED');
+                        setStatusError(null);
+                      }}
+                    >
+                      <SelectTrigger className="border-border/60 bg-background/80 text-left">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="RECEIVED">Received</SelectItem>
+                        <SelectItem value="IN_PROGRESS">In progress</SelectItem>
+                        <SelectItem value="COMPLETE">Complete</SelectItem>
+                        <SelectItem value="CLOSED">Closed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">Admin reason</Label>
+                    <Textarea
+                      rows={2}
+                      value={statusReason}
+                      onChange={(e) => {
+                        setStatusReason(e.target.value);
+                        setStatusError(null);
+                      }}
+                      placeholder="Why are you changing the order status?"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2 lg:items-end">
+                    <Button size="sm" onClick={handleSaveStatus} disabled={statusSaving}>
+                      {statusSaving ? 'Saving…' : 'Save status'}
+                    </Button>
+                    <p className="max-w-xs text-xs text-muted-foreground lg:text-right">
+                      Admin override. Shop-floor part activity will still auto-sync this order later.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+              {statusError ? (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  {statusError}
+                </div>
+              ) : null}
             </div>
             <div className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-md bg-muted/20 p-1">
               {PART_TABS.map((tab) => {

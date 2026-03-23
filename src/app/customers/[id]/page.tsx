@@ -14,13 +14,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 const STATUS_STYLES: Record<string, string> = {
   RECEIVED: 'border-primary/40 bg-primary/10 text-primary',
-  PROGRAMMING: 'border-blue-400/40 bg-blue-400/15 text-blue-200',
-  SETUP: 'border-sky-400/40 bg-sky-400/15 text-sky-200',
-  RUNNING: 'border-emerald-400/40 bg-emerald-400/15 text-emerald-200',
-  FINISHING: 'border-amber-400/40 bg-amber-400/15 text-amber-100',
-  DONE_MACHINING: 'border-violet-400/40 bg-violet-400/15 text-violet-200',
-  INSPECTION: 'border-lime-300/60 bg-lime-300/20 text-lime-100',
-  SHIPPING: 'border-cyan-400/40 bg-cyan-400/15 text-cyan-100',
+  IN_PROGRESS: 'border-blue-400/40 bg-blue-400/15 text-blue-200',
+  COMPLETE: 'border-emerald-400/40 bg-emerald-400/15 text-emerald-200',
   CLOSED: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200',
 };
 

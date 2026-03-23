@@ -1,3 +1,38 @@
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-03-23
+- Agent: GPT-5.2-Codex
+- Task ID: Unplanned workflow/status alignment (order rollup + admin override)
+- Goal: Simplify order status into a dashboard/search-friendly workflow rollup that auto-syncs from part activity and remains admin-editable with audit reasons.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scope constrained to order workflow status behavior, dashboard/search/filter alignment, admin editability, seeds/tests, and continuity updates.
+- [x] Applied existing lessons: plan first for multi-file work and keep verification explicit.
+
+## Plan First
+- [x] Add clear workflow status rules and normalization helpers in Orders service.
+- [x] Auto-sync order status from part activity/checklist/department/timer transitions.
+- [x] Align dashboard/search/filter/UI/admin edit flows with the simplified statuses.
+- [x] Update seed/mock data and add focused regression coverage.
+- [x] Verify with lint/tests/build, then refresh continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test -- src/modules/orders/__tests__/department-routing.test.ts src/modules/orders/__tests__/orders.service.test.ts src/modules/orders/__tests__/orders.status.test.ts`
+- [x] `npm run build`
+- [x] `npx tsc --noEmit`
+
+## Review + Results
+- Simplified manager-facing order statuses to `RECEIVED`, `IN_PROGRESS`, `COMPLETE`, and `CLOSED` while normalizing legacy values into that set for dashboard/search surfaces.
+- Added workflow status auto-sync after real part progress actions and kept `CLOSED` as the admin terminal state.
+- Added an admin order-status editor with required reason entry on the order detail page and changed the order-status API to admin-only audited updates.
+- Updated seed/mock fixtures and added focused helper tests for workflow status derivation.
+- Production build/lint/tests all passed after including a small quotes repo type-annotation compatibility fix required by the current toolchain.
+- Browser screenshot capture was skipped because the browser screenshot tool is unavailable in this environment.
+
 # tasks/todo.md — Session Plan + Verification
 
 ## Session Metadata

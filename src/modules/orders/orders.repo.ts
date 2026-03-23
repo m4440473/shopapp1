@@ -277,6 +277,50 @@ export async function createStatusHistoryEntry(data: Record<string, unknown>) {
   return prisma.statusHistory.create({ data });
 }
 
+export async function findOrderForWorkflowStatus(orderId: string, db: DbClient = prisma) {
+  return db.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      status: true,
+      parts: {
+        select: {
+          id: true,
+          status: true,
+        },
+      },
+      checklist: {
+        where: { isActive: true },
+        select: {
+          id: true,
+          partId: true,
+          completed: true,
+        },
+      },
+      timeEntries: {
+        select: { id: true },
+        take: 1,
+      },
+      partEvents: {
+        where: {
+          type: {
+            in: [
+              'TIMER_STARTED',
+              'TIMER_FINISHED',
+              'DEPARTMENT_ADVANCED',
+              'DEPARTMENT_SET_MANUAL',
+              'DEPARTMENT_REWORKED',
+              'CHECKLIST_TOGGLED',
+            ],
+          },
+        },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+}
+
 export async function updateOrderAssignee(id: string, machinistId: string | null) {
   return prisma.order.update({
     where: { id },
@@ -462,6 +506,7 @@ export async function findPartForRouting(partId: string, db: DbClient = prisma) 
     select: {
       id: true,
       orderId: true,
+      status: true,
       currentDepartmentId: true,
       checklistItems: {
         where: { isActive: true },
@@ -475,7 +520,13 @@ export async function findPartForRouting(partId: string, db: DbClient = prisma) 
 }
 
 export async function updatePartCurrentDepartment(partId: string, currentDepartmentId: string | null, db: DbClient = prisma) {
-  return db.orderPart.update({ where: { id: partId }, data: { currentDepartmentId } });
+  return db.orderPart.update({
+    where: { id: partId },
+    data: {
+      currentDepartmentId,
+      status: currentDepartmentId ? 'IN_PROGRESS' : 'COMPLETE',
+    },
+  });
 }
 
 export async function setChecklistCompletion(
@@ -629,7 +680,7 @@ export async function moveOrderPartsToDepartment({
   return prisma.$transaction(async (tx) => {
     const updated = await tx.orderPart.updateMany({
       where: { orderId, id: { in: partIds } },
-      data: { currentDepartmentId: toDepartmentId },
+      data: { currentDepartmentId: toDepartmentId, status: 'IN_PROGRESS' },
     });
 
     await tx.statusHistory.create({

@@ -1,3 +1,60 @@
+
+# AGENT_HANDOFF — 2026-03-23 (order workflow status simplification + admin override)
+
+Goal (1 sentence): Convert order status into a simple manager-facing workflow rollup (`RECEIVED` / `IN_PROGRESS` / `COMPLETE` / `CLOSED`) that auto-syncs from part activity while remaining admin-editable with audit reasons.
+
+Scope (what changed):
+- Added simplified order workflow status helpers in `src/modules/orders/orders.service.ts` to normalize legacy statuses and derive the manager-facing rollup from part completion/activity.
+- Added order status auto-sync after part progress actions (checklist toggle/complete, timer start/resume/finish, manual department assignment/transition, part add/remove, charge mutations, and manual part completion).
+- Kept `OrderPart.status` aligned with routing state (`IN_PROGRESS` when a part still has a department, `COMPLETE` when the part is done).
+- Simplified order query/filter status vocabulary in `src/modules/orders/orders.schema.ts` and dashboard/search UI surfaces to `RECEIVED`, `IN_PROGRESS`, `COMPLETE`, and `CLOSED`.
+- Replaced `/api/orders/[id]/status` behavior with an admin-only status override path that requires a reason and writes status-history audit text using the signed-in admin identity.
+- Added an admin status editor to the order detail header so admins can update order status directly in the UI.
+- Updated seed/mock fixtures to emit the simplified statuses and added focused workflow-status helper tests.
+- Included a small build-compatibility fix in `src/modules/quotes/quotes.repo.ts` by loosening a stale `Prisma.TransactionClient` annotation to `any`.
+
+Files touched:
+- prisma/seed.ts
+- src/app/api/orders/[id]/status/route.ts
+- src/app/api/timer/finish/route.ts
+- src/app/api/timer/resume/route.ts
+- src/app/api/timer/start/route.ts
+- src/app/customers/[id]/page.tsx
+- src/app/machinists/[id]/page.tsx
+- src/app/orders/[id]/page.tsx
+- src/app/search/page.tsx
+- src/components/ShopFloorLayouts.tsx
+- src/modules/orders/__tests__/orders.status.test.ts
+- src/modules/orders/orders.repo.ts
+- src/modules/orders/orders.schema.ts
+- src/modules/orders/orders.service.ts
+- src/modules/quotes/quotes.repo.ts
+- src/repos/mock/orders.ts
+- src/repos/mock/seed.ts
+- src/repos/orders.ts
+- docs/AGENT_CONTEXT.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+- tasks/todo.md
+
+Commands run:
+- npm run lint
+- npm run test -- src/modules/orders/__tests__/department-routing.test.ts src/modules/orders/__tests__/orders.service.test.ts src/modules/orders/__tests__/orders.status.test.ts
+- npm run build
+- npx tsc --noEmit
+
+Verification results:
+- Lint passed with zero ESLint warnings/errors.
+- Targeted Orders Vitest coverage passed (10/10 tests).
+- Production build passed and standalone assets were copied successfully.
+- Browser screenshot capture was not possible because the required browser screenshot tool is unavailable in this environment.
+
+Open follow-ups / next steps:
+- Consider a one-time/backfill admin action to rewrite already-persisted legacy order statuses in existing databases so historical records fully match the simplified set without waiting for fresh workflow activity.
+- If desired, extend dashboard/search result cards with richer rollup metadata such as `parts complete / total` and flagged rework counts now that order status is simplified.
+
+---
+
 # AGENT_HANDOFF — 2026-03-19 (order-create Prisma fix + sign-in visibility + LAN auth fallback)
 
 Goal (1 sentence): Fix the reported order-create Prisma validation error, expose a clear sign-in entry point, and make auth redirects safer for local-network IP access.

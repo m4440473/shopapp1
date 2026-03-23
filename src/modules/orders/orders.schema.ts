@@ -5,13 +5,8 @@ import { BUSINESS_CODES } from '@/lib/businesses';
 /** Enums mirrored from Prisma */
 export const StatusEnum = z.enum([
   'RECEIVED',
-  'PROGRAMMING',
-  'SETUP',
-  'RUNNING',
-  'FINISHING',
-  'DONE_MACHINING',
-  'INSPECTION',
-  'SHIPPING',
+  'IN_PROGRESS',
+  'COMPLETE',
   'CLOSED',
 ]);
 

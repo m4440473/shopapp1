@@ -69,6 +69,7 @@ export function createMockOrdersRepo() {
         const parts = findOrderParts(order.id);
         const checklist = findChecklistForOrder(order.id).map((entry) => ({
           completed: entry.completed,
+          departmentId: entry.departmentId ?? null,
           addon: state.addons.find((addon) => addon.id === entry.addonId) ?? null,
         }));
         const statusHistory = state.statusHistory
@@ -214,6 +215,23 @@ export function createMockOrdersRepo() {
     async findOrderStatus(id: string) {
       const order = state.orders.find((item) => item.id === id);
       return order ? { status: order.status } : null;
+    },
+
+    async findOrderForWorkflowStatus(id: string) {
+      const order = state.orders.find((item) => item.id === id);
+      if (!order) return null;
+      return {
+        id: order.id,
+        status: order.status,
+        parts: findOrderParts(order.id).map((part) => ({ id: part.id, status: part.status })),
+        checklist: findChecklistForOrder(order.id).map((item) => ({
+          partId: item.partId ?? null,
+          completed: item.completed,
+          isActive: item.isActive,
+        })),
+        timeEntries: state.timeEntries.filter((entry) => entry.orderId === order.id).slice(0, 1).map((entry) => ({ id: entry.id })),
+        partEvents: state.partEvents.filter((event) => event.orderId === order.id).slice(0, 1).map((event) => ({ id: event.id })),
+      };
     },
 
     async updateOrderStatus(id: string, status: string) {

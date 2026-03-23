@@ -12,6 +12,7 @@ export const findOrderHeader = repo.findOrderHeader;
 export const findOrderWithDetails = repo.findOrderWithDetails;
 export const updateOrder = repo.updateOrder;
 export const findOrderStatus = repo.findOrderStatus;
+export const findOrderForWorkflowStatus = repo.findOrderForWorkflowStatus;
 export const updateOrderStatus = repo.updateOrderStatus;
 export const createStatusHistoryEntry = repo.createStatusHistoryEntry;
 export const updateOrderAssignee = repo.updateOrderAssignee;

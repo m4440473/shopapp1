@@ -551,7 +551,7 @@ async function main() {
     await prisma.order.update({
       where: { id: ord.id },
       data: {
-        status: lifecycleStage === 'COMPLETED' ? 'COMPLETE' : lifecycleStage === 'NEW' ? 'RECEIVED' : 'RUNNING',
+        status: lifecycleStage === 'COMPLETED' ? 'COMPLETE' : lifecycleStage === 'NEW' ? 'RECEIVED' : 'IN_PROGRESS',
       },
     });
 

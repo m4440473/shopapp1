@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
-import { logPartEvent } from '@/modules/orders/orders.service';
+import { logPartEvent, syncOrderWorkflowStatus } from '@/modules/orders/orders.service';
 import { getActiveTimeEntry, stopActiveTimeEntry } from '@/modules/time/time.service';
 
 export async function POST() {
@@ -39,6 +39,8 @@ export async function POST() {
     message: 'Timer finished.',
     meta: { timeEntryId: entry.id },
   });
+  await syncOrderWorkflowStatus(entry.orderId, { userId });
 
   return NextResponse.json({ entry });
 }
+
