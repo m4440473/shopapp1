@@ -1,20 +1,23 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
 :root {
   color-scheme: dark;
-  --bg: #060816;
-  --bg-elevated: rgba(11, 17, 36, 0.76);
-  --bg-panel: rgba(13, 21, 46, 0.88);
-  --line: rgba(146, 171, 255, 0.17);
-  --line-strong: rgba(146, 171, 255, 0.34);
-  --text: #ecf1ff;
-  --muted: #9fabca;
-  --accent: #77a8ff;
-  --accent-strong: #c8d7ff;
-  --glow: rgba(84, 139, 255, 0.26);
-  --shadow: 0 30px 90px rgba(2, 6, 18, 0.48);
-  --radius-xl: 32px;
-  --radius-lg: 24px;
-  --radius-md: 18px;
-  --nav-height: 88px;
+  --bg: #0d1117;
+  --bg-elevated: rgba(17, 24, 39, 0.76);
+  --bg-panel: rgba(17, 24, 39, 0.92);
+  --line: rgba(59, 130, 246, 0.2);
+  --line-strong: rgba(59, 130, 246, 0.42);
+  --text: #e7edf8;
+  --muted: #8ea0bc;
+  --primary: #3b82f6;
+  --accent: #fb923c;
+  --accent-strong: #fcd6b5;
+  --glow: rgba(59, 130, 246, 0.35);
+  --shadow: 0 32px 88px rgba(2, 6, 18, 0.62);
+  --radius-xl: 24px;
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --nav-height: 82px;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -30,8 +33,9 @@ body {
   margin: 0;
   min-width: 320px;
   background:
-    radial-gradient(circle at top, rgba(76, 110, 201, 0.18), transparent 30%),
-    linear-gradient(180deg, #081022 0%, #050813 48%, #04060f 100%);
+    radial-gradient(circle at 12% -5%, rgba(59, 130, 246, 0.24), transparent 32%),
+    radial-gradient(circle at 88% 8%, rgba(251, 146, 60, 0.18), transparent 30%),
+    linear-gradient(180deg, #080b12 0%, #0b1018 56%, #090d14 100%);
   color: var(--text);
 }
 
@@ -130,7 +134,7 @@ img {
   padding: 1.1rem clamp(1rem, 2vw, 2rem);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(18px);
-  background: rgba(6, 8, 22, 0.72);
+  background: rgba(8, 12, 20, 0.84);
 }
 
 .brand-lockup {
@@ -176,7 +180,9 @@ img {
   padding: 0.5rem 0.85rem;
   border-radius: 999px;
   color: var(--muted);
-  font-size: 0.84rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
   border: 1px solid transparent;
 }
@@ -184,8 +190,8 @@ img {
 .topbar__nav a:hover,
 .topbar__nav a.is-active {
   color: var(--text);
-  border-color: rgba(132, 171, 255, 0.18);
-  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.12);
 }
 
 main {
@@ -220,7 +226,7 @@ main {
   padding: clamp(1.6rem, 3vw, 2.5rem);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
-  background: linear-gradient(180deg, rgba(10, 16, 35, 0.88), rgba(7, 11, 22, 0.88));
+  background: linear-gradient(180deg, rgba(15, 23, 38, 0.92), rgba(10, 16, 27, 0.92));
   box-shadow: var(--shadow);
 }
 
@@ -243,7 +249,8 @@ main {
   margin: 0;
   max-width: 12ch;
   font-size: clamp(2.8rem, 7vw, 6rem);
-  line-height: 0.95;
+  line-height: 0.92;
+  font-family: "Space Grotesk", Inter, sans-serif;
   letter-spacing: -0.05em;
 }
 
@@ -296,16 +303,16 @@ main {
 }
 
 .button--primary {
-  background: linear-gradient(135deg, #a7c2ff, #5b8ef9 58%, #3761d0);
-  color: #05101f;
+  background: linear-gradient(135deg, #60a5fa, #3b82f6 55%, #1d4ed8);
+  color: #ffffff;
   font-weight: 700;
-  box-shadow: 0 16px 40px rgba(91, 142, 249, 0.38);
+  box-shadow: 0 16px 40px rgba(29, 78, 216, 0.42);
 }
 
 .button--ghost {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(15, 23, 38, 0.6);
   color: var(--text);
-  border-color: rgba(167, 194, 255, 0.18);
+  border-color: rgba(59, 130, 246, 0.26);
 }
 
 .hero__signals {
@@ -339,9 +346,9 @@ main {
   min-height: 620px;
   padding: 1.3rem;
   border-radius: clamp(1.8rem, 3vw, 2.6rem);
-  border: 1px solid rgba(132, 171, 255, 0.18);
+  border: 1px solid rgba(59, 130, 246, 0.28);
   background:
-    linear-gradient(180deg, rgba(24, 37, 70, 0.26), rgba(7, 10, 20, 0.82)),
+    linear-gradient(180deg, rgba(22, 32, 53, 0.38), rgba(9, 13, 22, 0.84)),
     url('https://images.unsplash.com/photo-1565043589221-1a6fd9ae45c7?auto=format&fit=crop&w=1400&q=80') center/cover;
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -352,7 +359,7 @@ main {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(115deg, rgba(111, 157, 255, 0.18), transparent 36%),
+    linear-gradient(115deg, rgba(59, 130, 246, 0.24), transparent 36%),
     linear-gradient(180deg, transparent 10%, rgba(5, 8, 15, 0.72));
 }
 
@@ -368,8 +375,8 @@ main {
   gap: 0.55rem;
   padding: 1rem 1.1rem;
   border-radius: 1.1rem;
-  border: 1px solid rgba(192, 215, 255, 0.18);
-  background: rgba(4, 10, 24, 0.5);
+  border: 1px solid rgba(251, 146, 60, 0.3);
+  background: rgba(13, 20, 33, 0.64);
   backdrop-filter: blur(8px);
 }
 
@@ -397,7 +404,7 @@ main {
 .contact-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  background: rgba(7, 12, 26, 0.72);
+  background: rgba(15, 23, 38, 0.74);
   backdrop-filter: blur(10px);
 }
 
@@ -407,7 +414,7 @@ main {
 
 .hero__visual-stack span,
 .capability-card__index {
-  color: var(--accent-strong);
+  color: var(--accent);
   font-size: 0.7rem;
 }
 
@@ -428,7 +435,7 @@ main {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 1px solid rgba(143, 177, 255, 0.26);
+  border: 1px solid rgba(59, 130, 246, 0.28);
   animation: pulseRing 6s ease-out infinite;
 }
 
@@ -513,8 +520,8 @@ main {
   height: 0.7rem;
   margin-top: 0.55rem;
   border-radius: 999px;
-  background: linear-gradient(180deg, #d3e0ff, #6f9dff);
-  box-shadow: 0 0 20px rgba(111, 157, 255, 0.8);
+  background: linear-gradient(180deg, #fdba74, #fb923c);
+  box-shadow: 0 0 20px rgba(251, 146, 60, 0.65);
   flex: none;
 }
 
@@ -530,9 +537,9 @@ main {
 .material-cloud span {
   padding: 0.9rem 1rem;
   border-radius: 999px;
-  border: 1px solid rgba(150, 180, 255, 0.18);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--accent-strong);
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  background: rgba(15, 23, 38, 0.6);
+  color: #d8e8ff;
   font-size: 0.78rem;
 }
 
