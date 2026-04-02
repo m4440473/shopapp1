@@ -1,6 +1,36 @@
 # tasks/todo.md — Session Plan + Verification
 
 ## Session Metadata
+- Date: 2026-04-02
+- Agent: GPT-5.3-Codex
+- Task ID: Follow-up fix (part complete route + order detail status parity)
+- Goal: Restore a reachable part-complete API path and remove the order-detail UI status override that could show COMPLETE before persisted part status.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, and `docs/AGENT_HANDOFF.md` before implementation.
+- [x] Scope constrained to stale route/path parity and UI/backend completion-state mismatch.
+- [x] No new dependencies added.
+
+## Plan First
+- [x] Add a dedicated part-complete API route that invokes `completeOrderPart` with existing machinist auth guards.
+- [x] Wire order-detail UI with a "Mark selected part complete" action using that route.
+- [x] Remove checklist-derived status override so part cards use persisted part status.
+- [x] Verify with lint and then update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Added `POST /api/orders/[id]/parts/[partId]/complete` and routed it to `completeOrderPart`.
+- Added a "Mark selected part complete" action in order detail so the completion path is reachable from current UI flows.
+- Updated part-card status rendering to use persisted part status (`part.status`) instead of UI-only checklist override.
+- Lint passed.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
 - Date: 2026-03-23
 - Agent: GPT-5.2-Codex
 - Task ID: Unplanned standalone marketing site

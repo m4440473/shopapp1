@@ -41,6 +41,18 @@ Agents MUST update this at the end of every session.
 ## Session Log (append newest at top)
 
 
+### 2026-04-02 — Part-complete route restoration + order-detail status parity fix
+- Added a new authenticated machinist route `POST /api/orders/[id]/parts/[partId]/complete` that calls `completeOrderPart`, restoring a reachable server path for manual part completion.
+- Updated order detail timer/actions panel to include `Mark selected part complete`, wired to the new API route with refresh + toast handling.
+- Removed the order-detail part-card UI-only checklist status override; part cards now display persisted `part.status`, eliminating premature `COMPLETE` badges before backend state changes.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint errors.
+
+
 ### 2026-03-23 — Standalone premium manufacturing marketing site scaffolded
 - Added a new isolated `sterling-site/` subproject with its own `package.json`, Vite config, TypeScript config, and entrypoint so it can be run/deployed independently of the main Next.js app.
 - Built a one-page scrolling marketing site for Sterling Tool & Die, C & R Machine and Fabrication, and Preferred Kustom Powder with a sticky nav, smooth section scrolling, responsive layouts, semantic sections, and premium industrial copy.
