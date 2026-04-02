@@ -1,3 +1,31 @@
+# AGENT_HANDOFF — 2026-04-02 (part-complete route + status parity)
+
+Goal (1 sentence): Fix outdated completion path drift by restoring a live part-complete API route and align order-detail part status display with persisted backend state.
+
+Scope (what changed):
+- Added new route `src/app/api/orders/[id]/parts/[partId]/complete/route.ts` with existing auth patterns (`authRequiredResponse`, `forbiddenResponse`, `canAccessMachinist`) and service call to `completeOrderPart`.
+- Updated `src/app/orders/[id]/page.tsx` to add a `Mark selected part complete` action in the active-work button stack.
+- Updated order-detail part card status rendering to use persisted `part.status` rather than checklist-derived UI override.
+
+Files touched:
+- src/app/api/orders/[id]/parts/[partId]/complete/route.ts
+- src/app/orders/[id]/page.tsx
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+Commands run:
+- npm run lint
+
+Verification results:
+- Lint passed with no ESLint errors.
+
+Open follow-ups / next steps:
+- Consider adding route-level tests for `POST /api/orders/[id]/parts/[partId]/complete` (success + checklist-incomplete 409 + auth/role guards).
+- Consider showing checklist completion summary alongside persisted status to keep useful context without overriding canonical status.
+
+---
+
 
 # AGENT_HANDOFF — 2026-03-23 (standalone premium manufacturing marketing site)
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   ArrowRightLeft,
+  CheckCircle2,
   ClipboardList,
   FileText,
   ListChecks,
@@ -369,6 +370,33 @@ export default function OrderDetailPage() {
       return true;
     } catch {
       setTimerError('Failed to finish timer.');
+      return false;
+    } finally {
+      setTimerSaving(false);
+    }
+  };
+
+  const handleMarkPartComplete = async (): Promise<boolean> => {
+    if (!id || !selectedPartId) return false;
+    setTimerSaving(true);
+    setTimerError(null);
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/complete`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to mark part complete.');
+      }
+      await load();
+      await refreshTimerSummary();
+      await loadPartEvents();
+      toast.push('Part marked complete.', 'success');
+      return true;
+    } catch (err: any) {
+      const message = err?.message || 'Failed to mark part complete.';
+      setTimerError(message);
       return false;
     } finally {
       setTimerSaving(false);
@@ -751,6 +779,17 @@ export default function OrderDetailPage() {
                   <Square className="h-4 w-4" />
                   Stop timer
                 </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!selectedPartId || timerSaving || activeOnSelected}
+                  onClick={handleMarkPartComplete}
+                  className="justify-start gap-2"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Mark selected part complete
+                </Button>
               </div>
 
               <div className="grid gap-2 rounded-md border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground md:grid-cols-2">
@@ -786,14 +825,7 @@ export default function OrderDetailPage() {
                 const isSelected = part.id === selectedPartId;
                 const partLabel = part.partNumber || `Part ${index + 1}`;
                 const totalSeconds = partTotals[part.id] ?? 0;
-                const partChecklist = (Array.isArray(item?.checklist) ? item.checklist : []).filter(
-                  (entry: any) => entry.partId === part.id && entry.isActive !== false,
-                );
-                const isChecklistComplete = partChecklist.length > 0 && partChecklist.every((entry: any) => {
-                  const override = checklistOverrides[entry.id];
-                  return typeof override === 'boolean' ? override : Boolean(entry.completed);
-                });
-                const status = isChecklistComplete ? 'COMPLETE' : (part.status || 'IN_PROGRESS');
+                const status = part.status || 'IN_PROGRESS';
                 const latestMetaRaw = part?.partEvents?.[0]?.meta;
                 const latestMeta = typeof latestMetaRaw === 'string' ? (() => { try { return JSON.parse(latestMetaRaw); } catch { return null; } })() : latestMetaRaw;
                 const flagged = latestMeta?.flag === true;
