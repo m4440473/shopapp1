@@ -3,6 +3,37 @@
 ## Session Metadata
 - Date: 2026-04-07
 - Agent: GPT-5.3-Codex
+- Task ID: Unplanned regression fix (admin add-on/labor cost visibility + conversion build guard)
+- Goal: Restore admin-visible add-on/labor cost displays in quote/order creation flows and fix quote-conversion route type error introduced in today's changes.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, and `tasks/lessons.md` before implementation.
+- [x] Scoped edits strictly to quote editor/order create pricing display + conversion error handling.
+
+## Plan First
+- [x] Restore `rateCents` propagation from quote add-on API data into `AvailableItemsLibrary` item mapping.
+- [x] Add assigned-item meta pricing block to order creation panel (rate × units = total).
+- [x] Ensure quote->order prefill can render add-on pricing for quote-selected add-ons not present in active add-on fetch.
+- [x] Replace brittle Prisma error type guard in conversion route to eliminate today's build/type failure.
+- [x] Verify with lint + build and record evidence.
+
+## Verification Checklist
+- [x] `npm run -s lint`
+- [ ] `npm run -s build` *(fails on pre-existing mock repo shape mismatch in `src/repos/index.ts` unrelated to this patch)*
+
+## Review + Results
+- Quote editor now passes `rateCents` into available-library item models, so admin pricing appears in add-on cards again.
+- Order creation assigned add-on/labor panel now shows per-line meta pricing (`rate x units = total`) and checklist-only “No charge” messaging.
+- Quote conversion prefill now backfills missing add-on definitions from quote payload snapshots, preserving pricing visibility when selected add-ons are inactive/not in active list response.
+- Conversion route now checks Prisma duplicate-key errors via `error.code === 'P2002'` without relying on unavailable type member access.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
 - Task ID: Unplanned quote conversion + pricing visibility reliability fix
 - Goal: Prevent duplicate checklist creation failures during quote→order conversion, return actionable conversion errors, and restore admin pricing visibility in add-on drag/drop library.
 

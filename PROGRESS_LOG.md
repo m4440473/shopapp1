@@ -40,6 +40,20 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-07 — Regression fix: admin add-on/labor cost visibility + conversion route build guard
+- Restored quote editor add-on library pricing visibility by including `rateCents` in `AvailableItemsLibrary` mapping payload.
+- Added per-assignment pricing meta in order creation (`/orders/new`) so admins now see `rate × units = total` under assigned labor/add-on rows, including checklist-only no-charge messaging.
+- Hardened quote->order prefill path to merge quote-selected add-on snapshots into local add-on options when those add-ons are inactive/missing from active add-on API results.
+- Fixed quote conversion route build/type regression by replacing `Prisma.PrismaClientKnownRequestError` instance check with a code-based guard (`error?.code === 'P2002'`).
+
+Commands run:
+- npm run -s lint
+- npm run -s build
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Build still fails due pre-existing mock repo type mismatch in `src/repos/index.ts` (missing `updateOrderAttachmentStoragePath` and `updatePartAttachmentStoragePath`).
+
 ### 2026-04-07 — Quote conversion checklist dedupe fix + actionable conversion errors + admin add-on pricing visibility
 - Fixed quote→order conversion failure path caused by duplicate `OrderChecklist` create attempts on unique key `(orderId, addonId, partId)`.
 - Updated Orders checklist sync logic to dedupe create candidates by checklist unique tuple (part+addon) in addition to charge linkage.

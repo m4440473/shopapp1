@@ -3,7 +3,6 @@ import 'server-only';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 
-import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { z } from 'zod';
@@ -327,8 +326,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       orderNumber: result.orderNumber,
       metadata: result.metadata,
     });
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+  } catch (error: any) {
+    if (error?.code === 'P2002') {
       return NextResponse.json(
         {
           error:
