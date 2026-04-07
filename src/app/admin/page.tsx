@@ -2,7 +2,6 @@ import Link from 'next/link';
 import {
   Cog,
   FileText,
-  LayoutTemplate,
   Package,
   ReceiptText,
   Settings,
@@ -57,27 +56,33 @@ const sections = [
     ],
   },
   {
-    heading: 'Documents & Quoting',
-    description: 'Maintain templates and quote workflow defaults.',
+    heading: 'Quote & Order Ops',
+    description: 'Launch the core document workflows.',
     links: [
       {
-        href: '/admin/templates',
-        label: 'Templates',
-        detail: 'Configure print/quote document templates.',
-        icon: LayoutTemplate,
+        href: '/orders/new',
+        label: 'Create Order',
+        detail: 'Start a production order.',
+        icon: ReceiptText,
       },
       {
-        href: '/admin/quotes',
-        label: 'Quotes',
-        detail: 'Review quote pipeline and approval status.',
-        icon: ReceiptText,
+        href: '/admin/quotes/new',
+        label: 'Create Quote',
+        detail: 'Start a new customer quote.',
+        icon: FileText,
       },
     ],
   },
   {
     heading: 'Business Settings',
-    description: 'Branding and system-wide business defaults.',
+    description: 'Branding, templates, and system-wide defaults.',
     links: [
+      {
+        href: '/admin/templates',
+        label: 'Templates',
+        detail: 'Manage document template layouts.',
+        icon: FileText,
+      },
       {
         href: '/admin/settings',
         label: 'Settings',

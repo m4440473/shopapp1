@@ -17,7 +17,7 @@ import { businessNameFromCode, type BusinessCode, type BusinessName } from '@/li
 import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
 import { OrderPartCreate, PriorityEnum } from '@/modules/orders/orders.schema';
 import { getAppSettings } from '@/lib/app-settings';
-import { syncChecklistForOrder } from '@/modules/orders/orders.service';
+import { ensureOrderFilesInCanonicalStorage, syncChecklistForOrder } from '@/modules/orders/orders.service';
 import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 import { convertQuoteToOrder, findActiveOrderCustomFields, findQuoteForConversion } from '@/modules/quotes/quotes.service';
 
@@ -317,6 +317,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   });
 
   await syncChecklistForOrder(result.orderId);
+  await ensureOrderFilesInCanonicalStorage(result.orderId);
 
   return NextResponse.json({
     ok: true,

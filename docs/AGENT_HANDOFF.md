@@ -1,5 +1,50 @@
 Date: 2026-04-07
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Implement admin Quote & Order Ops IA updates, broad admin order editability, admin-only Full Order Files visibility, and canonical order-number file storage continuity through creation/conversion.
+
+## What I changed
+- Updated admin navigation and Admin Center IA:
+  - Renamed section label to `Quote & Order Ops`.
+  - Exposed only `Create Order` and `Create Quote` actions in that section.
+  - Moved `Templates` link under `Business Settings` card context.
+- Extended order detail page with admin edit mode:
+  - Added broad order-header field editing (customer, dates, priority, vendor, PO, assignee, material/model flags).
+  - Added selected-part editing controls plus admin add/delete part actions.
+- Added admin-only `Full Order Files` tab in order detail:
+  - Aggregates order-level + part-level attachments with source badges and open links.
+- Added Orders-domain canonical storage helper `ensureOrderFilesInCanonicalStorage(orderId)`:
+  - Copies non-canonical order-owned files into `business/customer/orderNumber/` paths.
+  - Updates `Attachment` and `PartAttachment` `storagePath` records after copy.
+- Wired canonicalization flow after direct order creation and after quote→order conversion.
+- Updated continuity artifacts (`tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_CONTEXT.md`, `docs/AGENT_HANDOFF.md`).
+
+## Files touched
+- `src/components/Admin/NavTabs.tsx`
+- `src/app/admin/page.tsx`
+- `src/app/orders/[id]/page.tsx`
+- `src/modules/orders/orders.repo.ts`
+- `src/repos/orders.ts`
+- `src/modules/orders/orders.service.ts`
+- `src/app/api/admin/quotes/[id]/convert/route.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_CONTEXT.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run lint`
+
+## Verification Evidence
+- Lint passed with no ESLint warnings/errors.
+
+## Next steps
+- [ ] Add focused automated coverage for canonical storage normalization helper behavior (path already canonical vs non-canonical copy/update).
+- [ ] Optionally add explicit UX affordance to edit order-level attachments directly from Full Order Files tab.
+
+---
+
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Shift timer tracking to a department-bound model with required department selection on start, per-department active constraints, and department-based history totals in order detail.
 
 ## What I changed

@@ -40,6 +40,19 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-07 — Admin Quote & Order Ops IA + admin Full Order Files + order edit mode + canonical order-number file continuity
+- Renamed admin navigation grouping from `Quote Ops` to `Quote & Order Ops` and updated actions to `Create Order` + `Create Quote`; moved Templates entry into Business Settings card context on Admin Center.
+- Added admin order-detail edit mode supporting broad order header edits (`customer`, `dates`, `priority`, `vendor`, `PO`, assignee, material/model flags) and selected-part editing (`part number`, `quantity`, `material`, stock/cut lengths, notes) with add/delete part actions.
+- Added new admin-only order-detail tab: `Full Order Files`, aggregating order-level and part-level attachments into a single list with source labels and direct links.
+- Added canonical order-file storage continuity helper in Orders service (`ensureOrderFilesInCanonicalStorage`) that copies order-owned attachments into `business/customer/orderNumber/` paths when needed and updates attachment records.
+- Wired canonicalization to run after direct order creation and after quote→order conversion so uploaded files remain attached through conversion while ending up under order-number storage paths.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-07 — Department-based timer starts + department history totals
 - Added `departmentId` support on `TimeEntry` (Prisma schema + migration) so timers are now tied to departments.
 - Updated timer domain/service/repo logic to enforce one active timer per user per department (while allowing concurrent active timers across different departments).

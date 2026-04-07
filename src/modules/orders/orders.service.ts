@@ -1,9 +1,13 @@
 import { Prisma } from '@prisma/client';
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { BusinessCode } from '@/lib/businesses';
-import { BUSINESS_PREFIX_BY_CODE } from '@/lib/businesses';
+import { BUSINESS_PREFIX_BY_CODE, businessNameFromCode, slugifyName, type BusinessName } from '@/lib/businesses';
+import { getAppSettings } from '@/lib/app-settings';
 import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
+import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
 import {
   OrderAttachmentCreate,
   OrderChargeCreate,
@@ -80,10 +84,12 @@ import {
   updateOrderChecklistItem,
   deleteOrderChecklistItem,
   updateOrder,
+  updateOrderAttachmentStoragePath,
   updateOrderAssignee,
   updateOrderCharge,
   updateOrderPart,
   updatePartAttachment,
+  updatePartAttachmentStoragePath,
   updateOrderStatus,
   generateNextOrderNumber,
   syncChecklistForOrder,
@@ -616,7 +622,82 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
   }
 
   await syncOrderWorkflowStatus(created.id, { userId: userId ?? null });
+  await ensureOrderFilesInCanonicalStorage(created.id);
   return ok({ id: created.id });
+}
+
+export async function ensureOrderFilesInCanonicalStorage(orderId: string) {
+  const order = await findOrderWithDetails(orderId);
+  if (!order) return fail(404, 'Order not found');
+
+  const settings = await getAppSettings();
+  const rootDir = settings.attachmentsDir;
+  const attachmentRoot = await ensureAttachmentRoot(rootDir);
+  const business = businessNameFromCode(order.business as BusinessCode) as BusinessName;
+  const customerName = order.customer?.name?.trim() || 'Customer';
+  const pathPrefix = [
+    slugifyName(business, 'business'),
+    slugifyName(customerName, 'customer'),
+    slugifyName(order.orderNumber, 'reference'),
+  ].join('/');
+
+  const normalizePathPrefix = (value: string) => value.trim().replace(/^\/+/, '');
+
+  const copyToCanonicalPath = async ({
+    storagePath,
+    label,
+  }: {
+    storagePath: string;
+    label?: string | null;
+  }) => {
+    const normalizedStorage = normalizePathPrefix(storagePath);
+    if (pathPrefix && normalizedStorage.startsWith(`${pathPrefix}/`)) {
+      return null;
+    }
+    const sourcePath = path.join(attachmentRoot, normalizedStorage);
+    const buffer = await readFile(sourcePath);
+    const stored = await storeAttachmentFile({
+      business,
+      customerName,
+      referenceNumber: order.orderNumber,
+      originalFilename: label || path.basename(normalizedStorage),
+      buffer,
+      rootDir,
+    });
+    return stored.storagePath;
+  };
+
+  for (const attachment of order.attachments ?? []) {
+    if (!attachment.storagePath) continue;
+    try {
+      const nextPath = await copyToCanonicalPath({
+        storagePath: attachment.storagePath,
+        label: attachment.label,
+      });
+      if (nextPath) {
+        await updateOrderAttachmentStoragePath(attachment.id, nextPath);
+      }
+    } catch {
+      // best effort to keep order creation/conversion resilient
+    }
+  }
+
+  for (const attachment of order.partAttachments ?? []) {
+    if (!attachment.storagePath) continue;
+    try {
+      const nextPath = await copyToCanonicalPath({
+        storagePath: attachment.storagePath,
+        label: attachment.label,
+      });
+      if (nextPath) {
+        await updatePartAttachmentStoragePath(attachment.id, nextPath);
+      }
+    } catch {
+      // best effort to keep order creation/conversion resilient
+    }
+  }
+
+  return ok({ ok: true });
 }
 
 export async function getOrderDetails(id: string, isAdmin: boolean) {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Cog, FileText, LayoutTemplate, Package, ReceiptText, Settings, Shapes, Users, Wrench } from 'lucide-react';
+import { Cog, FileText, Package, ReceiptText, Shapes, Users, Wrench } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -25,11 +25,10 @@ const tabGroups = [
     ],
   },
   {
-    title: 'Quote Ops',
+    title: 'Quote & Order Ops',
     items: [
-      { href: '/admin/templates', label: 'Templates', icon: LayoutTemplate },
-      { href: '/admin/quotes', label: 'Quotes', icon: ReceiptText },
-      { href: '/admin/settings', label: 'Settings', icon: Settings },
+      { href: '/orders/new', label: 'Create Order', icon: ReceiptText },
+      { href: '/admin/quotes/new', label: 'Create Quote', icon: FileText },
     ],
   },
 ];

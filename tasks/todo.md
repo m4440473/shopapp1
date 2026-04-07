@@ -3,6 +3,37 @@
 ## Session Metadata
 - Date: 2026-04-07
 - Agent: GPT-5.3-Codex
+- Task ID: Unplanned admin quote/order ops + full order files + order editability
+- Goal: Rename admin quote ops IA, add admin full-order file visibility, enable broad admin order editing, and enforce canonical order-number storage continuity for order-owned files.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, and `tasks/lessons.md` before implementation.
+- [x] Validated scoped dependency health from latest session logs before touching code.
+- [x] Kept implementation constrained to admin IA, order detail workflows, and order/quote file-storage continuity paths.
+
+## Plan First
+- [x] Update admin IA labels/links: Quote Ops -> Quote & Order Ops with Create Order/Create Quote actions; relocate Templates/Settings exposure to Business Settings.
+- [x] Add admin-facing order edit mode for order header fields and selected-part CRUD operations in order detail.
+- [x] Add admin-only `Full Order Files` tab that aggregates order + part files in one location.
+- [x] Enforce canonical storage continuity by ensuring order-owned files are copied into `business/customer/orderNumber/` paths after order creation/conversion.
+- [x] Run lint verification and record continuity evidence updates.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Admin navigation and Admin Center IA now show `Quote & Order Ops` with only `Create Order` + `Create Quote`; Templates/Settings are now surfaced under Business Settings.
+- Order detail now includes an admin edit mode supporting broad order-field edits plus selected-part update/add/delete controls.
+- Added admin-only `Full Order Files` tab that lists merged order-level and part-level files with source labels and links.
+- Added order file-canonicalization flow so order and part attachments are copied into order-number based storage prefixes when order ownership is established (create and quote conversion).
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
 - Task ID: Unplanned feature (department-bound timers + department history totals)
 - Goal: Tie timer starts to explicit department selection, enforce one active timer per department (with Shipping blocked for timers), and surface department-based time totals/history detail in order detail.
 

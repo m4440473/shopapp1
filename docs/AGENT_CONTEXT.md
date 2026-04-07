@@ -61,6 +61,10 @@ Goal: a scalable foundation that can grow.
 ## Decision Log (append newest at top)
 
 
+### 2026-04-07 — Canonical order-number storage normalization for order-owned files
+Decision: Add an Orders-domain post-create/post-conversion normalization step (`ensureOrderFilesInCanonicalStorage`) that ensures order-owned file records point to storage paths under `business/customer/orderNumber/` while preserving conversion behavior as copy semantics.
+Reason: Operators require file continuity across quote→order lifecycle with a stable backend folder convention keyed by order number.
+
 ### 2026-04-07 — Department-bound timer model (Shipping blocked for timers)
 Decision: Require department selection when starting timers, persist `departmentId` on `TimeEntry`, allow concurrent active timers across different departments, enforce one active timer per `(user, department)`, and block Shipping from timer start flows.
 Reason: Shop-floor time tracking must reflect real department usage (Machining/Fab/Paint) with department-level totals/history while keeping Shipping configured for checklist/workflow but out of timer operations.
