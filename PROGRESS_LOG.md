@@ -40,6 +40,29 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-07 — Account page sign-out control for user switching
+- Added a visible `Sign out` button on the account password page so users can log out directly from Account.
+- Wired sign-out to NextAuth client sign-out with callback to `/auth/signin`, supporting immediate login as a different user.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
+
+### 2026-04-07 — Sign-in nav tab added + About page removed
+- Updated global nav links so `About` no longer appears and unauthenticated users now see a dedicated `Sign In` tab in the main navigation (desktop + mobile).
+- Preserved the existing top-right auth CTA button behavior (`Sign in` when signed out, `Account` when signed in).
+- Removed the `/about` app route by deleting `src/app/about/page.tsx`.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
+
 ### 2026-04-07 — Explicit department submit flow + manual time adjustment tracking
 - Replaced checklist auto-advance behavior in order detail with an explicit department submit workflow so checklist toggles only mark checklist state.
 - Added new machinist route `POST /api/orders/[id]/parts/[partId]/submit-department-complete` and Orders service logic to block submission until all checklist items in the current department are complete.
