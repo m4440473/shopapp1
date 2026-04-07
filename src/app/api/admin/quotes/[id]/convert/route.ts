@@ -3,6 +3,7 @@ import 'server-only';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 
+import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { z } from 'zod';
@@ -297,32 +298,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }))
     .filter((value) => value.value !== null);
 
-  const result = await convertQuoteToOrder({
-    quote,
-    metadata,
-    now,
-    dueDate,
-    priority,
-    modelIncluded,
-    materialNeeded,
-    materialOrdered,
-    vendorId: overrides?.vendorId ?? null,
-    poNumber: overrides?.poNumber ?? null,
-    assignedMachinistId: overrides?.assignedMachinistId ?? null,
-    partsData,
-    orderAttachments,
-    noteContent,
-    userId,
-    normalizedCustomFieldValues,
-  });
+  try {
+    const result = await convertQuoteToOrder({
+      quote,
+      metadata,
+      now,
+      dueDate,
+      priority,
+      modelIncluded,
+      materialNeeded,
+      materialOrdered,
+      vendorId: overrides?.vendorId ?? null,
+      poNumber: overrides?.poNumber ?? null,
+      assignedMachinistId: overrides?.assignedMachinistId ?? null,
+      partsData,
+      orderAttachments,
+      noteContent,
+      userId,
+      normalizedCustomFieldValues,
+    });
 
-  await syncChecklistForOrder(result.orderId);
-  await ensureOrderFilesInCanonicalStorage(result.orderId);
+    await syncChecklistForOrder(result.orderId);
+    await ensureOrderFilesInCanonicalStorage(result.orderId);
 
-  return NextResponse.json({
-    ok: true,
-    orderId: result.orderId,
-    orderNumber: result.orderNumber,
-    metadata: result.metadata,
-  });
+    return NextResponse.json({
+      ok: true,
+      orderId: result.orderId,
+      orderNumber: result.orderNumber,
+      metadata: result.metadata,
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json(
+        {
+          error:
+            'Conversion failed because duplicate checklist items were generated for the same part/add-on. Please retry, and contact support if this persists.',
+        },
+        { status: 409 },
+      );
+    }
+
+    const message = error instanceof Error ? error.message : 'Failed to convert quote to order';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

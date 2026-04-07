@@ -3,6 +3,7 @@ import { getServerAuthSession } from '@/lib/auth-session';
 import { z } from 'zod';
 
 import { ListQuery } from '@/lib/zod';
+import { canAccessAdmin } from '@/lib/rbac';
 import { listAddonsForOrders } from '@/modules/orders/orders.service';
 
 const QuerySchema = ListQuery.extend({
@@ -28,7 +29,8 @@ export async function GET(req: NextRequest) {
   }
 
   const { q, cursor, take, active } = parsed.data;
-  const result = await listAddonsForOrders({ q, cursor, take, active });
+  const isAdmin = canAccessAdmin((session.user as any) ?? null);
+  const result = await listAddonsForOrders({ q, cursor, take, active, includePricing: isAdmin });
   if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

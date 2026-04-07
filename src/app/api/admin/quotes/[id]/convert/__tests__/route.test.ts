@@ -6,6 +6,7 @@ const mockFindQuoteForConversion = vi.fn();
 const mockFindActiveOrderCustomFields = vi.fn();
 const mockConvertQuoteToOrder = vi.fn();
 const mockSyncChecklistForOrder = vi.fn();
+const mockEnsureOrderFilesInCanonicalStorage = vi.fn();
 
 vi.mock('@/lib/auth-session', () => ({
   getServerAuthSession: mockGetServerAuthSession,
@@ -27,6 +28,7 @@ vi.mock('@/modules/quotes/quotes.service', () => ({
 
 vi.mock('@/modules/orders/orders.service', () => ({
   syncChecklistForOrder: mockSyncChecklistForOrder,
+  ensureOrderFilesInCanonicalStorage: mockEnsureOrderFilesInCanonicalStorage,
 }));
 
 describe('POST /api/admin/quotes/[id]/convert', () => {
@@ -127,5 +129,6 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
     const args = mockConvertQuoteToOrder.mock.calls[0][0];
     expect(args.normalizedCustomFieldValues).toEqual([{ fieldId: 'cf-allowed', value: '"yes"' }]);
     expect(mockSyncChecklistForOrder).toHaveBeenCalledWith('o1');
+    expect(mockEnsureOrderFilesInCanonicalStorage).toHaveBeenCalledWith('o1');
   });
 });
