@@ -1,5 +1,51 @@
 Date: 2026-04-07
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Persist BOM analyzer output for each order part and improve tolerance extraction/readout behavior (including corner zooms and drill decimal display).
+
+## What I changed
+- Added new Prisma model + migration: `PartBomAnalysis` (unique by `orderId` + `partId`) to persist the latest analyzer result JSON for each part.
+- Updated `POST /api/print-analyzer/analyze`:
+  - accepts optional `orderId`, `partId`, and `sourceLabel`
+  - persists successful analysis output when valid part context is provided
+  - runs title-block tolerance extraction across all four corners (`top-left`, `top-right`, `bottom-left`, `bottom-right`) with stricter anti-hallucination prompt instructions
+  - ensures fallback warning is present when tolerances are not confidently detected: `Unable to confidently read general tolerances. Please check the paper print.`
+- Added `GET /api/orders/[id]/parts/[partId]/bom-analysis` to return latest saved analysis for BOM tab hydration.
+- Updated `PartBomTab` to auto-load persisted analysis on mount and show a saved-analysis timestamp indicator; analyze requests now include order/part context so output is persisted.
+- Replaced empty-state general tolerance message in BOM tab with paper-print instruction wording instead of `No general tolerances detected.`
+- Updated tap-drill enrichment mapping to include decimal-inch diameter values for letter drills (plus mapped number/fraction drills) and added focused unit coverage.
+
+## Files touched
+- `prisma/schema.prisma`
+- `prisma/migrations/20260407143000_add_part_bom_analysis/migration.sql`
+- `src/app/api/print-analyzer/analyze/route.ts`
+- `src/app/api/orders/[id]/parts/[partId]/bom-analysis/route.ts`
+- `src/app/orders/[id]/PartBomTab.tsx`
+- `src/lib/printAnalyzer/tapDrills.ts`
+- `src/lib/printAnalyzer/tapDrills.test.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npx prisma migrate deploy`
+- `npx prisma generate`
+- `npm run test -- src/lib/printAnalyzer/tapDrills.test.ts`
+- `npm run lint`
+
+## Verification Evidence
+- Migrations applied successfully in local SQLite dev database.
+- Prisma client regenerated successfully.
+- Targeted test passed (1/1).
+- Lint passed with no ESLint warnings/errors.
+
+## Next steps
+- [ ] Consider adding a compact “source image” descriptor in BOM tab using stored `sourceLabel` for better auditability.
+- [ ] Consider adding an explicit UI badge when fallback paper-print warning came from unreadable title-block scans.
+
+---
+
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Add a direct logout control on the account page so users can sign out and switch accounts quickly.
 
 ## What I changed

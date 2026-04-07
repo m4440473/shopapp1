@@ -3,6 +3,39 @@
 ## Session Metadata
 - Date: 2026-04-07
 - Agent: GPT-5.3-Codex
+- Task ID: BOM analyzer persistence + tolerance extraction + tap drill decimal display
+- Goal: Persist BOM analysis per order part across sessions/users, strengthen tolerance extraction behavior, and include inch decimal for letter drills.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, and `tasks/lessons.md` before implementation.
+- [x] Applied relevant lesson: keep scoped edits only; use approved editing workflow and avoid shell patch wrappers.
+- [x] No dependency blockers found for this scoped BOM analyzer improvement.
+
+## Plan First
+- [x] Add persistence model/migration for storing latest BOM analyzer result by order + part.
+- [x] Update analyzer API route to accept order/part context, save successful analyses, and improve tolerance pass prompt/corner zoom behavior + fallback wording.
+- [x] Add read API endpoint for latest saved BOM analyzer result and hydrate BOM tab state from saved data.
+- [x] Ensure letter-drill recommendations include decimal inch values.
+- [x] Run focused verification (lint + targeted tests) and update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test -- src/lib/printAnalyzer/tapDrills.test.ts`
+
+## Review + Results
+- Added durable BOM analysis persistence with a new PartBomAnalysis table keyed by order+part, and store/update flow from the analyzer API.
+- BOM tab now auto-loads the most recent saved analysis for the selected part, preserving analyzer output when navigating away and back.
+- Analyzer now runs a title-block tolerance pass on all four corners with stricter anti-hallucination instructions and a paper-print warning fallback when tolerances are not confidently readable.
+- Tap drill recommendations now include decimal-inch diameters for letter drills (and number/fractional imperial drills where mapped).
+- Verification completed: Prisma migrate deploy + generate, targeted Vitest test, and lint all passed.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
 - Task ID: Unplanned account sign-out UX follow-up
 - Goal: Add a visible logout control on the account page so users can sign out and log into a different account.
 

@@ -1,20 +1,34 @@
 import type { PrintAnalyzerResult } from './schema';
 import { normalizeThreadText, parseFiniteNumber } from './normalize';
 
+const DRILL_DECIMAL_INCHES: Record<string, number> = {
+  '#43': 0.089,
+  '#36': 0.1065,
+  '#29': 0.136,
+  '#25': 0.1495,
+  '#21': 0.159,
+  '#7': 0.201,
+  '#3': 0.213,
+  F: 0.257,
+  I: 0.272,
+  Q: 0.332,
+  U: 0.368,
+};
+
 const IMPERIAL_TAP_DRILLS: Record<string, { drill: string; diameter?: number }> = {
-  '4-40': { drill: '#43' },
-  '6-32': { drill: '#36' },
-  '8-32': { drill: '#29' },
-  '10-24': { drill: '#25' },
-  '10-32': { drill: '#21' },
-  '1/4-20': { drill: '#7' },
-  '1/4-28': { drill: '#3' },
-  '5/16-18': { drill: 'F' },
-  '5/16-24': { drill: 'I' },
-  '3/8-16': { drill: '5/16' },
-  '3/8-24': { drill: 'Q' },
-  '7/16-14': { drill: 'U' },
-  '1/2-13': { drill: '27/64' },
+  '4-40': { drill: '#43', diameter: DRILL_DECIMAL_INCHES['#43'] },
+  '6-32': { drill: '#36', diameter: DRILL_DECIMAL_INCHES['#36'] },
+  '8-32': { drill: '#29', diameter: DRILL_DECIMAL_INCHES['#29'] },
+  '10-24': { drill: '#25', diameter: DRILL_DECIMAL_INCHES['#25'] },
+  '10-32': { drill: '#21', diameter: DRILL_DECIMAL_INCHES['#21'] },
+  '1/4-20': { drill: '#7', diameter: DRILL_DECIMAL_INCHES['#7'] },
+  '1/4-28': { drill: '#3', diameter: DRILL_DECIMAL_INCHES['#3'] },
+  '5/16-18': { drill: 'F', diameter: DRILL_DECIMAL_INCHES.F },
+  '5/16-24': { drill: 'I', diameter: DRILL_DECIMAL_INCHES.I },
+  '3/8-16': { drill: '5/16', diameter: 0.3125 },
+  '3/8-24': { drill: 'Q', diameter: DRILL_DECIMAL_INCHES.Q },
+  '7/16-14': { drill: 'U', diameter: DRILL_DECIMAL_INCHES.U },
+  '1/2-13': { drill: '27/64', diameter: 0.421875 },
 };
 
 const METRIC_TAP_DRILLS: Record<string, { drill: string; diameter?: number }> = {
