@@ -114,7 +114,6 @@ export default function OrderDetailPage() {
   const [attachmentFileKey, setAttachmentFileKey] = useState(0);
   const [attachmentFileName, setAttachmentFileName] = useState<string | null>(null);
   const [checklistError, setChecklistError] = useState<string | null>(null);
-  const [checklistOverrides, setChecklistOverrides] = useState<Record<string, boolean>>({});
 
   const parts = useMemo(() => (Array.isArray(item?.parts) ? item.parts : []), [item?.parts]);
   const partIdsParam = useMemo(() => parts.map((part: any) => part.id).filter(Boolean).join(','), [parts]);
@@ -127,6 +126,36 @@ export default function OrderDetailPage() {
     const items = Array.isArray(item?.checklist) ? item.checklist : [];
     return items.filter((entry: any) => entry.isActive !== false && entry.partId === selectedPartId);
   }, [item?.checklist, selectedPartId]);
+
+  const checklistByDepartment = useMemo(() => {
+    const groups = new Map<string, { departmentId: string | null; departmentName: string; entries: any[] }>();
+    selectedChecklist.forEach((entry: any) => {
+      const departmentId = entry.departmentId ?? null;
+      const departmentName = entry.department?.name || (departmentId ? `Department ${departmentId}` : 'Unassigned Department');
+      const key = departmentId ?? '__none__';
+      if (!groups.has(key)) {
+        groups.set(key, { departmentId, departmentName, entries: [] });
+      }
+      groups.get(key)?.entries.push(entry);
+    });
+    return Array.from(groups.values());
+  }, [selectedChecklist]);
+
+  const partManualAdjustments = useMemo(() => {
+    const all = Array.isArray((item as any)?.partTimeAdjustments) ? (item as any).partTimeAdjustments : [];
+    return all.filter((adjustment: any) => adjustment.partId === selectedPartId);
+  }, [item, selectedPartId]);
+
+  const manualPartTotals = useMemo(() => {
+    const all = Array.isArray((item as any)?.partTimeAdjustments) ? (item as any).partTimeAdjustments : [];
+    return all.reduce((acc: Record<string, number>, adjustment: any) => {
+      if (!adjustment?.partId) return acc;
+      const seconds = Number(adjustment.seconds ?? 0);
+      if (!Number.isFinite(seconds) || seconds <= 0) return acc;
+      acc[adjustment.partId] = (acc[adjustment.partId] ?? 0) + Math.floor(seconds);
+      return acc;
+    }, {});
+  }, [item]);
 
   const selectedAttachments = useMemo(() => {
     if (!selectedPartId) return [];
@@ -376,26 +405,60 @@ export default function OrderDetailPage() {
     }
   };
 
-  const handleMarkPartComplete = async (): Promise<boolean> => {
+  const handleSubmitDepartmentComplete = async (): Promise<boolean> => {
     if (!id || !selectedPartId) return false;
+
+    const timerSeconds = partTotals[selectedPartId] ?? 0;
+    const manualSeconds = manualPartTotals[selectedPartId] ?? 0;
+    const totalSeconds = timerSeconds + manualSeconds;
+
+    const additionalMinutesInput = window.prompt(
+      `Recorded time for this part: ${formatDuration(totalSeconds)} (timer ${formatDuration(timerSeconds)} + manual ${formatDuration(manualSeconds)}).\nAdd extra minutes before submission? Enter 0 for none.`,
+      '0',
+    );
+    if (additionalMinutesInput === null) return false;
+
+    const parsedMinutes = Number(additionalMinutesInput);
+    if (!Number.isFinite(parsedMinutes) || parsedMinutes < 0) {
+      setTimerError('Please enter a valid non-negative number of minutes.');
+      return false;
+    }
+
+    const roundedMinutes = Math.floor(parsedMinutes);
+    let adjustmentNote = '';
+    if (roundedMinutes > 0) {
+      const prompted = window.prompt('Enter a note for added time:')?.trim() || '';
+      if (!prompted) {
+        setTimerError('A note is required when adding extra time.');
+        return false;
+      }
+      adjustmentNote = prompted;
+    }
+
     setTimerSaving(true);
     setTimerError(null);
     try {
-      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/complete`, {
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/submit-department-complete`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({
+          additionalSeconds: roundedMinutes * 60,
+          adjustmentNote,
+        }),
       });
       if (!res.ok) {
         const payload = await res.json().catch(() => null);
-        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to mark part complete.');
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to submit department complete.');
       }
+
       await load();
       await refreshTimerSummary();
       await loadPartEvents();
-      toast.push('Part marked complete.', 'success');
+      toast.push('Department submitted complete.', 'success');
       return true;
     } catch (err: any) {
-      const message = err?.message || 'Failed to mark part complete.';
+      const message = err?.message || 'Failed to submit department complete.';
       setTimerError(message);
       return false;
     } finally {
@@ -574,39 +637,7 @@ export default function OrderDetailPage() {
 
     try {
       if (checked) {
-        const previewRes = await fetch(
-          `/api/orders/${id}/parts/${selectedPartId}/checklist/${entry.id}/preview-complete`,
-          { method: 'POST', credentials: 'include' },
-        );
-        if (!previewRes.ok) throw new Error('Failed to preview checklist completion.');
-        const preview = await previewRes.json();
-        if (preview?.willCompleteDepartment) {
-          const message = preview?.doneIfConfirmed
-            ? `This is the last open checklist item for ${preview.currentDepartmentName}. Confirm to mark this part done?`
-            : `This is the last open checklist item for ${preview.currentDepartmentName}. Confirm to move this part to ${preview.nextDepartmentName}?`;
-          const confirmed = window.confirm(message);
-          if (!confirmed) return;
-          const completeRes = await fetch(
-            `/api/orders/${id}/parts/${selectedPartId}/checklist/${entry.id}/complete-and-advance`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ confirm: true }),
-              credentials: 'include',
-            },
-          );
-          if (!completeRes.ok) {
-            if (completeRes.status === 409) {
-              await load();
-              toast.push('Checklist state changed. Refreshed latest data.', 'error');
-              return;
-            }
-            const errorBody = await completeRes.json().catch(() => null);
-            throw new Error(typeof errorBody?.error === 'string' ? errorBody.error : 'Failed to complete checklist item.');
-          }
-        } else {
-          await postChecklistToggle(entry, checked);
-        }
+        await postChecklistToggle(entry, checked);
       } else {
         try {
           await postChecklistToggle(entry, checked);
@@ -656,8 +687,10 @@ export default function OrderDetailPage() {
         .join(' ')
     : 'Unknown';
   const activeOnSelected = Boolean(activeEntry?.partId && activeEntry.partId === selectedPartId);
-  const selectedPartStoredSeconds = selectedPartId ? partTotals[selectedPartId] ?? 0 : 0;
-  const selectedPartElapsedSeconds = activeOnSelected ? activeElapsedSeconds : selectedPartStoredSeconds;
+  const selectedPartTimerSeconds = selectedPartId ? partTotals[selectedPartId] ?? 0 : 0;
+  const selectedPartManualSeconds = selectedPartId ? manualPartTotals[selectedPartId] ?? 0 : 0;
+  const selectedPartStoredSeconds = selectedPartTimerSeconds + selectedPartManualSeconds;
+  const selectedPartElapsedSeconds = activeOnSelected ? selectedPartStoredSeconds + activeElapsedSeconds : selectedPartStoredSeconds;
   const selectedPartLastEntry = selectedPartId ? lastPartEntries[selectedPartId] ?? null : null;
   const canResumeSelected = Boolean(selectedPartLastEntry?.id && selectedPartLastEntry?.endedAt && !activeOnSelected);
   const hasActiveEntry = Boolean(activeEntry);
@@ -784,11 +817,11 @@ export default function OrderDetailPage() {
                   size="sm"
                   variant="outline"
                   disabled={!selectedPartId || timerSaving || activeOnSelected}
-                  onClick={handleMarkPartComplete}
+                  onClick={handleSubmitDepartmentComplete}
                   className="justify-start gap-2"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  Mark selected part complete
+                  Submit current department complete
                 </Button>
               </div>
 
@@ -814,6 +847,22 @@ export default function OrderDetailPage() {
                 {timerError}
               </div>
             ) : null}
+            {selectedPartId ? (
+              <div className="mt-3 rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+                <div><span className="font-medium text-foreground">Total time:</span> {formatDuration(selectedPartStoredSeconds)}</div>
+                <div>Timer time: {formatDuration(selectedPartTimerSeconds)}</div>
+                <div>Manual added time: {formatDuration(selectedPartManualSeconds)}</div>
+                {partManualAdjustments.length ? (
+                  <div className="mt-2 space-y-1">
+                    {partManualAdjustments.map((adjustment: any) => (
+                      <div key={adjustment.id}>
+                        +{formatDuration(Number(adjustment.seconds ?? 0))} — {adjustment.note}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <CardContent className="flex-1 space-y-3 p-4">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -824,7 +873,7 @@ export default function OrderDetailPage() {
               {parts.map((part: any, index: number) => {
                 const isSelected = part.id === selectedPartId;
                 const partLabel = part.partNumber || `Part ${index + 1}`;
-                const totalSeconds = partTotals[part.id] ?? 0;
+                const totalSeconds = (partTotals[part.id] ?? 0) + (manualPartTotals[part.id] ?? 0);
                 const status = part.status || 'IN_PROGRESS';
                 const latestMetaRaw = part?.partEvents?.[0]?.meta;
                 const latestMeta = typeof latestMetaRaw === 'string' ? (() => { try { return JSON.parse(latestMetaRaw); } catch { return null; } })() : latestMetaRaw;
@@ -1185,36 +1234,37 @@ export default function OrderDetailPage() {
                     {checklistError}
                   </div>
                 ) : null}
-                {selectedChecklist.length ? (
-                  selectedChecklist.map((entry: any) => {
-                    const label = entry.charge?.name ?? entry.addon?.name ?? 'Checklist item';
-                    const checkedValue =
-                      typeof checklistOverrides[entry.id] === 'boolean'
-                        ? checklistOverrides[entry.id]
-                        : Boolean(entry.completed);
-                    return (
-                      <label
-                        key={entry.id}
-                        className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
-                      >
-                        <div className="flex items-start gap-3">
-                          <Checkbox
-                            checked={checkedValue}
-                            onCheckedChange={(checked) => handleChecklistToggle(entry, checked === true)}
-                          />
-                          <div>
-                            <div className="font-medium text-foreground">{label}</div>
-                            {entry.addon?.description ? (
-                              <div className="text-xs text-muted-foreground">{entry.addon.description}</div>
-                            ) : null}
-                          </div>
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {entry.completed ? 'Done' : 'Open'}
-                        </span>
-                      </label>
-                    );
-                  })
+                {checklistByDepartment.length ? (
+                  checklistByDepartment.map((group) => (
+                    <div key={group.departmentId ?? '__none__'} className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.departmentName}</div>
+                      {group.entries.map((entry: any) => {
+                        const label = entry.charge?.name ?? entry.addon?.name ?? 'Checklist item';
+                        return (
+                          <label
+                            key={entry.id}
+                            className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
+                          >
+                            <div className="flex items-start gap-3">
+                              <Checkbox
+                                checked={Boolean(entry.completed)}
+                                onCheckedChange={(checked) => handleChecklistToggle(entry, checked === true)}
+                              />
+                              <div>
+                                <div className="font-medium text-foreground">{label}</div>
+                                {entry.addon?.description ? (
+                                  <div className="text-xs text-muted-foreground">{entry.addon.description}</div>
+                                ) : null}
+                              </div>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {entry.completed ? 'Done' : 'Open'}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ))
                 ) : (
                   <p className="text-sm text-muted-foreground">No checklist items for this part.</p>
                 )}

@@ -146,6 +146,16 @@ export type MockPartEvent = {
   createdAt: Date;
 };
 
+export type MockPartTimeAdjustment = {
+  id: string;
+  orderId: string;
+  partId: string;
+  userId: string | null;
+  seconds: number;
+  note: string;
+  createdAt: Date;
+};
+
 export type MockTimeEntry = {
   id: string;
   userId: string;
@@ -173,6 +183,7 @@ export type MockSeedState = {
   orderAttachments: MockOrderAttachment[];
   partAttachments: MockPartAttachment[];
   partEvents: MockPartEvent[];
+  partTimeAdjustments: MockPartTimeAdjustment[];
   timeEntries: MockTimeEntry[];
 };
 
@@ -446,6 +457,7 @@ export function createMockSeedState(): MockSeedState {
     orderAttachments,
     partAttachments,
     partEvents,
+    partTimeAdjustments: [],
     timeEntries,
   };
 }

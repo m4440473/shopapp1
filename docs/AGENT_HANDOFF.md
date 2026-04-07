@@ -1,3 +1,69 @@
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
+Goal (1 sentence): Replace unreliable checklist auto-advance with explicit department completion submission, while adding manual time-adjustment notes into part totals visibility.
+
+## What I changed
+- Added schema + migration for `PartTimeAdjustment` with links to Order/Part/User and note/seconds fields.
+- Extended Orders repo + mock repo to persist/load part time adjustments and include them in order detail payloads.
+- Added new authenticated machinist API route:
+  - `POST /api/orders/[id]/parts/[partId]/submit-department-complete`
+- Added new Orders service flow `submitDepartmentComplete(...)`:
+  - Validates current department checklist completeness before submission.
+  - Rejects submit if current department has open checklist items.
+  - Supports optional `additionalSeconds` with required note for manual time adds.
+  - Moves part to next department or marks part complete when no remaining department work exists.
+  - Logs part events and syncs order workflow status.
+- Removed checklist checkbox-triggered auto-advance path from order detail page; checklist toggles now only toggle checklist state.
+- Updated order detail checklist tab to group items by department label heading.
+- Added total-time section on order detail selected part showing:
+  - combined total (timer + manual)
+  - timer subtotal
+  - manual subtotal
+  - manual adjustment note history
+- Added focused Orders service tests covering:
+  - completion gate with open checklist
+  - department submit gate
+  - required note validation when extra time is added
+
+## Files touched
+- `prisma/schema.prisma`
+- `prisma/migrations/20260407120000_add_part_time_adjustments/migration.sql`
+- `src/modules/orders/orders.repo.ts`
+- `src/modules/orders/orders.service.ts`
+- `src/repos/orders.ts`
+- `src/repos/mock/seed.ts`
+- `src/repos/mock/orders.ts`
+- `src/app/api/orders/[id]/parts/[partId]/submit-department-complete/route.ts`
+- `src/app/orders/[id]/page.tsx`
+- `src/modules/orders/__tests__/orders.service.test.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --script > prisma/migrations/20260407120000_add_part_time_adjustments/migration.sql`
+- `npx prisma migrate deploy`
+- `npx prisma generate`
+- `npm run lint`
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- `npm run build`
+
+## Verification Evidence
+- Migration deploy succeeded and Prisma client regenerated.
+- Lint passed with zero ESLint warnings/errors.
+- Targeted Orders service tests passed (3/3).
+- Build failed due an existing environment/tooling issue in `sterling-site/vite.config.ts` module resolution for `@vitejs/plugin-react` (not introduced by this task).
+
+## Diff/Review Notes
+- Scope limited to requested behavior changes for checklist/department submission/time notes in order detail workflow.
+- No new dependencies were added.
+
+## Next steps
+- [ ] Consider replacing prompt-based added-time input with a modal form for better UX/accessibility.
+- [ ] Optionally deprecate now-unused preview/complete-and-advance checklist endpoints once owner confirms no other callers.
+
+---
+
 # AGENT_HANDOFF — 2026-04-02 (part-complete route + status parity)
 
 Goal (1 sentence): Fix outdated completion path drift by restoring a live part-complete API route and align order-detail part status display with persisted backend state.

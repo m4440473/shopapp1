@@ -24,6 +24,7 @@ import {
   createOrderPartWithCharges,
   createOrderWithCustomFields,
   createPartEvent,
+  createPartTimeAdjustment,
   countOrderParts,
   createPartAttachment,
   createStatusHistoryEntry,
@@ -1469,6 +1470,124 @@ export async function deleteAttachmentForPart(partId: string, attachmentId: stri
 
   await deletePartAttachment(attachmentId);
   return ok({ ok: true });
+}
+
+
+
+function findNextDepartmentWithOpenChecklist(
+  checklistItems: Array<{ departmentId?: string | null; isActive?: boolean | null; completed?: boolean | null }>,
+  departments: DepartmentSortEntry[],
+) {
+  for (const department of departments) {
+    const items = checklistItems.filter((item) => item.isActive !== false && item.departmentId === department.id);
+    if (!items.length) continue;
+    if (items.some((item) => item.completed === false)) return department.id;
+  }
+  return null;
+}
+
+export async function submitDepartmentComplete({
+  orderId,
+  partId,
+  userId,
+  additionalSeconds,
+  adjustmentNote,
+}: {
+  orderId: string;
+  partId: string;
+  userId?: string | null;
+  additionalSeconds?: number;
+  adjustmentNote?: string;
+}) {
+  if (additionalSeconds !== undefined) {
+    if (!Number.isFinite(additionalSeconds) || additionalSeconds < 0) {
+      return fail(400, 'additionalSeconds must be a non-negative number.');
+    }
+    if (additionalSeconds > 0 && !adjustmentNote?.trim()) {
+      return fail(400, 'A note is required when adding extra time.');
+    }
+  }
+
+  const departments = await listDepartmentsOrdered();
+  if (!departments.length) return fail(400, 'No departments configured.');
+
+  const part = await findPartForRouting(partId);
+  if (!part || part.orderId !== orderId) return fail(404, 'Part not found');
+
+  const currentDepartmentId = part.currentDepartmentId ?? findNextDepartmentWithOpenChecklist(part.checklistItems ?? [], departments);
+  if (!currentDepartmentId) return fail(409, 'Part has no active department to submit.');
+
+  const currentDepartmentItems = (part.checklistItems ?? []).filter(
+    (item) => item.isActive !== false && item.departmentId === currentDepartmentId,
+  );
+  if (!currentDepartmentItems.length) {
+    return fail(409, 'Current department has no checklist items.');
+  }
+
+  const openItems = currentDepartmentItems.filter((item) => item.completed === false);
+  if (openItems.length) {
+    return fail(409, `Cannot submit department complete: ${openItems.length} checklist item(s) remain open.`);
+  }
+
+  const nextDepartmentId = findNextDepartmentWithOpenChecklist(part.checklistItems ?? [], departments);
+
+  const result = await runInTransaction(async (tx) => {
+    if (typeof additionalSeconds === 'number' && additionalSeconds > 0) {
+      await createPartTimeAdjustment({
+        orderId,
+        partId,
+        userId: userId ?? null,
+        seconds: Math.floor(additionalSeconds),
+        note: adjustmentNote?.trim() || 'Additional submitted time.',
+      });
+    }
+
+    if (nextDepartmentId) {
+      await updatePartCurrentDepartment(partId, nextDepartmentId);
+      await recordPartEvent({
+        orderId,
+        partId,
+        userId: userId ?? null,
+        type: 'DEPARTMENT_ADVANCED',
+        message: `Department submitted complete. Moved to ${getDepartmentName(departments, nextDepartmentId)}.`,
+        meta: {
+          fromDepartmentId: currentDepartmentId,
+          toDepartmentId: nextDepartmentId,
+          transitionType: 'manual_submit',
+          additionalSeconds: additionalSeconds ?? 0,
+          adjustmentNote: adjustmentNote?.trim() || null,
+        },
+      });
+      return { currentDepartmentId: nextDepartmentId, status: 'IN_PROGRESS' as const };
+    }
+
+    await updatePartCurrentDepartment(partId, null);
+    await recordPartEvent({
+      orderId,
+      partId,
+      userId: userId ?? null,
+      type: 'PART_COMPLETED',
+      message: 'All departments submitted complete. Part marked complete.',
+      meta: {
+        fromDepartmentId: currentDepartmentId,
+        toDepartmentId: null,
+        transitionType: 'manual_submit',
+        additionalSeconds: additionalSeconds ?? 0,
+        adjustmentNote: adjustmentNote?.trim() || null,
+      },
+    }, tx);
+    return { currentDepartmentId: null, status: 'COMPLETE' as const };
+  });
+
+  await syncOrderWorkflowStatus(orderId, { userId: userId ?? null });
+
+  return ok({
+    part: {
+      id: partId,
+      status: result.status,
+      currentDepartmentId: result.currentDepartmentId,
+    },
+  });
 }
 
 export async function completeOrderPart({

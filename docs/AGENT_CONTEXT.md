@@ -61,6 +61,10 @@ Goal: a scalable foundation that can grow.
 ## Decision Log (append newest at top)
 
 
+### 2026-04-07 — Explicit department submit workflow + part time adjustments
+Decision: Shift order-detail checklist behavior from checkbox-driven auto-advance to explicit per-part department submission, and record optional user-added part time via a dedicated `PartTimeAdjustment` model with required note when extra time is entered.
+Reason: Operators reported unreliable/incorrect “last checklist item” auto-advance behavior; explicit submit gating plus auditable manual time notes improves trust, control, and traceability of part progression and total-time reporting.
+
 ### 2026-03-23 — Isolated marketing site lives as its own Vite subproject
 Decision: Build the new manufacturing marketing website in a dedicated `sterling-site/` folder with its own Vite/React/TypeScript toolchain, package manifest, styling, and content files rather than coupling it to the existing Next.js app.
 Reason: The requested site must stay deployable by direct URL and remain isolated from the main shop app's navigation, components, styles, logic, config, and dependency graph while the marketing experience evolves independently.

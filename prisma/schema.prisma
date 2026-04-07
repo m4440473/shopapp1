@@ -25,6 +25,7 @@ model User {
   uploadedAttachments Attachment[] @relation("UserAttachments")
   statusHistories StatusHistory[] @relation("UserStatusHistory")
   partEvents      PartEvent[]
+  partTimeAdjustments PartTimeAdjustment[]
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -94,7 +95,9 @@ model Order {
   timeEntries      TimeEntry[]
   statusHistory    StatusHistory[]
   partEvents       PartEvent[]
+  partTimeAdjustments PartTimeAdjustment[]
 }
+
 
 model OrderPart {
   id                  String      @id @default(cuid())
@@ -117,7 +120,9 @@ model OrderPart {
   checklistItems      OrderChecklist[]
   timeEntries         TimeEntry[]
   partEvents          PartEvent[]
+  timeAdjustments      PartTimeAdjustment[]
 }
+
 
 model OrderChecklist {
   id          String   @id @default(cuid())
@@ -194,6 +199,23 @@ model PartEvent {
   message   String
   meta      String?
   createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([partId])
+  @@index([userId])
+}
+
+model PartTimeAdjustment {
+  id        String    @id @default(cuid())
+  orderId   String
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId    String
+  part      OrderPart @relation(fields: [partId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  seconds   Int
+  note      String
+  createdAt DateTime  @default(now())
 
   @@index([orderId])
   @@index([partId])
