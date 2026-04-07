@@ -46,6 +46,11 @@ import { CustomFieldInputs, type CustomFieldDefinition } from '@/components/Cust
 import { hasCustomFieldValue } from '@/lib/custom-field-values';
 import { AvailableItemsLibrary } from '@/components/AvailableItemsLibrary';
 import { AssignedItemsPanel } from '@/components/AssignedItemsPanel';
+import {
+  calculateAssignmentTotalCents,
+  calculateWorkItemsSubtotalCents,
+  getWorkItemPricingSemantic,
+} from '@/modules/pricing/work-item-pricing';
 
 import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
 
@@ -444,7 +449,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   }, [draftReference, form.companyName, form.quoteNumber, initialQuote?.quoteNumber, selectedBusinessOption]);
 
   useEffect(() => {
-    fetch('/api/admin/addons?active=true&take=100', { credentials: 'include' })
+    fetch('/api/orders/addons?active=true&take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
         const list = Array.isArray(data?.items) ? data.items : data;
@@ -455,7 +460,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             rateType: item.rateType,
             rateCents: item.rateCents,
             active: item.active,
+            affectsPrice: item.affectsPrice ?? true,
+            isChecklistItem: item.isChecklistItem ?? false,
             description: item.description,
+            department: item.department ?? null,
           }))
         );
       })
@@ -749,18 +757,18 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     return sum + (final > 0 ? final : 0);
   }, 0);
 
-  const addonsTotalsCents = parts.reduce((sum, part) => {
-    return (
+  const addonsTotalsCents = parts.reduce(
+    (sum, part) =>
       sum +
-      part.addonSelections.reduce((innerSum, selection) => {
-        const addon = addonMap.get(selection.addonId);
-        if (!addon) return innerSum;
-        if (!addon.affectsPrice) return innerSum;
-        const units = numberFromString(selection.units);
-        return innerSum + Math.round(addon.rateCents * (units > 0 ? units : 0));
-      }, 0)
-    );
-  }, 0);
+      calculateWorkItemsSubtotalCents({
+        selections: part.addonSelections.map((selection) => ({
+          addonId: selection.addonId,
+          units: numberFromString(selection.units),
+        })),
+        itemsById: addonMap,
+      }),
+    0
+  );
 
   const basePriceCents = centsFromString(form.basePrice);
   const totalCents = basePriceCents + vendorTotalsCents + addonsTotalsCents;
@@ -1387,7 +1395,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                       renderMeta={(assignment) => {
                         const addon = addonMap.get(assignment.itemId);
                         if (!addon) return null;
-                        if (!addon.affectsPrice) {
+                        if (getWorkItemPricingSemantic(addon) === 'CHECKLIST_ONLY') {
                           return (
                             <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
                               No charge (checklist only).
@@ -1395,7 +1403,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                           );
                         }
                         const units = numberFromString(assignment.units);
-                        const totalCents = Math.round(addon.rateCents * (units > 0 ? units : 0));
+                        const totalCents = calculateAssignmentTotalCents({ item: addon, units });
                         return (
                           <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
                             {formatCurrency(addon.rateCents)} x {units.toFixed(2)} = {formatCurrency(totalCents)}

@@ -1,5 +1,52 @@
 Date: 2026-04-07
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Close quote/order pricing mismatch by introducing a shared work-item pricing contract and adding the missing order review-step totals.
+
+## What I changed
+- Added new shared pricing helper module:
+  - `src/modules/pricing/work-item-pricing.ts`
+  - Canonical semantic projection (`PRICED_WORK` vs `CHECKLIST_ONLY`), assignment total calculation, and subtotal rollup helper.
+- Added unit tests:
+  - `src/modules/pricing/__tests__/work-item-pricing.test.ts`
+  - Covers checklist-only semantics, priced assignment totals, and subtotal exclusion of checklist-only items.
+- Updated quote builder:
+  - `src/app/admin/quotes/QuoteEditor.tsx`
+  - Switched add-on fetch to `/api/orders/addons` (role-aware)
+  - Reused shared pricing helper for subtotal and assignment meta rendering.
+- Updated order builder:
+  - `src/app/orders/new/page.tsx`
+  - Reused shared pricing helper for assignment meta rendering.
+  - Added Review step “Estimate summary” card with add-ons/labor subtotal + total estimate.
+
+## Files touched
+- `src/modules/pricing/work-item-pricing.ts`
+- `src/modules/pricing/__tests__/work-item-pricing.test.ts`
+- `src/app/admin/quotes/QuoteEditor.tsx`
+- `src/app/orders/new/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts`
+- `npm run lint`
+
+## Verification Evidence
+- Targeted pricing test suite passed (3/3).
+- Lint passed with no ESLint warnings/errors.
+
+## Diff/Review Notes
+- Scope intentionally limited to pricing parity and display/projection consistency in quote/order builders.
+- No new dependencies added.
+
+## Next steps
+- [ ] Consider applying the same shared pricing helper on API-side validation paths so client/server projections remain fully aligned.
+- [ ] Add role-visibility contract tests to ensure rate visibility and pricing semantics stay consistent for admin vs non-admin sessions.
+
+---
+
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Restore admin-visible add-on/labor pricing context in quote/order creation flows and repair the quote-conversion route type guard regression breaking build checks.
 
 ## What I changed

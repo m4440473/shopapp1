@@ -3,6 +3,43 @@
 ## Session Metadata
 - Date: 2026-04-07
 - Agent: GPT-5.3-Codex
+- Task ID: Order/Quote pricing parity follow-up
+- Goal: Unify work-item pricing semantics across quote/order builders and add missing order review pricing summary so totals/labels match.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, and `tasks/lessons.md` before implementation.
+- [x] Validated prior issue scope from latest regression notes and limited implementation to pricing contract/parity paths.
+
+## Plan First
+- [x] Add a shared canonical work-item pricing contract/helper (semantic classification + per-assignment totals + rollups).
+- [x] Reuse the helper in QuoteEditor and Orders/New assignment-card meta rendering to keep checklist/priced labeling consistent.
+- [x] Add order review-step pricing summary (add-ons/labor subtotal + total estimate) using the shared rollup logic.
+- [x] Align add-on fetch source between quote and order builders to avoid endpoint divergence.
+- [x] Add focused unit tests for priced vs checklist-only calculations and semantics.
+- [x] Run lint + targeted tests and log evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts`
+
+## Review + Results
+- Added a shared pricing contract helper (`getWorkItemPricingSemantic`, assignment totals, subtotal rollups) under `src/modules/pricing` for reuse across flows.
+- Updated Quote Editor and Orders/New assigned-item meta rendering to use shared checklist-vs-priced semantics and shared total projection rules.
+- Added an order review-step estimate summary card that now shows add-ons/labor subtotal and total estimate with checklist-only exclusion messaging.
+- Standardized Quote Editor add-on data source to `/api/orders/addons` (role-aware) so quote/order builders consume the same endpoint behavior.
+- Added focused Vitest coverage for priced/checklist-only semantic and subtotal invariants.
+
+Commands run:
+- npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts
+- npm run lint
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
 - Task ID: Unplanned regression fix (admin add-on/labor cost visibility + conversion build guard)
 - Goal: Restore admin-visible add-on/labor cost displays in quote/order creation flows and fix quote-conversion route type error introduced in today's changes.
 
