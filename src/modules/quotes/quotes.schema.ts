@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import { BUSINESS_CODES } from '@/lib/businesses';
 
+export const PricingMode = z.enum(['PER_UNIT', 'LOT_TOTAL']);
+
 export const QuoteAddonSelectionInput = z.object({
   addonId: z.string().trim().min(1),
   units: z.coerce.number().min(0).default(0),
@@ -68,6 +70,7 @@ export const QuoteCreate = z.object({
         name: z.string().trim().max(200).optional(),
         partNumber: z.string().trim().max(200).optional(),
         priceCents: z.coerce.number().int().min(0),
+        pricingMode: PricingMode.default('LOT_TOTAL'),
       })
     )
     .optional(),

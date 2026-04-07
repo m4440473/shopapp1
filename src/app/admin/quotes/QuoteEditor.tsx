@@ -51,6 +51,7 @@ import {
   calculateWorkItemsSubtotalCents,
   getWorkItemPricingSemantic,
 } from '@/modules/pricing/work-item-pricing';
+import { calculatePartLotTotal, type PartPricingMode } from '@/modules/pricing/part-pricing';
 
 import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
 
@@ -109,6 +110,12 @@ type QuoteAddonState = {
   notes: string;
 };
 
+
+type PartPricingState = {
+  partKey: string;
+  price: string;
+  pricingMode: PartPricingMode;
+};
 
 type AttachmentState = {
   key: string;
@@ -196,6 +203,14 @@ type QuoteDetail = {
     fieldId: string;
     value: unknown;
   }>;
+  metadata?: {
+    partPricing?: Array<{
+      name?: string | null;
+      partNumber?: string | null;
+      priceCents: number;
+      pricingMode?: PartPricingMode;
+    }>;
+  } | null;
 };
 
 interface QuoteEditorProps {
@@ -375,6 +390,26 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   });
   const [currentStep, setCurrentStep] = useState(0);
 
+  const [partPricing, setPartPricing] = useState<PartPricingState[]>(() => {
+    const stored = initialQuote?.metadata?.partPricing ?? [];
+    return parts.map((part, index) => {
+      const entry = stored[index];
+      const quantity = Number.parseInt(part.quantity || '1', 10) || 1;
+      const lotTotalFromAddons = (part.addonSelections ?? []).reduce((sum, selection) => {
+        const addon = (initialQuote?.parts?.[index]?.addonSelections ?? []).find((item) => item.id === selection.key);
+        return sum + (addon?.totalCents ?? 0);
+      }, 0);
+      const priceCents = entry?.priceCents ?? lotTotalFromAddons;
+      const pricingMode = entry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL';
+      const displayPrice = pricingMode === 'PER_UNIT' && quantity > 0 ? priceCents / 100 : priceCents / 100;
+      return {
+        partKey: part.key,
+        price: displayPrice.toFixed(2),
+        pricingMode,
+      } satisfies PartPricingState;
+    });
+  });
+
   const steps = [
     { key: 'info', label: 'Quote info' },
     { key: 'parts', label: 'Parts' },
@@ -433,6 +468,13 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     if (parts.some((part) => part.key === activePartKey)) return;
     setActivePartKey(parts[0]?.key ?? createKey());
   }, [activePartKey, parts]);
+
+  useEffect(() => {
+    setPartPricing((prev) => {
+      const byPartKey = new Map(prev.map((entry) => [entry.partKey, entry]));
+      return parts.map((part) => byPartKey.get(part.key) ?? { partKey: part.key, price: '0.00', pricingMode: 'LOT_TOTAL' });
+    });
+  }, [parts]);
 
   const [draftReference] = useState(() => createKey());
 
@@ -771,7 +813,19 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   );
 
   const basePriceCents = centsFromString(form.basePrice);
-  const totalCents = basePriceCents + vendorTotalsCents + addonsTotalsCents;
+  const partPricingTotalCents = partPricing.reduce((sum, entry) => {
+    const part = parts.find((candidate) => candidate.key === entry.partKey);
+    const quantity = Number.parseInt(part?.quantity || '1', 10) || 1;
+    return (
+      sum +
+      calculatePartLotTotal({
+        enteredPriceCents: centsFromString(entry.price),
+        quantity,
+        pricingMode: entry.pricingMode,
+      })
+    );
+  }, 0);
+  const totalCents = basePriceCents + vendorTotalsCents + addonsTotalsCents + partPricingTotalCents;
 
   const buildPayload = (): QuoteCreateInput => ({
     business: form.business,
@@ -835,6 +889,21 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         })(),
         mimeType: attachment.mimeType || undefined,
       })),
+    partPricing: parts.map((part) => {
+      const entry = partPricing.find((candidate) => candidate.partKey === part.key);
+      const quantity = Number.parseInt(part.quantity || '1', 10) || 1;
+      const pricingMode = entry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL';
+      return {
+        name: part.name || undefined,
+        partNumber: part.partNumber || undefined,
+        priceCents: calculatePartLotTotal({
+          enteredPriceCents: centsFromString(entry?.price || '0'),
+          quantity,
+          pricingMode,
+        }),
+        pricingMode,
+      };
+    }),
     customFieldValues: customFields
       .map((field) => ({ fieldId: field.id, value: customFieldValues[field.id] }))
       .filter((entry) => hasCustomFieldValue(entry.value)),
@@ -1792,6 +1861,66 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             </CardContent>
           </Card>
 
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Per-part pricing basis</CardTitle>
+              <CardDescription>Set whether each entered price is per unit or lot total.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {parts.map((part, index) => {
+                const entry = partPricing.find((candidate) => candidate.partKey === part.key) ?? {
+                  partKey: part.key,
+                  price: '0.00',
+                  pricingMode: 'LOT_TOTAL' as PartPricingMode,
+                };
+                const quantity = Number.parseInt(part.quantity || '1', 10) || 1;
+                const lotTotal = calculatePartLotTotal({
+                  enteredPriceCents: centsFromString(entry.price),
+                  quantity,
+                  pricingMode: entry.pricingMode,
+                });
+                return (
+                  <div key={part.key} className="grid gap-3 rounded border border-border/60 bg-background/60 p-3 md:grid-cols-[1.5fr_100px_160px_140px_auto] md:items-center">
+                    <div>
+                      <p className="text-sm font-medium">{part.partNumber || part.name || `Part ${index + 1}`}</p>
+                      <p className="text-xs text-muted-foreground">{part.name || 'Unnamed part'}</p>
+                    </div>
+                    <div className="text-sm text-muted-foreground">Qty: {quantity}</div>
+                    <Input
+                      inputMode="decimal"
+                      value={entry.price}
+                      onChange={(event) =>
+                        setPartPricing((prev) =>
+                          prev.map((row) =>
+                            row.partKey === part.key ? { ...row, price: event.target.value } : row
+                          )
+                        )
+                      }
+                      placeholder="0.00"
+                    />
+                    <Label className="flex items-center gap-2 text-xs">
+                      <Checkbox
+                        checked={entry.pricingMode === 'PER_UNIT'}
+                        onCheckedChange={(checked) =>
+                          setPartPricing((prev) =>
+                            prev.map((row) =>
+                              row.partKey === part.key
+                                ? { ...row, pricingMode: checked ? 'PER_UNIT' : 'LOT_TOTAL' }
+                                : row
+                            )
+                          )
+                        }
+                      />
+                      PER_UNIT
+                    </Label>
+                    <div className="text-sm font-medium">{formatCurrency(lotTotal)}</div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Summary</CardTitle>
@@ -1809,6 +1938,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               <div className="flex items-center justify-between text-sm">
                 <span>Add-ons and labor</span>
                 <span className="font-medium">{formatCurrency(addonsTotalsCents)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span>Part pricing (basis-adjusted)</span>
+                <span className="font-medium">{formatCurrency(partPricingTotalCents)}</span>
               </div>
               <div className="border-t border-border/60 pt-3 text-sm font-semibold">
                 <div className="flex items-center justify-between">

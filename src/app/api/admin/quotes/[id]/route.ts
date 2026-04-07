@@ -104,6 +104,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           name: entry.name ?? null,
           partNumber: entry.partNumber ?? null,
           priceCents: entry.priceCents ?? 0,
+          pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
         })),
       }
     : existingMetadata;

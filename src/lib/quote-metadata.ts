@@ -17,6 +17,7 @@ export type QuotePartPricingEntry = {
   name?: string | null;
   partNumber?: string | null;
   priceCents: number;
+  pricingMode?: 'PER_UNIT' | 'LOT_TOTAL';
 };
 
 export type QuoteMetadata = Record<string, unknown> & {
@@ -54,7 +55,10 @@ function cloneDefaultArray(values: number[] | undefined): number[] | undefined {
 
 function clonePartPricing(values: QuotePartPricingEntry[] | undefined): QuotePartPricingEntry[] | undefined {
   if (!values) return undefined;
-  return values.map((entry) => ({ ...entry }));
+  return values.map((entry) => ({
+    ...entry,
+    pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
+  }));
 }
 
 export function mergeQuoteMetadata(metadata: QuoteMetadata | null | undefined): QuoteMetadata {

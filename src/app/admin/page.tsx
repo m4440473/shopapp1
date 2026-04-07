@@ -71,6 +71,12 @@ const sections = [
         detail: 'Start a new customer quote.',
         icon: FileText,
       },
+      {
+        href: '/admin/quotes',
+        label: 'View Quotes',
+        detail: 'Open, review, and manage existing quotes.',
+        icon: FileText,
+      },
     ],
   },
   {

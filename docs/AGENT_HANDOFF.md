@@ -1,5 +1,62 @@
 Date: 2026-04-07
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Close the review-comment gate first, then restore admin quote discoverability and add per-part pricing basis controls across quote and order review flows.
+
+## What I changed
+- Added a mandatory review-comment gate artifact at the top of `tasks/todo.md`:
+  - mapped each unresolved PR ask to comment IDs (`PR-REV-001` .. `PR-REV-007`), target files, resolution strategy, and disposition.
+- Restored admin quote discoverability:
+  - Added `View Quotes` link in Admin `Quote & Order Ops` nav tab group.
+  - Added `View Quotes` card link in Admin Center `Quote & Order Ops` section.
+- Implemented quote per-part pricing basis controls:
+  - Added `pricingMode` enum support to quote schema (`PER_UNIT` | `LOT_TOTAL`).
+  - Added shared pricing helper `calculatePartLotTotal` in `src/modules/pricing/part-pricing.ts`.
+  - Added per-part review rows in Quote Editor with entered price + `PER_UNIT` toggle + live lot totals.
+  - Persisted pricing basis to quote metadata `partPricing` entries and reloads in edit flow.
+  - Updated quote summary totals to include a separate `Part pricing (basis-adjusted)` line item.
+- Implemented order-review equivalent controls (`/orders/new`):
+  - Added per-part entered price + mode toggle rows with immediate summary updates.
+  - Added explicit note that order-side pricing basis is review-transient and not persisted.
+- Updated quote metadata and projection helpers to carry `pricingMode` values.
+- Added focused unit tests for new mode math behavior.
+- Added Decision Log entry codifying pricing model choice (coexist line item, quote persisted, order transient).
+
+## Files touched
+- `src/components/Admin/NavTabs.tsx`
+- `src/app/admin/page.tsx`
+- `src/modules/quotes/quotes.schema.ts`
+- `src/lib/quote-metadata.ts`
+- `src/lib/quote-part-pricing.ts`
+- `src/modules/quotes/quotes.repo.ts`
+- `src/app/api/admin/quotes/[id]/route.ts`
+- `src/app/admin/quotes/QuoteEditor.tsx`
+- `src/app/orders/new/page.tsx`
+- `src/modules/pricing/part-pricing.ts`
+- `src/modules/pricing/__tests__/part-pricing.test.ts`
+- `docs/AGENT_CONTEXT.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run lint`
+- `npm run test -- src/modules/pricing/__tests__/part-pricing.test.ts`
+- `npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts`
+
+## Verification Evidence
+- Lint passed with no ESLint warnings/errors.
+- Targeted pricing tests passed:
+  - `part-pricing.test.ts` (2/2)
+  - `work-item-pricing.test.ts` (3/3)
+
+## Next steps
+- [ ] Add quote editor interaction tests that cover mode toggling in UI and payload serialization for `partPricing`.
+- [ ] If order-side persistence is desired, add an explicit Orders-domain schema/metadata contract before implementing storage.
+
+---
+
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Close quote/order pricing mismatch by introducing a shared work-item pricing contract and adding the missing order review-step totals.
 
 ## What I changed
