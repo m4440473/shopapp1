@@ -89,9 +89,10 @@ export default function OrderDetailPage() {
   const [timerLoading, setTimerLoading] = useState(false);
   const [timerSaving, setTimerSaving] = useState(false);
   const [activeEntry, setActiveEntry] = useState<any | null>(null);
+  const [activeEntries, setActiveEntries] = useState<any[]>([]);
   const [activePart, setActivePart] = useState<any | null>(null);
+  const [selectedTimerDepartmentId, setSelectedTimerDepartmentId] = useState<string>('');
   const [partTotals, setPartTotals] = useState<Record<string, number>>({});
-  const [lastPartEntries, setLastPartEntries] = useState<Record<string, any | null>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [conflictState, setConflictState] = useState<ConflictState>({
     open: false,
@@ -141,6 +142,44 @@ export default function OrderDetailPage() {
     return Array.from(groups.values());
   }, [selectedChecklist]);
 
+  const timerDepartments = useMemo(() => {
+    const entries = Array.isArray(item?.checklist) ? item.checklist : [];
+    const groups = new Map<string, { id: string; name: string }>();
+    entries.forEach((entry: any) => {
+      const departmentId = entry?.departmentId;
+      if (!departmentId) return;
+      const name = String(entry?.department?.name ?? '').trim();
+      if (!name || name.toLowerCase() === 'shipping') return;
+      if (!groups.has(departmentId)) {
+        groups.set(departmentId, { id: departmentId, name });
+      }
+    });
+    return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [item?.checklist]);
+
+  const selectedPartDepartmentHistory = useMemo(() => {
+    if (!selectedPartId) return [];
+    const entries = Array.isArray(item?.timeEntries) ? item.timeEntries : [];
+    const filtered = entries.filter((entry: any) => entry.partId === selectedPartId && entry.endedAt);
+    const grouped = new Map<string, { departmentId: string | null; departmentName: string; totalSeconds: number; entries: any[] }>();
+    filtered.forEach((entry: any) => {
+      const started = new Date(entry.startedAt).getTime();
+      const ended = new Date(entry.endedAt).getTime();
+      if (!Number.isFinite(started) || !Number.isFinite(ended) || ended <= started) return;
+      const seconds = Math.floor((ended - started) / 1000);
+      const departmentId = entry.departmentId ?? null;
+      const departmentName = entry.department?.name ?? (departmentId ? `Department ${departmentId}` : 'Unassigned');
+      const key = departmentId ?? '__none__';
+      if (!grouped.has(key)) {
+        grouped.set(key, { departmentId, departmentName, totalSeconds: 0, entries: [] });
+      }
+      const group = grouped.get(key)!;
+      group.totalSeconds += seconds;
+      group.entries.push({ ...entry, durationSeconds: seconds });
+    });
+    return Array.from(grouped.values()).sort((a, b) => b.totalSeconds - a.totalSeconds);
+  }, [item?.timeEntries, selectedPartId]);
+
   const partManualAdjustments = useMemo(() => {
     const all = Array.isArray((item as any)?.partTimeAdjustments) ? (item as any).partTimeAdjustments : [];
     return all.filter((adjustment: any) => adjustment.partId === selectedPartId);
@@ -163,24 +202,27 @@ export default function OrderDetailPage() {
     return attachments.filter((attachment: any) => attachment.partId === selectedPartId);
   }, [item?.partAttachments, selectedPartId]);
 
+  const selectedActiveEntry = useMemo(
+    () =>
+      activeEntries.find(
+        (entry: any) =>
+          entry?.partId === selectedPartId &&
+          (selectedTimerDepartmentId ? entry?.departmentId === selectedTimerDepartmentId : true)
+      ) ?? null,
+    [activeEntries, selectedPartId, selectedTimerDepartmentId]
+  );
+
   const lastPartEvent = useMemo(() => {
     if (!partEvents.length) return null;
     return partEvents[0] ?? null;
   }, [partEvents]);
 
-  const activeElapsedSeconds = useMemo(() => {
-    if (!activeEntry?.startedAt) return 0;
-    const started = new Date(activeEntry.startedAt).getTime();
-    return Math.max(0, Math.floor((nowMs - started) / 1000));
-  }, [activeEntry?.startedAt, nowMs]);
-
-
   useEffect(() => {
-    const interval = activeEntry ? window.setInterval(() => setNowMs(Date.now()), 1000) : null;
+    const interval = activeEntries.length ? window.setInterval(() => setNowMs(Date.now()), 1000) : null;
     return () => {
       if (interval) window.clearInterval(interval);
     };
-  }, [activeEntry]);
+  }, [activeEntries.length]);
 
   const load = React.useCallback(async () => {
     if (!id) return null;
@@ -237,9 +279,9 @@ export default function OrderDetailPage() {
       if (!res.ok) throw res;
       const data = await res.json();
       setActiveEntry(data.activeEntry ?? null);
+      setActiveEntries(Array.isArray(data.activeEntries) ? data.activeEntries : []);
       setActivePart(data.activePart ?? null);
       setPartTotals(data.totalsSeconds ?? {});
-      setLastPartEntries(data.lastPartEntries ?? {});
       setTimerError(null);
     } catch {
       setTimerError('Failed to load timer status.');
@@ -272,36 +314,28 @@ export default function OrderDetailPage() {
 
   const handleStart = async (): Promise<boolean> => {
     if (!id || !selectedPartId) return false;
+    if (!selectedTimerDepartmentId) {
+      setTimerError('Please choose a department before starting a timer.');
+      return false;
+    }
     setTimerSaving(true);
     setTimerError(null);
     try {
       const res = await fetch('/api/timer/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: id, partId: selectedPartId, operation: 'Part Work' }),
+        body: JSON.stringify({ orderId: id, partId: selectedPartId, departmentId: selectedTimerDepartmentId, operation: 'Part Work' }),
         credentials: 'include',
       });
-      if (res.status === 409) {
-        const data = await res.json();
-        if (data.requiredAction !== 'switch_confirmation') {
-          setTimerError(typeof data.error === 'string' ? data.error : 'Timer state is out of sync. Refresh and try again.');
-          await refreshTimerSummary();
-          return false;
-        }
-
-        setConflictState({
-          open: true,
-          activeEntry: data.activeEntry ?? null,
-          activeOrder: data.activeOrder ?? null,
-          activePart: data.activePart ?? null,
-          activeOrderHref: data.activeOrderHref ?? null,
-          elapsedSeconds: data.elapsedSeconds ?? 0,
-        });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setTimerError(typeof data?.error === 'string' ? data.error : 'Failed to start timer.');
+        await refreshTimerSummary();
         return false;
       }
-      if (!res.ok) throw res;
       await refreshTimerSummary();
       await loadPartEvents();
+      setSelectedTimerDepartmentId('');
       return true;
     } catch {
       setTimerError('Failed to start timer.');
@@ -311,11 +345,17 @@ export default function OrderDetailPage() {
     }
   };
 
-  const handlePause = async (): Promise<boolean> => {
+  const handlePause = async (entryId?: string): Promise<boolean> => {
+    if (!entryId) return false;
     setTimerSaving(true);
     setTimerError(null);
     try {
-      const res = await fetch('/api/timer/pause', { method: 'POST', credentials: 'include' });
+      const res = await fetch('/api/timer/pause', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entryId }),
+      });
       if (!res.ok) throw res;
       await refreshTimerSummary();
       await loadPartEvents();
@@ -328,70 +368,21 @@ export default function OrderDetailPage() {
     }
   };
 
-  const handleResume = async (): Promise<boolean> => {
-    if (!selectedPartId) return false;
-    const selectedPartLastEntry = lastPartEntries[selectedPartId] ?? null;
-    const entryId = selectedPartLastEntry?.id;
+  const handleActivateSelectedPart = async (): Promise<boolean> => {
+    return handleStart();
+  };
+
+  const handleFinish = async (entryId?: string): Promise<boolean> => {
     if (!entryId) return false;
     setTimerSaving(true);
     setTimerError(null);
     try {
-      const res = await fetch('/api/timer/resume', {
+      const res = await fetch('/api/timer/finish', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entryId }),
-        credentials: 'include',
       });
-      if (res.status === 409) {
-        const data = await res.json();
-        if (data.requiredAction !== 'switch_confirmation') {
-          setTimerError(typeof data.error === 'string' ? data.error : 'Timer state is out of sync. Refresh and try again.');
-          await refreshTimerSummary();
-          return false;
-        }
-
-        setConflictState({
-          open: true,
-          activeEntry: data.activeEntry ?? null,
-          activeOrder: data.activeOrder ?? null,
-          activePart: data.activePart ?? null,
-          activeOrderHref: data.activeOrderHref ?? null,
-          elapsedSeconds: data.elapsedSeconds ?? 0,
-        });
-        return false;
-      }
-      if (!res.ok) throw res;
-      await refreshTimerSummary();
-      await loadPartEvents();
-      return true;
-    } catch {
-      setTimerError('Failed to resume timer.');
-      return false;
-    } finally {
-      setTimerSaving(false);
-    }
-  };
-
-  const handleActivateSelectedPart = async (): Promise<boolean> => {
-    const selectedPartLastEntry = selectedPartId ? lastPartEntries[selectedPartId] ?? null : null;
-    const canResume = Boolean(
-      selectedPartLastEntry?.id &&
-      selectedPartLastEntry?.endedAt &&
-      !(activeEntry?.partId && activeEntry.partId === selectedPartId)
-    );
-
-    if (canResume) {
-      return handleResume();
-    }
-
-    return handleStart();
-  };
-
-  const handleFinish = async (): Promise<boolean> => {
-    setTimerSaving(true);
-    setTimerError(null);
-    try {
-      const res = await fetch('/api/timer/finish', { method: 'POST', credentials: 'include' });
       if (!res.ok) throw res;
       await load();
       await refreshTimerSummary();
@@ -468,7 +459,8 @@ export default function OrderDetailPage() {
 
   const handleConflictAction = async (action: 'pause' | 'finish') => {
     setConflictState((prev) => ({ ...prev, open: false }));
-    const closedCurrent = action === 'pause' ? await handlePause() : await handleFinish();
+    const entryId = conflictState.activeEntry?.id as string | undefined;
+    const closedCurrent = action === 'pause' ? await handlePause(entryId) : await handleFinish(entryId);
     if (!closedCurrent) return;
     await handleActivateSelectedPart();
   };
@@ -686,27 +678,17 @@ export default function OrderDetailPage() {
         .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
         .join(' ')
     : 'Unknown';
-  const activeOnSelected = Boolean(activeEntry?.partId && activeEntry.partId === selectedPartId);
+  const activeOnSelected = Boolean(selectedActiveEntry);
   const selectedPartTimerSeconds = selectedPartId ? partTotals[selectedPartId] ?? 0 : 0;
   const selectedPartManualSeconds = selectedPartId ? manualPartTotals[selectedPartId] ?? 0 : 0;
   const selectedPartStoredSeconds = selectedPartTimerSeconds + selectedPartManualSeconds;
-  const selectedPartElapsedSeconds = activeOnSelected ? selectedPartStoredSeconds + activeElapsedSeconds : selectedPartStoredSeconds;
-  const selectedPartLastEntry = selectedPartId ? lastPartEntries[selectedPartId] ?? null : null;
-  const canResumeSelected = Boolean(selectedPartLastEntry?.id && selectedPartLastEntry?.endedAt && !activeOnSelected);
-  const hasActiveEntry = Boolean(activeEntry);
-  const isSwitchAction = Boolean(activeEntry && selectedPartId && activeEntry.partId !== selectedPartId);
-  const startButtonLabel = isSwitchAction
-    ? canResumeSelected
-      ? 'Resume selected part'
-      : 'Switch to selected part'
-    : canResumeSelected
-      ? 'Resume selected part'
-      : 'Start selected part';
-  const startHelperLabel = isSwitchAction
-    ? 'Starting or resuming will ask for switch confirmation to prevent timer overlap.'
-    : canResumeSelected
-      ? 'Resumes the selected part timer from its last paused state.'
-      : 'Starts a timer on the selected part.';
+  const selectedActiveElapsedSeconds = selectedActiveEntry?.startedAt
+    ? Math.max(0, Math.floor((nowMs - new Date(selectedActiveEntry.startedAt).getTime()) / 1000))
+    : 0;
+  const selectedPartElapsedSeconds = activeOnSelected ? selectedPartStoredSeconds + selectedActiveElapsedSeconds : selectedPartStoredSeconds;
+  const hasActiveEntry = activeEntries.length > 0;
+  const startButtonLabel = 'Start selected part';
+  const startHelperLabel = 'Starts a timer on the selected part for the selected department.';
 
   return (
     <div className="space-y-6">
@@ -769,21 +751,27 @@ export default function OrderDetailPage() {
                   </div>
                 </div>
                 <Badge className={hasActiveEntry ? 'bg-emerald-500/15 text-emerald-200' : 'bg-muted text-foreground'}>
-                  {activeOnSelected ? 'Timer running' : hasActiveEntry ? 'Timer active on another part' : 'Timer paused/stopped'}
+                  {activeOnSelected ? 'Timer running for selected department' : hasActiveEntry ? 'Other department timers running' : 'Timer paused/stopped'}
                 </Badge>
               </div>
 
-              {activeEntry && activeEntry.partId !== selectedPartId ? (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-                  Active on {activePart?.partNumber || 'another part'}. Starting here will open a switch confirmation dialog.
-                </div>
-              ) : null}
-
               <div className="grid gap-2">
+                <Select value={selectedTimerDepartmentId} onValueChange={setSelectedTimerDepartmentId}>
+                  <SelectTrigger className="h-8">
+                    <SelectValue placeholder="Choose timer department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {timerDepartments.map((department) => (
+                      <SelectItem key={department.id} value={department.id}>
+                        {department.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   type="button"
                   size="sm"
-                  disabled={!selectedPartId || timerSaving || activeOnSelected}
+                  disabled={!selectedPartId || timerSaving || activeOnSelected || !selectedTimerDepartmentId}
                   onClick={handleActivateSelectedPart}
                   className="justify-start gap-2"
                 >
@@ -794,8 +782,8 @@ export default function OrderDetailPage() {
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={!activeEntry || timerSaving}
-                  onClick={handlePause}
+                  disabled={!selectedActiveEntry || timerSaving}
+                  onClick={() => void handlePause(selectedActiveEntry?.id)}
                   className="justify-start gap-2"
                 >
                   <PauseCircle className="h-4 w-4" />
@@ -805,8 +793,8 @@ export default function OrderDetailPage() {
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={!activeEntry || timerSaving}
-                  onClick={handleFinish}
+                  disabled={!selectedActiveEntry || timerSaving}
+                  onClick={() => void handleFinish(selectedActiveEntry?.id)}
                   className="justify-start gap-2"
                 >
                   <Square className="h-4 w-4" />
@@ -859,6 +847,32 @@ export default function OrderDetailPage() {
                         +{formatDuration(Number(adjustment.seconds ?? 0))} — {adjustment.note}
                       </div>
                     ))}
+                  </div>
+                ) : null}
+                {selectedPartDepartmentHistory.length ? (
+                  <div className="mt-3 space-y-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Department history totals</div>
+                    <div className="grid gap-2 md:grid-cols-3">
+                      {selectedPartDepartmentHistory.map((group) => (
+                        <div key={group.departmentId ?? '__none__'} className="rounded border border-border/60 bg-background/70 p-2">
+                          <div className="text-[11px] text-muted-foreground">{group.departmentName}</div>
+                          <div className="text-sm font-semibold text-foreground">{formatDuration(group.totalSeconds)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="space-y-1">
+                      {selectedPartDepartmentHistory.map((group) => (
+                        <div key={`${group.departmentId ?? '__none__'}_rows`} className="rounded border border-border/50 bg-background/50 p-2">
+                          <div className="mb-1 text-[11px] font-medium text-foreground">{group.departmentName}</div>
+                          {group.entries.slice(0, 5).map((entry: any) => (
+                            <div key={entry.id} className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                              <span>{new Date(entry.startedAt).toLocaleString()}</span>
+                              <span className="font-medium text-foreground">{formatDuration(entry.durationSeconds)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>

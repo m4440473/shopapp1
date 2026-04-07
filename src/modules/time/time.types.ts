@@ -2,6 +2,7 @@ export type TimeEntry = {
   id: string;
   orderId: string;
   partId: string | null;
+  departmentId: string | null;
   userId: string;
   operation: string;
   startedAt: Date;
@@ -13,6 +14,7 @@ export type TimeEntry = {
 export type TimeEntryStartInput = {
   orderId: string;
   partId?: string | null;
+  departmentId: string;
   operation: string;
 };
 

@@ -161,6 +161,7 @@ export type MockTimeEntry = {
   userId: string;
   orderId: string;
   partId: string | null;
+  departmentId: string | null;
   operation: string | null;
   startedAt: Date;
   endedAt: Date | null;
@@ -434,6 +435,7 @@ export function createMockSeedState(): MockSeedState {
       userId: 'test-user',
       orderId: 'order_test_001',
       partId: 'part_test_001',
+      departmentId: 'dept_test_001',
       operation: 'Machining',
       startedAt: baseDate,
       endedAt: laterDate,

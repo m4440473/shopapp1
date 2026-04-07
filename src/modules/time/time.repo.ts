@@ -7,6 +7,20 @@ export async function findActiveTimeEntryForUser(userId: string) {
   });
 }
 
+export async function listActiveTimeEntriesForUser(userId: string) {
+  return prisma.timeEntry.findMany({
+    where: { userId, endedAt: null },
+    orderBy: { startedAt: 'desc' },
+  });
+}
+
+export async function findActiveTimeEntryForUserDepartment(userId: string, departmentId: string) {
+  return prisma.timeEntry.findFirst({
+    where: { userId, departmentId, endedAt: null },
+    orderBy: { startedAt: 'desc' },
+  });
+}
+
 export async function findLatestTimeEntryForUserOrder(
   userId: string,
   orderId: string,
@@ -48,6 +62,7 @@ export async function listTimeEntriesForOrderParts(orderId: string, partIds: str
 export async function createTimeEntry(data: {
   orderId: string;
   partId?: string | null;
+  departmentId?: string | null;
   userId: string;
   operation: string;
   startedAt?: Date;
@@ -56,6 +71,7 @@ export async function createTimeEntry(data: {
     data: {
       orderId: data.orderId,
       partId: data.partId ?? null,
+      departmentId: data.departmentId ?? null,
       userId: data.userId,
       operation: data.operation,
       startedAt: data.startedAt ?? new Date(),

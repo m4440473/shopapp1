@@ -40,6 +40,26 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-07 — Department-based timer starts + department history totals
+- Added `departmentId` support on `TimeEntry` (Prisma schema + migration) so timers are now tied to departments.
+- Updated timer domain/service/repo logic to enforce one active timer per user per department (while allowing concurrent active timers across different departments).
+- Updated timer start APIs (`/api/timer/start` and `/api/time/start`) to require an explicit department and reject Shipping timers.
+- Updated order detail timer UI to require a fresh department dropdown selection before every start action, pass `departmentId` to timer start, and target pause/stop actions by specific entry ID.
+- Added selected-part timer history presentation grouped by department: summary total cards plus a detailed recent-entry area per department.
+- Extended order details payload to include `timeEntries` with department and user context for history rendering.
+- Updated mock repo/time tests to include department-aware timer behavior and coverage for per-department concurrency.
+
+Commands run:
+- npx prisma format
+- npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --script > /tmp/time_dept_migration.sql
+- npm run lint
+- npm run test -- src/modules/time/__tests__/time.service.test.ts
+
+Verification note:
+- Prisma schema formatting succeeded.
+- Lint passed with no ESLint warnings/errors.
+- Targeted time service tests passed (6/6).
+
 ### 2026-04-07 — BOM analyzer persistence + corner-based tolerance extraction improvements
 - Added persistent BOM analyzer storage via new `PartBomAnalysis` model/migration keyed by `(orderId, partId)` so latest analyzer output is retained and shareable across sessions/users for each part.
 - Updated `POST /api/print-analyzer/analyze` to optionally accept `orderId`/`partId`, persist successful analyses, and run a four-corner zoom title-block tolerance extraction pass with stricter no-hallucination guidance.

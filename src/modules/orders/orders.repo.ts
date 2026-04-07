@@ -253,6 +253,13 @@ export async function findOrderWithDetails(id: string) {
       attachments: { include: { uploadedBy: true }, orderBy: { createdAt: 'desc' } },
       partAttachments: { orderBy: { createdAt: 'desc' } },
       partTimeAdjustments: { include: { user: { select: { id: true, name: true, email: true } } }, orderBy: { createdAt: 'desc' } },
+      timeEntries: {
+        orderBy: { startedAt: 'desc' },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          department: { select: { id: true, name: true } },
+        },
+      },
       assignedMachinist: true,
       vendor: true,
     },

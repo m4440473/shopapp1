@@ -3,9 +3,11 @@ import {
   closeTimeEntryById,
   createTimeEntry,
   findActiveTimeEntryForUser,
+  findActiveTimeEntryForUserDepartment,
   findLatestTimeEntriesForUserParts,
   findLatestTimeEntryForUserOrder,
   findTimeEntryById,
+  listActiveTimeEntriesForUser,
   listTimeEntriesForOrderParts,
   updateClosedTimeEntryById,
 } from '@/repos/time';
@@ -45,6 +47,11 @@ export async function getActiveTimeEntry(userId: string): Promise<ServiceResult<
   return ok({ entry });
 }
 
+export async function getActiveTimeEntries(userId: string): Promise<ServiceResult<{ entries: TimeEntry[] }>> {
+  const entries = await listActiveTimeEntriesForUser(userId);
+  return ok({ entries });
+}
+
 export async function getTimeEntrySummary(
   userId: string,
   orderId: string,
@@ -77,13 +84,9 @@ export async function startTimeEntry(
   input: TimeEntryStartInput
 ): Promise<ServiceResult<{ entry: TimeEntry }>> {
   const now = new Date();
-  const active = await findActiveTimeEntryForUser(userId);
-
-  if (active) {
-    const closeResult = await closeTimeEntryById(active.id, now);
-    if (closeResult.count === 0) {
-      return fail(409, 'Active time entry could not be closed.');
-    }
+  const activeInDepartment = await findActiveTimeEntryForUserDepartment(userId, input.departmentId);
+  if (activeInDepartment) {
+    return fail(409, 'An active timer already exists for this department.');
   }
 
   try {
@@ -91,6 +94,7 @@ export async function startTimeEntry(
       userId,
       orderId: input.orderId,
       partId: input.partId ?? null,
+      departmentId: input.departmentId,
       operation: input.operation,
       startedAt: now,
     });
@@ -105,7 +109,7 @@ export async function startTimeEntryWithConflict(
   userId: string,
   input: TimeEntryStartInput
 ): Promise<ServiceResult<{ entry: TimeEntry }>> {
-  const active = await findActiveTimeEntryForUser(userId);
+  const active = await findActiveTimeEntryForUserDepartment(userId, input.departmentId);
   if (active) {
     return fail(409, 'Active time entry already running.');
   }
@@ -115,6 +119,7 @@ export async function startTimeEntryWithConflict(
       userId,
       orderId: input.orderId,
       partId: input.partId ?? null,
+      departmentId: input.departmentId,
       operation: input.operation,
       startedAt: new Date(),
     });
@@ -202,13 +207,14 @@ export async function resumeTimeEntry(
     return fail(409, 'Cannot resume an entry that is still active.');
   }
 
+  if (!previous.departmentId) {
+    return fail(409, 'Cannot resume this timer because it has no department.');
+  }
+
   const now = new Date();
-  const active = await findActiveTimeEntryForUser(userId);
-  if (active) {
-    const closeResult = await closeTimeEntryById(active.id, now);
-    if (closeResult.count === 0) {
-      return fail(409, 'Active time entry could not be closed.');
-    }
+  const activeInDepartment = await findActiveTimeEntryForUserDepartment(userId, previous.departmentId);
+  if (activeInDepartment) {
+    return fail(409, 'An active timer already exists for this department.');
   }
 
   try {
@@ -216,6 +222,7 @@ export async function resumeTimeEntry(
       userId,
       orderId: previous.orderId,
       partId: previous.partId,
+      departmentId: previous.departmentId,
       operation: previous.operation,
       startedAt: now,
     });

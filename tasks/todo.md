@@ -3,6 +3,31 @@
 ## Session Metadata
 - Date: 2026-04-07
 - Agent: GPT-5.3-Codex
+- Task ID: Unplanned feature (department-bound timers + department history totals)
+- Goal: Tie timer starts to explicit department selection, enforce one active timer per department (with Shipping blocked for timers), and surface department-based time totals/history detail in order detail.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No blocking dependency gaps identified for this scoped timer/history feature.
+
+## Plan First
+- [x] Add timer department persistence + validation in schema/service/repo (including per-department active constraint behavior and Shipping exclusion).
+- [x] Update timer APIs/UI start flow to require fresh department dropdown selection every start attempt.
+- [x] Add selected-part department summary cards + detailed timer history entries grouped by department.
+- [x] Run focused verification and capture command evidence.
+- [x] Update continuity docs (`PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`) with work summary and evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test -- src/modules/time/__tests__/time.service.test.ts`
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
 - Task ID: BOM analyzer persistence + tolerance extraction + tap drill decimal display
 - Goal: Persist BOM analysis per order part across sessions/users, strengthen tolerance extraction behavior, and include inch decimal for letter drills.
 

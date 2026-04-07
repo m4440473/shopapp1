@@ -8,28 +8,28 @@ datasource db {
 }
 
 model User {
-  id               String   @id @default(cuid())
-  email            String   @unique
-  name             String?
-  role             String   @default("MACHINIST")
-  active           Boolean  @default(true)
+  id           String  @id @default(cuid())
+  email        String  @unique
+  name         String?
+  role         String  @default("MACHINIST")
+  active       Boolean @default(true)
   // Credentials provider (nullable)
-  passwordHash     String?
+  passwordHash String?
 
-  orders           Order[]  @relation("AssignedOrders")
-  quotes           Quote[]
-  notes            Note[]
-  timeLogs         TimeLog[]
-  timeEntries      TimeEntry[]
-  checklistToggles OrderChecklist[] @relation("ChecklistToggledBy")
-  uploadedAttachments Attachment[] @relation("UserAttachments")
-  statusHistories StatusHistory[] @relation("UserStatusHistory")
-  partEvents      PartEvent[]
+  orders              Order[]              @relation("AssignedOrders")
+  quotes              Quote[]
+  notes               Note[]
+  timeLogs            TimeLog[]
+  timeEntries         TimeEntry[]
+  checklistToggles    OrderChecklist[]     @relation("ChecklistToggledBy")
+  uploadedAttachments Attachment[]         @relation("UserAttachments")
+  statusHistories     StatusHistory[]      @relation("UserStatusHistory")
+  partEvents          PartEvent[]
   partTimeAdjustments PartTimeAdjustment[]
-  partBomAnalyses    PartBomAnalysis[]
+  partBomAnalyses     PartBomAnalysis[]
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Customer {
@@ -40,11 +40,11 @@ model Customer {
   email   String?
   address String?
 
-  orders  Order[]
-  quotes  Quote[]
+  orders Order[]
+  quotes Quote[]
 
-  @@index([name])
   @@unique([name])
+  @@index([name])
 }
 
 model Material {
@@ -53,99 +53,96 @@ model Material {
   spec  String?
   notes String?
 
-  parts OrderPart[]
+  parts      OrderPart[]
   quoteParts QuotePart[] @relation("QuotePartMaterial")
 }
 
 model Vendor {
-  id     String  @id @default(cuid())
-  name   String  @unique
-  url    String?
-  phone  String?
-  notes  String?
+  id    String  @id @default(cuid())
+  name  String  @unique
+  url   String?
+  phone String?
+  notes String?
 
-  orders Order[]
+  orders           Order[]
   quoteVendorItems QuoteVendorItem[]
 }
 
 model Order {
-  id               String   @id @default(cuid())
-  orderNumber      String   @unique
-  business         String   @default("STD")
-  customerId       String
-  customer         Customer @relation(fields: [customerId], references: [id])
-  status           String
-  priority         String
-  dueDate          DateTime
-  receivedDate     DateTime
-  modelIncluded    Boolean @default(false)
-  materialNeeded   Boolean @default(false)
-  materialOrdered  Boolean @default(false)
-  vendorId         String?
-  vendor           Vendor? @relation(fields: [vendorId], references: [id])
-  poNumber         String?
+  id                  String               @id @default(cuid())
+  orderNumber         String               @unique
+  business            String               @default("STD")
+  customerId          String
+  customer            Customer             @relation(fields: [customerId], references: [id])
+  status              String
+  priority            String
+  dueDate             DateTime
+  receivedDate        DateTime
+  modelIncluded       Boolean              @default(false)
+  materialNeeded      Boolean              @default(false)
+  materialOrdered     Boolean              @default(false)
+  vendorId            String?
+  vendor              Vendor?              @relation(fields: [vendorId], references: [id])
+  poNumber            String?
   assignedMachinistId String?
-  assignedMachinist   User? @relation("AssignedOrders", fields: [assignedMachinistId], references: [id])
-  parts            OrderPart[]
-  checklist        OrderChecklist[]
-  charges          OrderCharge[]
-  attachments      Attachment[]
-  partAttachments  PartAttachment[]
-  notes            Note[]
-  timeLogs         TimeLog[]
-  timeEntries      TimeEntry[]
-  statusHistory    StatusHistory[]
-  partEvents       PartEvent[]
+  assignedMachinist   User?                @relation("AssignedOrders", fields: [assignedMachinistId], references: [id])
+  parts               OrderPart[]
+  checklist           OrderChecklist[]
+  charges             OrderCharge[]
+  attachments         Attachment[]
+  partAttachments     PartAttachment[]
+  notes               Note[]
+  timeLogs            TimeLog[]
+  timeEntries         TimeEntry[]
+  statusHistory       StatusHistory[]
+  partEvents          PartEvent[]
   partTimeAdjustments PartTimeAdjustment[]
-  bomAnalyses      PartBomAnalysis[]
+  bomAnalyses         PartBomAnalysis[]
 }
 
-
-
 model OrderPart {
-  id                  String      @id @default(cuid())
+  id                  String               @id @default(cuid())
   orderId             String
-  order               Order       @relation(fields: [orderId], references: [id])
+  order               Order                @relation(fields: [orderId], references: [id])
   partNumber          String
   quantity            Int
   materialId          String?
-  material            Material?   @relation(fields: [materialId], references: [id])
+  material            Material?            @relation(fields: [materialId], references: [id])
   currentDepartmentId String?
-  currentDepartment   Department? @relation(fields: [currentDepartmentId], references: [id])
+  currentDepartment   Department?          @relation(fields: [currentDepartmentId], references: [id])
   notes               String?
   stockSize           String?
   cutLength           String?
-  status              String      @default("IN_PROGRESS")
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  status              String               @default("IN_PROGRESS")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
   charges             OrderCharge[]
   attachments         PartAttachment[]
   checklistItems      OrderChecklist[]
   timeEntries         TimeEntry[]
   partEvents          PartEvent[]
-  timeAdjustments      PartTimeAdjustment[]
-  bomAnalyses          PartBomAnalysis[]
+  timeAdjustments     PartTimeAdjustment[]
+  bomAnalyses         PartBomAnalysis[]
 }
 
-
 model OrderChecklist {
-  id          String   @id @default(cuid())
-  orderId     String
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  partId      String?
-  part        OrderPart? @relation(fields: [partId], references: [id], onDelete: SetNull)
-  chargeId    String?
-  charge      OrderCharge? @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+  id           String       @id @default(cuid())
+  orderId      String
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId       String?
+  part         OrderPart?   @relation(fields: [partId], references: [id], onDelete: SetNull)
+  chargeId     String?
+  charge       OrderCharge? @relation(fields: [chargeId], references: [id], onDelete: SetNull)
   departmentId String?
-  department  Department? @relation(fields: [departmentId], references: [id])
-  addonId     String?
-  addon       Addon?    @relation(fields: [addonId], references: [id])
-  completed   Boolean  @default(false)
-  isActive    Boolean  @default(true)
-  toggledById String?
-  toggledBy   User?    @relation("ChecklistToggledBy", fields: [toggledById], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  addonId      String?
+  addon        Addon?       @relation(fields: [addonId], references: [id])
+  completed    Boolean      @default(false)
+  isActive     Boolean      @default(true)
+  toggledById  String?
+  toggledBy    User?        @relation("ChecklistToggledBy", fields: [toggledById], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@unique([orderId, addonId, partId])
   @@unique([orderId, chargeId])
@@ -173,36 +170,39 @@ model TimeLog {
 }
 
 model TimeEntry {
-  id        String   @id @default(cuid())
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id])
-  partId    String?
-  part      OrderPart? @relation(fields: [partId], references: [id])
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  operation String
-  startedAt DateTime @default(now())
-  endedAt   DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String      @id @default(cuid())
+  orderId      String
+  order        Order       @relation(fields: [orderId], references: [id])
+  partId       String?
+  part         OrderPart?  @relation(fields: [partId], references: [id])
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  operation    String
+  startedAt    DateTime    @default(now())
+  endedAt      DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   @@index([userId, endedAt])
+  @@index([userId, departmentId, endedAt])
   @@index([orderId])
   @@index([partId])
 }
 
 model PartEvent {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   partId    String
   part      OrderPart @relation(fields: [partId], references: [id], onDelete: Cascade)
   userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   type      String
   message   String
   meta      String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([orderId])
   @@index([partId])
@@ -227,17 +227,17 @@ model PartTimeAdjustment {
 }
 
 model PartBomAnalysis {
-  id         String   @id @default(cuid())
-  orderId    String
-  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  partId     String
-  part       OrderPart @relation(fields: [partId], references: [id], onDelete: Cascade)
+  id           String    @id @default(cuid())
+  orderId      String
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId       String
+  part         OrderPart @relation(fields: [partId], references: [id], onDelete: Cascade)
   analyzedById String?
-  analyzedBy User?    @relation(fields: [analyzedById], references: [id], onDelete: SetNull)
-  resultJson String
-  sourceLabel String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  analyzedBy   User?     @relation(fields: [analyzedById], references: [id], onDelete: SetNull)
+  resultJson   String
+  sourceLabel  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([orderId, partId])
   @@index([partId])
@@ -245,16 +245,16 @@ model PartBomAnalysis {
 }
 
 model Attachment {
-  id        String   @id @default(cuid())
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id])
-  url       String?
-  storagePath String?
-  label     String?
-  mimeType  String?
+  id           String   @id @default(cuid())
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id])
+  url          String?
+  storagePath  String?
+  label        String?
+  mimeType     String?
   uploadedById String?
-  uploadedBy   User? @relation("UserAttachments", fields: [uploadedById], references: [id])
-  createdAt DateTime @default(now())
+  uploadedBy   User?    @relation("UserAttachments", fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
 
   @@index([storagePath])
 }
@@ -272,62 +272,63 @@ model StatusHistory {
 }
 
 model Addon {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  rateType    String
-  rateCents   Int
-  active      Boolean  @default(true)
-  affectsPrice Boolean @default(true)
-  isChecklistItem Boolean @default(true)
-  departmentId String
-  department  Department @relation(fields: [departmentId], references: [id])
+  id              String     @id @default(cuid())
+  name            String
+  description     String?
+  rateType        String
+  rateCents       Int
+  active          Boolean    @default(true)
+  affectsPrice    Boolean    @default(true)
+  isChecklistItem Boolean    @default(true)
+  departmentId    String
+  department      Department @relation(fields: [departmentId], references: [id])
 
   quoteSelections QuoteAddonSelection[]
   orderChecklist  OrderChecklist[]
   orderCharges    OrderCharge[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@index([active])
   @@unique([name])
+  @@index([active])
 }
 
 model Department {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  slug      String   @unique
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
-  addons    Addon[]
-  charges   OrderCharge[]
+  id             String           @id @default(cuid())
+  name           String           @unique
+  slug           String           @unique
+  sortOrder      Int              @default(0)
+  isActive       Boolean          @default(true)
+  addons         Addon[]
+  charges        OrderCharge[]
+  timeEntries    TimeEntry[]
   checklistItems OrderChecklist[]
-  currentParts OrderPart[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  currentParts   OrderPart[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 }
 
 model OrderCharge {
-  id           String   @id @default(cuid())
-  orderId      String
-  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  partId       String?
-  part         OrderPart? @relation(fields: [partId], references: [id], onDelete: Cascade)
-  departmentId String
-  department   Department @relation(fields: [departmentId], references: [id])
-  addonId      String?
-  addon        Addon?   @relation(fields: [addonId], references: [id])
+  id             String           @id @default(cuid())
+  orderId        String
+  order          Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId         String?
+  part           OrderPart?       @relation(fields: [partId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department       @relation(fields: [departmentId], references: [id])
+  addonId        String?
+  addon          Addon?           @relation(fields: [addonId], references: [id])
   checklistItems OrderChecklist[]
-  kind         String
-  name         String
-  description  String?
-  quantity     Decimal  @default(1)
-  unitPrice    Decimal  @default(0)
-  sortOrder    Int      @default(0)
-  completedAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  kind           String
+  name           String
+  description    String?
+  quantity       Decimal          @default(1)
+  unitPrice      Decimal          @default(0)
+  sortOrder      Int              @default(0)
+  completedAt    DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@index([orderId])
   @@index([partId])
@@ -335,9 +336,9 @@ model OrderCharge {
 }
 
 model PartAttachment {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   orderId     String
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   partId      String
   part        OrderPart @relation(fields: [partId], references: [id], onDelete: Cascade)
   kind        String
@@ -345,7 +346,7 @@ model PartAttachment {
   storagePath String?
   label       String?
   mimeType    String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([orderId])
   @@index([partId])
@@ -353,9 +354,9 @@ model PartAttachment {
 }
 
 model Quote {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   quoteNumber      String
-  business         String   @default("STD")
+  business         String    @default("STD")
   companyName      String
   contactName      String?
   contactEmail     String?
@@ -375,7 +376,7 @@ model Quote {
   metadata         String?
 
   createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdBy   User   @relation(fields: [createdById], references: [id])
 
   parts           QuotePart[]
   vendorItems     QuoteVendorItem[]
@@ -385,25 +386,25 @@ model Quote {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([quoteNumber])
   @@index([status])
   @@index([companyName])
-  @@unique([quoteNumber])
 }
 
 model QuotePart {
-  id         String @id @default(cuid())
-  quoteId    String
-  quote      Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  name       String
-  description String?
-  quantity   Int    @default(1)
-  pieceCount Int    @default(1)
-  notes      String?
-  partNumber String?
-  materialId String?
-  material   Material? @relation("QuotePartMaterial", fields: [materialId], references: [id])
-  stockSize  String?
-  cutLength  String?
+  id              String                @id @default(cuid())
+  quoteId         String
+  quote           Quote                 @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  quantity        Int                   @default(1)
+  pieceCount      Int                   @default(1)
+  notes           String?
+  partNumber      String?
+  materialId      String?
+  material        Material?             @relation("QuotePartMaterial", fields: [materialId], references: [id])
+  stockSize       String?
+  cutLength       String?
   addonSelections QuoteAddonSelection[]
 }
 
@@ -423,14 +424,14 @@ model QuoteVendorItem {
 }
 
 model QuoteAddonSelection {
-  id               String @id @default(cuid())
+  id               String     @id @default(cuid())
   quoteId          String
-  quote            Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quote            Quote      @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   quotePartId      String?
   quotePart        QuotePart? @relation(fields: [quotePartId], references: [id], onDelete: Cascade)
   addonId          String
-  addon            Addon  @relation(fields: [addonId], references: [id])
-  units            Float  @default(0)
+  addon            Addon      @relation(fields: [addonId], references: [id])
+  units            Float      @default(0)
   rateTypeSnapshot String
   rateCents        Int
   totalCents       Int
@@ -453,36 +454,36 @@ model QuoteAttachment {
 }
 
 model AppSettings {
-  id                      String   @id @default("singleton")
-  companyName             String   @default("Shopapp1")
-  logoPath                String?
-  themePrimary            String   @default("#0ea5e9")
-  themeAccent             String   @default("#a855f7")
-  attachmentsDir          String   @default("/app/storage")
-  requirePOForQuoteApproval Boolean @default(true)
-  requirePOForQuoteToOrder Boolean @default(false)
-  invoiceTemplateId       String   @default("classic")
-  invoiceOptions          String?
-  updatedAt               DateTime @updatedAt
+  id                        String   @id @default("singleton")
+  companyName               String   @default("Shopapp1")
+  logoPath                  String?
+  themePrimary              String   @default("#0ea5e9")
+  themeAccent               String   @default("#a855f7")
+  attachmentsDir            String   @default("/app/storage")
+  requirePOForQuoteApproval Boolean  @default(true)
+  requirePOForQuoteToOrder  Boolean  @default(false)
+  invoiceTemplateId         String   @default("classic")
+  invoiceOptions            String?
+  updatedAt                 DateTime @updatedAt
 }
 
 model CustomField {
-  id          String   @id @default(cuid())
-  entityType  String
-  name        String
-  key         String   @unique
-  fieldType   String
-  description String?
+  id           String              @id @default(cuid())
+  entityType   String
+  name         String
+  key          String              @unique
+  fieldType    String
+  description  String?
   businessCode String?
   defaultValue String?
-  isRequired  Boolean  @default(false)
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  uiSection   String   @default("INTAKE")
-  options     CustomFieldOption[]
-  values      CustomFieldValue[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isRequired   Boolean             @default(false)
+  isActive     Boolean             @default(true)
+  sortOrder    Int                 @default(0)
+  uiSection    String              @default("INTAKE")
+  options      CustomFieldOption[]
+  values       CustomFieldValue[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   @@index([entityType])
   @@index([businessCode])
@@ -490,44 +491,44 @@ model CustomField {
 }
 
 model CustomFieldOption {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   fieldId   String
   field     CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
   label     String
   value     String
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
+  sortOrder Int         @default(0)
+  isActive  Boolean     @default(true)
 
   @@index([fieldId])
 }
 
 model CustomFieldValue {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   fieldId   String
   field     CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
   entityId  String
   value     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   @@unique([fieldId, entityId])
   @@index([entityId])
 }
 
 model DocumentTemplate {
-  id          String   @id @default(cuid())
-  name        String
-  documentType String
-  description String?
-  businessCode String?
-  isDefault   Boolean  @default(false)
-  isActive    Boolean  @default(true)
-  schemaVersion Int     @default(1)
-  currentVersion Int    @default(1)
-  layoutJson  String
-  versions    DocumentTemplateVersion[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String                    @id @default(cuid())
+  name           String
+  documentType   String
+  description    String?
+  businessCode   String?
+  isDefault      Boolean                   @default(false)
+  isActive       Boolean                   @default(true)
+  schemaVersion  Int                       @default(1)
+  currentVersion Int                       @default(1)
+  layoutJson     String
+  versions       DocumentTemplateVersion[]
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
 
   @@index([documentType])
   @@index([businessCode])
@@ -536,13 +537,13 @@ model DocumentTemplate {
 }
 
 model DocumentTemplateVersion {
-  id          String   @id @default(cuid())
-  templateId  String
-  template    DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  version     Int
+  id            String           @id @default(cuid())
+  templateId    String
+  template      DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  version       Int
   schemaVersion Int
-  layoutJson  String
-  createdAt   DateTime @default(now())
+  layoutJson    String
+  createdAt     DateTime         @default(now())
 
   @@unique([templateId, version])
   @@index([templateId])

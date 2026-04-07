@@ -2,16 +2,20 @@ import { NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
 import { logPartEvent } from '@/modules/orders/orders.service';
-import { pauseActiveTimeEntry } from '@/modules/time/time.service';
+import { pauseActiveTimeEntry, stopTimeEntryById } from '@/modules/time/time.service';
 
-export async function POST() {
+export async function POST(req: Request) {
   const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
 
   const userId = (session.user as any)?.id as string | undefined;
   if (!userId) return new NextResponse('Unauthorized', { status: 401 });
 
-  const result = await pauseActiveTimeEntry(userId);
+  const body = await req.json().catch(() => null);
+  const entryId = typeof body?.entryId === 'string' ? body.entryId.trim() : '';
+  const result = entryId
+    ? await stopTimeEntryById(userId, entryId)
+    : await pauseActiveTimeEntry(userId);
   if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

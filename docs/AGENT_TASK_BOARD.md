@@ -12,6 +12,7 @@ Use with:
 
 ## Session Status Notes
 
+- 2026-04-07: Completed unplanned department-bound timer enhancement (required department selection on timer start, one-active-per-department enforcement, Shipping timer exclusion, and selected-part department history totals/detail in order detail). Evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
 - 2026-03-23: Completed unplanned isolated `sterling-site/` marketing-site scaffold (premium one-page manufacturing landing page with standalone tooling/docs). Evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
 - 2026-02-26: Completed unplanned Part BOM analyzer attachment-ingestion bugfix (non-image MIME guard + image MIME resolution hardening) and documented quote→order conversion audit evidence.
 - 2026-02-25: Completed unplanned Order→Part BOM tab integration using existing print-analyzer API, including deterministic unit/thread/tight-tolerance helpers and continuity evidence updates.

@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const TimeEntryStart = z.object({
   orderId: z.string().trim().min(1),
   partId: z.string().trim().min(1).nullable().optional(),
+  departmentId: z.string().trim().min(1),
   operation: z.string().trim().min(1).optional().default('Part Work'),
 });
 

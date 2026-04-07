@@ -18,6 +18,7 @@ describe('time.service', () => {
     const startResult = await startTimeEntry('user_test_machinist', {
       orderId: 'order_test_001',
       partId: 'part_test_001',
+      departmentId: 'dept_test_001',
       operation: 'Part Work',
     });
 
@@ -40,6 +41,7 @@ describe('time.service', () => {
     await startTimeEntry('user_test_machinist', {
       orderId: 'order_test_001',
       partId: 'part_test_001',
+      departmentId: 'dept_test_001',
       operation: 'Part Work',
     });
 
@@ -70,67 +72,73 @@ describe('time.service', () => {
     await startTimeEntry('user_test_machinist', {
       orderId: 'order_test_001',
       partId: 'part_test_001',
+      departmentId: 'dept_test_001',
       operation: 'Part Work',
     });
 
     const conflictResult = await startTimeEntryWithConflict('user_test_machinist', {
       orderId: 'order_test_001',
       partId: 'part_test_002',
+      departmentId: 'dept_test_001',
       operation: 'Part Work',
     });
 
     expect(conflictResult.ok).toBe(false);
     expect((conflictResult as { ok: false; status: number }).status).toBe(409);
 
+    const parallelResult = await startTimeEntryWithConflict('user_test_machinist', {
+      orderId: 'order_test_001',
+      partId: 'part_test_002',
+      departmentId: 'dept_test_002',
+      operation: 'Part Work',
+    });
+    expect(parallelResult.ok).toBe(true);
+
     const activeResult = await getActiveTimeEntry('user_test_machinist');
     expect(activeResult.ok).toBe(true);
     const activeEntry = (activeResult as { ok: true; data: { entry: any } }).data.entry;
-    expect(activeEntry?.partId).toBe('part_test_001');
+    expect(['part_test_001', 'part_test_002']).toContain(activeEntry?.partId);
     expect(activeEntry?.endedAt).toBeNull();
   });
 
-  it('switches without inflating time during confirmation path', async () => {
+  it('tracks separate department timers without overlap inflation', async () => {
     vi.setSystemTime(new Date('2026-02-03T00:00:00Z'));
     vi.resetModules();
-    const { getOrderPartTimeTotals, pauseActiveTimeEntry, startTimeEntry, startTimeEntryWithConflict } = await import('../time.service');
+    const { getOrderPartTimeTotals, startTimeEntry, startTimeEntryWithConflict, stopTimeEntryById } = await import('../time.service');
 
     const switchOrderId = 'order_switch_test_001';
     const firstPartId = 'part_switch_test_001';
     const secondPartId = 'part_switch_test_002';
 
-    await startTimeEntry('user_test_machinist', {
+    const firstStart = await startTimeEntry('user_test_machinist', {
       orderId: switchOrderId,
       partId: firstPartId,
+      departmentId: 'dept_test_001',
       operation: 'Part Work',
     });
+    expect(firstStart.ok).toBe(true);
+    const firstEntryId = (firstStart as { ok: true; data: { entry: any } }).data.entry.id;
 
     vi.setSystemTime(new Date('2026-02-03T00:10:00Z'));
-    const conflictResult = await startTimeEntryWithConflict('user_test_machinist', {
+    const secondDepartmentStart = await startTimeEntryWithConflict('user_test_machinist', {
       orderId: switchOrderId,
       partId: secondPartId,
+      departmentId: 'dept_test_002',
       operation: 'Part Work',
     });
-    expect(conflictResult.ok).toBe(false);
-
-    const paused = await pauseActiveTimeEntry('user_test_machinist');
-    expect(paused.ok).toBe(true);
-
-    vi.setSystemTime(new Date('2026-02-03T00:10:00Z'));
-    const switched = await startTimeEntryWithConflict('user_test_machinist', {
-      orderId: switchOrderId,
-      partId: secondPartId,
-      operation: 'Part Work',
-    });
-    expect(switched.ok).toBe(true);
+    expect(secondDepartmentStart.ok).toBe(true);
+    const secondEntryId = (secondDepartmentStart as { ok: true; data: { entry: any } }).data.entry.id;
 
     vi.setSystemTime(new Date('2026-02-03T00:25:00Z'));
-    const closedSecond = await pauseActiveTimeEntry('user_test_machinist');
-    expect(closedSecond.ok).toBe(true);
+    const stoppedFirst = await stopTimeEntryById('user_test_machinist', firstEntryId);
+    const stoppedSecond = await stopTimeEntryById('user_test_machinist', secondEntryId);
+    expect(stoppedFirst.ok).toBe(true);
+    expect(stoppedSecond.ok).toBe(true);
 
     const totalsResult = await getOrderPartTimeTotals(switchOrderId, [firstPartId, secondPartId]);
     expect(totalsResult.ok).toBe(true);
     const totals = (totalsResult as { ok: true; data: { totalsSeconds: Record<string, number> } }).data.totalsSeconds;
-    expect(totals[firstPartId]).toBe(600);
+    expect(totals[firstPartId]).toBe(1500);
     expect(totals[secondPartId]).toBe(900);
   });
 
@@ -146,6 +154,7 @@ describe('time.service', () => {
     const startResult = await startTimeEntry('user_test_machinist', {
       orderId,
       partId,
+      departmentId: 'dept_test_001',
       operation: 'Part Work',
     });
     expect(startResult.ok).toBe(true);
@@ -178,6 +187,7 @@ describe('time.service', () => {
     const startResult = await startTimeEntry('user_test_machinist', {
       orderId: 'order_test_001',
       partId: 'part_test_001',
+      departmentId: 'dept_test_001',
       operation: 'Part Work',
     });
 
