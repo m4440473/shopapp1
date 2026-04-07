@@ -26,6 +26,7 @@ model User {
   statusHistories StatusHistory[] @relation("UserStatusHistory")
   partEvents      PartEvent[]
   partTimeAdjustments PartTimeAdjustment[]
+  partBomAnalyses    PartBomAnalysis[]
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -96,7 +97,9 @@ model Order {
   statusHistory    StatusHistory[]
   partEvents       PartEvent[]
   partTimeAdjustments PartTimeAdjustment[]
+  bomAnalyses      PartBomAnalysis[]
 }
+
 
 
 model OrderPart {
@@ -121,6 +124,7 @@ model OrderPart {
   timeEntries         TimeEntry[]
   partEvents          PartEvent[]
   timeAdjustments      PartTimeAdjustment[]
+  bomAnalyses          PartBomAnalysis[]
 }
 
 
@@ -220,6 +224,24 @@ model PartTimeAdjustment {
   @@index([orderId])
   @@index([partId])
   @@index([userId])
+}
+
+model PartBomAnalysis {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId     String
+  part       OrderPart @relation(fields: [partId], references: [id], onDelete: Cascade)
+  analyzedById String?
+  analyzedBy User?    @relation(fields: [analyzedById], references: [id], onDelete: SetNull)
+  resultJson String
+  sourceLabel String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([orderId, partId])
+  @@index([partId])
+  @@index([analyzedById])
 }
 
 model Attachment {

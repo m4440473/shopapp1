@@ -40,6 +40,26 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-07 — BOM analyzer persistence + corner-based tolerance extraction improvements
+- Added persistent BOM analyzer storage via new `PartBomAnalysis` model/migration keyed by `(orderId, partId)` so latest analyzer output is retained and shareable across sessions/users for each part.
+- Updated `POST /api/print-analyzer/analyze` to optionally accept `orderId`/`partId`, persist successful analyses, and run a four-corner zoom title-block tolerance extraction pass with stricter no-hallucination guidance.
+- Added fallback warning behavior when general tolerances cannot be confidently read: `Unable to confidently read general tolerances. Please check the paper print.`
+- Added `GET /api/orders/[id]/parts/[partId]/bom-analysis` for loading the latest saved analysis.
+- Updated Order Detail BOM tab to auto-hydrate from saved analysis and surface save/load timestamp context.
+- Updated imperial tap-drill mapping to include decimal inch diameters for letter drill outputs (plus mapped number/fraction drills) and added a focused unit test.
+
+Commands run:
+- npx prisma migrate deploy
+- npx prisma generate
+- npm run test -- src/lib/printAnalyzer/tapDrills.test.ts
+- npm run lint
+
+Verification note:
+- Prisma migrations applied successfully and Prisma client regenerated.
+- Targeted tap-drill unit test passed (1/1).
+- Lint passed with no ESLint warnings/errors.
+
+
 ### 2026-04-07 — Account page sign-out control for user switching
 - Added a visible `Sign out` button on the account password page so users can log out directly from Account.
 - Wired sign-out to NextAuth client sign-out with callback to `/auth/signin`, supporting immediate login as a different user.

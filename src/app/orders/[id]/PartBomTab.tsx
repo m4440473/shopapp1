@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
@@ -128,6 +128,7 @@ export function PartBomTab({
   const [result, setResult] = useState<PrintAnalyzerResult | null>(null);
   const [debugPayload, setDebugPayload] = useState<AnalyzeErrorPayload | null>(null);
   const [primaryUnits, setPrimaryUnits] = useState<UnitPreference>('inch');
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
 
   const imageAttachments = useMemo(
     () =>
@@ -161,6 +162,36 @@ export function PartBomTab({
   );
 
   const canAnalyze = (!loading && Boolean(file)) || (!loading && Boolean(selectedAttachmentId));
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSavedAnalysis = async () => {
+      try {
+        const response = await fetch(`/api/orders/${orderId}/parts/${partId}/bom-analysis`, {
+          credentials: 'include',
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | { result?: PrintAnalyzerResult | null; updatedAt?: string }
+          | null;
+
+        if (!active || !response.ok || !payload?.result) return;
+
+        setResult(payload.result);
+        setLoadedAt(payload.updatedAt ?? null);
+        if (payload.result.units === 'mm') setPrimaryUnits('mm');
+        if (payload.result.units === 'inch') setPrimaryUnits('inch');
+      } catch {
+        // Ignore load failures and allow manual analysis.
+      }
+    };
+
+    void loadSavedAnalysis();
+
+    return () => {
+      active = false;
+    };
+  }, [orderId, partId]);
 
   const detectedUnits = result?.units ?? 'unknown';
   const showSecondaryUnits = detectedUnits === 'mm';
@@ -264,7 +295,12 @@ export function PartBomTab({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ dataUrl }),
+        body: JSON.stringify({
+          dataUrl,
+          orderId,
+          partId,
+          sourceLabel: selectedAttachmentId ? 'stored-attachment' : file?.name ?? 'upload',
+        }),
       });
 
       const payload = (await response.json().catch(() => ({ error: 'Non-JSON response from API.' }))) as
@@ -286,6 +322,7 @@ export function PartBomTab({
       }
 
       setResult(payload);
+      setLoadedAt(new Date().toISOString());
       if (payload.units === 'mm') {
         setPrimaryUnits('mm');
       } else if (payload.units === 'inch') {
@@ -347,6 +384,7 @@ export function PartBomTab({
               {loading ? 'Analyzing…' : 'Analyze'}
             </Button>
             <span className="text-xs text-muted-foreground">Order {orderId.slice(0, 8)} • Part {partId.slice(0, 8)}</span>
+            {loadedAt ? <span className="text-xs text-muted-foreground">Saved analysis loaded • {new Date(loadedAt).toLocaleString()}</span> : null}
           </div>
 
           {error ? (
@@ -412,7 +450,7 @@ export function PartBomTab({
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-muted-foreground">No general tolerances detected.</p>
+                <p className="text-sm text-muted-foreground">Unable to confidently read general tolerances. Please check the paper print.</p>
               )}
             </CardContent>
           </Card>
