@@ -40,6 +40,30 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-07 — Explicit department submit flow + manual time adjustment tracking
+- Replaced checklist auto-advance behavior in order detail with an explicit department submit workflow so checklist toggles only mark checklist state.
+- Added new machinist route `POST /api/orders/[id]/parts/[partId]/submit-department-complete` and Orders service logic to block submission until all checklist items in the current department are complete.
+- Added optional added-time capture on department submit (`additionalSeconds`) with required note when time is added.
+- Added `PartTimeAdjustment` model + migration and wired order detail loading to include manual added-time entries for part-level display.
+- Updated order detail UI checklist to render all active checklist items grouped by department heading.
+- Added selected-part total-time presentation combining timer total + manual added time and listing manual adjustment notes.
+- Added/updated focused Orders service tests for department submission gating and added-time note validation.
+
+Commands run:
+- npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --script > prisma/migrations/20260407120000_add_part_time_adjustments/migration.sql
+- npx prisma migrate deploy
+- npx prisma generate
+- npm run lint
+- npm run test -- src/modules/orders/__tests__/orders.service.test.ts
+- npm run build
+
+Verification note:
+- Prisma migration deployed successfully and Prisma client regenerated.
+- Lint passed with no ESLint warnings/errors.
+- Targeted Orders service tests passed (3/3).
+- Build failed in this environment due a pre-existing `sterling-site/vite.config.ts` TypeScript resolution issue for `@vitejs/plugin-react`.
+
+
 
 ### 2026-04-02 — Part-complete route restoration + order-detail status parity fix
 - Added a new authenticated machinist route `POST /api/orders/[id]/parts/[partId]/complete` that calls `completeOrderPart`, restoring a reachable server path for manual part completion.

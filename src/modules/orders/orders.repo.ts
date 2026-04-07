@@ -252,6 +252,7 @@ export async function findOrderWithDetails(id: string) {
       notes: { orderBy: { createdAt: 'asc' }, include: { user: true } },
       attachments: { include: { uploadedBy: true }, orderBy: { createdAt: 'desc' } },
       partAttachments: { orderBy: { createdAt: 'desc' } },
+      partTimeAdjustments: { include: { user: { select: { id: true, name: true, email: true } } }, orderBy: { createdAt: 'desc' } },
       assignedMachinist: true,
       vendor: true,
     },
@@ -405,6 +406,32 @@ export async function listChecklistItems(orderId: string) {
       part: true,
       charge: { select: { id: true, name: true, kind: true, completedAt: true, partId: true, departmentId: true } },
     },
+  });
+}
+
+
+export async function createPartTimeAdjustment({
+  orderId,
+  partId,
+  userId,
+  seconds,
+  note,
+}: {
+  orderId: string;
+  partId: string;
+  userId?: string | null;
+  seconds: number;
+  note: string;
+}, db: DbClient = prisma) {
+  return db.partTimeAdjustment.create({
+    data: {
+      orderId,
+      partId,
+      userId: userId ?? null,
+      seconds,
+      note,
+    },
+    include: { user: { select: { id: true, name: true, email: true } } },
   });
 }
 

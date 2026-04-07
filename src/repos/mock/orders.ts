@@ -11,6 +11,7 @@ export function createMockOrdersRepo() {
     checklist: state.orderChecklist.length + 1,
     charge: state.orderCharges.length + 1,
     status: state.statusHistory.length + 1,
+    partTimeAdjustment: state.partTimeAdjustments.length + 1,
   };
 
   const nextId = (prefix: string) => {
@@ -190,6 +191,12 @@ export function createMockOrdersRepo() {
         }));
       const partAttachments = state.partAttachments.filter((attachment) => attachment.orderId === order.id);
       const assignedMachinist = state.users.find((user) => user.id === order.assignedMachinistId) ?? null;
+      const partTimeAdjustments = state.partTimeAdjustments
+        .filter((adjustment) => adjustment.orderId === order.id)
+        .map((adjustment) => ({
+          ...adjustment,
+          user: state.users.find((user) => user.id === adjustment.userId) ?? null,
+        }));
       return {
         ...order,
         customer,
@@ -200,6 +207,7 @@ export function createMockOrdersRepo() {
         notes,
         attachments,
         partAttachments,
+        partTimeAdjustments,
         assignedMachinist,
         vendor: null,
       };
@@ -326,6 +334,35 @@ export function createMockOrdersRepo() {
 
     async listChecklistItems(orderId: string) {
       return state.orderChecklist.filter((item) => item.orderId === orderId);
+    },
+
+    async createPartTimeAdjustment({
+      orderId,
+      partId,
+      userId,
+      seconds,
+      note,
+    }: {
+      orderId: string;
+      partId: string;
+      userId?: string | null;
+      seconds: number;
+      note: string;
+    }) {
+      const created = {
+        id: nextId('partTimeAdjustment'),
+        orderId,
+        partId,
+        userId: userId ?? null,
+        seconds,
+        note,
+        createdAt: new Date(),
+      };
+      state.partTimeAdjustments.unshift(created);
+      return {
+        ...created,
+        user: state.users.find((user) => user.id === created.userId) ?? null,
+      };
     },
 
     async findOrderSummary(id: string) {

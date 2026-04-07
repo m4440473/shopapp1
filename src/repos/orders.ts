@@ -28,6 +28,7 @@ export const listChecklistItems = repo.listChecklistItems;
 export const findOrderSummary = repo.findOrderSummary;
 export const findOrderPartSummary = repo.findOrderPartSummary;
 export const createPartEvent = repo.createPartEvent;
+export const createPartTimeAdjustment = repo.createPartTimeAdjustment;
 export const runInTransaction = repo.runInTransaction;
 export const findChecklistForRoutingById = repo.findChecklistForRoutingById;
 export const findPartForRouting = repo.findPartForRouting;

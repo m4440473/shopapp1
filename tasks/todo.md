@@ -1,6 +1,44 @@
 # tasks/todo.md — Session Plan + Verification
 
 ## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
+- Task ID: Unplanned workflow fix (explicit department submit + checklist grouping + manual time adjustment)
+- Goal: Replace checklist auto-advance with explicit department completion submission, enforce department checklist gate, show grouped checklist UI, and include manual added-time notes in part totals.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scope constrained to Orders/Time flow and order detail UX for requested behavior.
+- [x] No new npm dependencies added.
+
+## Plan First
+- [x] Add explicit submit endpoint/service path for department completion with server-side checklist gate and optional manual time addition note.
+- [x] Remove checklist toggle auto-advance behavior and keep checklist toggles as checklist-only updates.
+- [x] Update order detail checklist UI to render all checklist items grouped under department labels.
+- [x] Add part-detail total-time presentation showing timer total + manual added time + notes.
+- [x] Add focused tests and run lint/test/build verification.
+
+## Verification Checklist
+- [x] `npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --script > prisma/migrations/20260407120000_add_part_time_adjustments/migration.sql`
+- [x] `npx prisma migrate deploy`
+- [x] `npx prisma generate`
+- [x] `npm run lint`
+- [x] `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- [ ] `npm run build` *(fails on pre-existing sterling-site TypeScript moduleResolution/plugin-react issue in this environment)*
+
+## Review + Results
+- Added `PartTimeAdjustment` persistence model and order-detail data loading for manual added-time entries with user/note/seconds metadata.
+- Added authenticated machinist route `POST /api/orders/[id]/parts/[partId]/submit-department-complete` with service-level validation that all checklist items in the part's current department are complete before movement/completion.
+- Added optional manual added-time capture during submit flow, requiring a note when additional time is entered.
+- Removed checklist auto-advance from checkbox toggles so checkbox actions no longer trigger department transitions.
+- Updated order detail checklist UI to group all part checklist items by department labels.
+- Added total time block in order detail that shows timer total, manual total, combined total, and manual-note history for the selected part.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
 - Date: 2026-04-02
 - Agent: GPT-5.3-Codex
 - Task ID: Follow-up fix (part complete route + order detail status parity)
