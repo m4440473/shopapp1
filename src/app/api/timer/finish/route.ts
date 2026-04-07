@@ -2,35 +2,26 @@ import { NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
 import { logPartEvent, syncOrderWorkflowStatus } from '@/modules/orders/orders.service';
-import { getActiveTimeEntry, stopActiveTimeEntry } from '@/modules/time/time.service';
+import { stopActiveTimeEntry, stopTimeEntryById } from '@/modules/time/time.service';
 
-export async function POST() {
+export async function POST(req: Request) {
   const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
 
   const userId = (session.user as any)?.id as string | undefined;
   if (!userId) return new NextResponse('Unauthorized', { status: 401 });
 
-  const activeResult = await getActiveTimeEntry(userId);
-  if (activeResult.ok === false) {
-    return NextResponse.json({ error: activeResult.error }, { status: activeResult.status });
-  }
-
-  const activeEntry = activeResult.data.entry;
-  if (!activeEntry) {
-    return NextResponse.json({ error: 'No active timer to finish.' }, { status: 404 });
-  }
-
-  if (!activeEntry.partId) {
-    return NextResponse.json({ error: 'Active timer is not tied to a part.' }, { status: 400 });
-  }
-
-  const stopResult = await stopActiveTimeEntry(userId);
+  const body = await req.json().catch(() => null);
+  const entryId = typeof body?.entryId === 'string' ? body.entryId.trim() : '';
+  const stopResult = entryId ? await stopTimeEntryById(userId, entryId) : await stopActiveTimeEntry(userId);
   if (stopResult.ok === false) {
     return NextResponse.json({ error: stopResult.error }, { status: stopResult.status });
   }
 
   const entry = stopResult.data.entry;
+  if (!entry.partId) {
+    return NextResponse.json({ error: 'Active timer is not tied to a part.' }, { status: 400 });
+  }
   await logPartEvent({
     orderId: entry.orderId,
     partId: entry.partId!,
@@ -43,4 +34,3 @@ export async function POST() {
 
   return NextResponse.json({ entry });
 }
-

@@ -13,13 +13,14 @@ export function createMockTimeRepo() {
       return { count: 1 };
     },
 
-    async createTimeEntry(data: { userId: string; orderId: string; partId?: string | null; operation: string; startedAt?: Date }) {
+    async createTimeEntry(data: { userId: string; orderId: string; partId?: string | null; departmentId?: string | null; operation: string; startedAt?: Date }) {
       const startedAt = data.startedAt ?? new Date();
       const entry = {
         id: `time_entry_mock_${state.timeEntries.length + 1}`,
         userId: data.userId,
         orderId: data.orderId,
         partId: data.partId ?? null,
+        departmentId: data.departmentId ?? null,
         operation: data.operation,
         startedAt,
         endedAt: null,
@@ -32,6 +33,18 @@ export function createMockTimeRepo() {
 
     async findActiveTimeEntryForUser(userId: string) {
       return state.timeEntries.find((entry) => entry.userId === userId && !entry.endedAt) ?? null;
+    },
+
+    async listActiveTimeEntriesForUser(userId: string) {
+      return state.timeEntries.filter((entry) => entry.userId === userId && !entry.endedAt);
+    },
+
+    async findActiveTimeEntryForUserDepartment(userId: string, departmentId: string) {
+      return (
+        state.timeEntries.find(
+          (entry) => entry.userId === userId && entry.departmentId === departmentId && !entry.endedAt
+        ) ?? null
+      );
     },
 
     async findLatestTimeEntriesForUserParts(userId: string, partIds: string[]) {

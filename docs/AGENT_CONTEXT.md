@@ -61,6 +61,10 @@ Goal: a scalable foundation that can grow.
 ## Decision Log (append newest at top)
 
 
+### 2026-04-07 — Department-bound timer model (Shipping blocked for timers)
+Decision: Require department selection when starting timers, persist `departmentId` on `TimeEntry`, allow concurrent active timers across different departments, enforce one active timer per `(user, department)`, and block Shipping from timer start flows.
+Reason: Shop-floor time tracking must reflect real department usage (Machining/Fab/Paint) with department-level totals/history while keeping Shipping configured for checklist/workflow but out of timer operations.
+
 ### 2026-04-07 — Explicit department submit workflow + part time adjustments
 Decision: Shift order-detail checklist behavior from checkbox-driven auto-advance to explicit per-part department submission, and record optional user-added part time via a dedicated `PartTimeAdjustment` model with required note when extra time is entered.
 Reason: Operators reported unreliable/incorrect “last checklist item” auto-advance behavior; explicit submit gating plus auditable manual time notes improves trust, control, and traceability of part progression and total-time reporting.

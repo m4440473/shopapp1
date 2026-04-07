@@ -1,5 +1,70 @@
 Date: 2026-04-07
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Shift timer tracking to a department-bound model with required department selection on start, per-department active constraints, and department-based history totals in order detail.
+
+## What I changed
+- Added `TimeEntry.departmentId` relation in Prisma schema and created migration `20260407143000_add_time_entry_department`.
+- Updated time repo/service layers:
+  - timer start requires `departmentId`
+  - one active timer allowed per `(userId, departmentId)`
+  - concurrent active timers across different departments are allowed
+  - resume preserves department and blocks resume when a same-department timer is already active.
+- Updated timer APIs:
+  - `POST /api/timer/start` and `POST /api/time/start` now validate department selection and reject Shipping timer starts.
+  - `GET /api/timer/active` now returns `activeEntries` (all active timers for current user).
+  - `POST /api/timer/pause` and `POST /api/timer/finish` accept optional `entryId` to target a specific active timer.
+  - `POST /api/timer/resume` no longer blocks resume just because another unrelated department timer is active.
+- Updated order detail UI:
+  - added required department dropdown in timer controls (fresh selection required each start).
+  - start payload includes `departmentId`.
+  - pause/stop target the selected active timer entry instead of assuming a single global active timer.
+  - added selected-part department history section with summary totals and detailed recent rows per department.
+- Included order `timeEntries` (with department/user context) in order details repo payload to support history rendering.
+- Updated mock seed/time repo and time service tests for department-aware timer behavior.
+
+## Files touched
+- `prisma/schema.prisma`
+- `prisma/migrations/20260407143000_add_time_entry_department/migration.sql`
+- `src/modules/time/time.types.ts`
+- `src/modules/time/time.schema.ts`
+- `src/modules/time/time.repo.ts`
+- `src/modules/time/time.service.ts`
+- `src/modules/time/__tests__/time.service.test.ts`
+- `src/repos/time.ts`
+- `src/repos/mock/seed.ts`
+- `src/repos/mock/time.ts`
+- `src/modules/orders/orders.repo.ts`
+- `src/app/api/time/start/route.ts`
+- `src/app/api/timer/start/route.ts`
+- `src/app/api/timer/active/route.ts`
+- `src/app/api/timer/pause/route.ts`
+- `src/app/api/timer/finish/route.ts`
+- `src/app/api/timer/resume/route.ts`
+- `src/app/orders/[id]/page.tsx`
+- `docs/AGENT_CONTEXT.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npx prisma format`
+- `npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --script > /tmp/time_dept_migration.sql`
+- `npm run lint`
+- `npm run test -- src/modules/time/__tests__/time.service.test.ts`
+
+## Verification Evidence
+- Prisma schema formatted successfully.
+- Lint passed with no ESLint warnings/errors.
+- Targeted time service tests passed (6/6).
+
+## Next steps
+- [ ] Consider adding department-aware resume targeting (current selected-part resume behavior was simplified to explicit start flow).
+- [ ] Consider adding explicit order-detail “all active timers by department” list when multiple timers are running concurrently.
+
+---
+
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Persist BOM analyzer output for each order part and improve tolerance extraction/readout behavior (including corner zooms and drill decimal display).
 
 ## What I changed
