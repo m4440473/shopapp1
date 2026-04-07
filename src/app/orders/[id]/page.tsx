@@ -28,7 +28,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { useToast } from '@/components/ui/Toast';
 import { PartBomTab } from './PartBomTab';
 
-const PART_TABS = ['overview', 'notes', 'bom', 'checklist', 'log'] as const;
+const PART_TABS = ['overview', 'notes', 'full-files', 'bom', 'checklist', 'log'] as const;
 const PART_ATTACHMENT_KINDS = ['DWG', 'STEP', 'PDF', 'PO', 'PRINT', 'IMAGE', 'OTHER'] as const;
 
 type PartTab = (typeof PART_TABS)[number];
@@ -50,6 +50,8 @@ type ConflictState = {
   activeOrderHref: string | null;
   elapsedSeconds: number;
 };
+
+type SelectOption = { id: string; name: string };
 
 const formatDuration = (seconds: number) => {
   const clamped = Math.max(0, seconds);
@@ -115,6 +117,33 @@ export default function OrderDetailPage() {
   const [attachmentFileKey, setAttachmentFileKey] = useState(0);
   const [attachmentFileName, setAttachmentFileName] = useState<string | null>(null);
   const [checklistError, setChecklistError] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [savingOrderDetails, setSavingOrderDetails] = useState(false);
+  const [savingPartDetails, setSavingPartDetails] = useState(false);
+  const [orderDraft, setOrderDraft] = useState({
+    customerId: '',
+    receivedDate: '',
+    dueDate: '',
+    priority: 'NORMAL',
+    vendorId: '',
+    poNumber: '',
+    assignedMachinistId: '',
+    materialNeeded: false,
+    materialOrdered: false,
+    modelIncluded: false,
+  });
+  const [partDraft, setPartDraft] = useState({
+    partNumber: '',
+    quantity: 1,
+    materialId: '',
+    stockSize: '',
+    cutLength: '',
+    notes: '',
+  });
+  const [customers, setCustomers] = useState<SelectOption[]>([]);
+  const [vendors, setVendors] = useState<SelectOption[]>([]);
+  const [machinists, setMachinists] = useState<SelectOption[]>([]);
+  const [materials, setMaterials] = useState<SelectOption[]>([]);
 
   const parts = useMemo(() => (Array.isArray(item?.parts) ? item.parts : []), [item?.parts]);
   const partIdsParam = useMemo(() => parts.map((part: any) => part.id).filter(Boolean).join(','), [parts]);
@@ -201,6 +230,38 @@ export default function OrderDetailPage() {
     const attachments = Array.isArray(item?.partAttachments) ? item.partAttachments : [];
     return attachments.filter((attachment: any) => attachment.partId === selectedPartId);
   }, [item?.partAttachments, selectedPartId]);
+
+  const fullOrderFiles = useMemo(() => {
+    const orderAttachments = Array.isArray(item?.attachments) ? item.attachments : [];
+    const partAttachments = Array.isArray(item?.partAttachments) ? item.partAttachments : [];
+    const partNumberById = new Map(parts.map((part: any) => [part.id, part.partNumber || 'Part']));
+
+    const merged = [
+      ...orderAttachments.map((attachment: any) => ({
+        ...attachment,
+        source: 'ORDER',
+        sourceLabel: 'Order file',
+        partNumber: null,
+      })),
+      ...partAttachments.map((attachment: any) => ({
+        ...attachment,
+        source: 'PART',
+        sourceLabel: 'Part file',
+        partNumber: partNumberById.get(attachment.partId) ?? null,
+      })),
+    ];
+
+    return merged.sort((a: any, b: any) => {
+      const aDate = new Date(a.createdAt).getTime();
+      const bDate = new Date(b.createdAt).getTime();
+      return bDate - aDate;
+    });
+  }, [item?.attachments, item?.partAttachments, parts]);
+
+  const visibleTabs = useMemo(
+    () => PART_TABS.filter((tab) => (tab === 'full-files' ? canEditParts : true)),
+    [canEditParts]
+  );
 
   const selectedActiveEntry = useMemo(
     () =>
@@ -303,6 +364,67 @@ export default function OrderDetailPage() {
       setSelectedPartId(parts[0].id);
     }
   }, [parts, selectedPartId]);
+
+  useEffect(() => {
+    if (!item) return;
+    setOrderDraft({
+      customerId: item.customerId ?? '',
+      receivedDate: item.receivedDate ? String(item.receivedDate).slice(0, 10) : '',
+      dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : '',
+      priority: item.priority ?? 'NORMAL',
+      vendorId: item.vendorId ?? '',
+      poNumber: item.poNumber ?? '',
+      assignedMachinistId: item.assignedMachinistId ?? '',
+      materialNeeded: Boolean(item.materialNeeded),
+      materialOrdered: Boolean(item.materialOrdered),
+      modelIncluded: Boolean(item.modelIncluded),
+    });
+  }, [item]);
+
+  useEffect(() => {
+    if (!selectedPart) return;
+    setPartDraft({
+      partNumber: selectedPart.partNumber ?? '',
+      quantity: Number(selectedPart.quantity ?? 1),
+      materialId: selectedPart.materialId ?? '',
+      stockSize: selectedPart.stockSize ?? '',
+      cutLength: selectedPart.cutLength ?? '',
+      notes: selectedPart.notes ?? '',
+    });
+  }, [selectedPart]);
+
+  useEffect(() => {
+    if (!editMode || !canEditParts) return;
+
+    const loadOptions = async () => {
+      const fetchOptions = async (url: string): Promise<SelectOption[]> => {
+        const res = await fetch(url, { credentials: 'include' });
+        if (!res.ok) return [];
+        const data = await res.json().catch(() => null);
+        const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        return items
+          .map((entry: any) => ({
+            id: String(entry.id ?? ''),
+            name: String(entry.name ?? entry.email ?? 'Unnamed'),
+          }))
+          .filter((entry: SelectOption) => entry.id.length > 0);
+      };
+
+      const [loadedCustomers, loadedVendors, loadedMachinists, loadedMaterials] = await Promise.all([
+        fetchOptions('/api/admin/customers?take=200'),
+        fetchOptions('/api/admin/vendors?take=200'),
+        fetchOptions('/api/admin/users?role=MACHINIST&take=200'),
+        fetchOptions('/api/admin/materials?take=200'),
+      ]);
+
+      setCustomers(loadedCustomers);
+      setVendors(loadedVendors);
+      setMachinists(loadedMachinists);
+      setMaterials(loadedMaterials);
+    };
+
+    void loadOptions();
+  }, [editMode, canEditParts]);
 
   useEffect(() => {
     refreshTimerSummary();
@@ -490,6 +612,116 @@ export default function OrderDetailPage() {
       toast.push(message, 'error');
     } finally {
       setStatusSaving(false);
+    }
+  };
+
+  const handleSaveOrderDetails = async () => {
+    if (!id || !canEditParts) return;
+    setSavingOrderDetails(true);
+    try {
+      const payload: Record<string, unknown> = {
+        customerId: orderDraft.customerId || undefined,
+        receivedDate: orderDraft.receivedDate || undefined,
+        dueDate: orderDraft.dueDate || undefined,
+        priority: orderDraft.priority,
+        vendorId: orderDraft.vendorId || '',
+        poNumber: orderDraft.poNumber || '',
+        assignedMachinistId: orderDraft.assignedMachinistId || '',
+        materialNeeded: orderDraft.materialNeeded,
+        materialOrdered: orderDraft.materialOrdered,
+        modelIncluded: orderDraft.modelIncluded,
+      };
+      const res = await fetch(`/api/orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to update order details.');
+      }
+      await load();
+      toast.push('Order details updated.', 'success');
+    } catch (err: any) {
+      toast.push(err?.message || 'Failed to update order details.', 'error');
+    } finally {
+      setSavingOrderDetails(false);
+    }
+  };
+
+  const handleSavePartDetails = async () => {
+    if (!id || !selectedPartId || !canEditParts) return;
+    setSavingPartDetails(true);
+    try {
+      const payload = {
+        partNumber: partDraft.partNumber,
+        quantity: Number(partDraft.quantity),
+        materialId: partDraft.materialId || null,
+        stockSize: partDraft.stockSize || null,
+        cutLength: partDraft.cutLength || null,
+        notes: partDraft.notes || null,
+      };
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to update part.');
+      }
+      await load();
+      toast.push('Part updated.', 'success');
+    } catch (err: any) {
+      toast.push(err?.message || 'Failed to update part.', 'error');
+    } finally {
+      setSavingPartDetails(false);
+    }
+  };
+
+  const handleAddPart = async () => {
+    if (!id || !canEditParts) return;
+    try {
+      const payload = {
+        partNumber: `NEW-PART-${(parts.length + 1).toString().padStart(2, '0')}`,
+        quantity: 1,
+      };
+      const res = await fetch(`/api/orders/${id}/parts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to add part.');
+      }
+      await load();
+      toast.push('Part added. Update fields as needed.', 'success');
+    } catch (err: any) {
+      toast.push(err?.message || 'Failed to add part.', 'error');
+    }
+  };
+
+  const handleDeleteSelectedPart = async () => {
+    if (!id || !selectedPartId || !canEditParts) return;
+    const confirmed = window.confirm('Delete selected part? This cannot be undone.');
+    if (!confirmed) return;
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to delete part.');
+      }
+      await load();
+      toast.push('Part deleted.', 'success');
+    } catch (err: any) {
+      toast.push(err?.message || 'Failed to delete part.', 'error');
     }
   };
 
@@ -930,9 +1162,16 @@ export default function OrderDetailPage() {
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">{orderTitle}</div>
                 <div className="text-2xl font-semibold text-foreground">{item.customer?.name ?? 'Customer'}</div>
               </div>
-              <Button asChild variant="outline" size="sm">
-                <Link href="/">Exit Order</Link>
-              </Button>
+              <div className="flex items-center gap-2">
+                {canEditParts ? (
+                  <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => setEditMode((prev) => !prev)}>
+                    {editMode ? 'Exit edit mode' : 'Edit order'}
+                  </Button>
+                ) : null}
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/">Exit Order</Link>
+                </Button>
+              </div>
             </div>
             <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/10 p-3">
               <div className="flex flex-wrap items-center gap-3">
@@ -990,12 +1229,14 @@ export default function OrderDetailPage() {
               ) : null}
             </div>
             <div className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-md bg-muted/20 p-1">
-              {PART_TABS.map((tab) => {
+              {visibleTabs.map((tab) => {
                 const label =
                   tab === 'overview'
                     ? 'Overview'
                     : tab === 'notes'
                       ? 'Notes & Files'
+                      : tab === 'full-files'
+                        ? 'Full Order Files'
                       : tab === 'checklist'
                         ? 'To-do / Checklist'
                         : tab === 'log'
@@ -1062,6 +1303,138 @@ export default function OrderDetailPage() {
                     <div className="text-foreground">{dueDateLabel}</div>
                   </div>
                 </div>
+                {editMode && canEditParts ? (
+                  <div className="space-y-4 rounded-lg border border-border/60 bg-muted/10 p-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-foreground">Edit order details</p>
+                      <Button size="sm" onClick={handleSaveOrderDetails} disabled={savingOrderDetails}>
+                        {savingOrderDetails ? 'Saving…' : 'Save order'}
+                      </Button>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label>Customer</Label>
+                        <Select value={orderDraft.customerId || '__none__'} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, customerId: value === '__none__' ? '' : value }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Select customer</SelectItem>
+                            {customers.map((customer) => (
+                              <SelectItem key={customer.id} value={customer.id}>{customer.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Vendor</Label>
+                        <Select value={orderDraft.vendorId || '__none__'} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, vendorId: value === '__none__' ? '' : value }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">No vendor</SelectItem>
+                            {vendors.map((vendor) => (
+                              <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Received date</Label>
+                        <Input type="date" value={orderDraft.receivedDate} onChange={(e) => setOrderDraft((prev) => ({ ...prev, receivedDate: e.target.value }))} />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Due date</Label>
+                        <Input type="date" value={orderDraft.dueDate} onChange={(e) => setOrderDraft((prev) => ({ ...prev, dueDate: e.target.value }))} />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Priority</Label>
+                        <Select value={orderDraft.priority} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, priority: value }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="LOW">LOW</SelectItem>
+                            <SelectItem value="NORMAL">NORMAL</SelectItem>
+                            <SelectItem value="RUSH">RUSH</SelectItem>
+                            <SelectItem value="HOT">HOT</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Assigned machinist</Label>
+                        <Select value={orderDraft.assignedMachinistId || '__none__'} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, assignedMachinistId: value === '__none__' ? '' : value }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Unassigned</SelectItem>
+                            {machinists.map((machinist) => (
+                              <SelectItem key={machinist.id} value={machinist.id}>{machinist.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-2 md:col-span-2">
+                        <Label>PO Number</Label>
+                        <Input value={orderDraft.poNumber} onChange={(e) => setOrderDraft((prev) => ({ ...prev, poNumber: e.target.value }))} />
+                      </div>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox checked={orderDraft.materialNeeded} onCheckedChange={(checked) => setOrderDraft((prev) => ({ ...prev, materialNeeded: checked === true }))} />
+                        Material needed
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox checked={orderDraft.materialOrdered} onCheckedChange={(checked) => setOrderDraft((prev) => ({ ...prev, materialOrdered: checked === true }))} />
+                        Material ordered
+                      </label>
+                      <label className="flex items-center gap-2 text-sm md:col-span-2">
+                        <Checkbox checked={orderDraft.modelIncluded} onCheckedChange={(checked) => setOrderDraft((prev) => ({ ...prev, modelIncluded: checked === true }))} />
+                        Model included
+                      </label>
+                    </div>
+                    {selectedPart ? (
+                      <div className="space-y-3 rounded-md border border-border/50 bg-background/40 p-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-semibold text-foreground">Edit selected part</p>
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline" onClick={handleAddPart}>Add part</Button>
+                            <Button size="sm" variant="destructive" onClick={handleDeleteSelectedPart} disabled={parts.length <= 1}>Delete part</Button>
+                            <Button size="sm" onClick={handleSavePartDetails} disabled={savingPartDetails}>
+                              {savingPartDetails ? 'Saving…' : 'Save part'}
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-2">
+                            <Label>Part number</Label>
+                            <Input value={partDraft.partNumber} onChange={(e) => setPartDraft((prev) => ({ ...prev, partNumber: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Quantity</Label>
+                            <Input type="number" min={1} value={partDraft.quantity} onChange={(e) => setPartDraft((prev) => ({ ...prev, quantity: Number(e.target.value || 1) }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Material</Label>
+                            <Select value={partDraft.materialId || '__none__'} onValueChange={(value) => setPartDraft((prev) => ({ ...prev, materialId: value === '__none__' ? '' : value }))}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">No material</SelectItem>
+                                {materials.map((material) => (
+                                  <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Stock size</Label>
+                            <Input value={partDraft.stockSize} onChange={(e) => setPartDraft((prev) => ({ ...prev, stockSize: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Cut length</Label>
+                            <Input value={partDraft.cutLength} onChange={(e) => setPartDraft((prev) => ({ ...prev, cutLength: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2 md:col-span-2">
+                            <Label>Part notes</Label>
+                            <Textarea rows={3} value={partDraft.notes} onChange={(e) => setPartDraft((prev) => ({ ...prev, notes: e.target.value }))} />
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             )}
 
@@ -1233,6 +1606,45 @@ export default function OrderDetailPage() {
                     <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
                       Admin access required to upload files.
                     </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'full-files' && canEditParts && (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
+                  Full Order Files is admin-only and includes order-level + part-level files for this order.
+                </div>
+                <div className="space-y-3">
+                  {fullOrderFiles.length ? (
+                    fullOrderFiles.map((attachment: any) => {
+                      const href = attachment.storagePath ? `/attachments/${attachment.storagePath}` : attachment.url;
+                      return (
+                        <div key={`${attachment.source}-${attachment.id}`} className="rounded-lg border border-border/60 bg-muted/10 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-foreground">{attachment.label || 'Attachment'}</p>
+                            <Badge variant="outline">{attachment.sourceLabel}</Badge>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {attachment.partNumber ? `Part: ${attachment.partNumber} · ` : null}
+                            {attachment.mimeType || 'Unknown type'} · {new Date(attachment.createdAt).toLocaleString()}
+                          </div>
+                          {attachment.storagePath ? (
+                            <div className="mt-1 text-[11px] text-muted-foreground">
+                              <code>{attachment.storagePath}</code>
+                            </div>
+                          ) : null}
+                          {href ? (
+                            <a href={href} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">
+                              Open file
+                            </a>
+                          ) : null}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No files found on this order.</p>
                   )}
                 </div>
               </div>

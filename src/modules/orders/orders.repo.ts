@@ -912,6 +912,13 @@ export async function createOrderAttachment(data: Record<string, unknown>) {
   return prisma.attachment.create(data);
 }
 
+export async function updateOrderAttachmentStoragePath(attachmentId: string, storagePath: string) {
+  return prisma.attachment.update({
+    where: { id: attachmentId },
+    data: { storagePath },
+  });
+}
+
 export async function findPartById(partId: string) {
   return prisma.orderPart.findUnique({ where: { id: partId }, select: { id: true } });
 }
@@ -955,6 +962,13 @@ export async function updatePartAttachment(attachmentId: string, data: Record<st
   return prisma.partAttachment.update({
     where: { id: attachmentId },
     data,
+  });
+}
+
+export async function updatePartAttachmentStoragePath(attachmentId: string, storagePath: string) {
+  return prisma.partAttachment.update({
+    where: { id: attachmentId },
+    data: { storagePath },
   });
 }
 
