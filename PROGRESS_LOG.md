@@ -1,3 +1,18 @@
+### 2026-04-07 — Order/Quote pricing parity: shared work-item contract + order review totals
+- Added shared work-item pricing helpers in `src/modules/pricing/work-item-pricing.ts` to centralize checklist-vs-priced semantics and assignment/subtotal calculations.
+- Updated Quote Editor and Order Create assigned-item metadata rendering to reuse the shared helper so “No charge (checklist only)” and `rate × units = total` logic now come from the same rules.
+- Added missing Order Create review-step pricing summary card showing add-ons/labor subtotal and total estimate, explicitly excluding checklist-only items.
+- Standardized quote add-on fetch source to `/api/orders/addons?active=true&take=100` so quote/order creation flows now consume the same role-aware endpoint.
+- Added focused unit tests validating semantic classification and subtotal behavior for priced vs checklist-only items.
+
+Commands run:
+- npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts
+- npm run lint
+
+Verification note:
+- Targeted pricing tests passed (3/3).
+- Lint passed with no ESLint warnings/errors.
+
 **Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
 
 # Progress Log

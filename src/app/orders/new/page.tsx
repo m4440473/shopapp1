@@ -44,6 +44,11 @@ import {
 } from '@/lib/businesses';
 import { CustomFieldInputs, type CustomFieldDefinition } from '@/components/CustomFieldInputs';
 import { hasCustomFieldValue } from '@/lib/custom-field-values';
+import {
+  calculateAssignmentTotalCents,
+  calculateWorkItemsSubtotalCents,
+  getWorkItemPricingSemantic,
+} from '@/modules/pricing/work-item-pricing';
 
 const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 const OPTIONAL_VALUE = '__none__';
@@ -450,6 +455,23 @@ function NewOrderForm() {
     () => addons.filter((addon) => addon.isChecklistItem && !addon.affectsPrice),
     [addons],
   );
+  const addonLaborSubtotalCents = React.useMemo(
+    () =>
+      parts.reduce(
+        (sum, part) =>
+          sum +
+          calculateWorkItemsSubtotalCents({
+            selections: part.addonSelections.map((selection) => ({
+              addonId: selection.addonId,
+              units: numberFromString(selection.units),
+            })),
+            itemsById: availableItemsById,
+          }),
+        0,
+      ),
+    [availableItemsById, parts],
+  );
+  const totalEstimateCents = addonLaborSubtotalCents;
 
   function updatePart(key: string, patch: Partial<PartInput>) {
     setParts((prev) => prev.map((part) => (part.key === key ? { ...part, ...patch } : part)));
@@ -1284,7 +1306,7 @@ function NewOrderForm() {
                       }}
                       renderMeta={(assignment, item) => {
                         if (!item) return null;
-                        if (!item.affectsPrice) {
+                        if (getWorkItemPricingSemantic(item) === 'CHECKLIST_ONLY') {
                           return (
                             <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
                               No charge (checklist only).
@@ -1299,7 +1321,7 @@ function NewOrderForm() {
                           );
                         }
                         const units = numberFromString(assignment.units);
-                        const totalCents = Math.round(item.rateCents * (units > 0 ? units : 0));
+                        const totalCents = calculateAssignmentTotalCents({ item, units });
                         return (
                           <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
                             {formatCurrency(item.rateCents)} x {units.toFixed(2)} = {formatCurrency(totalCents)}
@@ -1319,6 +1341,26 @@ function NewOrderForm() {
 
         {currentStep === 2 && (
           <>
+            <Card className="border-border/60 bg-card/70 backdrop-blur">
+              <CardHeader>
+                <CardTitle>Estimate summary</CardTitle>
+                <CardDescription>Pricing projection from assigned add-ons and labor.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="flex items-center justify-between rounded-md border border-border/60 bg-background/70 px-3 py-2">
+                  <span className="text-muted-foreground">Add-ons & labor subtotal</span>
+                  <span className="font-medium">{formatCurrency(addonLaborSubtotalCents)}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-md border border-border/60 bg-background px-3 py-2 font-semibold">
+                  <span>Total estimate</span>
+                  <span>{formatCurrency(totalEstimateCents)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Checklist-only items are excluded from pricing totals.
+                </p>
+              </CardContent>
+            </Card>
+
             {conversionMode ? (
               <Card className="border-border/60 bg-card/70 backdrop-blur">
                 <CardHeader>

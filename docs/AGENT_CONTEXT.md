@@ -61,6 +61,10 @@ Goal: a scalable foundation that can grow.
 ## Decision Log (append newest at top)
 
 
+### 2026-04-07 — Shared work-item pricing contract for quote/order builders
+Decision: Introduce a shared pricing helper module (`src/modules/pricing/work-item-pricing.ts`) used by both Quote Editor and Order Create flows for checklist-vs-priced semantics and assignment/subtotal projection.
+Reason: Pricing and labeling drift occurred when quote and order builders duplicated rules independently; a shared contract keeps assignment labels and totals consistent across flows.
+
 ### 2026-04-07 — Canonical order-number storage normalization for order-owned files
 Decision: Add an Orders-domain post-create/post-conversion normalization step (`ensureOrderFilesInCanonicalStorage`) that ensures order-owned file records point to storage paths under `business/customer/orderNumber/` while preserving conversion behavior as copy semantics.
 Reason: Operators require file continuity across quote→order lifecycle with a stable backend folder convention keyed by order number.
