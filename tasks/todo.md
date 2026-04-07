@@ -3,6 +3,62 @@
 ## Session Metadata
 - Date: 2026-04-07
 - Agent: GPT-5.3-Codex
+- Task ID: Follow-up reliability fix — orders client/server boundary hardening
+- Goal: Replace hotfix duplication with shared client-safe order constants/helpers, mark Orders service as server-only, and remove client imports from `orders.service`.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, and `docs/AGENT_HANDOFF.md` before implementation.
+- [x] Scoped change to Orders module boundary files and affected client importers only.
+
+## Plan First
+- [x] Create `src/modules/orders/orders.constants.ts` for client-safe status constants/normalization.
+- [x] Create `src/modules/orders/orders.shared.ts` for client-safe dashboard/filter helpers.
+- [x] Add `import 'server-only';` to `orders.service.ts` and re-export shared constants/helpers for server callers.
+- [x] Update client components to import from `orders.constants.ts` / `orders.shared.ts` / `orders.types.ts` instead of `orders.service.ts`.
+- [x] Verify with lint + build and record evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [ ] `npm run build` *(fails due pre-existing Orders mock repo type mismatch in `src/repos/index.ts`)*
+
+## Review + Results
+- Added dedicated client-safe Orders constants/helpers modules and removed client dependence on `orders.service.ts`.
+- Added `server-only` guard to Orders service so accidental future client imports fail fast with clear intent.
+- Rewired `RecentOrdersTable`, `ShopFloorLayouts`, and `WorkQueueOrderCard` to consume shared constants/helpers/types from safe modules.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
+- Task ID: Hotfix — client bundle failure from server-only orders import
+- Goal: Fix runtime 500 caused by `node:crypto` webpack scheme error by removing server-only import from client Recent Orders table.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, and `docs/AGENT_HANDOFF.md` before implementation.
+- [x] Scoped change to one client component to avoid drive-by refactors.
+
+## Plan First
+- [x] Inspect import trace and identify client component importing server-side Orders service module.
+- [x] Replace the client component dependency on `orders.service` with a local status-label map to keep browser bundle server-module free.
+- [x] Run lint verification and update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Removed `RecentOrdersTable` import of `ORDER_STATUS_LABELS` from `orders.service`, which indirectly pulled `src/lib/storage.ts` (`node:crypto`) into a client bundle path.
+- Added a local order status label map in the client component so status rendering behavior remains unchanged while eliminating the webpack `UnhandledSchemeError` for `node:crypto`.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
 - Task ID: Unplanned admin quote/order ops + full order files + order editability
 - Goal: Rename admin quote ops IA, add admin full-order file visibility, enable broad admin order editing, and enforce canonical order-number storage continuity for order-owned files.
 

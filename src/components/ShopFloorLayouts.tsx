@@ -25,7 +25,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters, type DepartmentFeedOrder, type OrderWithMeta } from '@/modules/orders/orders.service';
+import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters } from '@/modules/orders/orders.shared';
+import type { DepartmentFeedOrder, OrderWithMeta } from '@/modules/orders/orders.types';
 import { WorkQueueOrderCard } from '@/components/work-queue/WorkQueueOrderCard';
 
 type LayoutOption = 'grid' | 'machinist' | 'workQueue';

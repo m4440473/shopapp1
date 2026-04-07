@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/Card';
-import type { DepartmentFeedOrder } from '@/modules/orders/orders.service';
+import type { DepartmentFeedOrder } from '@/modules/orders/orders.types';
 
 export function WorkQueueOrderCard({ order }: { order: DepartmentFeedOrder }) {
   return (

@@ -1,5 +1,69 @@
 Date: 2026-04-07
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Replace the quick hotfix with a durable Orders module boundary by moving client-safe constants/helpers out of `orders.service.ts` and enforcing `server-only` on the service.
+
+## What I changed
+- Added `src/modules/orders/orders.constants.ts` with client-safe order status constants and normalization helpers.
+- Added `src/modules/orders/orders.shared.ts` with client-safe dashboard/filter helpers (`decorateOrder`, `formatStatusLabel`, `orderMatchesFilters`, `DEFAULT_ORDER_FILTERS`).
+- Added `import 'server-only';` to `src/modules/orders/orders.service.ts` and re-exported shared/constants APIs for server-side callers.
+- Moved `DepartmentFeedOrder` / `DepartmentFeedPart` types into `src/modules/orders/orders.types.ts`.
+- Updated client import boundaries:
+  - `RecentOrdersTable` now imports labels from `orders.constants`.
+  - `ShopFloorLayouts` now imports helpers from `orders.shared` and types from `orders.types`.
+  - `WorkQueueOrderCard` now imports types from `orders.types`.
+
+## Files touched
+- `src/modules/orders/orders.constants.ts`
+- `src/modules/orders/orders.shared.ts`
+- `src/modules/orders/orders.types.ts`
+- `src/modules/orders/orders.service.ts`
+- `src/components/RecentOrdersTable.tsx`
+- `src/components/ShopFloorLayouts.tsx`
+- `src/components/work-queue/WorkQueueOrderCard.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run lint`
+- `npm run build`
+
+## Verification Evidence
+- Lint passed with no ESLint warnings/errors.
+- Build failed at a pre-existing type mismatch in `src/repos/index.ts` unrelated to this boundary move.
+
+## Next steps
+- [ ] Resolve the existing `src/repos/index.ts` mock orders repo type-surface mismatch so `npm run build` can pass in this branch.
+
+---
+
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
+Goal (1 sentence): Fix the `node:crypto` client-bundle crash by removing a server-only Orders service import from a client dashboard component.
+
+## What I changed
+- Updated `src/components/RecentOrdersTable.tsx` (client component) to stop importing `ORDER_STATUS_LABELS` from `src/modules/orders/orders.service.ts`.
+- Added a local `ORDER_STATUS_LABELS` map in the component so UI labels remain stable while avoiding server-side transitive imports (`src/lib/storage.ts` -> `node:crypto`).
+
+## Files touched
+- `src/components/RecentOrdersTable.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run lint`
+
+## Verification Evidence
+- Lint passed with no ESLint warnings/errors.
+
+## Next steps
+- [ ] Optional hardening: move shared order-status labels to a lightweight `orders.constants.ts` file that is safe for both server/client imports to prevent future boundary regressions.
+
+---
+
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Implement admin Quote & Order Ops IA updates, broad admin order editability, admin-only Full Order Files visibility, and canonical order-number file storage continuity through creation/conversion.
 
 ## What I changed

@@ -34,3 +34,27 @@ export type OrderFilterState = {
   requiresAddons: boolean;
   staleStatus: boolean;
 };
+
+export type DepartmentFeedPart = {
+  id: string;
+  partNumber: string | null;
+  quantity: number | null;
+  flagged: boolean;
+  reasonText: string | null;
+  checklistDoneCount: number;
+  checklistTotalCount: number;
+};
+
+export type DepartmentFeedOrder = {
+  orderId: string;
+  orderNumber: string;
+  customerName: string | null;
+  dueDate: Date | string | null;
+  status: string;
+  assignedMachinistName: string | null;
+  partsInDeptCount: number;
+  openChecklistCount: number;
+  flaggedCount: number;
+  latestActivityAt: Date | string | null;
+  parts: DepartmentFeedPart[];
+};
