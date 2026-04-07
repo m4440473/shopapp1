@@ -1,3 +1,5 @@
+import 'server-only';
+
 import { Prisma } from '@prisma/client';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -19,8 +21,13 @@ import {
   PartAttachmentCreate,
   PartAttachmentUpdate,
 } from './orders.schema';
-import type { OrderFilterState, OrderListItem, OrderWithMeta } from './orders.types';
+import type { DepartmentFeedOrder, DepartmentFeedPart, OrderFilterState, OrderListItem, OrderWithMeta } from './orders.types';
 import { isPartReadyForDepartment } from './department-routing';
+import {
+  LEGACY_IN_PROGRESS_ORDER_STATUSES,
+  normalizeOrderWorkflowStatus,
+  ORDER_WORKFLOW_STATUSES,
+} from './orders.constants';
 import {
   createOrderAttachment,
   createOrderCharge,
@@ -98,29 +105,9 @@ import {
 export { generateNextOrderNumber, syncChecklistForOrder };
 export type { OrderFilterState, OrderListItem, OrderWithMeta };
 export { isPartReadyForDepartment };
-
-export type DepartmentFeedPart = {
-  id: string;
-  partNumber: string | null;
-  quantity: number | null;
-  flagged: boolean;
-  reasonText: string | null;
-  checklistDoneCount: number;
-  checklistTotalCount: number;
-};
-export type DepartmentFeedOrder = {
-  orderId: string;
-  orderNumber: string;
-  customerName: string | null;
-  dueDate: Date | string | null;
-  status: string;
-  assignedMachinistName: string | null;
-  partsInDeptCount: number;
-  openChecklistCount: number;
-  flaggedCount: number;
-  latestActivityAt: Date | string | null;
-  parts: DepartmentFeedPart[];
-};
+export { normalizeOrderWorkflowStatus, ORDER_STATUS_LABELS, ORDER_WORKFLOW_STATUSES } from './orders.constants';
+export { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters } from './orders.shared';
+export type { DepartmentFeedOrder, DepartmentFeedPart };
 
 type OrderCreateInput = z.infer<typeof OrderCreate>;
 type OrderUpdateInput = z.infer<typeof OrderUpdate>;
@@ -138,40 +125,6 @@ type PartEventInput = {
   type: string;
   message: string;
   meta?: Record<string, unknown> | null;
-};
-
-export const ORDER_WORKFLOW_STATUSES = ['RECEIVED', 'IN_PROGRESS', 'COMPLETE', 'CLOSED'] as const;
-
-export const ORDER_STATUS_LABELS: Record<string, string> = {
-  RECEIVED: 'Received',
-  IN_PROGRESS: 'In progress',
-  COMPLETE: 'Complete',
-  CLOSED: 'Closed',
-};
-
-const LEGACY_RECEIVED_STATUSES = new Set(['NEW', 'RECEIVED']);
-const LEGACY_COMPLETE_STATUSES = new Set(['COMPLETE']);
-const LEGACY_CLOSED_STATUSES = new Set(['CLOSED']);
-const LEGACY_IN_PROGRESS_STATUSES = new Set([
-  'PROGRAMMING',
-  'SETUP',
-  'RUNNING',
-  'FINISHING',
-  'DONE_MACHINING',
-  'INSPECTING',
-  'INSPECTION',
-  'READY_FOR_ADDONS',
-  'SHIPPING',
-  'IN_PROGRESS',
-]);
-export const STALE_STATUS_MS = 30 * 24 * 60 * 60 * 1000;
-
-export const DEFAULT_ORDER_FILTERS: OrderFilterState = {
-  statuses: [],
-  priorities: [],
-  machinistId: 'all',
-  requiresAddons: false,
-  staleStatus: false,
 };
 
 async function recordPartEvent(
@@ -241,15 +194,6 @@ function getDepartmentName(departments: DepartmentSortEntry[], departmentId: str
   return departments.find((dept) => dept.id === departmentId)?.name ?? departmentId;
 }
 
-export function normalizeOrderWorkflowStatus(status: string | null | undefined) {
-  const value = (status ?? '').trim().toUpperCase();
-  if (LEGACY_CLOSED_STATUSES.has(value)) return 'CLOSED';
-  if (LEGACY_COMPLETE_STATUSES.has(value)) return 'COMPLETE';
-  if (LEGACY_IN_PROGRESS_STATUSES.has(value)) return 'IN_PROGRESS';
-  if (LEGACY_RECEIVED_STATUSES.has(value)) return 'RECEIVED';
-  return 'RECEIVED';
-}
-
 function isPartComplete(part: { id?: string | null; status?: string | null }, checklist: Array<{ partId?: string | null; completed?: boolean | null; isActive?: boolean | null }>) {
   if (normalizeOrderWorkflowStatus(part.status) === 'COMPLETE') return true;
   const partChecklist = checklist.filter((item) => item.partId === part.id && item.isActive !== false);
@@ -305,80 +249,6 @@ export async function syncOrderWorkflowStatus(orderId: string, { userId, tx }: {
   return ok({ orderId, status: nextStatus, changed: true });
 }
 
-export function decorateOrder(order: OrderListItem): OrderWithMeta {
-  const totalQuantity = (order.parts ?? []).reduce((sum, part) => sum + (part.quantity ?? 0), 0);
-  const addonCount = order.checklist?.length ?? 0;
-  const openAddonCount = order.checklist?.filter((item) => !item.completed).length ?? 0;
-  const latestStatusHistory = order.statusHistory?.[0];
-  const lastStatusChange = latestStatusHistory ? parseDate(latestStatusHistory.createdAt) : parseDate(order.receivedDate);
-
-  return {
-    ...order,
-    status: normalizeOrderWorkflowStatus(order.status),
-    totalQuantity,
-    addonCount,
-    openAddonCount,
-    hasAddons: addonCount > 0,
-    lastStatusChange,
-  };
-}
-
-export function formatStatusLabel(status: string) {
-  return ORDER_STATUS_LABELS[status] ?? status.replace(/_/g, ' ');
-}
-
-export function orderMatchesFilters(
-  order: OrderWithMeta,
-  filters: OrderFilterState,
-  quickStatus: 'all' | 'active' | 'closed',
-  priorityFilter: string,
-) {
-  if (quickStatus === 'active' && order.status === 'CLOSED') return false;
-  if (quickStatus === 'closed' && order.status !== 'CLOSED') return false;
-  if (filters.statuses.length > 0 && !filters.statuses.includes(order.status)) return false;
-
-  if (priorityFilter !== 'all' && order.priority !== priorityFilter) return false;
-  if (filters.priorities.length > 0 && !filters.priorities.includes(order.priority)) return false;
-
-  if (filters.machinistId !== 'all') {
-    if (filters.machinistId === '__unassigned__' && order.assignedMachinist?.id) return false;
-    if (filters.machinistId !== '__unassigned__' && order.assignedMachinist?.id !== filters.machinistId) return false;
-  }
-
-  const created = parseDate(order.receivedDate);
-  if (filters.createdFrom) {
-    const fromDate = new Date(filters.createdFrom);
-    if (created && created < fromDate) return false;
-  }
-  if (filters.createdTo) {
-    const toDate = new Date(filters.createdTo);
-    if (created && created > toDate) return false;
-  }
-
-  const due = parseDate(order.dueDate);
-  if (filters.dueFrom) {
-    const fromDate = new Date(filters.dueFrom);
-    if (due && due < fromDate) return false;
-  }
-  if (filters.dueTo) {
-    const toDate = new Date(filters.dueTo);
-    if (due && due > toDate) return false;
-  }
-
-  if (typeof filters.minQty === 'number' && order.totalQuantity < filters.minQty) return false;
-  if (typeof filters.maxQty === 'number' && order.totalQuantity > filters.maxQty) return false;
-
-  if (filters.requiresAddons && !order.hasAddons) return false;
-
-  if (filters.staleStatus) {
-    const lastChange = order.lastStatusChange?.getTime();
-    if (!lastChange) return false;
-    if (Date.now() - lastChange < STALE_STATUS_MS) return false;
-  }
-
-  return true;
-}
-
 type ServiceResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string | object };
 
 function ok<T>(data: T): ServiceResult<T> {
@@ -428,7 +298,7 @@ export async function listOrdersForQuery(params: {
     if (normalizedStatus === 'CLOSED') where.status = { in: ['CLOSED'] };
     else if (normalizedStatus === 'COMPLETE') where.status = { in: ['COMPLETE'] };
     else if (normalizedStatus === 'RECEIVED') where.status = { in: ['NEW', 'RECEIVED'] };
-    else where.status = { in: Array.from(LEGACY_IN_PROGRESS_STATUSES) };
+    else where.status = { in: LEGACY_IN_PROGRESS_ORDER_STATUSES };
   }
   if (priority) where.priority = priority;
   if (assignedMachinistId) where.assignedMachinistId = assignedMachinistId;

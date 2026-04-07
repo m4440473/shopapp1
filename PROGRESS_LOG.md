@@ -40,6 +40,33 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-07 — Reliability follow-up: client-safe Orders constants/shared helpers + server-only guard
+- Replaced hotfix-local status labels with a dedicated client-safe Orders constants module (`src/modules/orders/orders.constants.ts`) and moved reusable dashboard/filter helpers to `src/modules/orders/orders.shared.ts`.
+- Added `import 'server-only';` at the top of `src/modules/orders/orders.service.ts` and re-exported constants/shared helpers from the service for server consumers.
+- Removed all client-component imports from `orders.service.ts` by updating:
+  - `src/components/RecentOrdersTable.tsx` -> `orders.constants`
+  - `src/components/ShopFloorLayouts.tsx` -> `orders.shared` + `orders.types`
+  - `src/components/work-queue/WorkQueueOrderCard.tsx` -> `orders.types`
+
+Commands run:
+- npm run lint
+- npm run build
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Build failed at a pre-existing type mismatch in `src/repos/index.ts` (mock orders repo missing `updateOrderAttachmentStoragePath` and `updatePartAttachmentStoragePath`).
+
+### 2026-04-07 — Hotfix: remove server-only orders import from client Recent Orders table
+- Fixed dashboard/runtime 500 caused by webpack failing to bundle `node:crypto` into client code.
+- Root cause: `src/components/RecentOrdersTable.tsx` (`"use client"`) imported `ORDER_STATUS_LABELS` from `src/modules/orders/orders.service.ts`, which transitively imports `src/lib/storage.ts` (`node:crypto`).
+- Replaced that import with a local status-label map inside `RecentOrdersTable` to keep the client boundary free of server-only Node module imports.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-07 — Admin Quote & Order Ops IA + admin Full Order Files + order edit mode + canonical order-number file continuity
 - Renamed admin navigation grouping from `Quote Ops` to `Quote & Order Ops` and updated actions to `Create Order` + `Create Quote`; moved Templates entry into Business Settings card context on Admin Center.
 - Added admin order-detail edit mode supporting broad order header edits (`customer`, `dates`, `priority`, `vendor`, `PO`, assignee, material/model flags) and selected-part editing (`part number`, `quantity`, `material`, stock/cut lengths, notes) with add/delete part actions.
