@@ -3,6 +3,63 @@
 ## Session Metadata
 - Date: 2026-04-07
 - Agent: GPT-5.3-Codex
+- Task ID: Unplanned account sign-out UX follow-up
+- Goal: Add a visible logout control on the account page so users can sign out and log into a different account.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated prior dependency quality via the latest continuity entry for the nav/about change session.
+- [x] Scope constrained to account page sign-out access only.
+
+## Plan First
+- [x] Add a clear sign-out control within the account password page UI.
+- [x] Ensure sign-out redirects users back to the sign-in page to support account switching.
+- [x] Run lint and update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Added an explicit `Sign out` button on the account password page so logged-in users can immediately log out before switching accounts.
+- Wired sign-out to NextAuth `signOut({ callbackUrl: '/auth/signin' })` so logout returns directly to the sign-in page for a quick account swap flow.
+- Lint passed with no ESLint warnings/errors.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
+- Task ID: Unplanned nav/auth/about cleanup
+- Goal: Add a clear Sign In tab to the main navigation and remove the About page/route from the app shell.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated prior dependency quality by checking latest completed session evidence (2026-04-07 explicit department submit flow) in continuity logs.
+- [x] Scope constrained to navigation/auth entry visibility and about route removal only.
+
+## Plan First
+- [x] Update `AppNav` links to remove About and add a visible Sign In nav tab when unauthenticated.
+- [x] Remove the `/about` page route implementation file.
+- [x] Run lint verification for touched paths.
+- [x] Update continuity docs (`PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`) with commands/results after verification.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Updated `AppNav` to remove the About tab and add a `Sign In` tab in the nav link set for unauthenticated users while preserving the existing account/sign-in CTA button.
+- Removed `src/app/about/page.tsx` so `/about` is no longer an application page.
+- Lint passed with no ESLint warnings/errors.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
 - Task ID: Unplanned workflow fix (explicit department submit + checklist grouping + manual time adjustment)
 - Goal: Replace checklist auto-advance with explicit department completion submission, enforce department checklist gate, show grouped checklist UI, and include manual added-time notes in part totals.
 

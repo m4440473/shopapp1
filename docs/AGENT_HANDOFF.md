@@ -1,5 +1,62 @@
 Date: 2026-04-07
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Add a direct logout control on the account page so users can sign out and switch accounts quickly.
+
+## What I changed
+- Updated `src/app/account/password/client.tsx` to add a `Sign out` button alongside the password save action.
+- Wired the new sign-out action to `signOut({ callbackUrl: '/auth/signin' })` so users are returned to sign-in immediately after logout.
+- Added local `signingOut` state so the sign-out button shows in-progress text and temporarily disables relevant actions.
+- Updated continuity artifacts for this follow-up session (`tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`).
+
+## Files touched
+- src/app/account/password/client.tsx
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+## Commands run
+- npm run lint
+
+## Verification Evidence
+- Lint passed with no ESLint warnings/errors.
+
+## Next steps
+- [ ] Optional UX follow-up: add a short helper line above the sign-out button clarifying that signing out is the path for switching users on shared machines.
+
+---
+
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
+Goal (1 sentence): Add a dedicated Sign In tab in the navigation and remove the About page from the app.
+
+## What I changed
+- Updated `src/components/AppNav.tsx`:
+  - Removed the About nav link.
+  - Added a `Sign In` nav link for unauthenticated users (desktop + mobile nav lists).
+  - Kept existing account/sign-in CTA button behavior unchanged.
+- Deleted `src/app/about/page.tsx` to remove the `/about` page route.
+- Updated continuity artifacts for this session (`tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`).
+
+## Files touched
+- src/components/AppNav.tsx
+- src/app/about/page.tsx (deleted)
+- tasks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+## Commands run
+- npm run lint
+
+## Verification Evidence
+- Lint passed with no ESLint warnings/errors.
+
+## Next steps
+- [ ] If desired, add a public marketing/info page at a new route (for example `/welcome`) that is intentionally linked from nav; currently no informational page link remains in the app nav.
+
+---
+
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Replace unreliable checklist auto-advance with explicit department completion submission, while adding manual time-adjustment notes into part totals visibility.
 
 ## What I changed

@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { signOut } from 'next-auth/react';
 
 import { fetchJson } from '@/lib/fetchJson';
 import { useToast } from '@/components/ui/Toast';
@@ -20,6 +21,7 @@ export default function PasswordClient() {
   const [form, setForm] = useState<PasswordState>({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [hasPassword, setHasPassword] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +81,12 @@ export default function PasswordClient() {
     }
   }
 
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await signOut({ callbackUrl: '/auth/signin' });
+  }
+
   const description =
     hasPassword === null
       ? 'Loading account details…'
@@ -126,8 +134,16 @@ export default function PasswordClient() {
               autoComplete="new-password"
             />
           </div>
-          <div className="flex justify-end">
-            <Button type="submit" disabled={loading || hasPassword === null}>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleSignOut}
+              disabled={signingOut}
+            >
+              {signingOut ? 'Signing out…' : 'Sign out'}
+            </Button>
+            <Button type="submit" disabled={loading || hasPassword === null || signingOut}>
               {loading ? 'Saving…' : 'Save password'}
             </Button>
           </div>

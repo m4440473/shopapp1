@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BadgeCheck,
-  Info,
   LayoutDashboard,
   Menu,
   Search,
@@ -32,7 +31,6 @@ import { useCurrentUser } from "@/lib/use-current-user";
 
 const baseLinks = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/about", label: "About", icon: Info },
   { href: "/customers", label: "Customers", icon: Users },
 ];
 
@@ -57,6 +55,8 @@ export default function AppNav({ companyName, initials, logoUrl }: AppNavProps) 
     }
     if (user) {
       items.push({ href: "/account/password", label: "Account", icon: UserRound });
+    } else {
+      items.push({ href: "/auth/signin", label: "Sign In", icon: UserRound });
     }
     if (user && canAccessAdmin(user)) {
       items.push({ href: "/admin", label: "Admin", icon: BadgeCheck });
