@@ -29,6 +29,7 @@ const tabGroups = [
     items: [
       { href: '/orders/new', label: 'Create Order', icon: ReceiptText },
       { href: '/admin/quotes/new', label: 'Create Quote', icon: FileText },
+      { href: '/admin/quotes', label: 'View Quotes', icon: FileText },
     ],
   },
 ];

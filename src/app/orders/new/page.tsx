@@ -49,6 +49,7 @@ import {
   calculateWorkItemsSubtotalCents,
   getWorkItemPricingSemantic,
 } from '@/modules/pricing/work-item-pricing';
+import { calculatePartLotTotal, type PartPricingMode } from '@/modules/pricing/part-pricing';
 
 const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 const OPTIONAL_VALUE = '__none__';
@@ -89,6 +90,12 @@ type PartInput = {
   cutLength?: string;
   notes?: string;
   addonSelections: PartAddonSelection[];
+};
+
+type PartPricingState = {
+  partKey: string;
+  price: string;
+  pricingMode: PartPricingMode;
 };
 type AttachmentInput = { url: string; storagePath: string; label: string; mimeType: string; uploading?: boolean };
 
@@ -144,9 +151,6 @@ const numberFromString = (value: string) => {
   return parsed;
 };
 
-const formatCurrency = (cents: number) =>
-  (cents / 100).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-
 function NewOrderForm() {
   const searchParams = useSearchParams();
   const [customerId, setCustomerId] = React.useState('');
@@ -169,6 +173,7 @@ function NewOrderForm() {
   const [priority, setPriority] = React.useState('NORMAL');
   const [business, setBusiness] = React.useState<BusinessCode>(DEFAULT_BUSINESS_CODE);
   const [parts, setParts] = React.useState<PartInput[]>([emptyPart()]);
+  const [partPricing, setPartPricing] = React.useState<PartPricingState[]>([{ partKey: parts[0]?.key ?? createKey(), price: '0.00', pricingMode: 'LOT_TOTAL' }]);
   const [activePartKey, setActivePartKey] = React.useState(parts[0]?.key ?? createKey());
   const [attachments, setAttachments] = React.useState<AttachmentInput[]>([emptyAttachment()]);
   const [attachmentBusiness, setAttachmentBusiness] = React.useState<BusinessName>(DEFAULT_BUSINESS_NAME);
@@ -415,6 +420,13 @@ function NewOrderForm() {
     setActivePartKey(parts[0]?.key ?? createKey());
   }, [activePartKey, parts]);
 
+  React.useEffect(() => {
+    setPartPricing((prev) => {
+      const byPartKey = new Map(prev.map((entry) => [entry.partKey, entry]));
+      return parts.map((part) => byPartKey.get(part.key) ?? { partKey: part.key, price: '0.00', pricingMode: 'LOT_TOTAL' });
+    });
+  }, [parts]);
+
   const selectedBusinessOption = React.useMemo(
     () => BUSINESS_OPTIONS.find((option) => option.name === attachmentBusiness) ?? BUSINESS_OPTIONS[0],
     [attachmentBusiness],
@@ -471,7 +483,23 @@ function NewOrderForm() {
       ),
     [availableItemsById, parts],
   );
-  const totalEstimateCents = addonLaborSubtotalCents;
+  const partPricingTotalCents = React.useMemo(
+    () =>
+      partPricing.reduce((sum, entry) => {
+        const part = parts.find((candidate) => candidate.key === entry.partKey);
+        const quantity = Number.isFinite(part?.quantity) ? Number(part?.quantity) : 1;
+        return (
+          sum +
+          calculatePartLotTotal({
+            enteredPriceCents: Math.round(numberFromString(entry.price) * 100),
+            quantity,
+            pricingMode: entry.pricingMode,
+          })
+        );
+      }, 0),
+    [partPricing, parts],
+  );
+  const totalEstimateCents = addonLaborSubtotalCents + partPricingTotalCents;
 
   function updatePart(key: string, patch: Partial<PartInput>) {
     setParts((prev) => prev.map((part) => (part.key === key ? { ...part, ...patch } : part)));
@@ -1341,6 +1369,61 @@ function NewOrderForm() {
 
         {currentStep === 2 && (
           <>
+
+            <Card className="border-border/60 bg-card/70 backdrop-blur">
+              <CardHeader>
+                <CardTitle>Per-part pricing basis</CardTitle>
+                <CardDescription>
+                  Review-only estimate controls. This basis is not persisted on order create.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {parts.map((part, index) => {
+                  const entry = partPricing.find((candidate) => candidate.partKey === part.key) ?? {
+                    partKey: part.key,
+                    price: '0.00',
+                    pricingMode: 'LOT_TOTAL' as PartPricingMode,
+                  };
+                  const quantity = Number.isFinite(part.quantity) ? Number(part.quantity) : 1;
+                  const lotTotal = calculatePartLotTotal({
+                    enteredPriceCents: Math.round(numberFromString(entry.price) * 100),
+                    quantity,
+                    pricingMode: entry.pricingMode,
+                  });
+                  return (
+                    <div key={part.key} className="grid gap-3 rounded border border-border/60 bg-background/60 p-3 md:grid-cols-[1.5fr_100px_160px_140px_auto] md:items-center">
+                      <div className="text-sm font-medium">{part.partNumber || `Part ${index + 1}`}</div>
+                      <div className="text-sm text-muted-foreground">Qty: {quantity}</div>
+                      <Input
+                        inputMode="decimal"
+                        value={entry.price}
+                        onChange={(event) =>
+                          setPartPricing((prev) =>
+                            prev.map((row) => (row.partKey === part.key ? { ...row, price: event.target.value } : row)),
+                          )
+                        }
+                        placeholder="0.00"
+                      />
+                      <Label className="flex items-center gap-2 text-xs">
+                        <Checkbox
+                          checked={entry.pricingMode === 'PER_UNIT'}
+                          onCheckedChange={(checked) =>
+                            setPartPricing((prev) =>
+                              prev.map((row) =>
+                                row.partKey === part.key ? { ...row, pricingMode: checked ? 'PER_UNIT' : 'LOT_TOTAL' } : row,
+                              ),
+                            )
+                          }
+                        />
+                        PER_UNIT
+                      </Label>
+                      <div className="text-sm font-medium">{formatCurrency(lotTotal)}</div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
             <Card className="border-border/60 bg-card/70 backdrop-blur">
               <CardHeader>
                 <CardTitle>Estimate summary</CardTitle>
@@ -1350,6 +1433,10 @@ function NewOrderForm() {
                 <div className="flex items-center justify-between rounded-md border border-border/60 bg-background/70 px-3 py-2">
                   <span className="text-muted-foreground">Add-ons & labor subtotal</span>
                   <span className="font-medium">{formatCurrency(addonLaborSubtotalCents)}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-md border border-border/60 bg-background/70 px-3 py-2">
+                  <span className="text-muted-foreground">Part pricing (basis-adjusted)</span>
+                  <span className="font-medium">{formatCurrency(partPricingTotalCents)}</span>
                 </div>
                 <div className="flex items-center justify-between rounded-md border border-border/60 bg-background px-3 py-2 font-semibold">
                   <span>Total estimate</span>

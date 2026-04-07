@@ -116,6 +116,7 @@ export async function createQuoteWithDetails({
             name: entry.name ?? null,
             partNumber: entry.partNumber ?? null,
             priceCents: entry.priceCents ?? 0,
+            pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
           })),
         }),
         createdById: userId,

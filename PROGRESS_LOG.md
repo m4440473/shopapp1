@@ -1,3 +1,30 @@
+### 2026-04-07 — Review-comment gate + admin quote discoverability + per-part pricing basis controls (quotes/orders)
+- Added a Phase-0 review gate checklist in `tasks/todo.md` mapping each unresolved PR comment request to a concrete task/disposition before implementation.
+- Restored quote discoverability in admin IA:
+  - Added `View Quotes` to Admin NavTabs `Quote & Order Ops`.
+  - Added `View Quotes` card link in Admin Center `Quote & Order Ops` section.
+- Implemented quote review per-part pricing basis controls:
+  - Added `pricingMode` (`PER_UNIT` | `LOT_TOTAL`) to quote input schema + metadata typing.
+  - Added per-part review rows in Quote Editor with quantity, entered price, mode checkbox, and immediate lot-total recalculation.
+  - Persisted `pricingMode` in quote metadata `partPricing` on create/edit and reloaded it in edit flow.
+  - Added `Part pricing (basis-adjusted)` as a separate summary line item and included it in quote total estimate.
+- Implemented equivalent `/orders/new` review basis controls:
+  - Added per-part entered-price + mode checkbox controls with immediate estimate updates.
+  - Explicitly documented order-side behavior as review-transient (not persisted in order create payload).
+- Added new pricing helper + unit coverage:
+  - `src/modules/pricing/part-pricing.ts`
+  - `src/modules/pricing/__tests__/part-pricing.test.ts`
+- Added Decision Log entry in `docs/AGENT_CONTEXT.md` codifying final estimate behavior (coexist line-item model).
+
+Commands run:
+- npm run lint
+- npm run test -- src/modules/pricing/__tests__/part-pricing.test.ts
+- npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Targeted pricing tests passed (part-pricing 2/2, work-item-pricing 3/3).
+
 ### 2026-04-07 — Order/Quote pricing parity: shared work-item contract + order review totals
 - Added shared work-item pricing helpers in `src/modules/pricing/work-item-pricing.ts` to centralize checklist-vs-priced semantics and assignment/subtotal calculations.
 - Updated Quote Editor and Order Create assigned-item metadata rendering to reuse the shared helper so “No charge (checklist only)” and `rate × units = total` logic now come from the same rules.

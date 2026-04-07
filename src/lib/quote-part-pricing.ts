@@ -6,12 +6,6 @@ type PartLike = {
   addonSelections?: Array<{ totalCents: number }>;
 };
 
-const isValidPricing = (entries: QuotePartPricingEntry[], expectedTotal: number, partCount: number) => {
-  if (entries.length !== partCount) return false;
-  const sum = entries.reduce((total, entry) => total + (entry.priceCents || 0), 0);
-  return sum === expectedTotal;
-};
-
 export const getPartPricingEntries = ({
   parts,
   metadata,
@@ -34,11 +28,12 @@ export const getPartPricingEntries = ({
       }))
     : [];
 
-  if (stored.length && isValidPricing(stored, expectedTotal, parts.length)) {
+  if (stored.length === parts.length) {
     return stored.map((entry, index) => ({
       name: entry.name ?? parts[index]?.name ?? null,
       partNumber: entry.partNumber ?? parts[index]?.partNumber ?? null,
       priceCents: entry.priceCents ?? 0,
+      pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
     }));
   }
 
@@ -46,5 +41,6 @@ export const getPartPricingEntries = ({
     name: part.name,
     partNumber: part.partNumber ?? null,
     priceCents: partTotals[index] ?? 0,
+    pricingMode: 'LOT_TOTAL',
   }));
 };

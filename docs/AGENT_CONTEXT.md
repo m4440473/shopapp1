@@ -61,6 +61,10 @@ Goal: a scalable foundation that can grow.
 ## Decision Log (append newest at top)
 
 
+### 2026-04-07 — Part-pricing basis model: coexist line item + quote persistence, order review transient
+Decision: Introduce per-part `pricingMode` (`PER_UNIT` | `LOT_TOTAL`) with explicit part-price entry in Quote Review, persist it in quote metadata (`partPricing` entries include `pricingMode`), and compute lot totals as mode-driven. Keep existing `basePriceCents` semantics intact; `partPricingTotal` is a separate estimate line item (coexists, does not overwrite base fabrication). For `/orders/new`, apply the same per-part basis controls and instant estimate behavior in review UI, but keep it transient (not persisted on order create payload) until an explicit Orders-domain persistence contract is approved.
+Reason: Admins need explicit, per-part pricing interpretation without hidden math; preserving base pricing avoids silent contract breaks while coexistence keeps calculations transparent. Quote persistence is required for edit/reopen fidelity; order-side persistence remains intentionally deferred to avoid schema drift without a dedicated contract.
+
 ### 2026-04-07 — Shared work-item pricing contract for quote/order builders
 Decision: Introduce a shared pricing helper module (`src/modules/pricing/work-item-pricing.ts`) used by both Quote Editor and Order Create flows for checklist-vs-priced semantics and assignment/subtotal projection.
 Reason: Pricing and labeling drift occurred when quote and order builders duplicated rules independently; a shared contract keeps assignment labels and totals consistent across flows.

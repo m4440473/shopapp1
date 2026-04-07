@@ -3,6 +3,91 @@
 ## Session Metadata
 - Date: 2026-04-07
 - Agent: GPT-5.3-Codex
+- Task ID: Review-comment gate + quote/order pricing-basis controls + admin quote discoverability
+- Goal: Resolve prior PR review comments by mapping each to scoped tasks before coding, then implement required admin navigation and per-part pricing-basis behavior across quote/order review flows.
+
+## Phase 0 — Review-comment gate (required before implementation)
+
+### Source note
+- Inline-comment IDs were not programmatically retrievable in this workspace (no GitHub remote/CLI available).
+- Mapped unresolved review asks from the provided PR-review bundle into concrete tracked comment tasks below.
+
+### Unresolved review comments -> task mapping
+- [x] **PR-REV-001**
+  - Requested change: Restore quote discoverability in admin IA (`View Quotes` in NavTabs + Admin Center).
+  - Target file(s): `src/components/Admin/NavTabs.tsx`, `src/app/admin/page.tsx`
+  - Resolution strategy: Add `/admin/quotes` link entry in `Quote & Order Ops` tab group and corresponding Admin Center card link.
+  - Disposition: **Implement now**
+
+- [x] **PR-REV-002**
+  - Requested change: Add per-part pricing basis controls in Quote Review with immediate total updates (`PER_UNIT` vs `LOT_TOTAL`).
+  - Target file(s): `src/app/admin/quotes/QuoteEditor.tsx`, pricing helpers/types
+  - Resolution strategy: Add part pricing rows in review, compute mode-driven lot totals live, and surface in summary.
+  - Disposition: **Implement now**
+
+- [x] **PR-REV-003**
+  - Requested change: Extend quote part-pricing data contract with persisted `pricingMode` and preserve on edit/reload.
+  - Target file(s): `src/modules/quotes/quotes.schema.ts`, `src/lib/quote-metadata.ts`, `src/lib/quote-part-pricing.ts`, quote API/repo mapping
+  - Resolution strategy: Add `pricingMode` schema validation and metadata serialization/parse support; wire create+patch mapping and edit preload.
+  - Disposition: **Implement now**
+
+- [x] **PR-REV-004**
+  - Requested change: Codify final estimate behavior to avoid pricing-model drift.
+  - Target file(s): `docs/AGENT_CONTEXT.md`, quote/order review summaries
+  - Resolution strategy: Decision Log entry selecting coexist model (base fabrication retained; part-pricing total as separate line item).
+  - Disposition: **Implement now**
+
+- [x] **PR-REV-005**
+  - Requested change: Apply same per-part pricing basis concept to `/orders/new` review with immediate updates.
+  - Target file(s): `src/app/orders/new/page.tsx`
+  - Resolution strategy: Add transient per-part review rows with mode toggle + live summary recalculation.
+  - Disposition: **Implement now**
+
+- [x] **PR-REV-006**
+  - Requested change: Persist order-side basis or explicitly document transient-only behavior.
+  - Target file(s): `docs/AGENT_CONTEXT.md`, `/orders/new` UI copy
+  - Resolution strategy: Explicitly document order review basis as transient in Decision Log and UI helper text.
+  - Disposition: **Implement now**
+
+- [x] **PR-REV-007**
+  - Requested change: End-to-end consistency checks + continuity updates before closeout.
+  - Target file(s): `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`
+  - Resolution strategy: Run lint/tests and record matrix evidence + touched files/next steps.
+  - Disposition: **Implement now**
+
+## Plan First
+- [x] Add Decision Log entry for pricing-model choice before coding.
+- [x] Implement admin discoverability links for View Quotes (NavTabs + Admin Center).
+- [x] Add quote-review per-part pricing basis controls with instant totals and metadata persistence.
+- [x] Add `/orders/new` review per-part pricing basis controls with instant totals (transient-only, explicitly documented).
+- [x] Run lint + targeted tests for new pricing-mode logic.
+- [x] Update continuity artifacts with verification evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test -- src/modules/pricing/__tests__/part-pricing.test.ts`
+- [x] `npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts`
+
+## Review + Results
+- Added a Review-comment gate checklist mapping every unresolved PR ask into explicit implement-now tasks before implementation started.
+- Restored quote discoverability in admin UX by adding `View Quotes` links in both Admin NavTabs and Admin Center’s `Quote & Order Ops` section.
+- Added quote review per-part pricing basis controls (`PER_UNIT` vs `LOT_TOTAL`) with immediate recalculation and persisted `pricingMode` in quote `partPricing` metadata.
+- Chose and documented a pricing model decision in Decision Log: `partPricingTotal` coexists as a separate estimate line item; `basePriceCents` remains unchanged.
+- Added equivalent `/orders/new` review controls with instant totals and explicit UI note that order-side pricing basis is currently transient (not persisted in order payload).
+- Added focused pricing-mode unit tests and verified lint + targeted tests pass.
+
+Commands run:
+- npm run lint
+- npm run test -- src/modules/pricing/__tests__/part-pricing.test.ts
+- npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
 - Task ID: Order/Quote pricing parity follow-up
 - Goal: Unify work-item pricing semantics across quote/order builders and add missing order review pricing summary so totals/labels match.
 
