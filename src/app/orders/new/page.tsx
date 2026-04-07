@@ -133,6 +133,15 @@ const defaultDueDate = () => {
   return base.toISOString().slice(0, 10);
 };
 
+const numberFromString = (value: string) => {
+  const parsed = Number.parseFloat(value || '0');
+  if (!Number.isFinite(parsed)) return 0;
+  return parsed;
+};
+
+const formatCurrency = (cents: number) =>
+  (cents / 100).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+
 function NewOrderForm() {
   const searchParams = useSearchParams();
   const [customerId, setCustomerId] = React.useState('');
@@ -299,17 +308,93 @@ function NewOrderForm() {
             : [emptyPart()],
         );
         const quoteAddonIds = new Set<string>();
+        const quoteAddonSnapshots = new Map<string, AddonOption>();
         (quote.parts ?? []).forEach((part: any) => {
           (part.addonSelections ?? []).forEach((sel: any) => {
             const addonId = sel.addon?.id ?? sel.addonId ?? null;
             if (addonId) quoteAddonIds.add(addonId);
+            if (addonId && sel.addon) {
+              quoteAddonSnapshots.set(addonId, {
+                id: addonId,
+                name: sel.addon.name ?? 'Unnamed add-on',
+                description: sel.addon.description ?? null,
+                rateType: sel.addon.rateType ?? undefined,
+                rateCents:
+                  typeof sel.addon.rateCents === 'number'
+                    ? sel.addon.rateCents
+                    : typeof sel.rateCents === 'number'
+                    ? sel.rateCents
+                    : undefined,
+                active: true,
+                affectsPrice:
+                  typeof sel.addon.affectsPrice === 'boolean'
+                    ? sel.addon.affectsPrice
+                    : typeof sel.affectsPrice === 'boolean'
+                    ? sel.affectsPrice
+                    : true,
+                isChecklistItem:
+                  typeof sel.addon.isChecklistItem === 'boolean'
+                    ? sel.addon.isChecklistItem
+                    : typeof sel.isChecklistItem === 'boolean'
+                    ? sel.isChecklistItem
+                    : false,
+                department:
+                  sel.addon.department && sel.addon.department.id
+                    ? {
+                        id: sel.addon.department.id,
+                        name: sel.addon.department.name ?? 'Department',
+                      }
+                    : null,
+              });
+            }
           });
         });
         (quote.addonSelections ?? []).forEach((sel: any) => {
           const addonId = sel.addon?.id ?? sel.addonId ?? null;
           if (addonId) quoteAddonIds.add(addonId);
+          if (addonId && sel.addon) {
+            quoteAddonSnapshots.set(addonId, {
+              id: addonId,
+              name: sel.addon.name ?? 'Unnamed add-on',
+              description: sel.addon.description ?? null,
+              rateType: sel.addon.rateType ?? undefined,
+              rateCents:
+                typeof sel.addon.rateCents === 'number'
+                  ? sel.addon.rateCents
+                  : typeof sel.rateCents === 'number'
+                  ? sel.rateCents
+                  : undefined,
+              active: true,
+              affectsPrice:
+                typeof sel.addon.affectsPrice === 'boolean'
+                  ? sel.addon.affectsPrice
+                  : typeof sel.affectsPrice === 'boolean'
+                  ? sel.affectsPrice
+                  : true,
+              isChecklistItem:
+                typeof sel.addon.isChecklistItem === 'boolean'
+                  ? sel.addon.isChecklistItem
+                  : typeof sel.isChecklistItem === 'boolean'
+                  ? sel.isChecklistItem
+                  : false,
+              department:
+                sel.addon.department && sel.addon.department.id
+                  ? {
+                      id: sel.addon.department.id,
+                      name: sel.addon.department.name ?? 'Department',
+                    }
+                  : null,
+            });
+          }
         });
         setSelectedAddonIds(Array.from(quoteAddonIds));
+        if (quoteAddonSnapshots.size > 0) {
+          setAddons((prev) => {
+            const existingIds = new Set(prev.map((item) => item.id));
+            const missing = Array.from(quoteAddonSnapshots.values()).filter((item) => !existingIds.has(item.id));
+            return missing.length ? [...prev, ...missing] : prev;
+          });
+        }
         setDueDate((quote.dueDate as string | null)?.slice(0, 10) || defaultDueDate());
         setNotes((prev) => prev || buildConversionNote(quote));
       })
@@ -1197,6 +1282,30 @@ function NewOrderForm() {
                         if (conversionMode) return;
                         moveAddonSelection(activePart.key, key, direction);
                       }}
+                      renderMeta={(assignment, item) => {
+                        if (!item) return null;
+                        if (!item.affectsPrice) {
+                          return (
+                            <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                              No charge (checklist only).
+                            </div>
+                          );
+                        }
+                        if (typeof item.rateCents !== 'number') {
+                          return (
+                            <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                              Price unavailable for this add-on.
+                            </div>
+                          );
+                        }
+                        const units = numberFromString(assignment.units);
+                        const totalCents = Math.round(item.rateCents * (units > 0 ? units : 0));
+                        return (
+                          <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
+                            {formatCurrency(item.rateCents)} x {units.toFixed(2)} = {formatCurrency(totalCents)}
+                          </div>
+                        );
+                      }}
                       disabled={conversionMode}
                     />
                   </>
@@ -1497,4 +1606,3 @@ const extractErrorMessage = async (res: Response, fallback: string) => {
     return fallback;
   }
 };
-

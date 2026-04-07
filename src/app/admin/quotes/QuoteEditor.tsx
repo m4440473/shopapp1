@@ -725,9 +725,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         name: addon.name,
         description: addon.description,
         rateType: addon.rateType,
+        rateCents: addon.rateCents,
         departmentName: addon.department?.name ?? null,
-        affectsPrice: addon.affectsPrice,
-        isChecklistItem: addon.isChecklistItem,
+        affectsPrice: addon.affectsPrice ?? true,
+        isChecklistItem: addon.isChecklistItem ?? false,
       })),
     [addons]
   );

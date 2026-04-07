@@ -1,5 +1,37 @@
 Date: 2026-04-07
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Restore admin-visible add-on/labor pricing context in quote/order creation flows and repair the quote-conversion route type guard regression breaking build checks.
+
+## What I changed
+- Updated `QuoteEditor` available-item mapping to include `rateCents` for add-on cards rendered by `AvailableItemsLibrary`.
+- Updated `/orders/new` assigned add-on/labor panel to render per-line pricing metadata (`rate x units = total`) and checklist-only no-charge indicator.
+- Updated quote prefill hydration in `/orders/new` to merge add-on snapshots from quote selections so pricing/details remain visible even when selected add-ons are inactive and absent from active add-on API fetch.
+- Updated quote conversion route error handling to use `error?.code === 'P2002'` guard instead of `Prisma.PrismaClientKnownRequestError` type access.
+
+## Files touched
+- `src/app/admin/quotes/QuoteEditor.tsx`
+- `src/app/orders/new/page.tsx`
+- `src/app/api/admin/quotes/[id]/convert/route.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run -s lint`
+- `npm run -s build`
+
+## Verification Evidence
+- Lint passed with no ESLint warnings/errors.
+- Build failed at pre-existing `src/repos/index.ts` mock repo type-surface mismatch (`updateOrderAttachmentStoragePath` and `updatePartAttachmentStoragePath` missing in mock).
+
+## Next steps
+- [ ] Resolve `src/repos/index.ts` mock Orders repo type shape mismatch so `npm run build` can pass fully in this branch.
+- [ ] Add focused UI regression coverage for quote/order assigned add-on pricing display behavior.
+
+---
+
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Fix quote→order conversion checklist unique-constraint failures, surface actionable conversion/create errors in UI/API, and restore admin pricing visibility in add-on assignment cards.
 
 ## What I changed
