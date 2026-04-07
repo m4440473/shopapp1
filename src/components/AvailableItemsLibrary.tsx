@@ -11,6 +11,7 @@ export type AvailableItem = {
   name: string;
   description?: string | null;
   rateType?: 'HOURLY' | 'FLAT';
+  rateCents?: number;
   departmentName?: string | null;
   affectsPrice: boolean;
   isChecklistItem: boolean;
@@ -23,6 +24,13 @@ type AvailableItemsLibraryProps = {
   onAddItem: (item: AvailableItem) => void;
   disabled?: boolean;
 };
+
+function formatRate(item: AvailableItem) {
+  if (typeof item.rateCents !== 'number') return null;
+  const amount = item.rateCents / 100;
+  const formatted = amount.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+  return item.rateType === 'HOURLY' ? `${formatted}/hr` : formatted;
+}
 
 function groupItems(items: AvailableItem[]) {
   const grouped = new Map<string, AvailableItem[]>();
@@ -112,6 +120,9 @@ export function AvailableItemsLibrary({
                         </Badge>
                       ) : null}
                     </div>
+                    {item.affectsPrice && typeof item.rateCents === 'number' ? (
+                      <div className="text-xs font-medium text-foreground">{formatRate(item)}</div>
+                    ) : null}
                   </div>
                   <Button
                     type="button"

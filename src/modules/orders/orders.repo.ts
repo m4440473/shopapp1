@@ -2,12 +2,21 @@ import type { PrismaClient } from '@prisma/client';
 import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
 import { prisma } from '@/lib/prisma';
 
-type ChecklistKey = {
+type ChecklistChargeKey = {
   chargeId: string;
 };
 
-function buildChecklistKey(value: ChecklistKey) {
+function buildChecklistChargeKey(value: ChecklistChargeKey) {
   return value.chargeId;
+}
+
+type ChecklistUniqueKey = {
+  partId: string | null;
+  addonId: string | null;
+};
+
+function buildChecklistUniqueKey(value: ChecklistUniqueKey) {
+  return `${value.partId ?? 'none'}:${value.addonId ?? 'none'}`;
 }
 
 type DbClient = PrismaClient | any;
@@ -39,8 +48,8 @@ export async function syncChecklistForOrder(orderId: string) {
       select: { id: true, partId: true, departmentId: true, addonId: true, completedAt: true },
     }),
     prisma.orderChecklist.findMany({
-      where: { orderId, chargeId: { not: null } },
-      select: { id: true, chargeId: true, isActive: true, completed: true, partId: true, departmentId: true },
+      where: { orderId },
+      select: { id: true, chargeId: true, isActive: true, completed: true, partId: true, addonId: true, departmentId: true },
     }),
     prisma.addon.findMany({
       where: { isChecklistItem: true },
@@ -57,23 +66,34 @@ export async function syncChecklistForOrder(orderId: string) {
     return checklistAddonIds.has(charge.addonId);
   });
 
-  const chargeKeys = new Set(checklistEligibleCharges.map((charge) => buildChecklistKey({ chargeId: charge.id })));
+  const chargeKeys = new Set(checklistEligibleCharges.map((charge) => buildChecklistChargeKey({ chargeId: charge.id })));
 
-  const checklistByKey = new Map(
+  const checklistByChargeKey = new Map(
     checklist
       .filter((item) => item.chargeId)
-      .map((item) => [buildChecklistKey({ chargeId: item.chargeId! }), item])
+      .map((item) => [buildChecklistChargeKey({ chargeId: item.chargeId! }), item])
+  );
+
+  const checklistByUniqueKey = new Map(
+    checklist
+      .filter((item) => item.addonId)
+      .map((item) => [buildChecklistUniqueKey({ partId: item.partId ?? null, addonId: item.addonId ?? null }), item])
   );
   const chargeById = new Map<string, (typeof charges)[number]>(charges.map((charge) => [charge.id, charge]));
 
-  const toCreate = checklistEligibleCharges.filter((charge) => !checklistByKey.has(buildChecklistKey({ chargeId: charge.id })));
+  const toCreate = checklistEligibleCharges.filter((charge) => {
+    const chargeKey = buildChecklistChargeKey({ chargeId: charge.id });
+    if (checklistByChargeKey.has(chargeKey)) return false;
+    const uniqueKey = buildChecklistUniqueKey({ partId: charge.partId ?? null, addonId: charge.addonId ?? null });
+    return !checklistByUniqueKey.has(uniqueKey);
+  });
   const toActivate = checklist.filter((item) => {
     if (!item.chargeId) return false;
-    return chargeKeys.has(buildChecklistKey({ chargeId: item.chargeId })) && !item.isActive;
+    return chargeKeys.has(buildChecklistChargeKey({ chargeId: item.chargeId })) && !item.isActive;
   });
   const toDeactivate = checklist.filter((item) => {
     if (!item.chargeId) return false;
-    return !chargeKeys.has(buildChecklistKey({ chargeId: item.chargeId })) && item.isActive;
+    return !chargeKeys.has(buildChecklistChargeKey({ chargeId: item.chargeId })) && item.isActive;
   });
   const toSyncCompletion = checklist.flatMap((item) => {
     if (!item.chargeId) return [];

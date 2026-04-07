@@ -63,6 +63,7 @@ type AddonOption = {
   name: string;
   description?: string | null;
   rateType?: 'HOURLY' | 'FLAT';
+  rateCents?: number;
   active?: boolean;
   affectsPrice?: boolean;
   isChecklistItem?: boolean;
@@ -349,6 +350,7 @@ function NewOrderForm() {
         name: addon.name,
         description: addon.description,
         rateType: addon.rateType,
+        rateCents: typeof addon.rateCents === 'number' ? addon.rateCents : undefined,
         departmentName: addon.department?.name ?? null,
         affectsPrice: addon.affectsPrice ?? true,
         isChecklistItem: addon.isChecklistItem ?? false,
@@ -658,13 +660,7 @@ function NewOrderForm() {
           router.push(`/orders/${newId}`);
         }
       } else {
-        let errorMessage = 'Conversion failed';
-        try {
-          const error = await res.json();
-          errorMessage = error?.error ? JSON.stringify(error.error) : errorMessage;
-        } catch {
-          // ignore JSON parsing failures
-        }
+        const errorMessage = await extractErrorMessage(res, 'Conversion failed. Please try again.');
         setMessage(errorMessage);
         setCreatedOrderId(null);
       }
@@ -703,13 +699,7 @@ function NewOrderForm() {
       setNotes('');
       setCustomFieldValues({});
     } else {
-      let errorMessage = 'Error creating order';
-      try {
-        const error = await res.json();
-        errorMessage = error?.error ? JSON.stringify(error.error) : errorMessage;
-      } catch {
-        // ignore JSON parsing failures
-      }
+      const errorMessage = await extractErrorMessage(res, 'Error creating order. Please try again.');
       setMessage(errorMessage);
       setCreatedOrderId(null);
     }
@@ -1432,7 +1422,7 @@ function NewOrderForm() {
               </CardFooter>
               {(message || createdOrderId) && (
                 <div className="px-6 pb-6">
-                  {message && <p className="text-sm text-primary">{message}</p>}
+                  {message && <p className={`text-sm ${createdOrderId ? 'text-primary' : 'text-destructive'}`}>{message}</p>}
                   {createdOrderId && (
                     <div className="mt-3 flex flex-wrap gap-3">
                       <Button
@@ -1493,3 +1483,18 @@ export default function NewOrderPage() {
     </React.Suspense>
   );
 }
+const extractErrorMessage = async (res: Response, fallback: string) => {
+  try {
+    const payload = await res.json();
+    const direct = typeof payload?.error === 'string' ? payload.error : null;
+    if (direct) return direct;
+    const nested = typeof payload?.error?.message === 'string' ? payload.error.message : null;
+    if (nested) return nested;
+    if (payload?.error && typeof payload.error === 'object') return JSON.stringify(payload.error);
+    const message = typeof payload?.message === 'string' ? payload.message : null;
+    return message ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+

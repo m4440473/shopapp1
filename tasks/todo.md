@@ -3,6 +3,38 @@
 ## Session Metadata
 - Date: 2026-04-07
 - Agent: GPT-5.3-Codex
+- Task ID: Unplanned quote conversion + pricing visibility reliability fix
+- Goal: Prevent duplicate checklist creation failures during quote→order conversion, return actionable conversion errors, and restore admin pricing visibility in add-on drag/drop library.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] No blocking dependency gaps found for this scoped reliability/UX fix.
+- [x] Applied relevant lesson: use dedicated patch/edit workflows (no shell-wrapped apply_patch).
+
+## Plan First
+- [x] Inspect quote conversion flow and checklist sync logic to identify duplicate-key failure path.
+- [x] Patch checklist sync dedupe logic to respect `(orderId, addonId, partId)` uniqueness.
+- [x] Improve conversion route/client error handling so conversion failures display actionable messages.
+- [x] Restore admin pricing visibility in order/quote add-on assignment library.
+- [x] Run lint + focused conversion route tests and record evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test -- src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+
+## Review + Results
+- Checklist sync now deduplicates create candidates by the same unique tuple used by Prisma, preventing duplicate inserts when quote conversion pre-seeds checklist rows.
+- Quote conversion route now returns deterministic JSON errors for Prisma unique violations and other conversion failures.
+- Order creation/conversion form now extracts friendly error text from API responses and renders failures in destructive styling.
+- `/api/orders/addons` now includes `rateCents` for admins only, and the drag/drop item library displays formatted pricing when available.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-07
+- Agent: GPT-5.3-Codex
 - Task ID: Follow-up reliability fix — orders client/server boundary hardening
 - Goal: Replace hotfix duplication with shared client-safe order constants/helpers, mark Orders service as server-only, and remove client imports from `orders.service`.
 

@@ -40,6 +40,22 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-07 — Quote conversion checklist dedupe fix + actionable conversion errors + admin add-on pricing visibility
+- Fixed quote→order conversion failure path caused by duplicate `OrderChecklist` create attempts on unique key `(orderId, addonId, partId)`.
+- Updated Orders checklist sync logic to dedupe create candidates by checklist unique tuple (part+addon) in addition to charge linkage.
+- Added explicit conversion-route error handling for Prisma `P2002` and generic failures so API returns JSON error messages instead of opaque 500 behavior.
+- Improved order creation/conversion UI error parsing and styling so failed conversion/create operations surface a clear destructive message.
+- Restored admin pricing visibility in the add-on drag/drop library by allowing `/api/orders/addons` to include `rateCents` for admins and rendering formatted prices in the library cards.
+- Updated conversion route test mocks/assertions to include canonical order file sync helper call.
+
+Commands run:
+- npm run lint
+- npm run test -- src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Targeted convert-route tests passed (3/3).
+
 ### 2026-04-07 — Reliability follow-up: client-safe Orders constants/shared helpers + server-only guard
 - Replaced hotfix-local status labels with a dedicated client-safe Orders constants module (`src/modules/orders/orders.constants.ts`) and moved reusable dashboard/filter helpers to `src/modules/orders/orders.shared.ts`.
 - Added `import 'server-only';` at the top of `src/modules/orders/orders.service.ts` and re-exported constants/shared helpers from the service for server consumers.

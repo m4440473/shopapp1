@@ -1609,11 +1609,13 @@ export async function listAddonsForOrders({
   cursor,
   take,
   active,
+  includePricing,
 }: {
   q?: string;
   cursor?: string;
   take: number;
   active?: boolean;
+  includePricing?: boolean;
 }) {
   const where = {
     ...(q
@@ -1635,7 +1637,7 @@ export async function listAddonsForOrders({
   const nextCursor = items.length > take ? items[take]?.id ?? null : null;
   if (nextCursor) items.pop();
 
-  const sanitized = items.map(({ rateCents, ...rest }) => rest);
+  const sanitized = includePricing ? items : items.map(({ rateCents, ...rest }) => rest);
   return ok({ items: sanitized, nextCursor });
 }
 

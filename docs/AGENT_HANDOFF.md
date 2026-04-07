@@ -1,5 +1,49 @@
 Date: 2026-04-07
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Fix quote→order conversion checklist unique-constraint failures, surface actionable conversion/create errors in UI/API, and restore admin pricing visibility in add-on assignment cards.
+
+## What I changed
+- Updated `syncChecklistForOrder` in Orders repo to dedupe checklist creations using checklist uniqueness semantics (`partId + addonId`) so conversion-preseeded checklist rows do not collide with sync-generated rows.
+- Added conversion-route error handling in `POST /api/admin/quotes/[id]/convert`:
+  - Prisma `P2002` now returns a deterministic 409 JSON error message.
+  - Unexpected errors now return JSON with a readable message.
+- Updated order/quote creation UI (`/orders/new`) error handling:
+  - Added shared response-message extraction helper for failed create/convert responses.
+  - Failure messages are rendered with destructive styling for clearer operator feedback.
+- Restored admin pricing visibility for add-on assignment library:
+  - `/api/orders/addons` now passes admin context to service.
+  - `listAddonsForOrders` supports admin-only pricing inclusion.
+  - `AvailableItemsLibrary` now shows formatted rates when `rateCents` is present.
+- Updated convert-route test coverage mocks to include `ensureOrderFilesInCanonicalStorage` and assert it is invoked.
+
+## Files touched
+- `src/modules/orders/orders.repo.ts`
+- `src/modules/orders/orders.service.ts`
+- `src/app/api/orders/addons/route.ts`
+- `src/components/AvailableItemsLibrary.tsx`
+- `src/app/orders/new/page.tsx`
+- `src/app/api/admin/quotes/[id]/convert/route.ts`
+- `src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run lint`
+- `npm run test -- src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+
+## Verification Evidence
+- Lint passed with no ESLint warnings/errors.
+- Targeted conversion route tests passed (3/3).
+
+## Next steps
+- [ ] Add focused unit coverage for `syncChecklistForOrder` to lock in part+addon dedupe behavior around conversion-preseeded rows.
+- [ ] Optionally add dedicated inline alert component on `/orders/new` for error/success semantic consistency.
+
+---
+
+Date: 2026-04-07
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Replace the quick hotfix with a durable Orders module boundary by moving client-safe constants/helpers out of `orders.service.ts` and enforcing `server-only` on the service.
 
 ## What I changed
