@@ -62,6 +62,8 @@ const createKey = () =>
 const DEFAULT_BUSINESS_OPTION = BUSINESS_OPTIONS[0];
 const DEFAULT_BUSINESS_NAME = (DEFAULT_BUSINESS_OPTION?.name ?? 'Sterling Tool and Die') as BusinessName;
 const DEFAULT_BUSINESS_CODE = (DEFAULT_BUSINESS_OPTION?.code ?? 'STD') as BusinessCode;
+const formatCurrency = (cents: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format((cents || 0) / 100);
 
 type Option = { id: string; name: string };
 type AddonOption = {

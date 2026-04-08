@@ -1,5 +1,29 @@
 Date: 2026-04-08
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Fix the `/orders/new` runtime crash caused by a missing `formatCurrency` helper reference.
+
+## What I changed
+- Restored a local `formatCurrency(cents)` helper in `src/app/orders/new/page.tsx` so all review-step `renderMeta` and totals usages resolve at runtime.
+- Kept fix limited to the missing symbol with no additional functional changes.
+
+## Files touched
+- `src/app/orders/new/page.tsx`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run lint`
+
+## Verification Evidence
+- `npm run lint` passed (`✔ No ESLint warnings or errors`).
+
+## Next steps
+- [ ] User verify in UI that `/orders/new` review step no longer throws `ReferenceError`.
+
+---
+
+Date: 2026-04-08
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Make quote view and print invoice totals carry over the same basis-adjusted pricing amount shown during quote review.
 
 ## What I changed
