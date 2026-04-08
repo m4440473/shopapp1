@@ -53,6 +53,13 @@ import {
   getWorkItemPricingSemantic,
 } from '@/modules/pricing/work-item-pricing';
 import { calculatePartLotTotal, type PartPricingMode } from '@/modules/pricing/part-pricing';
+import {
+  buildPresetFromSelections,
+  dedupePresetItems,
+  mergeSelectionsWithoutDuplicates,
+  type QuoteAddonPreset,
+  type QuoteAddonPresetItem,
+} from '@/modules/quotes/quote-addon-bulk';
 
 import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
 
@@ -110,6 +117,8 @@ type QuoteAddonState = {
   units: string;
   notes: string;
 };
+
+const QUOTE_ADDON_PRESETS_STORAGE_KEY = 'quote-addon-presets-v1';
 
 
 type PartPricingState = {
@@ -410,6 +419,11 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       } satisfies PartPricingState;
     });
   });
+  const [selectedAssignmentKeys, setSelectedAssignmentKeys] = useState<string[]>([]);
+  const [savedPresets, setSavedPresets] = useState<QuoteAddonPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState('');
+  const [presetName, setPresetName] = useState('');
+  const [copyTargetPartKey, setCopyTargetPartKey] = useState<'ALL' | string>('ALL');
 
   const steps = [
     { key: 'info', label: 'Quote info' },
@@ -471,11 +485,60 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   }, [activePartKey, parts]);
 
   useEffect(() => {
+    setSelectedAssignmentKeys([]);
+  }, [activePartKey]);
+
+  useEffect(() => {
+    if (!activePart) return;
+    const existingKeys = new Set(activePart.addonSelections.map((selection) => selection.key));
+    setSelectedAssignmentKeys((prev) => prev.filter((key) => existingKeys.has(key)));
+  }, [activePart]);
+
+  useEffect(() => {
     setPartPricing((prev) => {
       const byPartKey = new Map(prev.map((entry) => [entry.partKey, entry]));
       return parts.map((part) => byPartKey.get(part.key) ?? { partKey: part.key, price: '0.00', pricingMode: 'LOT_TOTAL' });
     });
   }, [parts]);
+
+  useEffect(() => {
+    if (copyTargetPartKey === 'ALL') return;
+    if (parts.some((part) => part.key === copyTargetPartKey)) return;
+    setCopyTargetPartKey('ALL');
+  }, [copyTargetPartKey, parts]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(QUOTE_ADDON_PRESETS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const normalized: QuoteAddonPreset[] = parsed
+        .map((item) => ({
+          id: String(item?.id ?? createKey()),
+          name: String(item?.name ?? '').trim(),
+          items: dedupePresetItems(
+            Array.isArray(item?.items)
+              ? item.items.map((entry: any) => ({
+                  addonId: String(entry?.addonId ?? '').trim(),
+                  units: String(entry?.units ?? '1.0'),
+                  notes: String(entry?.notes ?? ''),
+                }))
+              : []
+          ),
+        }))
+        .filter((item) => item.name && item.items.length > 0);
+      setSavedPresets(normalized);
+    } catch {
+      setSavedPresets([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(QUOTE_ADDON_PRESETS_STORAGE_KEY, JSON.stringify(savedPresets));
+  }, [savedPresets]);
 
   const [draftReference] = useState(() => createKey());
 
@@ -683,6 +746,135 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         return { ...part, addonSelections: updated };
       })
     );
+  }
+
+  const getSelectedItemsFromPart = (part: QuotePartState): QuoteAddonPresetItem[] =>
+    buildPresetFromSelections({
+      selections: part.addonSelections,
+      selectedKeys: selectedAssignmentKeys,
+    });
+
+  function toggleAssignmentSelection(selectionKey: string, checked: boolean) {
+    setSelectedAssignmentKeys((prev) =>
+      checked ? [...prev, selectionKey] : prev.filter((key) => key !== selectionKey)
+    );
+  }
+
+  function selectAllActivePartAssignments() {
+    if (!activePart) return;
+    setSelectedAssignmentKeys(activePart.addonSelections.map((selection) => selection.key));
+  }
+
+  function clearActivePartSelections() {
+    setSelectedAssignmentKeys([]);
+  }
+
+  function applySelectedItemsToAllParts() {
+    if (!activePart) return;
+    const selectedItems = getSelectedItemsFromPart(activePart);
+    if (!selectedItems.length) {
+      toast.push('Select at least one assigned item first.', 'error');
+      return;
+    }
+
+    setParts((prev) =>
+      prev.map((part) => ({
+        ...part,
+        addonSelections: mergeSelectionsWithoutDuplicates({
+          existing: part.addonSelections,
+          incoming: selectedItems,
+          createKey,
+        }),
+      }))
+    );
+    toast.push('Selected items applied to all parts (merged without duplicates).', 'success');
+  }
+
+  function copySelectedItemsToTarget() {
+    if (!activePart) return;
+    const selectedItems = getSelectedItemsFromPart(activePart);
+    if (!selectedItems.length) {
+      toast.push('Select at least one assigned item first.', 'error');
+      return;
+    }
+
+    setParts((prev) =>
+      prev.map((part) => {
+        const isTarget =
+          copyTargetPartKey === 'ALL'
+            ? part.key !== activePart.key
+            : part.key === copyTargetPartKey;
+        if (!isTarget) return part;
+        return {
+          ...part,
+          addonSelections: mergeSelectionsWithoutDuplicates({
+            existing: part.addonSelections,
+            incoming: selectedItems,
+            createKey,
+          }),
+        };
+      })
+    );
+    toast.push('Selected items copied to target part(s) without duplicates.', 'success');
+  }
+
+  function savePresetFromSelection() {
+    if (!activePart) return;
+    const nextName = presetName.trim();
+    if (!nextName) {
+      toast.push('Enter a preset name before saving.', 'error');
+      return;
+    }
+    const selectedItems = getSelectedItemsFromPart(activePart);
+    if (!selectedItems.length) {
+      toast.push('Select at least one assigned item first.', 'error');
+      return;
+    }
+    const newPreset: QuoteAddonPreset = {
+      id: createKey(),
+      name: nextName,
+      items: dedupePresetItems(selectedItems),
+    };
+    setSavedPresets((prev) => [newPreset, ...prev]);
+    setSelectedPresetId(newPreset.id);
+    setPresetName('');
+    toast.push('Preset saved.', 'success');
+  }
+
+  function applyPresetToParts(target: 'ACTIVE' | 'ALL') {
+    const preset = savedPresets.find((item) => item.id === selectedPresetId);
+    if (!preset) {
+      toast.push('Select a preset first.', 'error');
+      return;
+    }
+    setParts((prev) =>
+      prev.map((part) => {
+        const isTarget = target === 'ALL' ? true : part.key === activePart?.key;
+        if (!isTarget) return part;
+        return {
+          ...part,
+          addonSelections: mergeSelectionsWithoutDuplicates({
+            existing: part.addonSelections,
+            incoming: preset.items,
+            createKey,
+          }),
+        };
+      })
+    );
+    toast.push(
+      target === 'ALL'
+        ? `Preset "${preset.name}" applied to all parts without duplicates.`
+        : `Preset "${preset.name}" applied to selected part without duplicates.`,
+      'success'
+    );
+  }
+
+  function deleteSelectedPreset() {
+    const preset = savedPresets.find((item) => item.id === selectedPresetId);
+    if (!preset) return;
+    setSavedPresets((prev) => prev.filter((item) => item.id !== preset.id));
+    setSelectedPresetId('');
+    toast.push(`Preset "${preset.name}" removed.`, 'success');
   }
 
   async function handleAttachmentUpload(attachmentKey: string, fileList: FileList | null) {
@@ -1477,6 +1669,117 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                         );
                       }}
                     />
+                    <div className="rounded border border-border/60 bg-background/70 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Bulk actions for selected assignments
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" size="sm" variant="outline" onClick={selectAllActivePartAssignments}>
+                            Select all
+                          </Button>
+                          <Button type="button" size="sm" variant="ghost" onClick={clearActivePartSelections}>
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                      {activePart.addonSelections.length ? (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {activePart.addonSelections.map((selection) => {
+                            const addon = addonMap.get(selection.addonId);
+                            return (
+                              <label
+                                key={selection.key}
+                                className="flex items-center gap-2 rounded border border-border/60 px-2 py-2 text-sm"
+                              >
+                                <Checkbox
+                                  checked={selectedAssignmentKeys.includes(selection.key)}
+                                  onCheckedChange={(checked) =>
+                                    toggleAssignmentSelection(selection.key, checked === true)
+                                  }
+                                />
+                                <span className="truncate">
+                                  {addon?.name ?? 'Unknown add-on'} · {selection.units || '0'} unit(s)
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Add assignments to this part before using bulk actions.
+                        </p>
+                      )}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button type="button" size="sm" onClick={applySelectedItemsToAllParts}>
+                          Apply selected to all parts
+                        </Button>
+                        <Select
+                          value={copyTargetPartKey}
+                          onValueChange={(value) => setCopyTargetPartKey(value)}
+                        >
+                          <SelectTrigger className="h-9 w-[220px] border border-border bg-background px-3 text-sm">
+                            <SelectValue placeholder="Copy target" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ALL">All other parts</SelectItem>
+                            {parts
+                              .filter((part) => part.key !== activePart.key)
+                              .map((part, index) => (
+                                <SelectItem key={part.key} value={part.key}>
+                                  {part.name || `Part ${index + 1}`}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" size="sm" variant="outline" onClick={copySelectedItemsToTarget}>
+                          Copy selected items
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="rounded border border-border/60 bg-background/70 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Presets
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Save selected assignments as reusable presets. Presets merge without duplicates when applied.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Input
+                          value={presetName}
+                          onChange={(event) => setPresetName(event.target.value)}
+                          placeholder="Preset name"
+                          className="h-9 max-w-[260px]"
+                        />
+                        <Button type="button" size="sm" variant="outline" onClick={savePresetFromSelection}>
+                          Save preset from selected
+                        </Button>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Select value={selectedPresetId} onValueChange={setSelectedPresetId}>
+                          <SelectTrigger className="h-9 w-[260px] border border-border bg-background px-3 text-sm">
+                            <SelectValue placeholder="Choose preset" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {savedPresets.length === 0 && <SelectItem value="__none__" disabled>No presets saved</SelectItem>}
+                            {savedPresets.map((preset) => (
+                              <SelectItem key={preset.id} value={preset.id}>
+                                {preset.name} ({preset.items.length})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" size="sm" onClick={() => applyPresetToParts('ACTIVE')}>
+                          Apply preset to this part
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={() => applyPresetToParts('ALL')}>
+                          Apply preset to all parts
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={deleteSelectedPreset}>
+                          Delete preset
+                        </Button>
+                      </div>
+                    </div>
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground">Select a part to add add-ons and notes.</p>

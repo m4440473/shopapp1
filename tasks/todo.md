@@ -3,6 +3,54 @@
 ## Session Metadata
 - Date: 2026-04-08
 - Agent: GPT-5.3-Codex
+- Task ID: Phase 1 — Quote add-on bulk operations + presets
+- Goal: Reduce repetitive part-build work by adding selected-item bulk apply/copy and reusable presets in Quote Creator.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, and `tasks/lessons.md` before implementation.
+- [x] Scoped only to Quote Creator build-step assignment workflow and related helper tests.
+
+## Plan First
+- [x] Add pure helper functions for dedupe merge and preset serialization to keep UI logic simple/testable.
+- [x] Add Quote Creator bulk controls for selected assignments:
+  - apply selected to all parts (merge, no duplicates),
+  - copy selected items to target part(s) (merge, no duplicates).
+- [x] Add lightweight saved preset UX in Quote Creator (save/apply/delete), persisted locally.
+- [x] Add focused unit tests for helper behavior.
+- [x] Run verification commands and update continuity artifacts.
+
+## Verification Checklist
+- [x] `npm run test -- src/modules/quotes/__tests__/quote-addon-bulk.test.ts`
+- [x] `npm run lint`
+
+## Review + Results
+- Added new quote bulk helper module `src/modules/quotes/quote-addon-bulk.ts` for:
+  - preset item dedupe,
+  - selected-item extraction,
+  - merge-without-duplicates assignment application.
+- Added focused unit coverage in `src/modules/quotes/__tests__/quote-addon-bulk.test.ts` (3 tests).
+- Updated Quote Creator build-step UI with:
+  - checkbox selection of current-part assignments,
+  - `Apply selected to all parts` action (merge/no dupes),
+  - target selector + `Copy selected items` action (merge/no dupes),
+  - preset save/apply/delete controls.
+- Added local persistence for presets via `localStorage` key `quote-addon-presets-v1`.
+- Added state hygiene guards:
+  - clear selection on part change,
+  - remove stale selected keys when assignments change,
+  - reset invalid copy target when part list changes.
+
+Commands run:
+- npm run test -- src/modules/quotes/__tests__/quote-addon-bulk.test.ts
+- npm run lint
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
 - Task ID: Department-flow manual-only rework
 - Goal: Fully decouple checklist/timer actions from automatic department movement and enforce explicit manual department moves with required notes.
 

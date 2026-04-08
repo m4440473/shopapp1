@@ -1,5 +1,54 @@
 Date: 2026-04-08
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Deliver Phase 1 Quote Creator productivity upgrades: selected-item bulk apply/copy across parts plus reusable presets.
+
+## What I changed
+- Added new Quote bulk-helper module `src/modules/quotes/quote-addon-bulk.ts`:
+  - `dedupePresetItems` for addon-id uniqueness,
+  - `buildPresetFromSelections` for selected-row extraction,
+  - `mergeSelectionsWithoutDuplicates` for target-merge behavior.
+- Added focused helper tests `src/modules/quotes/__tests__/quote-addon-bulk.test.ts` (3 tests).
+- Updated `src/app/admin/quotes/QuoteEditor.tsx` build-step UX:
+  - assignment row checkbox selection controls,
+  - `Select all` / `Clear` selection actions,
+  - `Apply selected to all parts` action (merge/no duplicates),
+  - copy-target selector + `Copy selected items` action,
+  - preset save/apply/delete controls,
+  - local preset persistence (`quote-addon-presets-v1`).
+- Added state hygiene guards:
+  - clear assignment selection on active part switch,
+  - prune stale selected keys after assignment edits,
+  - reset copy target to `ALL` if selected part disappears.
+
+## Files touched
+- `src/app/admin/quotes/QuoteEditor.tsx`
+- `src/modules/quotes/quote-addon-bulk.ts`
+- `src/modules/quotes/__tests__/quote-addon-bulk.test.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run test -- src/modules/quotes/__tests__/quote-addon-bulk.test.ts`
+- `npm run lint`
+
+## Verification Evidence
+- Targeted quote bulk helper tests passed (3/3).
+- Lint passed with no ESLint warnings/errors.
+
+## Next-step guidance for next agent (Phase 2 prompt)
+**Prompt to next agent:**
+"Implement Phase 2 for Quote rework: update Quote Creator and Review pricing presentation to show explicit Unit Price, Qty, and Line Total rows per part; preserve existing `PER_UNIT`/`LOT_TOTAL` math contract and ensure print/save outputs remain template-driven/customizable. Keep scope to quote pricing display + payload/read-model consistency only, add focused tests, run lint, and update continuity docs."
+
+## Notes / caveats
+- Presets currently persist per-browser via localStorage; they are not server-shared yet.
+- Bulk merge dedupe key is `addonId` only (intended by current requirement).
+- Selected-item copy/apply preserves selected item units/notes from source part.
+
+---
+
+Date: 2026-04-08
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Rework department movement to manual-only transitions, keep timers department-bound, and require Shipping for manual part completion.
 
 ## What I changed
