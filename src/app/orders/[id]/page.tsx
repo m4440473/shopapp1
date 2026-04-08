@@ -540,9 +540,10 @@ export default function OrderDetailPage() {
     const optionsLabel = manualMoveDepartments
       .map((department) => `${department.name} [${department.id}]`)
       .join('\n');
+    const currentDepartmentLabel = currentDepartment?.name ?? currentDepartmentId ?? 'Unassigned';
 
     const destinationPrompt = window.prompt(
-      `Current department: ${currentDepartment?.name ?? currentDepartmentId || 'Unassigned'}
+      `Current department: ${currentDepartmentLabel}
 
 Choose destination department by entering the department ID:
 ${optionsLabel}`,

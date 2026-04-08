@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateAssignmentTotalCents,
+  calculatePartPricingSummaryTotalsCents,
   calculateWorkItemsSubtotalCents,
   getWorkItemPricingSemantic,
 } from '@/modules/pricing/work-item-pricing';
@@ -29,5 +30,27 @@ describe('work-item-pricing', () => {
     });
 
     expect(subtotal).toBe(2000);
+  });
+
+  it('replaces raw work-item subtotal with basis-adjusted part pricing when override is present', () => {
+    const totals = calculatePartPricingSummaryTotalsCents({
+      parts: [
+        {
+          workItemsSubtotalCents: 24500,
+          partPricingSubtotalCents: 73500,
+          hasPartPricingOverride: true,
+        },
+        {
+          workItemsSubtotalCents: 12000,
+          partPricingSubtotalCents: 0,
+          hasPartPricingOverride: false,
+        },
+      ],
+    });
+
+    expect(totals).toEqual({
+      addonsAndLaborCents: 12000,
+      partPricingCents: 73500,
+    });
   });
 });

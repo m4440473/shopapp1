@@ -39,3 +39,26 @@ export const calculateWorkItemsSubtotalCents = <
     if (!item) return sum;
     return sum + calculateAssignmentTotalCents({ item, units: selection.units });
   }, 0);
+
+export const calculatePartPricingSummaryTotalsCents = <
+  TPart extends {
+    workItemsSubtotalCents: number;
+    partPricingSubtotalCents: number;
+    hasPartPricingOverride: boolean;
+  },
+>({
+  parts,
+}: {
+  parts: TPart[];
+}) =>
+  parts.reduce(
+    (totals, part) => {
+      if (part.hasPartPricingOverride) {
+        totals.partPricingCents += part.partPricingSubtotalCents;
+      } else {
+        totals.addonsAndLaborCents += part.workItemsSubtotalCents;
+      }
+      return totals;
+    },
+    { addonsAndLaborCents: 0, partPricingCents: 0 }
+  );
