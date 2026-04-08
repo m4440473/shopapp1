@@ -1,3 +1,37 @@
+## Session Handoff — 2026-04-08 (Unraid Docker app template refresh)
+
+Goal (1 sentence): Refresh the existing Unraid Docker app template and guide so Unraid install settings match the current ShopApp1 container requirements.
+
+### What changed
+- Updated `unraid/my-shopapp1.xml`
+  - Renamed the container label to `ShopApp1`.
+  - Added `Support`, `Project`, and `TemplateURL` metadata.
+  - Refreshed the overview text to reflect current app scope and storage expectations.
+  - Added optional advanced `OPENAI_API_KEY` variable for the Print Analyzer / BOM AI feature.
+- Rewrote `unraid/README.md`
+  - Documented offline image build/load steps.
+  - Documented Unraid template install/import path.
+  - Listed required env values and recommended defaults.
+  - Clarified persistent path mappings and first-run seed commands.
+
+### Files touched
+- `unraid/my-shopapp1.xml`
+- `unraid/README.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `git diff -- unraid/my-shopapp1.xml unraid/README.md`
+
+### Verification evidence
+- Reviewed the Unraid template/docs diff to confirm the template now reflects current env variables, storage paths, and optional OpenAI configuration.
+- No app-code/runtime files changed, so no lint/test run was required for this docs/template-only scope.
+
+### Next steps
+- [ ] If desired, commit/push the Unraid template refresh once the user is happy with the field names/defaults.
+- [ ] Optional follow-up: publish `shopapp1:latest` to a registry and update the template repository field away from offline/local image workflow.
+
 ## Session Handoff — 2026-04-08 (Dashboard department visibility follow-up)
 
 Goal (1 sentence): Make current department ownership obvious across dashboard tiles and order detail, and fix dashboard display logic so department work queue reflects actual department ownership.

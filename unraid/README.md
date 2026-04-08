@@ -1,23 +1,32 @@
-# Unraid Offline Install Guide (Shopapp1)
+# Unraid Docker App Guide (ShopApp1)
 
-This guide packages Shopapp1 for Unraid with an offline-friendly workflow. It includes:
+This folder contains an Unraid-friendly Docker template for ShopApp1:
 
-- A Docker image built on a Windows PC and copied to Unraid.
-- A GUI install via the Unraid Docker template (`my-shopapp1.xml`).
-- A Docker Compose stack (SQLite default or MySQL optional) for advanced setups.
+- Template: `unraid/my-shopapp1.xml`
+- Expected image name on the Unraid host: `shopapp1:latest`
 
-## 1) Build the image on Windows
+The template is set up for:
 
-From the repository root on your Windows PC:
+- port `3000`
+- SQLite by default
+- persistent uploads at `/mnt/user/appdata/shopapp1/uploads`
+- persistent SQLite data at `/mnt/user/appdata/shopapp1/db`
+- optional `OPENAI_API_KEY` only if you want the Print Analyzer / BOM AI feature
+
+## 1) Build and move the image
+
+From the repo root on your build machine:
 
 ```bash
 docker build -t shopapp1:latest .
 docker save -o shopapp1.tar shopapp1:latest
 ```
 
-Copy `shopapp1.tar` to your Unraid server (e.g., `\\tower\appdata\shopapp1\` or any share).
+Copy `shopapp1.tar` to your Unraid server, for example:
 
-## 2) Load the image on Unraid (offline)
+- `/mnt/user/appdata/shopapp1/shopapp1.tar`
+
+## 2) Load the image on Unraid
 
 From an Unraid terminal:
 
@@ -25,51 +34,78 @@ From an Unraid terminal:
 docker load -i /mnt/user/appdata/shopapp1/shopapp1.tar
 ```
 
-## 3) GUI install (Unraid Docker template)
+## 3) Install the Unraid template
 
-1. Copy `unraid/my-shopapp1.xml` into:
-   `/boot/config/plugins/dockerMan/templates-user/`
-2. In the Unraid UI, go to **Docker → Add Container** and select **Shopapp1**.
-3. Fill in the required fields:
-   - **APP_BASE_URL**, **NEXTAUTH_URL**, **NEXT_PUBLIC_BASE_URL** (e.g. `http://<unraid-ip>:3000`)
-   - **NEXTAUTH_SECRET** (generate a random 32+ character secret)
-   - **DATABASE_URL** (SQLite default is prefilled)
-   - **ATTACHMENTS_DIR** (defaults to `/app/storage`)
-4. Confirm the volume paths:
-   - `/mnt/user/appdata/shopapp1/uploads` → `/app/storage`
-   - `/mnt/user/appdata/shopapp1/db` → `/app/data`
-5. Click **Apply** to start the container.
+Copy `unraid/my-shopapp1.xml` to:
 
-The container automatically runs `prisma migrate deploy` on startup for production-safe migrations.
-
-## 4) Optional: MySQL profile with Docker Compose
-
-For MySQL, use `docker-compose.yml` with the `mysql` profile.
-
-1. Create an `.env` file from `.env.example` and update values.
-2. Set the MySQL database URL in `.env`:
-
-```env
-DATABASE_URL="mysql://shopapp1:shopapp1_password@mysql:3306/shopapp1"
+```text
+/boot/config/plugins/dockerMan/templates-user/
 ```
 
-3. Start the stack:
+Then in the Unraid UI:
+
+1. Go to `Docker`
+2. Click `Add Container`
+3. Select `ShopApp1`
+
+## 4) Fill in the template values
+
+Required values:
+
+- `APP_BASE_URL`
+- `NEXTAUTH_URL`
+- `NEXT_PUBLIC_BASE_URL`
+- `NEXTAUTH_SECRET`
+- `DATABASE_URL`
+
+Recommended defaults:
+
+- `APP_BASE_URL=http://<unraid-ip>:3000`
+- `NEXTAUTH_URL=http://<unraid-ip>:3000`
+- `NEXT_PUBLIC_BASE_URL=http://<unraid-ip>:3000`
+- `DATABASE_URL=file:/app/data/shopapp1.db`
+- `ATTACHMENTS_DIR=/app/storage`
+
+Optional:
+
+- `OPENAI_API_KEY`
+  Use this only if you want the Print Analyzer / BOM AI route enabled.
+
+## 5) Persistent paths
+
+The template maps:
+
+- `/mnt/user/appdata/shopapp1/uploads` -> `/app/storage`
+- `/mnt/user/appdata/shopapp1/db` -> `/app/data`
+
+The container entrypoint runs Prisma production migrations on startup, so the SQLite database file under `/app/data` will be created/updated there.
+
+## 6) First-run data setup
+
+After the container starts, you can seed demo data if you want sample users/orders:
 
 ```bash
-docker compose --profile mysql up -d
+docker exec -it ShopApp1 npm run demo:setup
 ```
 
-Persistent data locations:
-
-- App uploads: `/mnt/user/appdata/shopapp1/uploads/`
-- SQLite DB (if used): `/mnt/user/appdata/shopapp1/db/`
-- MySQL data: `/mnt/user/appdata/shopapp1-mysql/`
-
-## 5) Optional: Seed demo data
-
-If you want demo users and sample orders:
+Or use the basic seed:
 
 ```bash
-docker exec -it shopapp1 npm run demo:setup
+docker exec -it ShopApp1 npm run seed:basic
+docker exec -it ShopApp1 npm run set-demo-passwords
 ```
 
+## 7) Demo users
+
+After `npm run set-demo-passwords`, these accounts are available:
+
+- `admin@example.com`
+- `mach1@example.com`
+- `mach2@example.com`
+- `viewer@example.com`
+
+## Notes
+
+- The template assumes a locally loaded image named `shopapp1:latest`.
+- If you later publish the image to a registry, update the `<Repository>` field in `my-shopapp1.xml`.
+- If you switch to MySQL, change `DATABASE_URL` and provide the database separately; the template does not spin up MySQL for you.

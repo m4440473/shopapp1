@@ -1,3 +1,17 @@
+### 2026-04-08 — Unraid Docker app template refresh
+- Updated `unraid/my-shopapp1.xml` to better match the current ShopApp1 container setup:
+  - normalized app name to `ShopApp1`,
+  - added project/support/template URLs,
+  - refreshed overview text,
+  - added optional advanced `OPENAI_API_KEY` env variable for the Print Analyzer feature.
+- Rewrote `unraid/README.md` so the Unraid workflow now matches the current Docker image/load/template/install/seed process.
+
+Commands run:
+- `git diff -- unraid/my-shopapp1.xml unraid/README.md`
+
+Verification note:
+- Reviewed only deployment-template/docs diffs; no app-code/runtime paths changed, so no lint/test run was required for this scope.
+
 ### 2026-04-08 — Dashboard department visibility follow-up: current owner shown on tiles and part view
 - Fixed department work-queue ownership logic so the display now follows `OrderPart.currentDepartmentId` instead of requiring open checklist rows in the selected department.
 - Fixed `ShopFloorLayouts` initial-department refresh behavior so toggling `Include completed` now refetches correctly for the initially selected department instead of reusing stale server snapshot data.
