@@ -55,6 +55,30 @@
 ## Session Metadata
 - Date: 2026-04-08
 - Agent: GPT-5.3-Codex
+- Task ID: Unraid Docker app template refresh
+- Goal: Update the existing Unraid Docker app template and guide so Unraid install settings match the current ShopApp1 container requirements.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated existing `unraid/my-shopapp1.xml` and `unraid/README.md` against the current `Dockerfile`, entrypoint, package scripts, and env requirements.
+
+## Plan First
+- [x] Update the Unraid XML template metadata and variables to match the current app requirements.
+- [x] Add any missing env vars needed by optional features, especially `OPENAI_API_KEY`.
+- [x] Rewrite the Unraid README so the install/import/seed steps match the current container behavior.
+- [x] Review resulting diffs and record continuity notes.
+
+## Verification Checklist
+- [x] Reviewed `git diff -- unraid/my-shopapp1.xml unraid/README.md`
+- [x] No code-path tests required; change is limited to Unraid deployment template/docs.
+
+## Review + Results
+- Updated the Unraid Docker template with project/support/template URLs, clearer app overview text, normalized `ShopApp1` naming, and an optional advanced `OPENAI_API_KEY` variable for the Print Analyzer feature.
+- Rewrote the Unraid README to describe the current offline image workflow, template import path, required env values, persistent paths, and first-run seed commands.
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
 - Task ID: Quote print totals parity hotfix
 - Goal: Make the quote print view use the same non-double-counted part-pricing totals rule as quote editor and quote detail.
 
