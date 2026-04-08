@@ -3,6 +3,42 @@
 ## Session Metadata
 - Date: 2026-04-08
 - Agent: GPT-5.3-Codex
+- Task ID: Final Phase — Structured Quote Document Editor v1
+- Goal: Upgrade quote document templates from simple section ordering to structured block configuration that drives quote print/save output.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, and `tasks/lessons.md` before implementation.
+- [x] Scoped work strictly to quote document templates + quote print output mapping with backward-compatible normalization.
+
+## Plan First
+- [x] Extend template layout normalization to support structured blocks with legacy `sections` fallback.
+- [x] Upgrade admin template editor to configure block visibility, label overrides, variants, and quote pricing block options.
+- [x] Wire quote print rendering to structured block visibility/options while preserving legacy template behavior.
+- [x] Add focused tests for layout normalization and quote print block mapping.
+- [x] Run required verification commands and update continuity docs.
+
+## Verification Checklist
+- [x] `npm run test -- src/lib/__tests__/document-template-layout.test.ts src/lib/__tests__/quote-print-layout.test.ts`
+- [x] `npm run lint`
+
+## Review + Results
+- Added structured template block model (`blocks[]`) with full normalization fallback from legacy `sections[]` and preserved default section compatibility.
+- Updated admin Templates UI to edit per-block controls:
+  - show/hide,
+  - label override,
+  - style variant (`standard`/`compact`),
+  - quote pricing options (`showUnitPrice`, `showQuantity`, `showLineTotal`, `showPricingMode`).
+- Updated quote print page to render from normalized structured blocks and apply pricing-table option toggles directly from template settings.
+- Added focused tests covering legacy->structured normalization and quote block render-plan option mapping.
+- No new dependencies added.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
 - Task ID: Phase 3 — Quote → Order Quick Convert (skip wizard)
 - Goal: Add an admin quote-detail quick-convert dialog that collects only required order overrides and converts directly to order detail via existing conversion API.
 
