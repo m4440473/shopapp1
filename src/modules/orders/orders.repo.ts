@@ -705,6 +705,7 @@ export async function listOrderPartsMissingCurrentDepartment(orderId?: string) {
     select: {
       id: true,
       orderId: true,
+      status: true,
       currentDepartmentId: true,
       checklistItems: {
         where: { isActive: true, departmentId: { not: null } },
@@ -1034,22 +1035,14 @@ export async function listReadyOrderPartsForDepartment(departmentId: string, inc
   return db.orderPart.findMany({
     where: {
       currentDepartmentId: departmentId,
-      ...(includeCompleted
-        ? {}
-        : {
-            checklistItems: {
-              some: {
-                departmentId,
-                isActive: true,
-                completed: false,
-              },
-            },
-          }),
+      ...(includeCompleted ? {} : { status: { not: 'COMPLETE' } }),
     },
     select: {
       id: true,
       partNumber: true,
       quantity: true,
+      currentDepartmentId: true,
+      currentDepartment: { select: { id: true, name: true } },
       orderId: true,
       partEvents: {
         where: { type: { in: ['DEPARTMENT_REWORKED', 'DEPARTMENT_SET_MANUAL', 'DEPARTMENT_ADVANCED'] } },
@@ -1075,7 +1068,7 @@ export async function listReadyOrderPartsForDepartment(departmentId: string, inc
           status: true,
           customer: { select: { name: true } },
           assignedMachinist: { select: { id: true, name: true, email: true } },
-          parts: { select: { id: true } },
+          parts: { select: { id: true, currentDepartmentId: true, partNumber: true } },
         },
       },
     },
@@ -1091,7 +1084,7 @@ export async function getDashboardOrderOverview() {
       include: {
         customer: { select: { name: true } },
         assignedMachinist: { select: { id: true, name: true, email: true } },
-        parts: { select: { quantity: true, currentDepartmentId: true } },
+        parts: { select: { quantity: true, currentDepartmentId: true, partNumber: true } },
         checklist: { select: { completed: true, departmentId: true, addon: { select: { name: true } } } },
         statusHistory: { select: { createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 },
       },

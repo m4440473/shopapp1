@@ -573,15 +573,34 @@ export async function ensureOrderFilesInCanonicalStorage(orderId: string) {
 export async function getOrderDetails(id: string, isAdmin: boolean) {
   const order = await findOrderWithDetails(id);
   if (!order) return fail(404, 'Not found');
+  const departments = await listDepartmentsOrdered();
 
   const sanitized = sanitizePricingForNonAdmin(order, isAdmin) as any;
   sanitized.status = normalizeOrderWorkflowStatus(sanitized.status);
   sanitized.parts = Array.isArray(sanitized.parts)
-    ? sanitized.parts.map((part: any) => ({ ...part, status: part.status === 'COMPLETE' ? 'COMPLETE' : 'IN_PROGRESS' }))
+    ? sanitized.parts.map((part: any) => {
+        const isComplete = part.status === 'COMPLETE';
+        const fallbackDepartmentId =
+          isComplete
+            ? null
+            : part.currentDepartmentId ??
+              selectDepartmentForPart(
+                (Array.isArray(sanitized.checklist) ? sanitized.checklist : []).filter((entry: any) => entry.partId === part.id),
+                departments,
+              ) ??
+              departments[0]?.id ??
+              null;
+        return {
+          ...part,
+          currentDepartmentId: fallbackDepartmentId,
+          status: isComplete ? 'COMPLETE' : 'IN_PROGRESS',
+        };
+      })
     : sanitized.parts;
 
   return ok({
     item: sanitized,
+    departments,
     permissions: { canEditParts: isAdmin, canEditOrderStatus: isAdmin },
   });
 }
@@ -910,7 +929,8 @@ async function initializeCurrentDepartmentForParts({ orderId }: { orderId?: stri
   let updatedCount = 0;
 
   for (const part of parts) {
-    const targetDepartmentId = selectDepartmentForPart(part.checklistItems ?? [], departments);
+    if (part.status === 'COMPLETE') continue;
+    const targetDepartmentId = selectDepartmentForPart(part.checklistItems ?? [], departments) ?? departments[0]?.id ?? null;
     if (!targetDepartmentId) continue;
     await updateOrderPart(part.id, { currentDepartmentId: targetDepartmentId, status: 'IN_PROGRESS' });
     updatedCount += 1;
@@ -1713,6 +1733,8 @@ export async function getOrderDepartmentFeed(
       id: part.id,
       partNumber: part.partNumber ?? null,
       quantity: part.quantity ?? null,
+      currentDepartmentId: part.currentDepartmentId ?? departmentId,
+      currentDepartmentName: part.currentDepartment?.name ?? null,
       flagged: Boolean(flaggedEvent),
       reasonText: typeof flaggedEvent?.meta?.reasonText === 'string' ? String(flaggedEvent.meta.reasonText) : null,
       checklistDoneCount,

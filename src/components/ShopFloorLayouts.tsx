@@ -120,13 +120,20 @@ export function ShopFloorLayouts({
       setDepartmentError(null);
       return;
     }
-    if (departmentId === initialDepartmentId) {
+    if (departmentId === initialDepartmentId && includeCompleted === false) {
       setDepartmentFeed(initialDepartmentFeed ?? []);
       setDepartmentError(null);
       return;
     }
     loadDepartmentFeed(departmentId, includeCompleted);
   }, [departmentId, includeCompleted, initialDepartmentId, initialDepartmentFeed, loadDepartmentFeed]);
+
+  const departmentNameById = useMemo(
+    () => new Map(departments.map((department) => [department.id, department.name] as const)),
+    [departments]
+  );
+
+  const selectedDepartmentName = departmentNameById.get(departmentId) ?? 'Unassigned';
 
   const filtered = useMemo(() => {
     const decoratedOrders = orders.map((order) => decorateOrder(order));
@@ -176,6 +183,21 @@ export function ShopFloorLayouts({
       }),
     );
   }, [sorted]);
+
+  const currentDepartmentLabelsByOrder = useMemo(() => {
+    return new Map(
+      sorted.map((order) => {
+        const labels = Array.from(
+          new Set(
+            (order.parts ?? [])
+              .map((part) => (part.currentDepartmentId ? departmentNameById.get(part.currentDepartmentId) ?? part.currentDepartmentId : null))
+              .filter((value): value is string => Boolean(value))
+          )
+        );
+        return [order.id, labels] as const;
+      })
+    );
+  }, [departmentNameById, sorted]);
 
   const handleSortChange = (column: (typeof SORT_KEYS)[number]) => {
     setSortKey((prev) => {
@@ -405,9 +427,15 @@ export function ShopFloorLayouts({
             <p className="text-sm text-muted-foreground">Loading department feed…</p>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {departmentFeed.map((order) => <WorkQueueOrderCard key={order.orderId} order={order} />)}
+              {departmentFeed.map((order) => (
+                <WorkQueueOrderCard
+                  key={order.orderId}
+                  order={order}
+                  selectedDepartmentName={selectedDepartmentName}
+                />
+              ))}
               {!departmentFeed.length && !departmentError && (
-                <p className="col-span-full text-sm text-muted-foreground">No parts are ready for the selected department.</p>
+                <p className="col-span-full text-sm text-muted-foreground">No parts are currently assigned to {selectedDepartmentName}.</p>
               )}
             </div>
           )}
@@ -486,9 +514,24 @@ export function ShopFloorLayouts({
                   <p className="text-foreground">{order.totalQuantity ?? 0}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide">Addons</p>
+                  <p className="text-xs uppercase tracking-wide">Parts</p>
+                  <p className="text-foreground">{order.parts?.length ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide">Checklist</p>
                   <p className="text-foreground">
                     {order.checklist?.length ? `${order.checklist.length - (order.openAddonCount ?? 0)}/${order.checklist.length} done` : 'None'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide">Current department</p>
+                  <p className="text-foreground">
+                    {(() => {
+                      const labels = currentDepartmentLabelsByOrder.get(order.id) ?? [];
+                      if (!labels.length) return 'Unassigned';
+                      if (labels.length === 1) return labels[0];
+                      return `Mixed: ${labels.join(', ')}`;
+                    })()}
                   </p>
                 </div>
                 <div>

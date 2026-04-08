@@ -3,6 +3,58 @@
 ## Session Metadata
 - Date: 2026-04-08
 - Agent: GPT-5.3-Codex
+- Task ID: Order-detail department UX follow-up
+- Goal: Replace raw department-ID prompts with an in-app move dialog, restore timer/move department options from the real department list, and default unassigned parts to the first active department (Machining in current ordering).
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated prior dependency scope: current order-detail page still uses raw `window.prompt` for manual department moves and derives dropdown choices from checklist rows only.
+
+## Plan First
+- [x] Update Orders service/order-detail payload to include the ordered active department list and initialize missing `currentDepartmentId` to the first active department when no checklist-driven department exists.
+- [x] Rework `/orders/[id]` manual move flow to use an in-app dialog with department dropdown and required move note instead of browser prompts.
+- [x] Update timer department options/defaulting to use the ordered department list (excluding Shipping for timers) so parts without checklist departments still have valid choices.
+- [x] Add focused Orders service coverage for the default-first-department behavior and run relevant verification commands.
+- [x] Update continuity docs with commands and evidence.
+
+## Verification Checklist
+- [x] `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- [x] `npm run lint`
+
+## Review + Results
+- Order detail now receives the ordered active department list from the server and uses it for both timer selection and manual move choices, so departments no longer disappear when checklist rows do not carry department entries.
+- Parts missing `currentDepartmentId` now fall back to the first active department both in the service read model and in the current-department backfill path, which makes Machining the default in the current seeded/live ordering.
+- The browser-native department-ID prompt was replaced with an in-app dialog that matches the site modal pattern and keeps the required move note inline.
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
+- Task ID: Dashboard department visibility + display logic follow-up
+- Goal: Make current department obvious on order/part surfaces and fix dashboard display/work-queue logic so department ownership displays correctly.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated current gap: order detail overview and part tiles do not surface current department clearly, and dashboard work queue currently hides department-owned parts when checklist rows are absent/incomplete logic disagrees with `currentDepartmentId`.
+
+## Plan First
+- [x] Fix department display/work-queue data logic so department ownership is driven by `currentDepartmentId` instead of requiring open checklist rows in that department.
+- [x] Update dashboard display components to show clear current-department ownership and other useful tile details.
+- [x] Update order detail part overview/list rows to surface current department explicitly for viewers/admins.
+- [x] Add focused test coverage for the department-feed ownership behavior and run relevant verification commands.
+- [x] Update continuity docs with results and evidence.
+
+## Verification Checklist
+- [x] `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- [x] `npm run lint`
+
+## Review + Results
+- Department work-queue ownership now follows `currentDepartmentId`, so a part assigned to Machining/Fab/Paint/Shipping stays visible on that department display even if checklist rows for that department are absent or already complete.
+- Dashboard grid/work-queue cards now surface current department ownership directly instead of only showing vague “departments touched” context.
+- Order detail now shows current department in both the selected-part overview and the left-side part list so viewers/admins can tell who owns the part at a glance.
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
 - Task ID: Quote print totals parity hotfix
 - Goal: Make the quote print view use the same non-double-counted part-pricing totals rule as quote editor and quote detail.
 
