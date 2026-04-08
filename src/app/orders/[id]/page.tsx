@@ -52,6 +52,12 @@ type ConflictState = {
 };
 
 type SelectOption = { id: string; name: string };
+type MoveDepartmentDialogState = {
+  open: boolean;
+  destinationDepartmentId: string;
+  note: string;
+  error: string | null;
+};
 
 const formatDuration = (seconds: number) => {
   const clamped = Math.max(0, seconds);
@@ -144,6 +150,13 @@ export default function OrderDetailPage() {
   const [vendors, setVendors] = useState<SelectOption[]>([]);
   const [machinists, setMachinists] = useState<SelectOption[]>([]);
   const [materials, setMaterials] = useState<SelectOption[]>([]);
+  const [departments, setDepartments] = useState<SelectOption[]>([]);
+  const [moveDepartmentDialog, setMoveDepartmentDialog] = useState<MoveDepartmentDialogState>({
+    open: false,
+    destinationDepartmentId: '',
+    note: '',
+    error: null,
+  });
 
   const parts = useMemo(() => (Array.isArray(item?.parts) ? item.parts : []), [item?.parts]);
   const partIdsParam = useMemo(() => parts.map((part: any) => part.id).filter(Boolean).join(','), [parts]);
@@ -171,34 +184,12 @@ export default function OrderDetailPage() {
     return Array.from(groups.values());
   }, [selectedChecklist]);
 
-  const timerDepartments = useMemo(() => {
-    const entries = Array.isArray(item?.checklist) ? item.checklist : [];
-    const groups = new Map<string, { id: string; name: string }>();
-    entries.forEach((entry: any) => {
-      const departmentId = entry?.departmentId;
-      if (!departmentId) return;
-      const name = String(entry?.department?.name ?? '').trim();
-      if (!name || name.toLowerCase() === 'shipping') return;
-      if (!groups.has(departmentId)) {
-        groups.set(departmentId, { id: departmentId, name });
-      }
-    });
-    return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [item?.checklist]);
+  const timerDepartments = useMemo(
+    () => departments.filter((department) => department.name.trim().toLowerCase() !== 'shipping'),
+    [departments]
+  );
 
-  const manualMoveDepartments = useMemo(() => {
-    const entries = Array.isArray(item?.checklist) ? item.checklist : [];
-    const groups = new Map<string, { id: string; name: string }>();
-    entries.forEach((entry: any) => {
-      const departmentId = entry?.departmentId;
-      if (!departmentId) return;
-      const name = String(entry?.department?.name ?? '').trim() || `Department ${departmentId}`;
-      if (!groups.has(departmentId)) {
-        groups.set(departmentId, { id: departmentId, name });
-      }
-    });
-    return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [item?.checklist]);
+  const manualMoveDepartments = useMemo(() => departments, [departments]);
 
   const selectedPartDepartmentHistory = useMemo(() => {
     if (!selectedPartId) return [];
@@ -307,6 +298,16 @@ export default function OrderDetailPage() {
       if (!res.ok) throw res;
       const data = await res.json();
       setItem(data.item);
+      setDepartments(
+        Array.isArray(data?.departments)
+          ? data.departments
+              .map((department: any) => ({
+                id: String(department?.id ?? ''),
+                name: String(department?.name ?? '').trim(),
+              }))
+              .filter((department: SelectOption) => department.id.length > 0 && department.name.length > 0)
+          : []
+      );
       setCanEditParts(Boolean(data?.permissions?.canEditParts));
       setCanEditOrderStatus(Boolean(data?.permissions?.canEditOrderStatus));
       setStatusDraft((data?.item?.status ?? 'RECEIVED') as 'RECEIVED' | 'IN_PROGRESS' | 'COMPLETE' | 'CLOSED');
@@ -406,6 +407,25 @@ export default function OrderDetailPage() {
       notes: selectedPart.notes ?? '',
     });
   }, [selectedPart]);
+
+  useEffect(() => {
+    if (!timerDepartments.length) {
+      setSelectedTimerDepartmentId('');
+      return;
+    }
+
+    const selectedPartDepartmentId = selectedPart?.currentDepartmentId ?? '';
+    if (selectedPartDepartmentId && timerDepartments.some((department) => department.id === selectedPartDepartmentId)) {
+      setSelectedTimerDepartmentId((prev) => (prev === selectedPartDepartmentId ? prev : selectedPartDepartmentId));
+      return;
+    }
+
+    if (selectedTimerDepartmentId && timerDepartments.some((department) => department.id === selectedTimerDepartmentId)) {
+      return;
+    }
+
+    setSelectedTimerDepartmentId(timerDepartments[0]?.id ?? '');
+  }, [selectedPart?.currentDepartmentId, selectedTimerDepartmentId, timerDepartments]);
 
   useEffect(() => {
     if (!editMode || !canEditParts) return;
@@ -532,49 +552,51 @@ export default function OrderDetailPage() {
     }
   };
 
+  const openMoveDepartmentDialog = () => {
+    if (!selectedPartId) return;
+    const currentDepartmentId = selectedPart?.currentDepartmentId ?? '';
+    const defaultDepartmentId =
+      manualMoveDepartments.find((department) => department.id !== currentDepartmentId)?.id ??
+      manualMoveDepartments[0]?.id ??
+      '';
+    setMoveDepartmentDialog({
+      open: true,
+      destinationDepartmentId: defaultDepartmentId,
+      note: '',
+      error: null,
+    });
+  };
+
   const handleSubmitDepartmentComplete = async (): Promise<boolean> => {
     if (!id || !selectedPartId) return false;
 
     const currentDepartmentId = selectedPart?.currentDepartmentId ?? '';
-    const currentDepartment = manualMoveDepartments.find((department) => department.id === currentDepartmentId) ?? null;
-    const optionsLabel = manualMoveDepartments
-      .map((department) => `${department.name} [${department.id}]`)
-      .join('\n');
-    const currentDepartmentLabel = currentDepartment?.name ?? currentDepartmentId ?? 'Unassigned';
-
-    const destinationPrompt = window.prompt(
-      `Current department: ${currentDepartmentLabel}
-
-Choose destination department by entering the department ID:
-${optionsLabel}`,
-      '',
-    );
-    if (destinationPrompt === null) return false;
-    const destinationDepartmentId = destinationPrompt.trim();
+    const destinationDepartmentId = moveDepartmentDialog.destinationDepartmentId.trim();
     if (!destinationDepartmentId) {
-      setTimerError('Destination department is required.');
+      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'Destination department is required.' }));
       return false;
     }
 
     const destinationDepartment = manualMoveDepartments.find((department) => department.id === destinationDepartmentId);
     if (!destinationDepartment) {
-      setTimerError('Select a valid destination department ID from the list.');
+      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'Select a valid destination department.' }));
       return false;
     }
 
     if (destinationDepartmentId === currentDepartmentId) {
-      setTimerError('Destination department must be different from current department.');
+      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'Destination department must be different from current department.' }));
       return false;
     }
 
-    const moveNote = window.prompt('Enter move note (required):')?.trim() || '';
+    const moveNote = moveDepartmentDialog.note.trim();
     if (!moveNote) {
-      setTimerError('A move note is required.');
+      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'A move note is required.' }));
       return false;
     }
 
     setTimerSaving(true);
     setTimerError(null);
+    setMoveDepartmentDialog((prev) => ({ ...prev, error: null }));
     try {
       const res = await fetch(`/api/orders/${id}/parts/assign-department`, {
         method: 'POST',
@@ -595,11 +617,17 @@ ${optionsLabel}`,
       await load();
       await refreshTimerSummary();
       await loadPartEvents();
+      setMoveDepartmentDialog({
+        open: false,
+        destinationDepartmentId: '',
+        note: '',
+        error: null,
+      });
       toast.push(`Part moved to ${destinationDepartment.name}.`, 'success');
       return true;
     } catch (err: any) {
       const message = err?.message || 'Failed to move part to department.';
-      setTimerError(message);
+      setMoveDepartmentDialog((prev) => ({ ...prev, error: message }));
       return false;
     } finally {
       setTimerSaving(false);
@@ -1014,6 +1042,96 @@ ${optionsLabel}`,
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={moveDepartmentDialog.open}
+        onOpenChange={(open) =>
+          setMoveDepartmentDialog((prev) => ({
+            ...prev,
+            open,
+            error: open ? prev.error : null,
+          }))
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move part to department</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-sm text-muted-foreground">
+              Current department:{' '}
+              <span className="font-medium text-foreground">
+                {manualMoveDepartments.find((department) => department.id === selectedPart?.currentDepartmentId)?.name ??
+                  selectedPart?.currentDepartmentId ??
+                  'Unassigned'}
+              </span>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="move-department-select">Destination department</Label>
+              <Select
+                value={moveDepartmentDialog.destinationDepartmentId}
+                onValueChange={(value) =>
+                  setMoveDepartmentDialog((prev) => ({
+                    ...prev,
+                    destinationDepartmentId: value,
+                    error: null,
+                  }))
+                }
+              >
+                <SelectTrigger id="move-department-select">
+                  <SelectValue placeholder="Choose destination department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {manualMoveDepartments.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="move-department-note">Move note</Label>
+              <Textarea
+                id="move-department-note"
+                rows={3}
+                value={moveDepartmentDialog.note}
+                onChange={(event) =>
+                  setMoveDepartmentDialog((prev) => ({
+                    ...prev,
+                    note: event.target.value,
+                    error: null,
+                  }))
+                }
+                placeholder="Why is this part moving departments?"
+              />
+            </div>
+            {moveDepartmentDialog.error ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {moveDepartmentDialog.error}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                setMoveDepartmentDialog({
+                  open: false,
+                  destinationDepartmentId: '',
+                  note: '',
+                  error: null,
+                })
+              }
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void handleSubmitDepartmentComplete()} disabled={timerSaving}>
+              {timerSaving ? 'Moving…' : 'Move part'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
         <Card className="flex flex-col">
@@ -1083,8 +1201,8 @@ ${optionsLabel}`,
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={!selectedPartId || timerSaving || activeOnSelected}
-                  onClick={handleSubmitDepartmentComplete}
+                  disabled={!selectedPartId || timerSaving || activeOnSelected || !manualMoveDepartments.length}
+                  onClick={openMoveDepartmentDialog}
                   className="justify-start gap-2"
                 >
                   <CheckCircle2 className="h-4 w-4" />
@@ -1179,6 +1297,10 @@ ${optionsLabel}`,
                 const partLabel = part.partNumber || `Part ${index + 1}`;
                 const totalSeconds = (partTotals[part.id] ?? 0) + (manualPartTotals[part.id] ?? 0);
                 const status = part.status || 'IN_PROGRESS';
+                const partCurrentDepartment =
+                  departments.find((department) => department.id === part.currentDepartmentId)?.name ??
+                  part.currentDepartmentId ??
+                  'Unassigned';
                 const latestMetaRaw = part?.partEvents?.[0]?.meta;
                 const latestMeta = typeof latestMetaRaw === 'string' ? (() => { try { return JSON.parse(latestMetaRaw); } catch { return null; } })() : latestMetaRaw;
                 const flagged = latestMeta?.flag === true;
@@ -1197,6 +1319,7 @@ ${optionsLabel}`,
                       <div>
                         <div className="text-sm font-medium text-foreground">{partLabel}</div>
                         <div className="text-xs text-muted-foreground">Qty {part.quantity ?? 1}</div>
+                        <div className="text-xs text-muted-foreground">Current dept: {partCurrentDepartment}</div>
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <Badge className={statusBadgeStyles[status] || 'bg-muted text-foreground'}>{status}</Badge>
@@ -1339,6 +1462,12 @@ ${optionsLabel}`,
                   <div>
                     <div className="text-xs uppercase tracking-wide text-muted-foreground">Quantity</div>
                     <div className="text-foreground">{selectedPart?.quantity ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Current department</div>
+                    <div className="text-foreground">
+                      {selectedCurrentDepartment?.name ?? selectedPart?.currentDepartmentId ?? 'Unassigned'}
+                    </div>
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-wide text-muted-foreground">Stock length</div>

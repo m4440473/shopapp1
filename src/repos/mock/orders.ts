@@ -782,7 +782,7 @@ export function createMockOrdersRepo() {
         .filter((part) => {
           if (part.currentDepartmentId !== departmentId) return false;
           if (includeCompleted) return true;
-          return state.orderChecklist.some((item) => item.partId === part.id && item.departmentId === departmentId && item.isActive && !item.completed);
+          return part.status !== 'COMPLETE';
         })
         .map((part) => {
           const order = state.orders.find((item) => item.id === part.orderId);
@@ -790,6 +790,8 @@ export function createMockOrdersRepo() {
             id: part.id,
             partNumber: part.partNumber,
             quantity: part.quantity,
+            currentDepartmentId: part.currentDepartmentId,
+            currentDepartment: state.departments.find((dept) => dept.id === part.currentDepartmentId) ?? null,
             orderId: part.orderId,
             partEvents: state.partEvents.filter((event) => event.partId === part.id).sort((a,b)=>b.createdAt.getTime()-a.createdAt.getTime()).slice(0,5),
             checklistItems: state.orderChecklist
@@ -803,7 +805,7 @@ export function createMockOrdersRepo() {
                   status: order.status,
                   customer: state.customers.find((customer) => customer.id === order.customerId) ?? null,
                   assignedMachinist: state.users.find((user) => user.id === order.assignedMachinistId) ?? null,
-                  parts: findOrderParts(order.id).map((entry) => ({ id: entry.id })),
+                  parts: findOrderParts(order.id).map((entry) => ({ id: entry.id, currentDepartmentId: entry.currentDepartmentId, partNumber: entry.partNumber })),
                 }
               : null,
           };

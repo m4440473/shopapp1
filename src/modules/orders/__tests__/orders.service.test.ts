@@ -83,4 +83,61 @@ describe('orders.service completion gating', () => {
     expect((result as { ok: false; status: number }).status).toBe(400);
     expect((result as { ok: false; error: string }).error).toContain('note is required');
   });
+
+  it('defaults unassigned parts to the first active department in order details', async () => {
+    const { createOrderFromPayload, backfillCurrentDepartmentIds, getOrderDetails } = await import('../orders.service');
+
+    const created = await createOrderFromPayload({
+      business: 'STD',
+      customerId: 'customer_test_001',
+      receivedDate: '2026-02-01',
+      dueDate: '2026-02-10',
+      priority: 'NORMAL',
+      materialNeeded: false,
+      materialOrdered: false,
+      modelIncluded: false,
+      vendorId: undefined,
+      poNumber: undefined,
+      assignedMachinistId: undefined,
+      notes: '',
+      attachments: [],
+      addonIds: [],
+      customFieldValues: [],
+      parts: [
+        {
+          partNumber: 'NEW-001',
+          quantity: 1,
+          materialId: undefined,
+          stockSize: undefined,
+          cutLength: undefined,
+          notes: undefined,
+          addonSelections: [],
+        },
+      ],
+    });
+
+    expect(created.ok).toBe(true);
+    await backfillCurrentDepartmentIds();
+
+    const orderId = (created as { ok: true; data: { id: string } }).data.id;
+    const details = await getOrderDetails(orderId, true);
+    expect(details.ok).toBe(true);
+
+    const payload = (details as { ok: true; data: { item: { parts: Array<{ currentDepartmentId: string | null }> }; departments: Array<{ id: string; name: string }> } }).data;
+    expect(payload.departments[0]?.name).toBe('Machining');
+    expect(payload.item.parts[0]?.currentDepartmentId).toBe(payload.departments[0]?.id);
+  });
+
+  it('includes parts in the department feed based on current department ownership', async () => {
+    const { getOrderDepartmentFeed } = await import('../orders.service');
+
+    const result = await getOrderDepartmentFeed('dept_test_001', false);
+
+    expect(result.ok).toBe(true);
+    const payload = (result as { ok: true; data: { items: Array<{ orderId: string; parts: Array<{ id: string; currentDepartmentId?: string | null }> }> } }).data;
+    expect(payload.items.some((order) => order.orderId === 'order_test_001')).toBe(true);
+    const machiningOrder = payload.items.find((order) => order.orderId === 'order_test_001');
+    expect(machiningOrder?.parts.some((part) => part.id === 'part_test_001')).toBe(true);
+    expect(machiningOrder?.parts.find((part) => part.id === 'part_test_001')?.currentDepartmentId).toBe('dept_test_001');
+  });
 });

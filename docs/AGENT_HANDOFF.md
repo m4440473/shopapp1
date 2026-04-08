@@ -1,3 +1,99 @@
+## Session Handoff — 2026-04-08 (Dashboard department visibility follow-up)
+
+Goal (1 sentence): Make current department ownership obvious across dashboard tiles and order detail, and fix dashboard display logic so department work queue reflects actual department ownership.
+
+### What changed
+- Updated `src/modules/orders/orders.repo.ts`
+  - Department feed query now treats `currentDepartmentId` as the ownership signal for work-queue visibility.
+  - Non-completed filtering now uses part status rather than requiring open checklist rows in the selected department.
+  - Dashboard overview part selections now include `partNumber` for richer client display.
+- Updated `src/repos/mock/orders.ts`
+  - Kept mock department-feed behavior aligned with the new `currentDepartmentId` ownership rule.
+- Updated `src/components/ShopFloorLayouts.tsx`
+  - Fixed initial-department refresh behavior so `Include completed` refetches correctly even for the initially selected department.
+  - Grid digest cards now show:
+    - parts count,
+    - checklist progress,
+    - current department ownership,
+    - departments touched.
+- Updated `src/components/work-queue/WorkQueueOrderCard.tsx`
+  - Added selected department badge, latest activity, and per-part current department labels.
+- Updated `src/app/orders/[id]/page.tsx`
+  - Added current department to selected-part Overview.
+  - Added current department to each part tile in the left-side part list.
+- Added focused test coverage in `src/modules/orders/__tests__/orders.service.test.ts`
+  - Confirms Machining department feed includes a part because Machining currently owns it, even without Machining checklist rows.
+- Updated continuity docs and added Decision Log entry in `docs/AGENT_CONTEXT.md`.
+
+### Files touched
+- `src/modules/orders/orders.repo.ts`
+- `src/modules/orders/orders.service.ts`
+- `src/modules/orders/orders.types.ts`
+- `src/repos/mock/orders.ts`
+- `src/components/ShopFloorLayouts.tsx`
+- `src/components/work-queue/WorkQueueOrderCard.tsx`
+- `src/app/orders/[id]/page.tsx`
+- `src/modules/orders/__tests__/orders.service.test.ts`
+- `docs/AGENT_CONTEXT.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- `npm run lint`
+
+### Verification evidence
+- Targeted Orders service tests passed (6/6).
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify on Dashboard that Work queue now shows the Machining-owned order/part and that the added card details feel right.
+- [ ] Optional follow-up: add a `Current department` column to the `By machinist` table if department ownership should also be visible in that layout.
+
+## Session Handoff — 2026-04-08 (Order-detail department UX follow-up)
+
+Goal (1 sentence): Replace the raw department-ID prompt with an in-app move dialog, restore department dropdown options on order detail, and default unassigned parts to the first active department.
+
+### What changed
+- Updated `src/app/orders/[id]/page.tsx`
+  - Replaced the manual department `window.prompt` flow with a site-native `Dialog`.
+  - Manual move now uses a destination department dropdown plus the required move note inline.
+  - Timer department choices now come from the ordered active department list returned by the server, excluding Shipping.
+  - Selected timer department now auto-defaults to the part’s current department when available, otherwise to the first timer-eligible department.
+- Updated `src/modules/orders/orders.service.ts`
+  - `getOrderDetails()` now returns `departments` alongside the order payload.
+  - Order detail read model now falls back to the first active department when a part has no explicit/current routed department yet.
+  - `initializeCurrentDepartmentForParts()` now uses the first active department as fallback when checklist routing yields no department.
+- Updated `src/modules/orders/orders.repo.ts`
+  - Included part `status` in the missing-current-department query so backfill can skip already completed parts.
+- Added focused test coverage in `src/modules/orders/__tests__/orders.service.test.ts`
+  - Verifies unassigned parts fall back to the first active department (`Machining` in current ordering).
+- Updated continuity docs and added a Decision Log entry in `docs/AGENT_CONTEXT.md`.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `src/modules/orders/orders.service.ts`
+- `src/modules/orders/orders.repo.ts`
+- `src/modules/orders/__tests__/orders.service.test.ts`
+- `docs/AGENT_CONTEXT.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- `npm run lint`
+
+### Verification evidence
+- Targeted Orders service tests passed (5/5).
+- Initial test attempt failed inside sandbox with Vitest/esbuild `spawn EPERM`; rerun outside sandbox passed.
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify on `/orders/[id]` that the timer department dropdown now shows departments immediately and defaults to Machining/current department as expected.
+- [ ] User verify the new move dialog feels right and that the required note copy/fields match shop-floor expectations.
+
 ## Session Handoff — 2026-04-08 (Quote print totals parity hotfix)
 
 Goal (1 sentence): Make the quote print view use the same non-double-counted part-pricing totals rule as quote editor and quote detail.

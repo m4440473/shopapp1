@@ -1,3 +1,37 @@
+### 2026-04-08 — Dashboard department visibility follow-up: current owner shown on tiles and part view
+- Fixed department work-queue ownership logic so the display now follows `OrderPart.currentDepartmentId` instead of requiring open checklist rows in the selected department.
+- Fixed `ShopFloorLayouts` initial-department refresh behavior so toggling `Include completed` now refetches correctly for the initially selected department instead of reusing stale server snapshot data.
+- Updated dashboard cards:
+  - Grid digest cards now show `Current department` and `Parts` in addition to existing customer/machinist/due/priority/checklist context.
+  - Work queue cards now show the selected department badge, latest activity, and per-part current department labels.
+- Updated order detail UI so current department is visible:
+  - in the selected-part Overview tab,
+  - in each part row in the left-side part list.
+- Added focused Orders service coverage proving the department feed includes a part based on current department ownership even without checklist rows in that department.
+
+Commands run:
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- `npm run lint`
+
+Verification note:
+- Targeted Orders service tests passed (6/6).
+- Lint passed with no ESLint warnings/errors.
+
+### 2026-04-08 — Order-detail department UX follow-up: in-app move dialog + restored department dropdowns
+- Replaced the raw browser `window.prompt` manual department-move flow on `/orders/[id]` with an in-app dialog using the site modal pattern, a destination department dropdown, and the existing required move-note field.
+- Fixed missing timer/manual-move department options by sending the ordered active department list from `getOrderDetails()` and using that canonical list on the page instead of inferring departments from checklist rows.
+- Added first-active-department fallback for parts missing `currentDepartmentId` in both order-detail read-model shaping and the current-department backfill path, which makes Machining the default first department in the current ordering.
+- Guarded the backfill path from assigning fallback departments to parts that are already complete.
+- Added focused Orders service coverage for the default-first-department behavior.
+
+Commands run:
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- `npm run lint`
+
+Verification note:
+- Targeted Orders service tests passed (5/5) after rerunning outside sandbox because Vitest/esbuild hit sandbox `spawn EPERM`.
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-08 — Hotfix: quote print totals now match editor/detail pricing math
 - Fixed `src/app/admin/quotes/[id]/print/page.tsx` so the print totals no longer double-count per-part pricing and the same part's raw add-on/labor subtotal.
 - Reused the shared pricing-summary replacement helper so quote editor, quote detail, and quote print now apply the same totals rule.

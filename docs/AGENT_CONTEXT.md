@@ -61,6 +61,14 @@ Goal: a scalable foundation that can grow.
 ## Decision Log (append newest at top)
 
 
+### 2026-04-08 — Dashboard/work-queue department ownership follows current department, not checklist presence
+Decision: Dashboard department displays and work-queue ownership should be driven by `OrderPart.currentDepartmentId`; department feed visibility must not depend on whether that same department still has open checklist rows.
+Reason: The floor needs one clear “who owns this part right now” signal, and checklist-driven visibility hides legitimately assigned work from the display when the part lacks department-scoped checklist items.
+
+### 2026-04-08 — Order-detail department controls use ordered department list with first-department fallback
+Decision: Order detail should receive the ordered active department list from Orders service and use that list for timer selection and manual department moves instead of inferring options from checklist rows; when a part has no explicit/current routed department yet, fall back to the first active department in ordering.
+Reason: Checklist-derived department options can be empty or incomplete for newly converted/manual parts, which breaks timer selection and forces operators into raw ID entry; using the canonical ordered department list keeps UI choices stable and makes Machining the default first-stop under current configuration.
+
 ### 2026-04-07 — Part-pricing basis model: coexist line item + quote persistence, order review transient
 Decision: Introduce per-part `pricingMode` (`PER_UNIT` | `LOT_TOTAL`) with explicit part-price entry in Quote Review, persist it in quote metadata (`partPricing` entries include `pricingMode`), and compute lot totals as mode-driven. Keep existing `basePriceCents` semantics intact; `partPricingTotal` is a separate estimate line item (coexists, does not overwrite base fabrication). For `/orders/new`, apply the same per-part basis controls and instant estimate behavior in review UI, but keep it transient (not persisted on order create payload) until an explicit Orders-domain persistence contract is approved.
 Reason: Admins need explicit, per-part pricing interpretation without hidden math; preserving base pricing avoids silent contract breaks while coexistence keeps calculations transparent. Quote persistence is required for edit/reopen fidelity; order-side persistence remains intentionally deferred to avoid schema drift without a dedicated contract.
