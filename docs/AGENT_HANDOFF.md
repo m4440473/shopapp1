@@ -1,5 +1,38 @@
 Date: 2026-04-08
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Make quote view and print invoice totals carry over the same basis-adjusted pricing amount shown during quote review.
+
+## What I changed
+- Updated `src/app/admin/quotes/[id]/page.tsx` to:
+  - compute `partPricingTotal` using `calculatePartLotTotal` per part quantity + pricing mode,
+  - include a `Part pricing (basis-adjusted)` row,
+  - compute/display `Total estimate` from recalculated aggregate (`base + vendor + add-ons + part pricing`).
+- Updated `src/app/admin/quotes/[id]/print/page.tsx` to:
+  - compute `partPricingTotal` with the same helper,
+  - include part pricing in totals summary,
+  - include part pricing in print grand total.
+- Updated continuity artifact `tasks/todo.md` with plan + verification completion for this scoped fix.
+
+## Files touched
+- `src/app/admin/quotes/[id]/page.tsx`
+- `src/app/admin/quotes/[id]/print/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run lint`
+
+## Verification Evidence
+- `npm run lint` passed (`✔ No ESLint warnings or errors`).
+
+## Next steps
+- [ ] User verification in UI: confirm quote review total now matches both quote detail and print invoice totals for PER_UNIT and LOT_TOTAL rows.
+
+---
+
+Date: 2026-04-08
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Stabilize the prior quote/order pricing-basis PR by reconciling unresolved inline feedback and fixing persistence/projection correctness drift.
 
 ## What I changed

@@ -16,6 +16,7 @@ import AdminPricingGate from '@/components/Admin/AdminPricingGate';
 import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata } from '@/lib/quote-metadata';
+import { calculatePartLotTotal } from '@/modules/pricing/part-pricing';
 import QuoteWorkflowControls from '../QuoteWorkflowControls';
 import { canAccessAdmin } from '@/lib/rbac';
 
@@ -85,11 +86,22 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     ) + legacyAddonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const vendorTotal = quote.vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
   const downloadBase = (process.env.NEXT_PUBLIC_BASE_URL ?? runtimeBase).replace(/\/$/, '');
-  const totalCents = quote.basePriceCents + addonTotal + vendorTotal;
   const partPricing = getPartPricingEntries({
     parts: quote.parts,
     metadata,
   });
+  const partPricingTotal = partPricing.reduce((sum, entry, index) => {
+    const partQty = quote.parts[index]?.quantity ?? 0;
+    return (
+      sum +
+      calculatePartLotTotal({
+        enteredPriceCents: entry.priceCents,
+        quantity: partQty,
+        pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
+      })
+    );
+  }, 0);
+  const totalCents = quote.basePriceCents + addonTotal + vendorTotal + partPricingTotal;
   const attachmentLinks = quote.attachments
     .map((attachment) => {
       if (attachment.url) {
@@ -261,9 +273,13 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                     <span className="text-muted-foreground">Add-ons and labor</span>
                     <span className="font-medium">{formatCurrency(addonTotal)}</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Part pricing (basis-adjusted)</span>
+                    <span className="font-medium">{formatCurrency(partPricingTotal)}</span>
+                  </div>
                   <div className="border-t border-border/60 pt-2 flex justify-between text-base font-semibold">
                     <span>Total estimate</span>
-                    <span className="text-primary">{formatCurrency(quote.totalCents)}</span>
+                    <span className="text-primary">{formatCurrency(totalCents)}</span>
                   </div>
                 </CardContent>
               </Card>
