@@ -1,3 +1,46 @@
+Date: 2026-04-08
+Agent: GPT-5.3-Codex
+Goal (1 sentence): Stabilize the prior quote/order pricing-basis PR by reconciling unresolved inline feedback and fixing persistence/projection correctness drift.
+
+## What I changed
+- Added a fresh Phase-0 unresolved-comment reconciliation checklist and full gap audit/verification matrix in `tasks/todo.md` before implementation.
+- Fixed quote payload integrity in `QuoteEditor`:
+  - `partPricing.priceCents` now persists the entered value directly.
+  - `pricingMode` persists unchanged (`PER_UNIT` or `LOT_TOTAL`).
+  - Lot-total math remains runtime-derived from canonical helper.
+- Switched quote edit preload to use `getPartPricingEntries` identity-aware mapping (part number/name first, index fallback) to prevent row/value drift when part ordering differs.
+- Hardened `getPartPricingEntries` for backward compatibility:
+  - defaults missing legacy `pricingMode` to `LOT_TOTAL`
+  - uses addon totals only as fallback when no stored entry can be matched.
+- Added targeted tests for:
+  - pricing-mode toggle determinism
+  - quote metadata stringify/parse round-trip preservation
+  - projection matching by part identity + legacy mode fallback
+
+## Files touched
+- `src/app/admin/quotes/QuoteEditor.tsx`
+- `src/lib/quote-part-pricing.ts`
+- `src/modules/pricing/__tests__/part-pricing.test.ts`
+- `src/lib/__tests__/quote-part-pricing.test.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `gh pr view 153 --comments` *(fails: `gh` CLI unavailable in environment)*
+- `npm run lint`
+- `npm run test`
+
+## Verification Evidence
+- `npm run lint` passed (no ESLint warnings/errors).
+- `npm run test` passed (15 files / 46 tests).
+
+## Next steps
+- [ ] If direct GitHub PR comment retrieval is required in future sessions, install/configure `gh` or provide exported review threads in-repo.
+- [ ] Optional: add UI-level integration tests around QuoteEditor row-level pricing-mode interactions.
+
+---
+
 Date: 2026-04-07
 Agent: GPT-5.3-Codex
 Goal (1 sentence): Close the review-comment gate first, then restore admin quote discoverability and add per-part pricing basis controls across quote and order review flows.

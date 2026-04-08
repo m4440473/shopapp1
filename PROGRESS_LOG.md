@@ -82,6 +82,24 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-08 — Post-PR stabilization: quote pricing-basis persistence/projection drift fixes + targeted regression tests
+- Reconciled unresolved inline-review scope in `tasks/todo.md` before implementation and completed a pass/fail gap audit for admin discoverability, quote review basis, order review basis, and canonical math behavior.
+- Fixed quote payload contract drift in `QuoteEditor` by persisting raw entered `partPricing.priceCents` alongside `pricingMode` (no lossy conversion to lot total at serialization time).
+- Replaced quote part-pricing preload/index-only projection with identity-aware projection (`partNumber`/`name` match + index fallback) via `getPartPricingEntries`, preventing silent mismatches/drops when part order changes.
+- Added focused tests:
+  - pricing-mode toggle recalculation determinism (`src/modules/pricing/__tests__/part-pricing.test.ts`)
+  - quote metadata round-trip and projection compatibility (`src/lib/__tests__/quote-part-pricing.test.ts`)
+- Verified required commands pass (`npm run lint`, `npm run test`).
+
+Commands run:
+- gh pr view 153 --comments *(fails: `gh` not installed in environment)*
+- npm run lint
+- npm run test
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Full Vitest suite passed (15 files / 46 tests).
+
 ### 2026-04-07 — Regression fix: admin add-on/labor cost visibility + conversion route build guard
 - Restored quote editor add-on library pricing visibility by including `rateCents` in `AvailableItemsLibrary` mapping payload.
 - Added per-assignment pricing meta in order creation (`/orders/new`) so admins now see `rate × units = total` under assigned labor/add-on rows, including checklist-only no-charge messaging.
