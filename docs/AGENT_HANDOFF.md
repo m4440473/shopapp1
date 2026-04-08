@@ -1,3 +1,55 @@
+## Session Handoff — 2026-04-08 (Structured Quote Document Editor v1)
+
+Goal (1 sentence): Deliver a structured, template-driven quote document editor so admins can configure block visibility/labels/styles/options and have quote print/save output follow those settings.
+
+### What changed
+- Extended layout schema handling:
+  - `src/lib/document-template-layout.ts`
+  - Added structured `blocks[]` support (`id`, `type`, `label`, `visible`, `order`, `variant`, `options`) while preserving legacy `sections[]` parsing fallback.
+- Added quote print render-planning helper:
+  - `src/lib/quote-print-layout.ts`
+  - Maps normalized template blocks to quote render block types and pricing options.
+- Updated admin template editor UI:
+  - `src/app/admin/templates/TemplatesClient.tsx`
+  - Canvas now edits blocks (not only section labels) and supports:
+    - show/hide,
+    - label overrides,
+    - variant preset (`standard`/`compact`),
+    - pricing block toggles (`showUnitPrice`, `showQuantity`, `showLineTotal`, `showPricingMode`).
+  - Save payload now writes both `sections` (legacy compatibility) and `blocks` (structured model).
+- Updated quote print output rendering:
+  - `src/app/admin/quotes/[id]/print/page.tsx`
+  - Rendering now consumes normalized structured blocks; pricing section table columns/mode row visibility respond to template options.
+
+### Tests
+- Added `src/lib/__tests__/document-template-layout.test.ts` (legacy normalization + structured ordering behavior).
+- Added `src/lib/__tests__/quote-print-layout.test.ts` (render-block mapping + visibility/options behavior).
+
+### Files touched
+- `src/lib/document-template-layout.ts`
+- `src/lib/quote-print-layout.ts`
+- `src/lib/__tests__/document-template-layout.test.ts`
+- `src/lib/__tests__/quote-print-layout.test.ts`
+- `src/app/admin/templates/TemplatesClient.tsx`
+- `src/app/admin/quotes/[id]/print/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run test -- src/lib/__tests__/document-template-layout.test.ts src/lib/__tests__/quote-print-layout.test.ts`
+- `npm run lint`
+
+### Verification evidence
+- Targeted tests passed (2 files, 4 tests).
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps (post-MVP polish)
+- Optional: add compact-variant visual style deltas beyond table font sizing for richer preset differences.
+- Optional: add UI integration tests for template builder interactions (drag/reorder + option toggles -> payload assertions).
+
+---
+
 ## Session Handoff — 2026-04-08 (Phase 3 quick convert)
 
 Goal (1 sentence): Implement admin quote-detail “Quick Convert” that captures only essential overrides and converts directly to order detail without sending users through `/orders/new` wizard steps.

@@ -4,14 +4,11 @@ import { redirect } from 'next/navigation';
 import { getServerAuthSession } from '@/lib/auth-session';
 
 import { canAccessAdmin } from '@/lib/rbac';
-import {
-  DEFAULT_TEMPLATE_SECTIONS,
-  normalizeSectionName,
-  normalizeTemplateLayout,
-} from '@/lib/document-template-layout';
+import { normalizeTemplateLayout } from '@/lib/document-template-layout';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
 import { calculatePartLotTotal, calculatePartUnitPrice } from '@/modules/pricing/part-pricing';
+import { buildQuoteRenderBlocks, DEFAULT_QUOTE_PRICING_OPTIONS } from '@/lib/quote-print-layout';
 
 import { PrintControls } from '@/components/print/PrintControls';
 
@@ -60,7 +57,7 @@ export default async function QuotePrintPage({
   const selectedTemplate =
     templates.find((template) => template.id === requestedTemplateId) ?? activeTemplate ?? templates[0] ?? null;
   const layout = normalizeTemplateLayout(selectedTemplate?.layoutJson);
-  const layoutSections = layout.sections.length ? layout.sections : DEFAULT_TEMPLATE_SECTIONS;
+  const renderBlocks = buildQuoteRenderBlocks(layout).filter((block) => block.visible);
 
   const legacyAddonSelections = quote.addonSelections.filter((selection) => !selection.quotePartId);
   const addonTotal =
@@ -204,50 +201,58 @@ export default async function QuotePrintPage({
     </section>
   );
 
-  const pricingSection = (
-    <section>
-      <h2 className="border-b border-black pb-1 text-lg font-semibold uppercase tracking-wide">Part pricing</h2>
-      <table className="mt-3 w-full table-fixed border-collapse border border-black text-sm">
-        <thead className="bg-zinc-200">
-          <tr>
-            <th className="border border-black px-2 py-1 text-left">Part</th>
-            <th className="border border-black px-2 py-1 text-left">Unit price</th>
-            <th className="border border-black px-2 py-1 text-left">Qty</th>
-            <th className="border border-black px-2 py-1 text-left">Line total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {partPricing.length === 0 && (
+  const renderPricingSection = (pricingOptions = DEFAULT_QUOTE_PRICING_OPTIONS, variant: 'standard' | 'compact' = 'standard') => {
+    const showUnit = pricingOptions.showUnitPrice !== false;
+    const showQty = pricingOptions.showQuantity !== false;
+    const showLine = pricingOptions.showLineTotal !== false;
+    const showMode = pricingOptions.showPricingMode !== false;
+    const compact = variant === 'compact';
+
+    return (
+      <section>
+        <h2 className="border-b border-black pb-1 text-lg font-semibold uppercase tracking-wide">Part pricing</h2>
+        <table className={`mt-3 w-full table-fixed border-collapse border border-black ${compact ? 'text-xs' : 'text-sm'}`}>
+          <thead className="bg-zinc-200">
             <tr>
-              <td className="border border-black px-2 py-2 text-center text-neutral-500" colSpan={4}>
-                No pricing captured
-              </td>
+              <th className="border border-black px-2 py-1 text-left">Part</th>
+              {showUnit ? <th className="border border-black px-2 py-1 text-left">Unit price</th> : null}
+              {showQty ? <th className="border border-black px-2 py-1 text-left">Qty</th> : null}
+              {showLine ? <th className="border border-black px-2 py-1 text-left">Line total</th> : null}
             </tr>
-          )}
-          {partPricingRows.map((row) => (
-            <tr key={row.part.id} className="align-top">
-              <td className="border border-black px-2 py-2">
-                <div className="font-medium">{row.part.name}</div>
-                {row.part.partNumber && <div className="text-xs">Part #: {row.part.partNumber}</div>}
-                <div className="text-xs text-neutral-500">Mode: {row.pricingMode}</div>
-              </td>
-              <td className="border border-black px-2 py-2">{formatCurrency(row.unitPriceCents)}</td>
-              <td className="border border-black px-2 py-2">{row.quantity}</td>
-              <td className="border border-black px-2 py-2">{formatCurrency(row.lineTotalCents)}</td>
-            </tr>
-          ))}
-          {partPricingRows.length > 0 && (
-            <tr>
-              <td className="border border-black px-2 py-2 font-semibold text-right" colSpan={3}>
-                Part pricing total
-              </td>
-              <td className="border border-black px-2 py-2 font-semibold">{formatCurrency(partPricingTotal)}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </section>
-  );
+          </thead>
+          <tbody>
+            {partPricing.length === 0 && (
+              <tr>
+                <td className="border border-black px-2 py-2 text-center text-neutral-500" colSpan={1 + Number(showUnit) + Number(showQty) + Number(showLine)}>
+                  No pricing captured
+                </td>
+              </tr>
+            )}
+            {partPricingRows.map((row) => (
+              <tr key={row.part.id} className="align-top">
+                <td className="border border-black px-2 py-2">
+                  <div className="font-medium">{row.part.name}</div>
+                  {row.part.partNumber && <div className="text-xs">Part #: {row.part.partNumber}</div>}
+                  {showMode ? <div className="text-xs text-neutral-500">Mode: {row.pricingMode}</div> : null}
+                </td>
+                {showUnit ? <td className="border border-black px-2 py-2">{formatCurrency(row.unitPriceCents)}</td> : null}
+                {showQty ? <td className="border border-black px-2 py-2">{row.quantity}</td> : null}
+                {showLine ? <td className="border border-black px-2 py-2">{formatCurrency(row.lineTotalCents)}</td> : null}
+              </tr>
+            ))}
+            {partPricingRows.length > 0 && showLine && (
+              <tr>
+                <td className="border border-black px-2 py-2 font-semibold text-right" colSpan={1 + Number(showUnit) + Number(showQty)}>
+                  Part pricing total
+                </td>
+                <td className="border border-black px-2 py-2 font-semibold">{formatCurrency(partPricingTotal)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+    );
+  };
 
   const addonsSection = (
     <section className="border border-black">
@@ -323,19 +328,6 @@ export default async function QuotePrintPage({
     </section>
   );
 
-  const sectionContent: Record<string, React.ReactNode> = {
-    header: headerSection,
-    'customer info': customerInfoSection,
-    'total price': totalSection,
-    'part name': scopeSection,
-    'part info': pricingSection,
-    'line items': scopeSection,
-    'addons labor': addonsSection,
-    'addons/labor': addonsSection,
-    shipping: requirementsSection,
-    notes: requirementsSection,
-  };
-
   return (
     <div className="min-h-screen bg-white p-8 text-black">
       <PrintControls
@@ -348,18 +340,34 @@ export default async function QuotePrintPage({
         templateLabel="Quote template"
       />
       <div className="mt-6 space-y-6">
-        {layoutSections.map((section, index) => {
-          const key = normalizeSectionName(section);
-          const content = sectionContent[key];
+        {renderBlocks.map((block, index) => {
+          const key = block.type;
+          const content =
+            key === 'header'
+              ? headerSection
+              : key === 'customer_info'
+                ? customerInfoSection
+                : key === 'total_price'
+                  ? totalSection
+                  : key === 'scope'
+                    ? scopeSection
+                    : key === 'part_pricing'
+                      ? renderPricingSection(block.pricingOptions ?? DEFAULT_QUOTE_PRICING_OPTIONS, block.variant)
+                      : key === 'addons_labor'
+                        ? addonsSection
+                        : key === 'requirements'
+                          ? requirementsSection
+                          : null;
+
           if (!content) {
             return (
-              <section key={`${section}-${index}`} className="border border-dashed border-black px-3 py-3">
-                <div className="text-xs font-semibold uppercase text-gray-500">Unmapped section</div>
-                <div className="text-sm">{section}</div>
+              <section key={`${block.id}-${index}`} className="border border-dashed border-black px-3 py-3">
+                <div className="text-xs font-semibold uppercase text-gray-500">Unmapped block</div>
+                <div className="text-sm">{block.label}</div>
               </section>
             );
           }
-          return <React.Fragment key={`${section}-${index}`}>{content}</React.Fragment>;
+          return <React.Fragment key={`${block.id}-${index}`}>{content}</React.Fragment>;
         })}
       </div>
     </div>

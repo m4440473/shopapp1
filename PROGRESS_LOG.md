@@ -93,6 +93,21 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-08 — Final phase complete: structured quote template block editor + print mapping
+- Extended document template layout normalization from legacy `sections[]` into structured `blocks[]` model (`id`, `type`, `label`, `visible`, `order`, `variant`, `options`) with backward-compatible fallback.
+- Upgraded `/admin/templates` builder to block-based editing with controls for show/hide, label override, variant preset, and quote pricing block options (`showUnitPrice`, `showQuantity`, `showLineTotal`, `showPricingMode`).
+- Wired `/admin/quotes/[id]/print` to structured block render planning so saved template block visibility/options directly control quote output rendering.
+- Preserved legacy templates by normalizing existing `sections[]` records into generated blocks at read time.
+- Added focused tests for normalization and quote print block mapping.
+
+Commands run:
+- npm run test -- src/lib/__tests__/document-template-layout.test.ts src/lib/__tests__/quote-print-layout.test.ts
+- npm run lint
+
+Verification note:
+- Targeted tests passed (4/4).
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-08 — Phase 3 complete: quote-detail Quick Convert dialog (skip /orders/new wizard)
 - Added admin quote-detail quick-convert UX with required fields (`dueDate`, `priority`, `assignedMachinistId`) and optional overrides (`PO number`, `vendorId`, material/model flags).
 - Added direct quick-convert trigger on `/admin/quotes/[id]` and routed success straight to `/orders/{id}`.
