@@ -1,3 +1,59 @@
+### 2026-04-08 — Hotfix: quote print totals now match editor/detail pricing math
+- Fixed `src/app/admin/quotes/[id]/print/page.tsx` so the print totals no longer double-count per-part pricing and the same part's raw add-on/labor subtotal.
+- Reused the shared pricing-summary replacement helper so quote editor, quote detail, and quote print now apply the same totals rule.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
+### 2026-04-08 — Hotfix: view-quote totals card now matches quote editor pricing math
+- Fixed `src/app/admin/quotes/[id]/page.tsx` so the Totals card no longer double-counts per-part pricing and the same part's raw add-on/labor subtotal.
+- Reused the shared pricing-summary replacement helper to keep quote editor and quote detail totals aligned.
+- Preserved legacy quote-level add-on selections in the `Add-ons and labor` bucket.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
+### 2026-04-08 — Follow-up: Quote part-pricing input now auto-fills from assigned work subtotal
+- Updated `src/app/admin/quotes/QuoteEditor.tsx` so each part-pricing input auto-populates from that part's current assigned add-ons/labor subtotal.
+- Auto-fill continues to track assignment changes until the user manually edits the field, after which the typed value is preserved.
+- This removes the need to retype the raw subtotal before choosing whether it represents a lot total or per-unit price.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
+### 2026-04-08 — Hotfix: Quote review summary no longer double-counts part pricing
+- Fixed quote review summary math in `src/app/admin/quotes/QuoteEditor.tsx` so a non-zero per-part pricing entry replaces that part's raw add-on/labor subtotal instead of stacking both.
+- Added `calculatePartPricingSummaryTotalsCents` in `src/modules/pricing/work-item-pricing.ts` to keep the bucket-replacement rule explicit and reusable.
+- Added focused pricing-helper test coverage for the replacement behavior.
+
+Commands run:
+- npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts
+- npm run lint
+
+Verification note:
+- Targeted work-item pricing tests passed.
+- Lint passed with no ESLint warnings/errors.
+
+### 2026-04-08 — Hotfix: QuoteEditor `activePart` initialization crash
+- Fixed admin quote creation/edit runtime crash `Cannot access 'activePart' before initialization` in `src/app/admin/quotes/QuoteEditor.tsx`.
+- Root cause: a `useEffect` pruned selected assignment keys using `activePart` before the memoized `activePart` binding was initialized later in the component body.
+- Reworked the effect to derive the current part from `parts` + `activePartKey` locally, preserving selection-pruning behavior without triggering the temporal dead zone.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-08 — Quote view/invoice total carry-over fix
 - Fixed quote detail total math to include basis-adjusted part pricing carry-over instead of relying on stale persisted total values.
 - Added `Part pricing (basis-adjusted)` line in the admin quote Totals card so the review-step amount is visible in view quote.
@@ -1467,3 +1523,44 @@ Next steps (immediate)
 - Runtime verification notes:
   - Converted orders are now visible through `/api/orders/{id}` in TEST_MODE dev.
   - Timer `start` now aligns with `active` and `pause` behavior in TEST_MODE dev.
+### 2026-04-08 — Quote template editor: expanded detail controls for print blocks
+- Extended quote template block metadata in `src/lib/quote-print-layout.ts` so scope, addons/labor, and notes/requirements blocks can carry their own option sets in addition to pricing blocks.
+- Updated `src/app/admin/templates/TemplatesClient.tsx` to expose new block-level controls for:
+  - part detail visibility on scope/line-item blocks,
+  - addon/labor visibility including `Show prices`,
+  - notes/requirements section toggles.
+- Updated `src/app/admin/quotes/[id]/print/page.tsx` so quote print rendering now honors those new template options.
+- Added focused option-mapping coverage in `src/lib/__tests__/quote-print-layout.test.ts`.
+
+Commands run:
+- npm run test -- src/lib/__tests__/quote-print-layout.test.ts
+- npm run lint
+
+Verification note:
+- Targeted quote-print-layout tests passed.
+- Lint passed with no ESLint warnings/errors.
+### 2026-04-08 — Quote template editor: expanded detail controls for print blocks
+- Extended quote template block metadata in `src/lib/quote-print-layout.ts` so scope, addons/labor, and notes/requirements blocks can carry their own option sets in addition to pricing blocks.
+- Updated `src/app/admin/templates/TemplatesClient.tsx` to expose new block-level controls for:
+  - part detail visibility on scope/line-item blocks,
+  - addon/labor visibility including `Show prices`,
+  - notes/requirements section toggles.
+- Updated `src/app/admin/quotes/[id]/print/page.tsx` so quote print rendering now honors those new template options.
+- Added focused option-mapping coverage in `src/lib/__tests__/quote-print-layout.test.ts`.
+
+Commands run:
+- npm run test -- src/lib/__tests__/quote-print-layout.test.ts
+- npm run lint
+
+Verification note:
+- Targeted quote-print-layout tests passed.
+- Lint passed with no ESLint warnings/errors.
+### 2026-04-08 — Hotfix: `/orders/[id]` nullish-coalescing compile error
+- Fixed `src/app/orders/[id]/page.tsx` compile failure caused by mixing `??` with `||` inside the manual department-move prompt string interpolation.
+- Replaced the inline expression with a dedicated `currentDepartmentLabel` value so the order detail page compiles cleanly again.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.

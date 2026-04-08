@@ -1,3 +1,143 @@
+## Session Handoff — 2026-04-08 (Quote print totals parity hotfix)
+
+Goal (1 sentence): Make the quote print view use the same non-double-counted part-pricing totals rule as quote editor and quote detail.
+
+### What changed
+- Updated `src/app/admin/quotes/[id]/print/page.tsx`
+  - Replaced stacked total math with the shared pricing-summary replacement rule.
+  - Parts with non-zero part-pricing entries now contribute to `Part pricing` instead of also remaining inside the raw part add-on/labor subtotal.
+
+### Files touched
+- `src/app/admin/quotes/[id]/print/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify in `/admin/quotes/[id]/print` that totals now match both quote editor and quote detail.
+
+---
+
+## Session Handoff — 2026-04-08 (View quote totals parity hotfix)
+
+Goal (1 sentence): Make the admin quote detail Totals card use the same non-double-counted part-pricing math as the quote editor.
+
+### What changed
+- Updated `src/app/admin/quotes/[id]/page.tsx`
+  - Replaced stacked total math with the shared pricing-summary replacement rule already used in `QuoteEditor`.
+  - Parts with non-zero part-pricing entries now contribute to `Part pricing (basis-adjusted)` instead of also remaining in `Add-ons and labor`.
+  - Legacy quote-level add-on selections still remain in `Add-ons and labor`.
+
+### Files touched
+- `src/app/admin/quotes/[id]/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify on `/admin/quotes/[id]` that the Totals card now shows the same values as the quote editor for the same quote.
+
+---
+
+## Session Handoff — 2026-04-08 (Quote part-pricing autofill follow-up)
+
+Goal (1 sentence): Auto-fill the part-pricing input from the part's assigned work subtotal so users only need to choose lot-total vs per-unit unless they want to override the amount.
+
+### What changed
+- Updated `src/app/admin/quotes/QuoteEditor.tsx`
+  - Extended local `partPricing` state with an `isManual` flag.
+  - Part-pricing rows now auto-populate from the current assigned add-ons/labor subtotal for each part.
+  - Auto-fill keeps tracking assignment changes until the input is manually edited, at which point the entered value is preserved.
+
+### Files touched
+- `src/app/admin/quotes/QuoteEditor.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify in UI that the part-pricing input now starts with the assigned subtotal (for example `$245.00`) before toggling `LOT_TOTAL` vs `PER_UNIT`.
+
+---
+
+## Session Handoff — 2026-04-08 (Quote summary double-count hotfix)
+
+Goal (1 sentence): Fix quote-review total math so basis-adjusted part pricing does not stack on top of the same part's raw add-on/labor subtotal.
+
+### What changed
+- Updated `src/app/admin/quotes/QuoteEditor.tsx`
+  - Reworked summary total calculation to split per-part raw work-item subtotals from per-part pricing overrides.
+  - When a part has a non-zero entered part-pricing value, that part now contributes only to `Part pricing (basis-adjusted)` and no longer remains in `Add-ons and labor`.
+- Updated `src/modules/pricing/work-item-pricing.ts`
+  - Added `calculatePartPricingSummaryTotalsCents` helper to keep the bucket-replacement rule explicit.
+- Added focused tests in `src/modules/pricing/__tests__/work-item-pricing.test.ts`
+  - Covers the case where a basis-adjusted part-pricing total should replace, not stack with, the raw subtotal.
+
+### Files touched
+- `src/app/admin/quotes/QuoteEditor.tsx`
+- `src/modules/pricing/work-item-pricing.ts`
+- `src/modules/pricing/__tests__/work-item-pricing.test.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts`
+- `npm run lint`
+
+### Verification evidence
+- Targeted work-item pricing tests passed.
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify in UI that entering `245` with `PER_UNIT` on quantity `3` now yields `Add-ons and labor = $0.00`, `Part pricing = $735.00`, and `Total estimate = $735.00` for that single-part scenario.
+
+---
+
+## Session Handoff — 2026-04-08 (QuoteEditor activePart hotfix)
+
+Goal (1 sentence): Fix the admin quote editor runtime crash caused by referencing `activePart` before its initialization.
+
+### What changed
+- Updated `src/app/admin/quotes/QuoteEditor.tsx`
+  - Reworked the selected-assignment pruning effect to derive the current active part from `parts` and `activePartKey` inside the hook instead of closing over `activePart` before that memoized binding is declared.
+  - Preserved existing behavior: selected assignment keys are still trimmed to only those that exist on the current active part.
+
+### Files touched
+- `src/app/admin/quotes/QuoteEditor.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify in UI that `/admin/quotes/new` and quote edit flows no longer throw the `activePart` initialization error when the editor mounts.
+
+---
+
 ## Session Handoff — 2026-04-08 (Structured Quote Document Editor v1)
 
 Goal (1 sentence): Deliver a structured, template-driven quote document editor so admins can configure block visibility/labels/styles/options and have quote print/save output follow those settings.
@@ -2307,3 +2447,103 @@ Goal (1 sentence): Fix the highest-impact backend issues identified in QA by har
 ### Next steps
 - [ ] Run `prisma migrate dev` to materialize the new `Order.orderNumber` uniqueness constraint in migration history.
 - [ ] Consider honoring requested `operation` in `/api/timer/start` (currently hardcoded to `Part Work`).
+## Session Handoff — 2026-04-08 (Quote template detail-control expansion)
+
+Goal (1 sentence): Give admins finer control over quote print templates, especially part-detail visibility and whether add-on/labor prices appear.
+
+### What changed
+- Updated `src/lib/quote-print-layout.ts`
+  - Added structured option sets for `scope`, `addons_labor`, and `requirements` blocks.
+- Updated `src/app/admin/templates/TemplatesClient.tsx`
+  - Added new option panels in the template editor for:
+    - `Line Items / Scope`: part number, qty, pieces, material, stock size, cut length, description/finish, notes.
+    - `Addons/Labor`: prices, units, notes, part context, vendor items.
+    - `Notes/Requirements`: materials, purchased items, requirements, notes.
+- Updated `src/app/admin/quotes/[id]/print/page.tsx`
+  - Quote print now honors those block options, including hiding add-on prices while still listing the work items.
+  - Scope block now renders the requested part details conditionally instead of using one hardcoded layout.
+- Added focused mapping coverage in `src/lib/__tests__/quote-print-layout.test.ts`.
+
+### Files touched
+- `src/lib/quote-print-layout.ts`
+- `src/lib/__tests__/quote-print-layout.test.ts`
+- `src/app/admin/templates/TemplatesClient.tsx`
+- `src/app/admin/quotes/[id]/print/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run test -- src/lib/__tests__/quote-print-layout.test.ts`
+- `npm run lint`
+
+### Verification evidence
+- Targeted quote-print-layout tests passed.
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify in `/admin/templates` that the new block options appear where expected and in `/admin/quotes/[id]/print` that toggles like `Show prices` for `Addons/Labor` affect output as intended.
+
+---
+## Session Handoff — 2026-04-08 (Quote template detail-control expansion)
+
+Goal (1 sentence): Give admins finer control over quote print templates, especially part-detail visibility and whether add-on/labor prices appear.
+
+### What changed
+- Updated `src/lib/quote-print-layout.ts`
+  - Added structured option sets for `scope`, `addons_labor`, and `requirements` blocks.
+- Updated `src/app/admin/templates/TemplatesClient.tsx`
+  - Added new option panels in the template editor for:
+    - `Line Items / Scope`: part number, qty, pieces, material, stock size, cut length, description/finish, notes.
+    - `Addons/Labor`: prices, units, notes, part context, vendor items.
+    - `Notes/Requirements`: materials, purchased items, requirements, notes.
+- Updated `src/app/admin/quotes/[id]/print/page.tsx`
+  - Quote print now honors those block options, including hiding add-on prices while still listing the work items.
+  - Scope block now renders the requested part details conditionally instead of using one hardcoded layout.
+- Added focused mapping coverage in `src/lib/__tests__/quote-print-layout.test.ts`.
+
+### Files touched
+- `src/lib/quote-print-layout.ts`
+- `src/lib/__tests__/quote-print-layout.test.ts`
+- `src/app/admin/templates/TemplatesClient.tsx`
+- `src/app/admin/quotes/[id]/print/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run test -- src/lib/__tests__/quote-print-layout.test.ts`
+- `npm run lint`
+
+### Verification evidence
+- Targeted quote-print-layout tests passed.
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify in `/admin/templates` that the new block options appear where expected and in `/admin/quotes/[id]/print` that toggles like `Show prices` for `Addons/Labor` affect output as intended.
+
+---
+## Session Handoff — 2026-04-08 (Orders page syntax hotfix)
+
+Goal (1 sentence): Fix the `/orders/[id]` compile error caused by mixing `??` with `||` in the manual department-move prompt.
+
+### What changed
+- Updated `src/app/orders/[id]/page.tsx`
+  - Replaced the mixed nullish/logical fallback expression with a dedicated `currentDepartmentLabel` value before the prompt string.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify `/orders/[id]` and `/admin` load again without the compile-time 500s.
+
+---

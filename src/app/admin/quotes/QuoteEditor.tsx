@@ -49,6 +49,7 @@ import { AvailableItemsLibrary } from '@/components/AvailableItemsLibrary';
 import { AssignedItemsPanel } from '@/components/AssignedItemsPanel';
 import {
   calculateAssignmentTotalCents,
+  calculatePartPricingSummaryTotalsCents,
   calculateWorkItemsSubtotalCents,
   getWorkItemPricingSemantic,
 } from '@/modules/pricing/work-item-pricing';
@@ -125,6 +126,7 @@ type PartPricingState = {
   partKey: string;
   price: string;
   pricingMode: PartPricingMode;
+  isManual: boolean;
 };
 
 type AttachmentState = {
@@ -409,6 +411,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       })),
       metadata: initialQuote?.metadata,
     });
+    const hasStoredPartPricing = Array.isArray(initialQuote?.metadata?.partPricing) && initialQuote.metadata.partPricing.length > 0;
 
     return parts.map((part, index) => {
       const entry = initialPartPricing[index];
@@ -416,6 +419,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         partKey: part.key,
         price: ((entry?.priceCents ?? 0) / 100).toFixed(2),
         pricingMode: entry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
+        isManual: hasStoredPartPricing,
       } satisfies PartPricingState;
     });
   });
@@ -489,17 +493,41 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   }, [activePartKey]);
 
   useEffect(() => {
-    if (!activePart) return;
-    const existingKeys = new Set(activePart.addonSelections.map((selection) => selection.key));
+    const currentActivePart = parts.find((part) => part.key === activePartKey) ?? parts[0];
+    if (!currentActivePart) return;
+    const existingKeys = new Set(currentActivePart.addonSelections.map((selection) => selection.key));
     setSelectedAssignmentKeys((prev) => prev.filter((key) => existingKeys.has(key)));
-  }, [activePart]);
+  }, [activePartKey, parts]);
 
   useEffect(() => {
     setPartPricing((prev) => {
       const byPartKey = new Map(prev.map((entry) => [entry.partKey, entry]));
-      return parts.map((part) => byPartKey.get(part.key) ?? { partKey: part.key, price: '0.00', pricingMode: 'LOT_TOTAL' });
+      const addonItemsById = new Map(addons.map((addon) => [addon.id, addon]));
+      return parts.map((part) => {
+        const existing = byPartKey.get(part.key);
+        const autoPrice = (
+          calculateWorkItemsSubtotalCents({
+            selections: part.addonSelections.map((selection) => ({
+              addonId: selection.addonId,
+              units: numberFromString(selection.units),
+            })),
+            itemsById: addonItemsById,
+          }) / 100
+        ).toFixed(2);
+
+        if (!existing) {
+          return {
+            partKey: part.key,
+            price: autoPrice,
+            pricingMode: 'LOT_TOTAL' as PartPricingMode,
+            isManual: false,
+          };
+        }
+
+        return existing.isManual ? existing : { ...existing, price: autoPrice };
+      });
     });
-  }, [parts]);
+  }, [addons, parts]);
 
   useEffect(() => {
     if (copyTargetPartKey === 'ALL') return;
@@ -992,32 +1020,36 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     return sum + (final > 0 ? final : 0);
   }, 0);
 
-  const addonsTotalsCents = parts.reduce(
-    (sum, part) =>
-      sum +
-      calculateWorkItemsSubtotalCents({
+  const basePriceCents = centsFromString(form.basePrice);
+  const pricingSummaryTotals = calculatePartPricingSummaryTotalsCents({
+    parts: parts.map((part) => {
+      const rawWorkItemsSubtotalCents = calculateWorkItemsSubtotalCents({
         selections: part.addonSelections.map((selection) => ({
           addonId: selection.addonId,
           units: numberFromString(selection.units),
         })),
         itemsById: addonMap,
-      }),
-    0
-  );
+      });
+      const entry = partPricing.find((candidate) => candidate.partKey === part.key);
+      const enteredPriceCents = centsFromString(entry?.price || '0');
+      const quantity = Number.parseInt(part.quantity || '1', 10) || 1;
 
-  const basePriceCents = centsFromString(form.basePrice);
-  const partPricingTotalCents = partPricing.reduce((sum, entry) => {
-    const part = parts.find((candidate) => candidate.key === entry.partKey);
-    const quantity = Number.parseInt(part?.quantity || '1', 10) || 1;
-    return (
-      sum +
-      calculatePartLotTotal({
-        enteredPriceCents: centsFromString(entry.price),
-        quantity,
-        pricingMode: entry.pricingMode,
-      })
-    );
-  }, 0);
+      return {
+        workItemsSubtotalCents: rawWorkItemsSubtotalCents,
+        partPricingSubtotalCents:
+          enteredPriceCents > 0
+            ? calculatePartLotTotal({
+                enteredPriceCents,
+                quantity,
+                pricingMode: entry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
+              })
+            : 0,
+        hasPartPricingOverride: enteredPriceCents > 0,
+      };
+    }),
+  });
+  const addonsTotalsCents = pricingSummaryTotals.addonsAndLaborCents;
+  const partPricingTotalCents = pricingSummaryTotals.partPricingCents;
   const totalCents = basePriceCents + vendorTotalsCents + addonsTotalsCents + partPricingTotalCents;
 
   const buildPayload = (): QuoteCreateInput => ({
@@ -2215,7 +2247,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                         onChange={(event) =>
                           setPartPricing((prev) =>
                             prev.map((row) =>
-                              row.partKey === part.key ? { ...row, price: event.target.value } : row
+                              row.partKey === part.key
+                                ? { ...row, price: event.target.value, isManual: true }
+                                : row
                             )
                           )
                         }

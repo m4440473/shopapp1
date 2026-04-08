@@ -22,6 +22,11 @@ import {
   normalizeTemplateLayout,
   type TemplateLayoutBlock,
 } from '@/lib/document-template-layout';
+import {
+  DEFAULT_QUOTE_ADDONS_OPTIONS,
+  DEFAULT_QUOTE_REQUIREMENTS_OPTIONS,
+  DEFAULT_QUOTE_SCOPE_OPTIONS,
+} from '@/lib/quote-print-layout';
 
 const DOCUMENT_TYPES = ['QUOTE', 'INVOICE', 'ORDER_PRINT'] as const;
 
@@ -60,6 +65,20 @@ type LayoutBlock = {
     showQuantity?: boolean;
     showLineTotal?: boolean;
     showPricingMode?: boolean;
+    showPartNumber?: boolean;
+    showPieces?: boolean;
+    showMaterial?: boolean;
+    showStockSize?: boolean;
+    showCutLength?: boolean;
+    showDescription?: boolean;
+    showPrices?: boolean;
+    showUnits?: boolean;
+    showPartContext?: boolean;
+    showVendorItems?: boolean;
+    showMaterials?: boolean;
+    showPurchasedItems?: boolean;
+    showRequirements?: boolean;
+    showNotes?: boolean;
   };
 };
 
@@ -129,6 +148,24 @@ function isPricingBlock(block: LayoutBlock, documentType: TemplateFormState['doc
   return key === 'part pricing' || key === 'part info' || key === 'pricing';
 }
 
+function isScopeBlock(block: LayoutBlock, documentType: TemplateFormState['documentType']) {
+  if (documentType !== 'QUOTE') return false;
+  const key = normalizeSectionName(block.type || block.label);
+  return key === 'scope' || key === 'scope of work' || key === 'line items' || key === 'part name';
+}
+
+function isAddonsBlock(block: LayoutBlock, documentType: TemplateFormState['documentType']) {
+  if (documentType !== 'QUOTE') return false;
+  const key = normalizeSectionName(block.type || block.label);
+  return key === 'addons labor' || key === 'addons/labor';
+}
+
+function isRequirementsBlock(block: LayoutBlock, documentType: TemplateFormState['documentType']) {
+  if (documentType !== 'QUOTE') return false;
+  const key = normalizeSectionName(block.type || block.label);
+  return key === 'requirements' || key === 'notes' || key === 'shipping' || key === 'notes requirements';
+}
+
 function toFormLayoutBlocks(layoutJson: unknown): LayoutBlock[] {
   const normalized = normalizeTemplateLayout(layoutJson);
   if (!normalized.blocks.length) {
@@ -147,6 +184,20 @@ function toFormLayoutBlocks(layoutJson: unknown): LayoutBlock[] {
             showQuantity: block.options.showQuantity !== false,
             showLineTotal: block.options.showLineTotal !== false,
             showPricingMode: block.options.showPricingMode !== false,
+            showPartNumber: block.options.showPartNumber !== false,
+            showPieces: block.options.showPieces !== false,
+            showMaterial: block.options.showMaterial !== false,
+            showStockSize: block.options.showStockSize !== false,
+            showCutLength: block.options.showCutLength !== false,
+            showDescription: block.options.showDescription !== false,
+            showPrices: block.options.showPrices !== false,
+            showUnits: block.options.showUnits === true,
+            showPartContext: block.options.showPartContext === true,
+            showVendorItems: block.options.showVendorItems !== false,
+            showMaterials: block.options.showMaterials !== false,
+            showPurchasedItems: block.options.showPurchasedItems !== false,
+            showRequirements: block.options.showRequirements !== false,
+            showNotes: block.options.showNotes !== false,
           }
         : undefined,
   }));
@@ -230,6 +281,32 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
             showLineTotal: block.options?.showLineTotal !== false,
             showPricingMode: block.options?.showPricingMode !== false,
           }
+        : isScopeBlock(block, form.documentType)
+          ? {
+              showPartNumber: block.options?.showPartNumber !== false,
+              showQuantity: block.options?.showQuantity !== false,
+              showPieces: block.options?.showPieces !== false,
+              showMaterial: block.options?.showMaterial !== false,
+              showStockSize: block.options?.showStockSize !== false,
+              showCutLength: block.options?.showCutLength !== false,
+              showDescription: block.options?.showDescription !== false,
+              showNotes: block.options?.showNotes !== false,
+            }
+          : isAddonsBlock(block, form.documentType)
+            ? {
+                showPrices: block.options?.showPrices !== false,
+                showUnits: block.options?.showUnits === true,
+                showNotes: block.options?.showNotes === true,
+                showPartContext: block.options?.showPartContext === true,
+                showVendorItems: block.options?.showVendorItems !== false,
+              }
+            : isRequirementsBlock(block, form.documentType)
+              ? {
+                  showMaterials: block.options?.showMaterials !== false,
+                  showPurchasedItems: block.options?.showPurchasedItems !== false,
+                  showRequirements: block.options?.showRequirements !== false,
+                  showNotes: block.options?.showNotes !== false,
+                }
         : undefined,
     }));
 
@@ -456,6 +533,44 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
                             <label className="flex items-center gap-2"><Checkbox checked={block.options?.showQuantity !== false} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showQuantity: checked === true } })} />Show qty</label>
                             <label className="flex items-center gap-2"><Checkbox checked={block.options?.showLineTotal !== false} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showLineTotal: checked === true } })} />Show line total</label>
                             <label className="flex items-center gap-2"><Checkbox checked={block.options?.showPricingMode !== false} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showPricingMode: checked === true } })} />Show pricing mode</label>
+                          </div>
+                        </div>
+                      ) : null}
+                      {isScopeBlock(block, form.documentType) ? (
+                        <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-xs">
+                          <p className="mb-2 font-semibold text-foreground">Part detail options</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showPartNumber ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showPartNumber} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showPartNumber: checked === true } })} />Show part number</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showQuantity ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showQuantity} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showQuantity: checked === true } })} />Show qty</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showPieces ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showPieces} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showPieces: checked === true } })} />Show pieces</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showMaterial ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showMaterial} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showMaterial: checked === true } })} />Show material</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showStockSize ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showStockSize} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showStockSize: checked === true } })} />Show stock size</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showCutLength ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showCutLength} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showCutLength: checked === true } })} />Show cut length</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showDescription ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showDescription} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showDescription: checked === true } })} />Show description/finish</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showNotes ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showNotes} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showNotes: checked === true } })} />Show notes</label>
+                          </div>
+                        </div>
+                      ) : null}
+                      {isAddonsBlock(block, form.documentType) ? (
+                        <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-xs">
+                          <p className="mb-2 font-semibold text-foreground">Addons/Labor options</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showPrices ?? DEFAULT_QUOTE_ADDONS_OPTIONS.showPrices} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showPrices: checked === true } })} />Show prices</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showUnits ?? DEFAULT_QUOTE_ADDONS_OPTIONS.showUnits} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showUnits: checked === true } })} />Show units</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showNotes ?? DEFAULT_QUOTE_ADDONS_OPTIONS.showNotes} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showNotes: checked === true } })} />Show notes</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showPartContext ?? DEFAULT_QUOTE_ADDONS_OPTIONS.showPartContext} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showPartContext: checked === true } })} />Show part context</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showVendorItems ?? DEFAULT_QUOTE_ADDONS_OPTIONS.showVendorItems} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showVendorItems: checked === true } })} />Show vendor items</label>
+                          </div>
+                        </div>
+                      ) : null}
+                      {isRequirementsBlock(block, form.documentType) ? (
+                        <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-xs">
+                          <p className="mb-2 font-semibold text-foreground">Notes/requirements options</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showMaterials ?? DEFAULT_QUOTE_REQUIREMENTS_OPTIONS.showMaterials} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showMaterials: checked === true } })} />Show materials</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showPurchasedItems ?? DEFAULT_QUOTE_REQUIREMENTS_OPTIONS.showPurchasedItems} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showPurchasedItems: checked === true } })} />Show purchased items</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showRequirements ?? DEFAULT_QUOTE_REQUIREMENTS_OPTIONS.showRequirements} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showRequirements: checked === true } })} />Show requirements</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showNotes ?? DEFAULT_QUOTE_REQUIREMENTS_OPTIONS.showNotes} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showNotes: checked === true } })} />Show notes</label>
                           </div>
                         </div>
                       ) : null}

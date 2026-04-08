@@ -17,6 +17,7 @@ import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata } from '@/lib/quote-metadata';
 import { calculatePartLotTotal, calculatePartUnitPrice } from '@/modules/pricing/part-pricing';
+import { calculatePartPricingSummaryTotalsCents } from '@/modules/pricing/work-item-pricing';
 import QuoteWorkflowControls from '../QuoteWorkflowControls';
 import QuoteQuickConvertDialog from '@/components/Admin/QuoteQuickConvertDialog';
 import { canAccessAdmin } from '@/lib/rbac';
@@ -80,11 +81,6 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
 
   const statusLabel = STATUS_LABELS[quote.status] ?? quote.status;
   const legacyAddonSelections = quote.addonSelections.filter((selection) => !selection.quotePartId);
-  const addonTotal =
-    quote.parts.reduce(
-      (sum, part) => sum + (part.addonSelections ?? []).reduce((innerSum, selection) => innerSum + selection.totalCents, 0),
-      0
-    ) + legacyAddonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const vendorTotal = quote.vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
   const downloadBase = (process.env.NEXT_PUBLIC_BASE_URL ?? runtimeBase).replace(/\/$/, '');
   const partPricing = getPartPricingEntries({
@@ -118,7 +114,27 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
       lineTotalCents,
     };
   });
-  const partPricingTotal = partPricingRows.reduce((sum, row) => sum + row.lineTotalCents, 0);
+  const pricingSummaryTotals = calculatePartPricingSummaryTotalsCents({
+    parts: quote.parts.map((part, index) => {
+      const entry = partPricing[index];
+      const enteredPriceCents = entry?.priceCents ?? 0;
+      return {
+        workItemsSubtotalCents: (part.addonSelections ?? []).reduce(
+          (sum, selection) => sum + selection.totalCents,
+          0
+        ),
+        partPricingSubtotalCents:
+          enteredPriceCents > 0
+            ? partPricingRows[index]?.lineTotalCents ?? 0
+            : 0,
+        hasPartPricingOverride: enteredPriceCents > 0,
+      };
+    }),
+  });
+  const addonTotal =
+    pricingSummaryTotals.addonsAndLaborCents +
+    legacyAddonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
+  const partPricingTotal = pricingSummaryTotals.partPricingCents;
   const partPricingByPartId = new Map(partPricingRows.map((row) => [row.part.id, row]));
   const totalCents = quote.basePriceCents + addonTotal + vendorTotal + partPricingTotal;
   const attachmentLinks = quote.attachments

@@ -3,6 +3,134 @@
 ## Session Metadata
 - Date: 2026-04-08
 - Agent: GPT-5.3-Codex
+- Task ID: Quote print totals parity hotfix
+- Goal: Make the quote print view use the same non-double-counted part-pricing totals rule as quote editor and quote detail.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scoped work to `src/app/admin/quotes/[id]/print/page.tsx` totals math only.
+
+## Plan First
+- [x] Inspect quote print total calculation and confirm it still stacks raw add-on/labor subtotal with basis-adjusted part pricing.
+- [x] Reuse the shared pricing-summary replacement helper used by quote editor and quote detail.
+- [x] Run the relevant verification command and record the result.
+- [x] Update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Quote print totals now use the same replacement rule as quote editor and quote detail.
+- Parts with non-zero part-pricing entries now contribute only to `Part pricing` and no longer remain in the print `Addons & vendor` subtotal through the raw part subtotal path.
+
+---
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
+- Task ID: View quote totals parity hotfix
+- Goal: Make the admin quote detail totals card use the same non-double-counted part-pricing math as the quote editor.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scoped work to `src/app/admin/quotes/[id]/page.tsx` totals math only.
+
+## Plan First
+- [x] Inspect quote detail total calculation and confirm it still stacks raw add-on/labor subtotal with basis-adjusted part pricing.
+- [x] Reuse the same pricing-summary replacement helper already applied in `QuoteEditor`.
+- [x] Run the relevant verification command and record the result.
+- [x] Update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Quote detail totals now use the same replacement rule as quote creation/edit: a part with non-zero part pricing contributes to `Part pricing (basis-adjusted)` instead of remaining in `Add-ons and labor`.
+- Legacy quote-level add-on selections still stay in `Add-ons and labor`.
+
+---
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
+- Task ID: Quote part-pricing autofill follow-up
+- Goal: Auto-fill each part-pricing input from the part's current assigned add-ons/labor subtotal so users only choose lot-total vs per-unit unless they intentionally override it.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scoped work to `QuoteEditor` part-pricing input behavior only.
+
+## Plan First
+- [x] Inspect current `partPricing` local state and where it syncs with part/add-on state.
+- [x] Make the price input auto-follow the part's current add-on/labor subtotal until the user manually edits the field.
+- [x] Run the relevant verification command and capture the result.
+- [x] Update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Part-pricing rows now auto-populate from each part's current assigned add-ons/labor subtotal instead of defaulting to `0.00`.
+- Auto-fill remains live while the field is untouched; once the user types into the field, that manual value is preserved.
+
+---
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
+- Task ID: QuoteEditor summary double-count hotfix
+- Goal: Stop quote review totals from double-counting per-part pricing and raw add-on/labor subtotals for the same part.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scoped work to quote-review pricing summary math and focused pricing-helper test coverage only.
+
+## Plan First
+- [x] Trace how per-part pricing and add-on/labor subtotals are computed in `QuoteEditor`.
+- [x] Move the replacement math into a small pricing helper so the summary can treat basis-adjusted part pricing as the replacement for that part's raw subtotal.
+- [x] Add focused unit coverage for the replacement behavior.
+- [x] Run relevant verification commands and record results.
+- [x] Update continuity docs with evidence.
+
+## Verification Checklist
+- [x] `npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts`
+- [x] `npm run lint`
+
+## Review + Results
+- `QuoteEditor` summary totals now route through a helper that splits per-part raw work-item subtotals from basis-adjusted part-pricing overrides.
+- When a part has a non-zero part-pricing entry, its raw add-on/labor subtotal no longer remains in the `Add-ons and labor` bucket, preventing the stacked total seen in quote review.
+- Added focused unit coverage for the bucket-replacement behavior.
+
+---
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
+- Task ID: QuoteEditor activePart initialization hotfix
+- Goal: Fix the admin quote editor runtime crash caused by reading `activePart` before it is initialized.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scoped work to the `QuoteEditor` runtime error and required continuity artifacts only.
+
+## Plan First
+- [x] Inspect the failing effect and confirm where `activePart` is declared relative to the hook order.
+- [x] Apply the smallest safe fix so selection-pruning derives the current part without referencing a not-yet-initialized binding.
+- [x] Run the relevant verification command and capture the result.
+- [x] Update continuity docs with the hotfix scope and evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Replaced the selection-pruning effect's direct `activePart` reference with a local derivation from `parts` and `activePartKey`, avoiding the temporal dead zone while preserving the same filtering behavior.
+- No dependency or behavior changes were introduced beyond the runtime crash fix.
+
+---
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
 - Task ID: Final Phase — Structured Quote Document Editor v1
 - Goal: Upgrade quote document templates from simple section ordering to structured block configuration that drives quote print/save output.
 
@@ -1606,3 +1734,54 @@ Commands run:
 - Part list status badge reflects checklist completion (`COMPLETE` when all active items are complete).
 - Seed data now includes more customers/orders and mixed lifecycle stages for realistic demos.
 - Home metric cards now visually match Customers card styling.
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
+- Task ID: Quote template detail-control expansion
+- Goal: Add block-level detail toggles for quote print templates so admins can control part detail visibility and add-on/labor price visibility directly from the template editor.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scoped work to quote template editor and quote print rendering only.
+
+## Plan First
+- [x] Extend quote template block metadata to support block-specific option sets beyond pricing.
+- [x] Add template-editor controls for scope/part-detail blocks, addons/labor blocks, and notes/requirements blocks.
+- [x] Update quote print rendering to honor those options, including hiding add-on prices when disabled.
+- [x] Add focused mapping coverage for the new block options.
+- [x] Run relevant verification commands and update continuity docs.
+
+## Verification Checklist
+- [x] `npm run test -- src/lib/__tests__/quote-print-layout.test.ts`
+- [x] `npm run lint`
+
+## Review + Results
+- Added template-editor option panels for:
+  - `Line Items / Scope` blocks: part number, qty, pieces, material, stock size, cut length, description/finish, notes.
+  - `Addons/Labor` blocks: prices, units, notes, part context, vendor items.
+  - `Notes/Requirements` blocks: materials, purchased items, requirements, notes.
+- Quote print rendering now honors those settings, including the ability to hide prices in the add-ons/labor block while still showing the work items themselves.
+
+---
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
+- Task ID: Orders page nullish-coalescing syntax hotfix
+- Goal: Fix the `/orders/[id]` compile error caused by mixing `??` with `||` in the manual-move prompt.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Scoped work to the single syntax error in `src/app/orders/[id]/page.tsx`.
+
+## Plan First
+- [x] Inspect the failing prompt expression in `src/app/orders/[id]/page.tsx`.
+- [x] Replace the mixed `??`/`||` expression with a syntax-safe equivalent.
+- [x] Run verification and update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Replaced the mixed `??`/`||` prompt interpolation with a separate `currentDepartmentLabel` value so `/orders/[id]` can compile again.
+
+---

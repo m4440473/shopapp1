@@ -46,4 +46,55 @@ describe('buildQuoteRenderBlocks', () => {
       },
     });
   });
+
+  it('normalizes scope and addons options for structured blocks', () => {
+    const blocks = buildQuoteRenderBlocks({
+      sections: [],
+      blocks: [
+        {
+          id: 'scope',
+          type: 'line items',
+          label: 'Line Items',
+          visible: true,
+          order: 0,
+          variant: 'standard',
+          options: {
+            showMaterial: false,
+            showStockSize: true,
+            showNotes: false,
+          },
+        },
+        {
+          id: 'addons',
+          type: 'addons/labor',
+          label: 'Addons/Labor',
+          visible: true,
+          order: 1,
+          variant: 'compact',
+          options: {
+            showPrices: false,
+            showUnits: true,
+            showPartContext: true,
+          },
+        },
+      ],
+    });
+
+    expect(blocks[0]).toMatchObject({
+      type: 'scope',
+      scopeOptions: {
+        showMaterial: false,
+        showStockSize: true,
+        showNotes: false,
+      },
+    });
+    expect(blocks[1]).toMatchObject({
+      type: 'addons_labor',
+      addonsOptions: {
+        showPrices: false,
+        showUnits: true,
+        showPartContext: true,
+      },
+    });
+  });
 });
