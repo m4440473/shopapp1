@@ -93,6 +93,16 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-08 — Hotfix: restore `formatCurrency` in new-order review panel
+- Fixed runtime `ReferenceError: formatCurrency is not defined` on `/orders/new` by restoring a local `formatCurrency` helper used by assigned-item review metadata and totals display in `src/app/orders/new/page.tsx`.
+- Kept scope intentionally minimal (single-file hotfix, no behavior refactor).
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-08 — Post-PR stabilization: quote pricing-basis persistence/projection drift fixes + targeted regression tests
 - Reconciled unresolved inline-review scope in `tasks/todo.md` before implementation and completed a pass/fail gap audit for admin discoverability, quote review basis, order review basis, and canonical math behavior.
 - Fixed quote payload contract drift in `QuoteEditor` by persisting raw entered `partPricing.priceCents` alongside `pricingMode` (no lossy conversion to lot total at serialization time).
