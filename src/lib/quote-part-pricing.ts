@@ -6,6 +6,16 @@ type PartLike = {
   addonSelections?: Array<{ totalCents: number }>;
 };
 
+const normalizePartIdentity = (value: string | null | undefined) =>
+  (value ?? '').trim().toLowerCase();
+
+const normalizeStoredEntry = (entry: QuotePartPricingEntry) => ({
+  name: entry?.name ?? null,
+  partNumber: entry?.partNumber ?? null,
+  priceCents: Math.max(0, Number.isFinite(entry?.priceCents) ? Math.round(entry.priceCents) : 0),
+  pricingMode: entry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
+});
+
 export const getPartPricingEntries = ({
   parts,
   metadata,
@@ -15,32 +25,54 @@ export const getPartPricingEntries = ({
 }): QuotePartPricingEntry[] => {
   if (!parts.length) return [];
 
-  const partTotals = parts.map((part) =>
-    (part.addonSelections ?? []).reduce((sum, selection) => sum + (selection.totalCents || 0), 0)
-  );
-  const expectedTotal = partTotals.reduce((sum, total) => sum + total, 0);
+  const storedRaw = Array.isArray(metadata?.partPricing) ? metadata.partPricing : [];
+  const stored = storedRaw.map((entry) => normalizeStoredEntry(entry));
+  const assignedStoredIndexes = new Set<number>();
 
-  const stored = Array.isArray(metadata?.partPricing)
-    ? metadata.partPricing.map((entry) => ({
-        name: entry?.name ?? null,
-        partNumber: entry?.partNumber ?? null,
-        priceCents: entry?.priceCents ?? 0,
-      }))
-    : [];
+  return parts.map((part, index) => {
+    const normalizedPartNumber = normalizePartIdentity(part.partNumber);
+    const normalizedName = normalizePartIdentity(part.name);
 
-  if (stored.length === parts.length) {
-    return stored.map((entry, index) => ({
-      name: entry.name ?? parts[index]?.name ?? null,
-      partNumber: entry.partNumber ?? parts[index]?.partNumber ?? null,
-      priceCents: entry.priceCents ?? 0,
-      pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
-    }));
-  }
+    const identityMatchIndex = stored.findIndex((entry, candidateIndex) => {
+      if (assignedStoredIndexes.has(candidateIndex)) return false;
+      const entryPartNumber = normalizePartIdentity(entry.partNumber);
+      const entryName = normalizePartIdentity(entry.name);
+      if (normalizedPartNumber && entryPartNumber) {
+        return normalizedPartNumber === entryPartNumber;
+      }
+      if (normalizedName && entryName) {
+        return normalizedName === entryName;
+      }
+      return false;
+    });
 
-  return parts.map((part, index) => ({
-    name: part.name,
-    partNumber: part.partNumber ?? null,
-    priceCents: partTotals[index] ?? 0,
-    pricingMode: 'LOT_TOTAL',
-  }));
+    const fallbackIndexMatch =
+      identityMatchIndex >= 0 || assignedStoredIndexes.has(index) || !stored[index]
+        ? -1
+        : index;
+
+    const selectedIndex = identityMatchIndex >= 0 ? identityMatchIndex : fallbackIndexMatch;
+    if (selectedIndex >= 0) {
+      assignedStoredIndexes.add(selectedIndex);
+      const entry = stored[selectedIndex];
+      return {
+        name: entry.name ?? part.name,
+        partNumber: entry.partNumber ?? part.partNumber ?? null,
+        priceCents: entry.priceCents,
+        pricingMode: entry.pricingMode,
+      } satisfies QuotePartPricingEntry;
+    }
+
+    const fallbackPriceCents = (part.addonSelections ?? []).reduce(
+      (sum, selection) => sum + (selection.totalCents || 0),
+      0,
+    );
+
+    return {
+      name: part.name,
+      partNumber: part.partNumber ?? null,
+      priceCents: fallbackPriceCents,
+      pricingMode: 'LOT_TOTAL',
+    } satisfies QuotePartPricingEntry;
+  });
 };

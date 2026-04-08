@@ -35,6 +35,7 @@ import {
   CardTitle,
 } from '@/components/ui/Card';
 import { fetchJson } from '@/lib/fetchJson';
+import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import {
   BUSINESS_OPTIONS,
   getBusinessOptionByCode,
@@ -391,21 +392,21 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [currentStep, setCurrentStep] = useState(0);
 
   const [partPricing, setPartPricing] = useState<PartPricingState[]>(() => {
-    const stored = initialQuote?.metadata?.partPricing ?? [];
+    const initialPartPricing = getPartPricingEntries({
+      parts: (initialQuote?.parts ?? []).map((part) => ({
+        name: part.name,
+        partNumber: part.partNumber ?? null,
+        addonSelections: (part.addonSelections ?? []).map((selection) => ({ totalCents: selection.totalCents ?? 0 })),
+      })),
+      metadata: initialQuote?.metadata,
+    });
+
     return parts.map((part, index) => {
-      const entry = stored[index];
-      const quantity = Number.parseInt(part.quantity || '1', 10) || 1;
-      const lotTotalFromAddons = (part.addonSelections ?? []).reduce((sum, selection) => {
-        const addon = (initialQuote?.parts?.[index]?.addonSelections ?? []).find((item) => item.id === selection.key);
-        return sum + (addon?.totalCents ?? 0);
-      }, 0);
-      const priceCents = entry?.priceCents ?? lotTotalFromAddons;
-      const pricingMode = entry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL';
-      const displayPrice = pricingMode === 'PER_UNIT' && quantity > 0 ? priceCents / 100 : priceCents / 100;
+      const entry = initialPartPricing[index];
       return {
         partKey: part.key,
-        price: displayPrice.toFixed(2),
-        pricingMode,
+        price: ((entry?.priceCents ?? 0) / 100).toFixed(2),
+        pricingMode: entry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
       } satisfies PartPricingState;
     });
   });
@@ -896,11 +897,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       return {
         name: part.name || undefined,
         partNumber: part.partNumber || undefined,
-        priceCents: calculatePartLotTotal({
-          enteredPriceCents: centsFromString(entry?.price || '0'),
-          quantity,
-          pricingMode,
-        }),
+        priceCents: centsFromString(entry?.price || '0'),
         pricingMode,
       };
     }),
