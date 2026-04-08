@@ -11,6 +11,7 @@ import {
 } from '@/lib/document-template-layout';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
+import { calculatePartLotTotal } from '@/modules/pricing/part-pricing';
 
 import { PrintControls } from '@/components/print/PrintControls';
 
@@ -68,12 +69,23 @@ export default async function QuotePrintPage({
       0
     ) + legacyAddonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const vendorTotal = quote.vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
-  const total = quote.basePriceCents + addonTotal + vendorTotal;
   const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata));
   const partPricing = getPartPricingEntries({
     parts: quote.parts,
     metadata,
   });
+  const partPricingTotal = partPricing.reduce((sum, entry, index) => {
+    const partQty = quote.parts[index]?.quantity ?? 0;
+    return (
+      sum +
+      calculatePartLotTotal({
+        enteredPriceCents: entry.priceCents,
+        quantity: partQty,
+        pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
+      })
+    );
+  }, 0);
+  const total = quote.basePriceCents + addonTotal + vendorTotal + partPricingTotal;
   const addonSelections = quote.addonSelections.filter((selection) => selection.addon);
   const hasAddons = addonSelections.length > 0;
   const hasVendorItems = quote.vendorItems.length > 0;
@@ -122,6 +134,10 @@ export default async function QuotePrintPage({
         <div>
           <p className="text-xs uppercase text-neutral-500">Addons &amp; vendor</p>
           <p className="font-semibold">{formatCurrency(addonTotal + vendorTotal)}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase text-neutral-500">Part pricing</p>
+          <p className="font-semibold">{formatCurrency(partPricingTotal)}</p>
         </div>
         <div className="col-span-2 border-t border-black pt-2 text-right text-base font-semibold">
           Total: {formatCurrency(total)}

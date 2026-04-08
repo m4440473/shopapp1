@@ -1,3 +1,14 @@
+### 2026-04-08 — Quote view/invoice total carry-over fix
+- Fixed quote detail total math to include basis-adjusted part pricing carry-over instead of relying on stale persisted total values.
+- Added `Part pricing (basis-adjusted)` line in the admin quote Totals card so the review-step amount is visible in view quote.
+- Fixed quote print/invoice totals to include basis-adjusted part pricing in both totals summary and grand total.
+
+Commands run:
+- npm run lint
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-07 — Review-comment gate + admin quote discoverability + per-part pricing basis controls (quotes/orders)
 - Added a Phase-0 review gate checklist in `tasks/todo.md` mapping each unresolved PR comment request to a concrete task/disposition before implementation.
 - Restored quote discoverability in admin IA:

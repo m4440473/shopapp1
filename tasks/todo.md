@@ -3,6 +3,33 @@
 ## Session Metadata
 - Date: 2026-04-08
 - Agent: GPT-5.3-Codex
+- Task ID: Quote view invoice total carry-over fix
+- Goal: Ensure quote detail/print invoice totals carry over the same basis-adjusted part pricing total shown in quote review.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, and `docs/AGENT_HANDOFF.md` before implementation.
+- [x] Scoped to quote total carry-over only; no unrelated refactors.
+
+## Plan First
+- [x] Inspect quote detail + print total calculations and identify where part pricing basis-adjusted totals are omitted.
+- [x] Apply a minimal fix so displayed totals include basis-adjusted part pricing carry-over.
+- [x] Run focused verification and record results.
+- [x] Update continuity docs (`PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`) with evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Quote detail totals now include a dedicated `Part pricing (basis-adjusted)` line and use a recalculated total that includes this carry-over amount.
+- Quote print/invoice totals now include part-pricing carry-over in both the totals card and grand total.
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
 - Task ID: Stabilize admin quote discoverability + quote/order pricing-basis behavior (post-PR inline review reconciliation)
 - Goal: Reconcile unresolved inline review comments, close pricing-basis correctness gaps, and ship verified quote/order review behavior with persistence/compatibility guarantees.
 
