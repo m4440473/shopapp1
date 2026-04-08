@@ -93,6 +93,28 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-08 — Phase 1 complete: Quote Creator bulk assignment actions + reusable presets
+- Implemented quote build-step productivity controls for multi-part quotes:
+  - select assignment rows and apply selected items to **all parts** with merge/no-duplicate behavior,
+  - copy selected items from active part to chosen target part(s) with merge/no-duplicate behavior.
+- Added Quote Creator preset workflow:
+  - save preset from selected items,
+  - apply preset to selected part or all parts,
+  - delete preset,
+  - local persistence via `localStorage` (`quote-addon-presets-v1`).
+- Added pure helper module + focused tests:
+  - `src/modules/quotes/quote-addon-bulk.ts`
+  - `src/modules/quotes/__tests__/quote-addon-bulk.test.ts` (3/3 passing)
+- Added state safety guards in Quote Editor for assignment selection/copy target synchronization.
+
+Commands run:
+- npm run test -- src/modules/quotes/__tests__/quote-addon-bulk.test.ts
+- npm run lint
+
+Verification note:
+- Targeted quote bulk helper tests passed (3/3).
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-08 — Department flow rework: manual-only department moves + shipping-only manual completion
 - Fully decoupled checklist toggles from department movement by removing automatic part-department recompute in checklist toggle flow.
 - Reworked Order Detail action from auto-advance submit to explicit manual move prompt:
