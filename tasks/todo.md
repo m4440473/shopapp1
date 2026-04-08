@@ -3,6 +3,42 @@
 ## Session Metadata
 - Date: 2026-04-08
 - Agent: GPT-5.3-Codex
+- Task ID: Phase 3 — Quote → Order Quick Convert (skip wizard)
+- Goal: Add an admin quote-detail quick-convert dialog that collects only required order overrides and converts directly to order detail via existing conversion API.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated prior dependency work and scoped strictly to quote-detail quick-convert flow + conversion-route edge handling tests.
+
+## Plan First
+- [x] Add a quote-detail-only quick-convert dialog trigger and collect required fields (`dueDate`, `priority`, `assignedMachinistId`) plus optional overrides.
+- [x] Reuse `POST /api/admin/quotes/[id]/convert` with override payload and route success directly to `/orders/[id]`.
+- [x] Keep existing `/orders/new` manual creation flow intact.
+- [x] Add focused tests for quick-convert submit payload validation and conversion-route edge handling.
+- [x] Run required checks and update continuity docs.
+
+## Verification Checklist
+- [x] `npm run test -- src/components/Admin/__tests__/QuoteQuickConvertDialog.test.ts src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+- [x] `npm run lint`
+
+## Review + Results
+- Added `QuoteQuickConvertDialog` client component with required quick-convert fields and optional overrides, inline validation, error surfacing, and immediate success routing to order detail.
+- Added quote-detail entrypoint button (`Quick Convert`) and disabled legacy detail-page wizard-convert button while keeping approval controls/status messaging.
+- Reused existing conversion API endpoint (`POST /api/admin/quotes/[id]/convert`) without backend path duplication.
+- Added quick-convert payload validation tests and a conversion-route invalid `dueDate` edge test.
+- Preserved idempotency guard behavior (`already converted` conflict path remains intact; message now falls back to order ID when number missing).
+
+Commands run:
+- npm run test -- src/components/Admin/__tests__/QuoteQuickConvertDialog.test.ts src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts
+- npm run lint
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
 - Task ID: Phase 2 — Quote pricing presentation alignment
 - Goal: Update Quote Creator + quote review/print pricing presentation to explicit Unit Price / Qty / Line Total rows per part while preserving PER_UNIT vs LOT_TOTAL math and template-driven output behavior.
 

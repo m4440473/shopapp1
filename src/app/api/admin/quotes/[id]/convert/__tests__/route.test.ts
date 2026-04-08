@@ -89,6 +89,39 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
     expect(mockConvertQuoteToOrder).not.toHaveBeenCalled();
   });
 
+
+  it('returns 400 when quick-convert due date override is invalid', async () => {
+    mockFindQuoteForConversion.mockResolvedValue({
+      id: 'q1',
+      quoteNumber: 'STD-QUO-1',
+      business: 'STD',
+      customerId: 'c1',
+      companyName: 'Acme',
+      materialSummary: null,
+      purchaseItems: null,
+      requirements: null,
+      notes: null,
+      metadata: JSON.stringify({ approval: { attachmentId: 'att-1' } }),
+      parts: [{ id: 'qp1', name: 'Part A', quantity: 1, materialId: null, stockSize: null, cutLength: null, description: null, notes: null, pieceCount: 1, partNumber: 'A-1' }],
+      attachments: [],
+      customer: { name: 'Acme' },
+      multiPiece: false,
+    });
+
+    const { POST } = await import('../route');
+    const response = await POST(
+      new Request('http://localhost/api/admin/quotes/q1/convert', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dueDate: 'not-a-date', assignedMachinistId: 'mach-1' }),
+      }) as any,
+      { params: Promise.resolve({ id: 'q1' }) }
+    );
+
+    expect(response.status).toBe(400);
+    expect(mockConvertQuoteToOrder).not.toHaveBeenCalled();
+  });
+
   it('converts quote and filters custom fields to active order fields only', async () => {
     mockFindQuoteForConversion.mockResolvedValue({
       id: 'q1',
