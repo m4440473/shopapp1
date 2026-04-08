@@ -21,6 +21,30 @@ describe('orders.service completion gating', () => {
     expect((result as { ok: false; error: string }).error).toContain('checklist items remain');
   });
 
+
+  it('requires Shipping as current department before manual part completion', async () => {
+    const { completeOrderPart, toggleChecklistItem } = await import('../orders.service');
+
+    const toggle = await toggleChecklistItem({
+      orderId: 'order_test_001',
+      checklistId: 'checklist_test_001',
+      checked: true,
+      togglerId: 'user_test_machinist',
+      employeeName: 'Test Machinist',
+    });
+    expect(toggle.ok).toBe(true);
+
+    const result = await completeOrderPart({
+      orderId: 'order_test_001',
+      partId: 'part_test_002',
+      userId: 'user_test_machinist',
+    });
+
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; status: number }).status).toBe(409);
+    expect((result as { ok: false; error: string }).error).toContain('Shipping');
+  });
+
   it('requires all current department checklist items before department submission', async () => {
     const { submitDepartmentComplete } = await import('../orders.service');
 

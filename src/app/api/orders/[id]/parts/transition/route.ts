@@ -12,8 +12,8 @@ const TransitionPayload = z.object({
   employeeName: z.string().trim().min(1),
   reasonCode: z.string().trim().optional(),
   reasonText: z.string().trim().optional(),
-}).refine((value) => Boolean(value.reasonCode?.trim() || value.reasonText?.trim()), {
-  message: 'Reason is required',
+}).refine((value) => Boolean(value.reasonText?.trim()), {
+  message: 'Note is required',
   path: ['reasonText'],
 });
 
