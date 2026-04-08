@@ -93,6 +93,30 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-08 — Phase 2 complete: explicit Unit/Qty/Line quote pricing presentation alignment
+- Updated Quote Creator per-part pricing basis rows to explicit pricing presentation fields:
+  - Entered price,
+  - Unit price,
+  - Qty,
+  - Line total,
+  - Pricing mode label.
+- Updated quote review/read-model surfaces to the same presentation contract:
+  - `/admin/quotes/[id]` part cards now show Unit price, Qty, Line total, and Pricing mode.
+  - Email pricing summary now outputs `Unit × Qty = Line Total` with mode annotation.
+  - `/admin/quotes/[id]/print` part pricing table now uses `Unit price`, `Qty`, `Line total` columns and mode line per part.
+- Preserved canonical math contract (`PER_UNIT` vs `LOT_TOTAL`) and storage contract (`priceCents` + `pricingMode` persisted unchanged) by deriving display values from helper math.
+- Added pricing helper and tests:
+  - `calculatePartUnitPrice` in `src/modules/pricing/part-pricing.ts`
+  - expanded `src/modules/pricing/__tests__/part-pricing.test.ts` (6/6 passing)
+
+Commands run:
+- npm run test -- src/modules/pricing/__tests__/part-pricing.test.ts
+- npm run lint
+
+Verification note:
+- Targeted pricing tests passed (6/6).
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-08 — Phase 1 complete: Quote Creator bulk assignment actions + reusable presets
 - Implemented quote build-step productivity controls for multi-part quotes:
   - select assignment rows and apply selected items to **all parts** with merge/no-duplicate behavior,

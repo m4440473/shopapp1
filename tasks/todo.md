@@ -3,6 +3,41 @@
 ## Session Metadata
 - Date: 2026-04-08
 - Agent: GPT-5.3-Codex
+- Task ID: Phase 2 — Quote pricing presentation alignment
+- Goal: Update Quote Creator + quote review/print pricing presentation to explicit Unit Price / Qty / Line Total rows per part while preserving PER_UNIT vs LOT_TOTAL math and template-driven output behavior.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated prior dependency scope (Phase 1 bulk/presets commit `a88893e`) and found no blocker for Phase 2 pricing-display work.
+
+## Plan First
+- [x] Update Quote Creator review UI part-pricing rows to explicit columns for Unit Price, Qty, and Line Total per part.
+- [x] Update quote read-model surfaces (`/admin/quotes/[id]` and print view) to present the same explicit pricing breakdown and keep totals consistent with canonical pricing helper.
+- [x] Keep payload/read-model consistency by deriving line totals from persisted `priceCents` + `pricingMode` + part quantity (no contract change).
+- [x] Add focused tests covering pricing-row projection math/presentation contract.
+- [x] Run lint + targeted tests and update continuity docs.
+
+## Verification Checklist
+- [x] `npm run test -- src/modules/pricing/__tests__/part-pricing.test.ts`
+- [x] `npm run lint`
+
+## Review + Results
+- Quote Creator pricing-basis rows now display explicit Entered Price, Unit Price, Qty, and Line Total per part, with mode shown inline and canonical math unchanged.
+- Quote detail (`/admin/quotes/[id]`) now shows per-part Unit Price, Qty, Line Total, and Pricing Mode in each part card, and email summary lines now use explicit Unit × Qty = Line format.
+- Quote print pricing section now uses Unit Price / Qty / Line Total columns and shows Part pricing total based on the same mode-aware calculations.
+- Added `calculatePartUnitPrice` helper and focused unit tests to keep display math deterministic without changing payload storage contracts.
+
+Commands run:
+- npm run test -- src/modules/pricing/__tests__/part-pricing.test.ts
+- npm run lint
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
 - Task ID: Phase 1 — Quote add-on bulk operations + presets
 - Goal: Reduce repetitive part-build work by adding selected-item bulk apply/copy and reusable presets in Quote Creator.
 

@@ -16,7 +16,7 @@ import AdminPricingGate from '@/components/Admin/AdminPricingGate';
 import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata } from '@/lib/quote-metadata';
-import { calculatePartLotTotal } from '@/modules/pricing/part-pricing';
+import { calculatePartLotTotal, calculatePartUnitPrice } from '@/modules/pricing/part-pricing';
 import QuoteWorkflowControls from '../QuoteWorkflowControls';
 import { canAccessAdmin } from '@/lib/rbac';
 
@@ -90,17 +90,35 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     parts: quote.parts,
     metadata,
   });
-  const partPricingTotal = partPricing.reduce((sum, entry, index) => {
-    const partQty = quote.parts[index]?.quantity ?? 0;
-    return (
-      sum +
-      calculatePartLotTotal({
-        enteredPriceCents: entry.priceCents,
-        quantity: partQty,
-        pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
-      })
-    );
-  }, 0);
+  const partPricingRows = quote.parts.map((part, index) => {
+    const entry = partPricing[index] ?? {
+      name: part.name,
+      partNumber: part.partNumber ?? null,
+      priceCents: 0,
+      pricingMode: 'LOT_TOTAL' as const,
+    };
+    const pricingMode = entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL';
+    const quantity = Number(part.quantity ?? 0);
+    const unitPriceCents = calculatePartUnitPrice({
+      enteredPriceCents: entry.priceCents,
+      quantity,
+      pricingMode,
+    });
+    const lineTotalCents = calculatePartLotTotal({
+      enteredPriceCents: entry.priceCents,
+      quantity,
+      pricingMode,
+    });
+    return {
+      part,
+      pricingMode,
+      quantity,
+      unitPriceCents,
+      lineTotalCents,
+    };
+  });
+  const partPricingTotal = partPricingRows.reduce((sum, row) => sum + row.lineTotalCents, 0);
+  const partPricingByPartId = new Map(partPricingRows.map((row) => [row.part.id, row]));
   const totalCents = quote.basePriceCents + addonTotal + vendorTotal + partPricingTotal;
   const attachmentLinks = quote.attachments
     .map((attachment) => {
@@ -126,9 +144,11 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
 
   const pricingLines = [
     'Part pricing summary:',
-    ...partPricing.map((entry) => {
-      const label = entry.partNumber ? `${entry.name ?? 'Part'} (${entry.partNumber})` : entry.name ?? 'Part';
-      return `- ${label}: ${formatCurrency(entry.priceCents)}`;
+    ...partPricingRows.map((row) => {
+      const label = row.part.partNumber
+        ? `${row.part.name ?? 'Part'} (${row.part.partNumber})`
+        : row.part.name ?? 'Part';
+      return `- ${label}: Unit ${formatCurrency(row.unitPriceCents)} × Qty ${row.quantity} = ${formatCurrency(row.lineTotalCents)} (${row.pricingMode})`;
     }),
     `Total estimate: ${formatCurrency(totalCents)}`,
   ];
@@ -370,6 +390,24 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                   <p>Pieces {part.pieceCount}</p>
                   {part.stockSize && <p className="text-xs">Stock: {part.stockSize}</p>}
                   {part.cutLength && <p className="text-xs">Cut: {part.cutLength}</p>}
+                </div>
+              </div>
+              <div className="mt-3 grid gap-2 rounded border border-border/50 bg-muted/20 p-3 text-xs sm:grid-cols-4">
+                <div>
+                  <p className="text-muted-foreground">Unit price</p>
+                  <p className="font-medium text-foreground">{formatCurrency(partPricingByPartId.get(part.id)?.unitPriceCents ?? 0)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Qty</p>
+                  <p className="font-medium text-foreground">{partPricingByPartId.get(part.id)?.quantity ?? part.quantity}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Line total</p>
+                  <p className="font-medium text-foreground">{formatCurrency(partPricingByPartId.get(part.id)?.lineTotalCents ?? 0)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Pricing mode</p>
+                  <p className="font-medium text-foreground">{partPricingByPartId.get(part.id)?.pricingMode ?? 'LOT_TOTAL'}</p>
                 </div>
               </div>
               {part.description && (
