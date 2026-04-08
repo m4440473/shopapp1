@@ -11,7 +11,7 @@ import {
 } from '@/lib/document-template-layout';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
-import { calculatePartLotTotal } from '@/modules/pricing/part-pricing';
+import { calculatePartLotTotal, calculatePartUnitPrice } from '@/modules/pricing/part-pricing';
 
 import { PrintControls } from '@/components/print/PrintControls';
 
@@ -74,17 +74,34 @@ export default async function QuotePrintPage({
     parts: quote.parts,
     metadata,
   });
-  const partPricingTotal = partPricing.reduce((sum, entry, index) => {
-    const partQty = quote.parts[index]?.quantity ?? 0;
-    return (
-      sum +
-      calculatePartLotTotal({
-        enteredPriceCents: entry.priceCents,
-        quantity: partQty,
-        pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
-      })
-    );
-  }, 0);
+  const partPricingRows = quote.parts.map((part, index) => {
+    const entry = partPricing[index] ?? {
+      name: part.name,
+      partNumber: part.partNumber ?? null,
+      priceCents: 0,
+      pricingMode: 'LOT_TOTAL' as const,
+    };
+    const pricingMode = entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL';
+    const quantity = Number(part.quantity ?? 0);
+    const unitPriceCents = calculatePartUnitPrice({
+      enteredPriceCents: entry.priceCents,
+      quantity,
+      pricingMode,
+    });
+    const lineTotalCents = calculatePartLotTotal({
+      enteredPriceCents: entry.priceCents,
+      quantity,
+      pricingMode,
+    });
+    return {
+      part,
+      pricingMode,
+      quantity,
+      unitPriceCents,
+      lineTotalCents,
+    };
+  });
+  const partPricingTotal = partPricingRows.reduce((sum, row) => sum + row.lineTotalCents, 0);
   const total = quote.basePriceCents + addonTotal + vendorTotal + partPricingTotal;
   const addonSelections = quote.addonSelections.filter((selection) => selection.addon);
   const hasAddons = addonSelections.length > 0;
@@ -194,36 +211,37 @@ export default async function QuotePrintPage({
         <thead className="bg-zinc-200">
           <tr>
             <th className="border border-black px-2 py-1 text-left">Part</th>
+            <th className="border border-black px-2 py-1 text-left">Unit price</th>
             <th className="border border-black px-2 py-1 text-left">Qty</th>
-            <th className="border border-black px-2 py-1 text-left">Part cost</th>
+            <th className="border border-black px-2 py-1 text-left">Line total</th>
           </tr>
         </thead>
         <tbody>
           {partPricing.length === 0 && (
             <tr>
-              <td className="border border-black px-2 py-2 text-center text-neutral-500" colSpan={3}>
+              <td className="border border-black px-2 py-2 text-center text-neutral-500" colSpan={4}>
                 No pricing captured
               </td>
             </tr>
           )}
-          {quote.parts.map((part, index) => (
-            <tr key={part.id} className="align-top">
+          {partPricingRows.map((row) => (
+            <tr key={row.part.id} className="align-top">
               <td className="border border-black px-2 py-2">
-                <div className="font-medium">{part.name}</div>
-                {part.partNumber && <div className="text-xs">Part #: {part.partNumber}</div>}
+                <div className="font-medium">{row.part.name}</div>
+                {row.part.partNumber && <div className="text-xs">Part #: {row.part.partNumber}</div>}
+                <div className="text-xs text-neutral-500">Mode: {row.pricingMode}</div>
               </td>
-              <td className="border border-black px-2 py-2">{part.quantity}</td>
-              <td className="border border-black px-2 py-2">
-                {formatCurrency(partPricing[index]?.priceCents ?? 0)}
-              </td>
+              <td className="border border-black px-2 py-2">{formatCurrency(row.unitPriceCents)}</td>
+              <td className="border border-black px-2 py-2">{row.quantity}</td>
+              <td className="border border-black px-2 py-2">{formatCurrency(row.lineTotalCents)}</td>
             </tr>
           ))}
-          {quote.parts.length > 0 && (
+          {partPricingRows.length > 0 && (
             <tr>
-              <td className="border border-black px-2 py-2 font-semibold text-right" colSpan={2}>
-                Total
+              <td className="border border-black px-2 py-2 font-semibold text-right" colSpan={3}>
+                Part pricing total
               </td>
-              <td className="border border-black px-2 py-2 font-semibold">{formatCurrency(total)}</td>
+              <td className="border border-black px-2 py-2 font-semibold">{formatCurrency(partPricingTotal)}</td>
             </tr>
           )}
         </tbody>

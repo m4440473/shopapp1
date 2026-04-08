@@ -52,7 +52,7 @@ import {
   calculateWorkItemsSubtotalCents,
   getWorkItemPricingSemantic,
 } from '@/modules/pricing/work-item-pricing';
-import { calculatePartLotTotal, type PartPricingMode } from '@/modules/pricing/part-pricing';
+import { calculatePartLotTotal, calculatePartUnitPrice, type PartPricingMode } from '@/modules/pricing/part-pricing';
 import {
   buildPresetFromSelections,
   dedupePresetItems,
@@ -2175,46 +2175,65 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                   pricingMode: 'LOT_TOTAL' as PartPricingMode,
                 };
                 const quantity = Number.parseInt(part.quantity || '1', 10) || 1;
+                const enteredPriceCents = centsFromString(entry.price);
                 const lotTotal = calculatePartLotTotal({
-                  enteredPriceCents: centsFromString(entry.price),
+                  enteredPriceCents,
+                  quantity,
+                  pricingMode: entry.pricingMode,
+                });
+                const unitPrice = calculatePartUnitPrice({
+                  enteredPriceCents,
                   quantity,
                   pricingMode: entry.pricingMode,
                 });
                 return (
-                  <div key={part.key} className="grid gap-3 rounded border border-border/60 bg-background/60 p-3 md:grid-cols-[1.5fr_100px_160px_140px_auto] md:items-center">
+                  <div key={part.key} className="grid gap-3 rounded border border-border/60 bg-background/60 p-3 md:grid-cols-[1.5fr_160px_80px_120px_140px] md:items-center">
                     <div>
                       <p className="text-sm font-medium">{part.partNumber || part.name || `Part ${index + 1}`}</p>
                       <p className="text-xs text-muted-foreground">{part.name || 'Unnamed part'}</p>
+                      <Label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                        <Checkbox
+                          checked={entry.pricingMode === 'PER_UNIT'}
+                          onCheckedChange={(checked) =>
+                            setPartPricing((prev) =>
+                              prev.map((row) =>
+                                row.partKey === part.key
+                                  ? { ...row, pricingMode: checked ? 'PER_UNIT' : 'LOT_TOTAL' }
+                                  : row
+                              )
+                            )
+                          }
+                        />
+                        Mode: {entry.pricingMode}
+                      </Label>
                     </div>
-                    <div className="text-sm text-muted-foreground">Qty: {quantity}</div>
-                    <Input
-                      inputMode="decimal"
-                      value={entry.price}
-                      onChange={(event) =>
-                        setPartPricing((prev) =>
-                          prev.map((row) =>
-                            row.partKey === part.key ? { ...row, price: event.target.value } : row
-                          )
-                        )
-                      }
-                      placeholder="0.00"
-                    />
-                    <Label className="flex items-center gap-2 text-xs">
-                      <Checkbox
-                        checked={entry.pricingMode === 'PER_UNIT'}
-                        onCheckedChange={(checked) =>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Entered price</Label>
+                      <Input
+                        inputMode="decimal"
+                        value={entry.price}
+                        onChange={(event) =>
                           setPartPricing((prev) =>
                             prev.map((row) =>
-                              row.partKey === part.key
-                                ? { ...row, pricingMode: checked ? 'PER_UNIT' : 'LOT_TOTAL' }
-                                : row
+                              row.partKey === part.key ? { ...row, price: event.target.value } : row
                             )
                           )
                         }
+                        placeholder="0.00"
                       />
-                      PER_UNIT
-                    </Label>
-                    <div className="text-sm font-medium">{formatCurrency(lotTotal)}</div>
+                    </div>
+                    <div className="text-sm">
+                      <p className="text-xs text-muted-foreground">Qty</p>
+                      <p className="font-medium">{quantity}</p>
+                    </div>
+                    <div className="text-sm">
+                      <p className="text-xs text-muted-foreground">Unit price</p>
+                      <p className="font-medium">{formatCurrency(unitPrice)}</p>
+                    </div>
+                    <div className="text-sm">
+                      <p className="text-xs text-muted-foreground">Line total</p>
+                      <p className="font-medium">{formatCurrency(lotTotal)}</p>
+                    </div>
                   </div>
                 );
               })}

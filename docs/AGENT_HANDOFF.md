@@ -1,3 +1,50 @@
+## Session Handoff — 2026-04-08 (Quote pricing presentation Phase 2)
+
+Goal (1 sentence): Implement Phase 2 quote pricing presentation alignment so Quote Creator + review/print surfaces show explicit Unit Price, Qty, and Line Total rows per part while preserving existing `PER_UNIT`/`LOT_TOTAL` math contract and payload persistence behavior.
+
+### What changed
+- Quote Creator (`src/app/admin/quotes/QuoteEditor.tsx`)
+  - Updated per-part pricing rows to explicit review fields: Entered price, Unit price, Qty, Line total.
+  - Kept mode toggle behavior and surfaced mode text inline for clarity.
+- Quote detail review (`src/app/admin/quotes/[id]/page.tsx`)
+  - Added per-part Unit price / Qty / Line total / Pricing mode display in part cards.
+  - Updated email pricing summary generation to `Unit × Qty = Line Total (mode)` formatting.
+- Quote print view (`src/app/admin/quotes/[id]/print/page.tsx`)
+  - Updated Part pricing table columns to Unit price, Qty, Line total and mode display.
+  - Updated part pricing section summary row to Part pricing total.
+- Pricing helper/tests
+  - Added `calculatePartUnitPrice` in `src/modules/pricing/part-pricing.ts`.
+  - Expanded `src/modules/pricing/__tests__/part-pricing.test.ts` to cover display-unit derivation invariants.
+
+### Files touched
+- `src/modules/pricing/part-pricing.ts`
+- `src/modules/pricing/__tests__/part-pricing.test.ts`
+- `src/app/admin/quotes/QuoteEditor.tsx`
+- `src/app/admin/quotes/[id]/page.tsx`
+- `src/app/admin/quotes/[id]/print/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run test -- src/modules/pricing/__tests__/part-pricing.test.ts`
+- `npm run lint`
+
+### Verification evidence
+- Targeted pricing unit tests passed (6/6).
+- Lint passed with no ESLint warnings/errors.
+
+### Scope/contract notes
+- No payload schema changes introduced.
+- Persisted quote `partPricing` data contract (`priceCents` + `pricingMode`) remains unchanged.
+- Display unit-price derivation is read-model only and intentionally mode-aware (`LOT_TOTAL` derives display unit by lot/qty; `PER_UNIT` uses entered value directly).
+
+### Next steps
+- [ ] Optional: add a focused UI test for Quote Detail/Print part-pricing row rendering if snapshot/UI harness is introduced.
+- [ ] Begin next approved quote workflow phase after owner validation of Phase 2 presentation expectations.
+
+---
+
 Date: 2026-04-08
 Agent: GPT-5.3-Codex
 Goal (1 sentence): Deliver Phase 1 Quote Creator productivity upgrades: selected-item bulk apply/copy across parts plus reusable presets.
