@@ -93,6 +93,24 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-08 — Department flow rework: manual-only department moves + shipping-only manual completion
+- Fully decoupled checklist toggles from department movement by removing automatic part-department recompute in checklist toggle flow.
+- Reworked Order Detail action from auto-advance submit to explicit manual move prompt:
+  - user must choose destination department ID,
+  - user must provide a required move note,
+  - request routes through manual assign-department API.
+- Tightened manual transition validation to require `reasonText` (note) for both single-part assign and bulk transition APIs.
+- Enforced manual completion gate in Orders service: part completion is allowed only when current department is Shipping (and existing checklist-complete guard passes).
+- Added targeted test coverage for shipping-only completion gating.
+
+Commands run:
+- npm run test -- src/modules/orders/__tests__/orders.service.test.ts
+- npm run lint
+
+Verification note:
+- Targeted Orders service tests passed (4/4).
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-08 — Hotfix: restore `formatCurrency` in new-order review panel
 - Fixed runtime `ReferenceError: formatCurrency is not defined` on `/orders/new` by restoring a local `formatCurrency` helper used by assigned-item review metadata and totals display in `src/app/orders/new/page.tsx`.
 - Kept scope intentionally minimal (single-file hotfix, no behavior refactor).

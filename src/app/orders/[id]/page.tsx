@@ -186,6 +186,20 @@ export default function OrderDetailPage() {
     return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [item?.checklist]);
 
+  const manualMoveDepartments = useMemo(() => {
+    const entries = Array.isArray(item?.checklist) ? item.checklist : [];
+    const groups = new Map<string, { id: string; name: string }>();
+    entries.forEach((entry: any) => {
+      const departmentId = entry?.departmentId;
+      if (!departmentId) return;
+      const name = String(entry?.department?.name ?? '').trim() || `Department ${departmentId}`;
+      if (!groups.has(departmentId)) {
+        groups.set(departmentId, { id: departmentId, name });
+      }
+    });
+    return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [item?.checklist]);
+
   const selectedPartDepartmentHistory = useMemo(() => {
     if (!selectedPartId) return [];
     const entries = Array.isArray(item?.timeEntries) ? item.timeEntries : [];
@@ -521,63 +535,108 @@ export default function OrderDetailPage() {
   const handleSubmitDepartmentComplete = async (): Promise<boolean> => {
     if (!id || !selectedPartId) return false;
 
-    const timerSeconds = partTotals[selectedPartId] ?? 0;
-    const manualSeconds = manualPartTotals[selectedPartId] ?? 0;
-    const totalSeconds = timerSeconds + manualSeconds;
+    const currentDepartmentId = selectedPart?.currentDepartmentId ?? '';
+    const currentDepartment = manualMoveDepartments.find((department) => department.id === currentDepartmentId) ?? null;
+    const optionsLabel = manualMoveDepartments
+      .map((department) => `${department.name} [${department.id}]`)
+      .join('\n');
 
-    const additionalMinutesInput = window.prompt(
-      `Recorded time for this part: ${formatDuration(totalSeconds)} (timer ${formatDuration(timerSeconds)} + manual ${formatDuration(manualSeconds)}).\nAdd extra minutes before submission? Enter 0 for none.`,
-      '0',
+    const destinationPrompt = window.prompt(
+      `Current department: ${currentDepartment?.name ?? currentDepartmentId || 'Unassigned'}
+
+Choose destination department by entering the department ID:
+${optionsLabel}`,
+      '',
     );
-    if (additionalMinutesInput === null) return false;
-
-    const parsedMinutes = Number(additionalMinutesInput);
-    if (!Number.isFinite(parsedMinutes) || parsedMinutes < 0) {
-      setTimerError('Please enter a valid non-negative number of minutes.');
+    if (destinationPrompt === null) return false;
+    const destinationDepartmentId = destinationPrompt.trim();
+    if (!destinationDepartmentId) {
+      setTimerError('Destination department is required.');
       return false;
     }
 
-    const roundedMinutes = Math.floor(parsedMinutes);
-    let adjustmentNote = '';
-    if (roundedMinutes > 0) {
-      const prompted = window.prompt('Enter a note for added time:')?.trim() || '';
-      if (!prompted) {
-        setTimerError('A note is required when adding extra time.');
-        return false;
-      }
-      adjustmentNote = prompted;
+    const destinationDepartment = manualMoveDepartments.find((department) => department.id === destinationDepartmentId);
+    if (!destinationDepartment) {
+      setTimerError('Select a valid destination department ID from the list.');
+      return false;
+    }
+
+    if (destinationDepartmentId === currentDepartmentId) {
+      setTimerError('Destination department must be different from current department.');
+      return false;
+    }
+
+    const moveNote = window.prompt('Enter move note (required):')?.trim() || '';
+    if (!moveNote) {
+      setTimerError('A move note is required.');
+      return false;
     }
 
     setTimerSaving(true);
     setTimerError(null);
     try {
-      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/submit-department-complete`, {
+      const res = await fetch(`/api/orders/${id}/parts/assign-department`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          additionalSeconds: roundedMinutes * 60,
-          adjustmentNote,
+          partId: selectedPartId,
+          departmentId: destinationDepartmentId,
+          reasonCode: 'MANUAL_MOVE',
+          reasonText: moveNote,
         }),
       });
       if (!res.ok) {
         const payload = await res.json().catch(() => null);
-        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to submit department complete.');
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to move part to department.');
       }
 
       await load();
       await refreshTimerSummary();
       await loadPartEvents();
-      toast.push('Department submitted complete.', 'success');
+      toast.push(`Part moved to ${destinationDepartment.name}.`, 'success');
       return true;
     } catch (err: any) {
-      const message = err?.message || 'Failed to submit department complete.';
+      const message = err?.message || 'Failed to move part to department.';
       setTimerError(message);
       return false;
     } finally {
       setTimerSaving(false);
     }
   };
+
+
+  const handleCompleteSelectedPart = async (): Promise<boolean> => {
+    if (!id || !selectedPartId) return false;
+    const confirmed = window.confirm('Mark selected part complete? This should only be done in Shipping after all department checklists are complete.');
+    if (!confirmed) return false;
+
+    setTimerSaving(true);
+    setTimerError(null);
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/complete`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to complete part.');
+      }
+
+      await load();
+      await refreshTimerSummary();
+      await loadPartEvents();
+      toast.push('Part marked complete.', 'success');
+      return true;
+    } catch (err: any) {
+      const message = err?.message || 'Failed to complete part.';
+      setTimerError(message);
+      return false;
+    } finally {
+      setTimerSaving(false);
+    }
+  };
+
 
   const handleConflictAction = async (action: 'pause' | 'finish') => {
     setConflictState((prev) => ({ ...prev, open: false }));
@@ -860,22 +919,7 @@ export default function OrderDetailPage() {
     setChecklistError(null);
 
     try {
-      if (checked) {
-        await postChecklistToggle(entry, checked);
-      } else {
-        try {
-          await postChecklistToggle(entry, checked);
-        } catch (err: any) {
-          if (typeof err?.message === 'string' && err.message.includes('Reason is required')) {
-            const reasonText = window.prompt('Reopening this item moves the part backward. Enter a reason:')?.trim();
-            if (!reasonText) return;
-            await postChecklistToggle(entry, checked, { reasonText, reasonCode: 'REWORK' });
-          } else {
-            throw err;
-          }
-        }
-      }
-
+      await postChecklistToggle(entry, checked);
       await load();
       await loadPartEvents();
     } catch (err: any) {
@@ -920,7 +964,9 @@ export default function OrderDetailPage() {
   const selectedPartElapsedSeconds = activeOnSelected ? selectedPartStoredSeconds + selectedActiveElapsedSeconds : selectedPartStoredSeconds;
   const hasActiveEntry = activeEntries.length > 0;
   const startButtonLabel = 'Start selected part';
-  const startHelperLabel = 'Starts a timer on the selected part for the selected department.';
+  const startHelperLabel = 'Starts a timer on the selected part for the selected department. Department moves are manual only.';
+  const selectedCurrentDepartment = manualMoveDepartments.find((department) => department.id === selectedPart?.currentDepartmentId) ?? null;
+  const canMarkPartComplete = (selectedCurrentDepartment?.name ?? '').trim().toLowerCase() === 'shipping';
 
   return (
     <div className="space-y-6">
@@ -1041,7 +1087,18 @@ export default function OrderDetailPage() {
                   className="justify-start gap-2"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  Submit current department complete
+                  Move part to department
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!selectedPartId || timerSaving || !canMarkPartComplete}
+                  onClick={handleCompleteSelectedPart}
+                  className="justify-start gap-2"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Mark part complete (Shipping)
                 </Button>
               </div>
 

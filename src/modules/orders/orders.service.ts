@@ -859,18 +859,6 @@ export async function toggleChecklistItem({
   const toggler = togglerId ? await findUserById(togglerId) : null;
   const toggledById = toggler ? toggler.id : null;
 
-  const departments = await listDepartmentsOrdered();
-  const partSnapshot = existingChecklist.partId ? await findPartForRouting(existingChecklist.partId) : null;
-  const fromDepartmentId = partSnapshot?.currentDepartmentId ?? null;
-  const simulatedItems = (partSnapshot?.checklistItems ?? []).map((item) =>
-    item.id === existingChecklist.id ? { ...item, completed: checked } : item,
-  );
-  const simulatedDepartmentId = partSnapshot ? selectDepartmentForPart(simulatedItems, departments) : null;
-  const causesBackwards = Boolean(partSnapshot) && isBackwardsMove(fromDepartmentId, simulatedDepartmentId, departments);
-  if (!checked && causesBackwards && !reasonCode && !reasonText?.trim()) {
-    return fail(400, 'Reason is required when reopening work moves a part backward.');
-  }
-
   await setChecklistCompletion({
     checklistId: existingChecklist.id,
     checked,
@@ -899,12 +887,6 @@ export async function toggleChecklistItem({
       meta: { checklistId: existingChecklist.id, checked },
     });
 
-    const recompute = await recomputePartDepartment(existingChecklist.partId, {
-      actorUserId: toggledById ?? undefined,
-      reasonCode: !checked && causesBackwards ? reasonCode : undefined,
-      reasonText: !checked && causesBackwards ? reasonText : undefined,
-    });
-    if (recompute.ok === false) return recompute;
   }
 
   await syncOrderWorkflowStatus(orderId, { userId: toggledById ?? undefined });
@@ -1013,7 +995,7 @@ export async function assignPartDepartment({
   if (!orderId) return fail(400, 'Order is required');
   if (!partId) return fail(400, 'Part is required');
   if (!departmentId) return fail(400, 'Department is required');
-  if (!reasonCode && !reasonText?.trim()) return fail(400, 'Reason is required for manual department transitions.');
+  if (!reasonText?.trim()) return fail(400, 'A note is required for manual department transitions.');
 
   const order = await findOrderById(orderId);
   if (!order) return fail(404, 'Order not found');
@@ -1559,6 +1541,17 @@ export async function completeOrderPart({
     return fail(409, 'Cannot complete part: checklist items remain.');
   }
 
+  const currentDepartmentId = part.currentDepartmentId ?? null;
+  if (!currentDepartmentId) {
+    return fail(409, 'Part must be in Shipping before manual completion.');
+  }
+
+  const currentDepartment = await findDepartmentById(currentDepartmentId);
+  const currentDepartmentName = currentDepartment?.name?.trim().toLowerCase() ?? '';
+  if (currentDepartmentName !== 'shipping') {
+    return fail(409, 'Part can only be manually completed from Shipping.');
+  }
+
   const updated = await updateOrderPart(partId, { status: 'COMPLETE', currentDepartmentId: null });
 
   await recordPartEvent({
@@ -1800,8 +1793,8 @@ export async function transitionPartsDepartment({
   if (invalidPart) return fail(400, 'Part is not in the expected department');
 
   const isBackward = isBackwardsMove(fromDepartmentId, toDepartmentId, departments);
-  if (!reasonCode && !reasonText?.trim()) {
-    return fail(400, 'Reason is required for manual department transitions.');
+  if (!reasonText?.trim()) {
+    return fail(400, 'A note is required for manual department transitions.');
   }
 
   const fromDepartment = await findDepartmentById(fromDepartmentId);

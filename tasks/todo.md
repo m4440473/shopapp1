@@ -3,6 +3,43 @@
 ## Session Metadata
 - Date: 2026-04-08
 - Agent: GPT-5.3-Codex
+- Task ID: Department-flow manual-only rework
+- Goal: Fully decouple checklist/timer actions from automatic department movement and enforce explicit manual department moves with required notes.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, and `docs/AGENT_HANDOFF.md` before implementation.
+- [x] Scoped to department movement, checklist toggle behavior, and completion gating only.
+
+## Plan First
+- [x] Remove checklist-driven department auto-transition behavior from service-layer toggle flows.
+- [x] Rework order-detail UI “submit department complete” into explicit manual destination+note prompt calling manual move API.
+- [x] Enforce note-required manual transitions server-side.
+- [x] Make part completion manual-only from Shipping department.
+- [x] Add/adjust targeted tests and run verification commands.
+- [x] Update continuity artifacts.
+
+## Verification Checklist
+- [x] `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- [x] `npm run lint`
+
+## Review + Results
+- Checklist toggle no longer recomputes or changes part department; checklist state is now decoupled from department movement.
+- Order detail “Submit current department complete” now prompts for destination department ID and required move note, then calls manual assign-department API.
+- Manual move note requirement is enforced in both single-part and bulk transition API validation/service logic.
+- Added shipping-only manual completion guard in `completeOrderPart`: parts can be marked complete only when current department is Shipping and all active checklist items are complete.
+- Added targeted unit coverage asserting manual completion is rejected outside Shipping.
+
+Commands run:
+- npm run test -- src/modules/orders/__tests__/orders.service.test.ts
+- npm run lint
+
+---
+
+# tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-08
+- Agent: GPT-5.3-Codex
 - Task ID: Quote view invoice total carry-over fix
 - Goal: Ensure quote detail/print invoice totals carry over the same basis-adjusted part pricing total shown in quote review.
 

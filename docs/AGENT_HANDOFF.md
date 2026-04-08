@@ -1,5 +1,47 @@
 Date: 2026-04-08
 Agent: GPT-5.3-Codex
+Goal (1 sentence): Rework department movement to manual-only transitions, keep timers department-bound, and require Shipping for manual part completion.
+
+## What I changed
+- Removed checklist-driven automatic department transition side effects from `toggleChecklistItem`; checklist check/uncheck no longer changes `currentDepartmentId`.
+- Updated Order Detail page manual flow:
+  - Replaced auto-advance submit behavior with destination+note prompt.
+  - New flow calls `POST /api/orders/[id]/parts/assign-department` with required move note.
+  - Removed reopen/backward reason prompt coupling from checklist checkbox toggles.
+- Added shipping-only manual completion enforcement in `completeOrderPart`:
+  - rejects completion unless part is currently in Shipping,
+  - keeps existing all-checklist-items-complete guard.
+- Tightened server validations for manual transitions to require `reasonText` (note) in:
+  - `assign-department` API route + service,
+  - `transition` API route + service.
+- Added targeted Orders service test for Shipping completion gate.
+
+## Files touched
+- `src/modules/orders/orders.service.ts`
+- `src/app/orders/[id]/page.tsx`
+- `src/app/api/orders/[id]/parts/assign-department/route.ts`
+- `src/app/api/orders/[id]/parts/transition/route.ts`
+- `src/modules/orders/__tests__/orders.service.test.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+## Commands run
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- `npm run lint`
+
+## Verification Evidence
+- Targeted Orders service test file passed (4 tests).
+- Lint passed with no ESLint warnings/errors.
+
+## Next steps
+- [ ] Optional UX follow-up: replace prompt-based destination entry with a modal/select control to avoid manual department-ID typing.
+- [ ] Confirm production data has active Shipping department in all businesses to avoid completion dead-ends.
+
+---
+
+Date: 2026-04-08
+Agent: GPT-5.3-Codex
 Goal (1 sentence): Fix the `/orders/new` runtime crash caused by a missing `formatCurrency` helper reference.
 
 ## What I changed
