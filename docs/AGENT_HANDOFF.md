@@ -1,3 +1,48 @@
+## Session Handoff — 2026-04-08 (Phase 3 quick convert)
+
+Goal (1 sentence): Implement admin quote-detail “Quick Convert” that captures only essential overrides and converts directly to order detail without sending users through `/orders/new` wizard steps.
+
+### What changed
+- Added quick convert dialog component:
+  - `src/components/Admin/QuoteQuickConvertDialog.tsx`
+  - Required fields: due date, priority (default NORMAL), assigned machinist.
+  - Optional fields: PO number, vendor ID, material-needed, material-ordered, model-included.
+  - Client-side validation + inline failure messaging.
+  - Submits overrides to existing conversion API and redirects to `/orders/{orderId}` on success.
+- Updated quote detail page trigger:
+  - Added `Quick Convert` action on `/admin/quotes/[id]`.
+  - Kept workflow approval/conversion status controls, but disabled legacy detail-page wizard-convert button (`showConvertAction={false}`) so quick path is the primary conversion UX there.
+- Conversion route resilience:
+  - Updated already-converted idempotency message fallback to use `orderId` when `orderNumber` is missing.
+
+### Tests
+- Added `src/components/Admin/__tests__/QuoteQuickConvertDialog.test.ts` covering quick-convert submit payload validation behavior.
+- Extended `src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts` with invalid `dueDate` edge handling check.
+
+### Files touched
+- `src/components/Admin/QuoteQuickConvertDialog.tsx`
+- `src/components/Admin/__tests__/QuoteQuickConvertDialog.test.ts`
+- `src/app/admin/quotes/[id]/page.tsx`
+- `src/app/admin/quotes/QuoteWorkflowControls.tsx`
+- `src/app/api/admin/quotes/[id]/convert/route.ts`
+- `src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run test -- src/components/Admin/__tests__/QuoteQuickConvertDialog.test.ts src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+- `npm run lint`
+
+### Verification evidence
+- Targeted tests passed (2 files, 6 tests total).
+- Lint passed with no ESLint warnings/errors.
+
+### Next agent prompt
+"Validate quick-convert UX on `/admin/quotes/[id]` with seeded data (approval present + customer set), and add one focused interaction-level component test (mock fetch success/error) for dialog submit/disable behavior if project test harness is expanded for client component rendering. Keep scope to testing/UX polish only; do not alter conversion business rules."
+
+---
+
 ## Session Handoff — 2026-04-08 (Quote pricing presentation Phase 2)
 
 Goal (1 sentence): Implement Phase 2 quote pricing presentation alignment so Quote Creator + review/print surfaces show explicit Unit Price, Qty, and Line Total rows per part while preserving existing `PER_UNIT`/`LOT_TOTAL` math contract and payload persistence behavior.

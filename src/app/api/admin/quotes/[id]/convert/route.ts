@@ -196,8 +196,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const metadata = mergeQuoteMetadata(parseQuoteMetadata(quote.metadata) ?? DEFAULT_QUOTE_METADATA);
 
   if (metadata.conversion?.orderId) {
+    const convertedLabel = metadata.conversion.orderNumber ?? metadata.conversion.orderId;
     return NextResponse.json(
-      { error: `Quote already converted to order ${metadata.conversion.orderNumber}` },
+      { error: `Quote already converted to order ${convertedLabel}` },
       { status: 409 },
     );
   }

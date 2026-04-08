@@ -18,6 +18,7 @@ import { getPartPricingEntries } from '@/lib/quote-part-pricing';
 import { mergeQuoteMetadata } from '@/lib/quote-metadata';
 import { calculatePartLotTotal, calculatePartUnitPrice } from '@/modules/pricing/part-pricing';
 import QuoteWorkflowControls from '../QuoteWorkflowControls';
+import QuoteQuickConvertDialog from '@/components/Admin/QuoteQuickConvertDialog';
 import { canAccessAdmin } from '@/lib/rbac';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -163,6 +164,17 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
 
   const mailtoHref = `mailto:${quote.contactEmail ?? ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join('\n'))}`;
 
+  const hasCustomer = Boolean(quote.customer?.id);
+  const alreadyConverted = Boolean(metadata.conversion?.orderId);
+  const quickConvertEnabled = Boolean(metadata.approval?.received) && hasCustomer && !alreadyConverted;
+  const quickConvertDisabledReason = alreadyConverted
+    ? 'Quote has already been converted.'
+    : !metadata.approval?.received
+    ? 'Upload approval before converting.'
+    : !hasCustomer
+    ? 'Assign a customer record before converting.'
+    : undefined;
+
   return (
     <div className="p-4 text-neutral-100 space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -202,7 +214,18 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               Print
             </Link>
           </Button>
-          <div className="min-w-[240px]">
+          <div className="min-w-[240px] space-y-3">
+            <QuoteQuickConvertDialog
+              quoteId={quote.id}
+              disabled={!quickConvertEnabled}
+              disabledReason={quickConvertDisabledReason}
+              initialDueDate={quote.dueDate ? new Date(quote.dueDate).toISOString().slice(0, 10) : null}
+              initialPriority={quote.priority ?? 'NORMAL'}
+              initialPoNumber={quote.poNumber ?? ''}
+              initialMaterialNeeded={quote.materialNeeded ?? false}
+              initialMaterialOrdered={quote.materialOrdered ?? false}
+              initialModelIncluded={quote.modelIncluded ?? false}
+            />
             <QuoteWorkflowControls
               quoteId={quote.id}
               quoteNumber={quote.quoteNumber}
@@ -212,6 +235,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               customerId={quote.customer?.id ?? null}
               approval={metadata.approval!}
               conversion={metadata.conversion!}
+              showConvertAction={false}
             />
           </div>
         </div>

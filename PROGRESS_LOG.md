@@ -93,6 +93,24 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-08 — Phase 3 complete: quote-detail Quick Convert dialog (skip /orders/new wizard)
+- Added admin quote-detail quick-convert UX with required fields (`dueDate`, `priority`, `assignedMachinistId`) and optional overrides (`PO number`, `vendorId`, material/model flags).
+- Added direct quick-convert trigger on `/admin/quotes/[id]` and routed success straight to `/orders/{id}`.
+- Kept existing manual `/orders/new` flow intact; detail-page workflow controls now keep approval/conversion status while quick-convert owns conversion action.
+- Reused existing `POST /api/admin/quotes/[id]/convert` route; no duplicate backend conversion endpoint introduced.
+- Added focused tests:
+  - `src/components/Admin/__tests__/QuoteQuickConvertDialog.test.ts` (payload validation behavior)
+  - `src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts` (invalid dueDate edge)
+- Hardened conversion-route already-converted message fallback (`orderNumber` -> `orderId`) for clearer idempotency error output.
+
+Commands run:
+- npm run test -- src/components/Admin/__tests__/QuoteQuickConvertDialog.test.ts src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts
+- npm run lint
+
+Verification note:
+- Targeted quick-convert/convert-route tests passed (6/6 total assertions/tests).
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-08 — Phase 2 complete: explicit Unit/Qty/Line quote pricing presentation alignment
 - Updated Quote Creator per-part pricing basis rows to explicit pricing presentation fields:
   - Entered price,

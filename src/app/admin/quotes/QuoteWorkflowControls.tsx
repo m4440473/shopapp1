@@ -33,6 +33,7 @@ interface QuoteWorkflowControlsProps {
   layout?: 'detail' | 'table';
   onMetadataUpdate?: (metadata: QuoteMetadata) => void;
   onConverted?: (args: { orderId: string; orderNumber: string; metadata: QuoteMetadata }) => void;
+  showConvertAction?: boolean;
 }
 
 const CHECKBOX_LABEL = 'PO / Approval received';
@@ -49,6 +50,7 @@ export default function QuoteWorkflowControls({
   layout = 'detail',
   onMetadataUpdate,
   onConverted,
+  showConvertAction = true,
 }: QuoteWorkflowControlsProps) {
   const router = useRouter();
   const toast = useToast();
@@ -254,7 +256,7 @@ export default function QuoteWorkflowControls({
             </Link>
             .
           </p>
-        ) : (
+        ) : showConvertAction ? (
           <Button
             onClick={handleConvert}
             disabled={!readyForConversion || savingApproval || converting}
@@ -270,13 +272,13 @@ export default function QuoteWorkflowControls({
           >
             {converting ? 'Converting…' : 'Convert to order'}
           </Button>
-        )}
-        {!alreadyConverted && !approvalState?.received && (
+        ) : null}
+        {showConvertAction && !alreadyConverted && !approvalState?.received && (
           <p className={layout === 'table' ? 'text-[11px] text-muted-foreground' : 'text-xs text-muted-foreground'}>
             Upload a PO or approval to enable conversion.
           </p>
         )}
-        {!alreadyConverted && approvalState?.received && !customerId && (
+        {showConvertAction && !alreadyConverted && approvalState?.received && !customerId && (
           <p className={layout === 'table' ? 'text-[11px] text-destructive' : 'text-xs text-destructive'}>
             Assign a customer record before converting.
           </p>
