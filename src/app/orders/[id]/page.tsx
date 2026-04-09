@@ -157,6 +157,7 @@ export default function OrderDetailPage() {
     note: '',
     error: null,
   });
+  const [showTimerDetails, setShowTimerDetails] = useState(false);
 
   const parts = useMemo(() => (Array.isArray(item?.parts) ? item.parts : []), [item?.parts]);
   const partIdsParam = useMemo(() => parts.map((part: any) => part.id).filter(Boolean).join(','), [parts]);
@@ -555,7 +556,13 @@ export default function OrderDetailPage() {
   const openMoveDepartmentDialog = () => {
     if (!selectedPartId) return;
     const currentDepartmentId = selectedPart?.currentDepartmentId ?? '';
+    const currentDepartmentIndex = manualMoveDepartments.findIndex((department) => department.id === currentDepartmentId);
     const defaultDepartmentId =
+      (currentDepartmentIndex >= 0
+        ? manualMoveDepartments
+            .slice(currentDepartmentIndex + 1)
+            .find((department) => department.id !== currentDepartmentId)?.id
+        : undefined) ??
       manualMoveDepartments.find((department) => department.id !== currentDepartmentId)?.id ??
       manualMoveDepartments[0]?.id ??
       '';
@@ -992,9 +999,16 @@ export default function OrderDetailPage() {
     : 0;
   const selectedPartElapsedSeconds = activeOnSelected ? selectedPartStoredSeconds + selectedActiveElapsedSeconds : selectedPartStoredSeconds;
   const hasActiveEntry = activeEntries.length > 0;
-  const startButtonLabel = 'Start selected part';
   const startHelperLabel = 'Starts a timer on the selected part for the selected department. Department moves are manual only.';
   const selectedCurrentDepartment = manualMoveDepartments.find((department) => department.id === selectedPart?.currentDepartmentId) ?? null;
+  const selectedCurrentDepartmentIndex = selectedCurrentDepartment
+    ? manualMoveDepartments.findIndex((department) => department.id === selectedCurrentDepartment.id)
+    : -1;
+  const nextDepartmentOption =
+    selectedCurrentDepartmentIndex >= 0
+      ? manualMoveDepartments[selectedCurrentDepartmentIndex + 1] ?? null
+      : manualMoveDepartments[0] ?? null;
+  const moveActionLabel = nextDepartmentOption ? `Submit to ${nextDepartmentOption.name}` : 'Move part to department';
   const canMarkPartComplete = (selectedCurrentDepartment?.name ?? '').trim().toLowerCase() === 'shipping';
 
   return (
@@ -1127,19 +1141,19 @@ export default function OrderDetailPage() {
               Cancel
             </Button>
             <Button type="button" onClick={() => void handleSubmitDepartmentComplete()} disabled={timerSaving}>
-              {timerSaving ? 'Moving…' : 'Move part'}
+              {timerSaving ? 'Moving…' : moveActionLabel}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <Card className="flex flex-col">
           <div className="sticky top-0 z-10 border-b border-border/60 bg-background/95 p-4">
             <div className="grid gap-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Active Work</div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Work Dock</div>
                   <div className="text-sm font-medium text-foreground">
                     {selectedPart?.partNumber || 'No part selected'}
                   </div>
@@ -1148,11 +1162,11 @@ export default function OrderDetailPage() {
                   </div>
                 </div>
                 <Badge className={hasActiveEntry ? 'bg-emerald-500/15 text-emerald-200' : 'bg-muted text-foreground'}>
-                  {activeOnSelected ? 'Timer running for selected department' : hasActiveEntry ? 'Other department timers running' : 'Timer paused/stopped'}
+                  {activeOnSelected ? 'Running' : hasActiveEntry ? 'Other timer live' : 'Idle'}
                 </Badge>
               </div>
 
-              <div className="grid gap-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 <Select value={selectedTimerDepartmentId} onValueChange={setSelectedTimerDepartmentId}>
                   <SelectTrigger className="h-8">
                     <SelectValue placeholder="Choose timer department" />
@@ -1173,7 +1187,7 @@ export default function OrderDetailPage() {
                   className="justify-start gap-2"
                 >
                   <Play className="h-4 w-4" />
-                  {startButtonLabel}
+                  Start timer
                 </Button>
                 <Button
                   type="button"
@@ -1184,7 +1198,7 @@ export default function OrderDetailPage() {
                   className="justify-start gap-2"
                 >
                   <PauseCircle className="h-4 w-4" />
-                  Pause active timer
+                  Pause
                 </Button>
                 <Button
                   type="button"
@@ -1195,7 +1209,7 @@ export default function OrderDetailPage() {
                   className="justify-start gap-2"
                 >
                   <Square className="h-4 w-4" />
-                  Stop timer
+                  Stop
                 </Button>
                 <Button
                   type="button"
@@ -1206,7 +1220,7 @@ export default function OrderDetailPage() {
                   className="justify-start gap-2"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  Move part to department
+                  {nextDepartmentOption ? `Submit to ${nextDepartmentOption.name}` : 'Move part to department'}
                 </Button>
                 <Button
                   type="button"
@@ -1217,7 +1231,7 @@ export default function OrderDetailPage() {
                   className="justify-start gap-2"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  Mark part complete (Shipping)
+                  Complete in Shipping
                 </Button>
               </div>
 
@@ -1247,8 +1261,19 @@ export default function OrderDetailPage() {
               <div className="mt-3 rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
                 <div><span className="font-medium text-foreground">Total time:</span> {formatDuration(selectedPartStoredSeconds)}</div>
                 <div>Timer time: {formatDuration(selectedPartTimerSeconds)}</div>
-                <div>Manual added time: {formatDuration(selectedPartManualSeconds)}</div>
-                {partManualAdjustments.length ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span>Manual added time: {formatDuration(selectedPartManualSeconds)}</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowTimerDetails((prev) => !prev)}
+                    className="h-7 px-2 text-xs"
+                  >
+                    {showTimerDetails ? 'Hide details' : 'Show details'}
+                  </Button>
+                </div>
+                {showTimerDetails && partManualAdjustments.length ? (
                   <div className="mt-2 space-y-1">
                     {partManualAdjustments.map((adjustment: any) => (
                       <div key={adjustment.id}>
@@ -1257,10 +1282,10 @@ export default function OrderDetailPage() {
                     ))}
                   </div>
                 ) : null}
-                {selectedPartDepartmentHistory.length ? (
+                {showTimerDetails && selectedPartDepartmentHistory.length ? (
                   <div className="mt-3 space-y-2">
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Department history totals</div>
-                    <div className="grid gap-2 md:grid-cols-3">
+                    <div className="grid gap-2">
                       {selectedPartDepartmentHistory.map((group) => (
                         <div key={group.departmentId ?? '__none__'} className="rounded border border-border/60 bg-background/70 p-2">
                           <div className="text-[11px] text-muted-foreground">{group.departmentName}</div>
@@ -1272,7 +1297,7 @@ export default function OrderDetailPage() {
                       {selectedPartDepartmentHistory.map((group) => (
                         <div key={`${group.departmentId ?? '__none__'}_rows`} className="rounded border border-border/50 bg-background/50 p-2">
                           <div className="mb-1 text-[11px] font-medium text-foreground">{group.departmentName}</div>
-                          {group.entries.slice(0, 5).map((entry: any) => (
+                          {group.entries.slice(0, 3).map((entry: any) => (
                             <div key={entry.id} className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
                               <span>{new Date(entry.startedAt).toLocaleString()}</span>
                               <span className="font-medium text-foreground">{formatDuration(entry.durationSeconds)}</span>

@@ -491,6 +491,7 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
     }
   }
 
+  await initializeCurrentDepartmentForOrder(created.id);
   await syncOrderWorkflowStatus(created.id, { userId: userId ?? null });
   await ensureOrderFilesInCanonicalStorage(created.id);
   return ok({ id: created.id });
@@ -583,13 +584,7 @@ export async function getOrderDetails(id: string, isAdmin: boolean) {
         const fallbackDepartmentId =
           isComplete
             ? null
-            : part.currentDepartmentId ??
-              selectDepartmentForPart(
-                (Array.isArray(sanitized.checklist) ? sanitized.checklist : []).filter((entry: any) => entry.partId === part.id),
-                departments,
-              ) ??
-              departments[0]?.id ??
-              null;
+            : part.currentDepartmentId ?? departments[0]?.id ?? null;
         return {
           ...part,
           currentDepartmentId: fallbackDepartmentId,
@@ -930,13 +925,18 @@ async function initializeCurrentDepartmentForParts({ orderId }: { orderId?: stri
 
   for (const part of parts) {
     if (part.status === 'COMPLETE') continue;
-    const targetDepartmentId = selectDepartmentForPart(part.checklistItems ?? [], departments) ?? departments[0]?.id ?? null;
+    const targetDepartmentId = departments[0]?.id ?? null;
     if (!targetDepartmentId) continue;
     await updateOrderPart(part.id, { currentDepartmentId: targetDepartmentId, status: 'IN_PROGRESS' });
     updatedCount += 1;
   }
 
   return { updatedCount };
+}
+
+export async function initializeCurrentDepartmentForOrder(orderId: string) {
+  const result = await initializeCurrentDepartmentForParts({ orderId });
+  return ok({ orderId, updatedCount: result.updatedCount });
 }
 
 export async function backfillCurrentDepartmentIds() {

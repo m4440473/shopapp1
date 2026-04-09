@@ -84,8 +84,8 @@ describe('orders.service completion gating', () => {
     expect((result as { ok: false; error: string }).error).toContain('note is required');
   });
 
-  it('defaults unassigned parts to the first active department in order details', async () => {
-    const { createOrderFromPayload, backfillCurrentDepartmentIds, getOrderDetails } = await import('../orders.service');
+  it('initializes new order parts to the first active department in order details', async () => {
+    const { createOrderFromPayload, getOrderDetails } = await import('../orders.service');
 
     const created = await createOrderFromPayload({
       business: 'STD',
@@ -117,7 +117,6 @@ describe('orders.service completion gating', () => {
     });
 
     expect(created.ok).toBe(true);
-    await backfillCurrentDepartmentIds();
 
     const orderId = (created as { ok: true; data: { id: string } }).data.id;
     const details = await getOrderDetails(orderId, true);
@@ -126,6 +125,31 @@ describe('orders.service completion gating', () => {
     const payload = (details as { ok: true; data: { item: { parts: Array<{ currentDepartmentId: string | null }> }; departments: Array<{ id: string; name: string }> } }).data;
     expect(payload.departments[0]?.name).toBe('Machining');
     expect(payload.item.parts[0]?.currentDepartmentId).toBe(payload.departments[0]?.id);
+  });
+
+  it('does not visually auto-advance a null-owned part to the next department after checklist completion', async () => {
+    const { getOrderDetails, toggleChecklistItem } = await import('../orders.service');
+    const { updateOrderPart } = await import('@/repos/orders');
+
+    await updateOrderPart('part_test_002', { currentDepartmentId: null, status: 'IN_PROGRESS' });
+
+    const toggle = await toggleChecklistItem({
+      orderId: 'order_test_001',
+      checklistId: 'checklist_test_001',
+      checked: true,
+      togglerId: 'user_test_machinist',
+      employeeName: 'Test Machinist',
+    });
+    expect(toggle.ok).toBe(true);
+
+    const details = await getOrderDetails('order_test_001', true);
+    expect(details.ok).toBe(true);
+
+    const payload = (details as { ok: true; data: { item: { parts: Array<{ id: string; currentDepartmentId: string | null }> }; departments: Array<{ id: string; name: string }> } }).data;
+    const part = payload.item.parts.find((entry) => entry.id === 'part_test_002');
+    expect(payload.departments[0]?.name).toBe('Machining');
+    expect(part?.currentDepartmentId).toBe(payload.departments[0]?.id);
+    expect(part?.currentDepartmentId).not.toBe('dept_test_002');
   });
 
   it('includes parts in the department feed based on current department ownership', async () => {

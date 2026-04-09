@@ -1,6 +1,37 @@
 # tasks/todo.md — Session Plan + Verification
 
 ## Session Metadata
+- Date: 2026-04-09
+- Agent: Codex GPT-5
+- Task ID: Order detail department default + timer density + manual-only progression
+- Goal: Make converted/new orders default parts to Machining/first department, stop any apparent checklist-driven auto department progression, and redesign the order-detail timer area so parts stay spatially primary.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated current gaps in code:
+  - quote conversion creates order parts without initializing `currentDepartmentId`,
+  - order-detail read model infers department from open checklist rows when `currentDepartmentId` is null, which makes last-checklist completion look like an automatic move,
+  - `/orders/[id]` timer panel is vertically oversized and competes with the parts list.
+
+## Plan First
+- [x] Update Orders service so missing `currentDepartmentId` falls back only to the first active department, not checklist-derived next-department inference.
+- [x] Add a scoped order-department initialization helper and invoke it after quote conversion so converted orders persist the Machining/first-department owner immediately.
+- [x] Rework `/orders/[id]` left rail into a more compact timer control dock with collapsible time-history details and manual-next-department wording/defaults.
+- [x] Add focused Orders service regression coverage for the manual-only read-model behavior and run relevant verification commands.
+- [x] Update continuity docs with evidence and next steps.
+
+## Verification Checklist
+- [x] `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- [x] `npm run lint`
+
+## Review + Results
+- Converted/new orders now initialize part ownership to the first active department immediately, and order-detail read models no longer infer “next department” from checklist completion when `currentDepartmentId` is missing.
+- The manual-only progression rule is preserved in both persistence and presentation: last-item checklist completion no longer makes a blank-owned part appear to auto-advance.
+- The order-detail timer area now keeps its detailed history behind an explicit toggle, shortens action labels, defaults the manual move dialog toward the next department, and gives the parts list more usable vertical space.
+
+---
+
+## Session Metadata
 - Date: 2026-04-08
 - Agent: GPT-5.3-Codex
 - Task ID: Order-detail department UX follow-up

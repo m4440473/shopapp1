@@ -60,6 +60,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-04-09 — Missing part department ownership must default to first department, never inferred next-step routing
+Decision: When an order part has no persisted `currentDepartmentId`, read models and initialization/backfill paths must assign the first active department in ordering (currently Machining) instead of inferring ownership from whichever checklist department still has open items.
+Reason: Inferring department from checklist state makes last-item completion look like an automatic department move, which conflicts with the manual-submit workflow and obscures true ownership after quote conversion or other uninitialized-part paths.
+
 
 ### 2026-04-08 — Dashboard/work-queue department ownership follows current department, not checklist presence
 Decision: Dashboard department displays and work-queue ownership should be driven by `OrderPart.currentDepartmentId`; department feed visibility must not depend on whether that same department still has open checklist rows.
