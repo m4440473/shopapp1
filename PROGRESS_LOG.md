@@ -197,6 +197,28 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-09 — Order-detail submit dialog follow-up: confirm button now tracks selected destination
+- Fixed `src/app/orders/[id]/page.tsx` so the dialog confirm button label now derives from the actual selected destination department instead of the stale `nextDepartmentOption` helper.
+- This removes the mismatch where the dropdown could say `Shipping` while the button still said `Submit to Fab`.
+- Added a prevention rule to `tasks/lessons.md` covering live-selection labels in dialogs/forms.
+
+Commands run:
+- `npm run lint`
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
+### 2026-04-09 — Order-detail submit flow cleanup: dialog owns destination selection
+- Removed the redundant submit-destination dropdown from the `/orders/[id]` work dock so operators now use a single `Submit To` button to open the move dialog.
+- Kept destination selection inside the dialog only, where the current department is shown first and the destination list now excludes the current department.
+- Preserved the existing required move-note/manual-submit workflow while simplifying the operator path.
+
+Commands run:
+- `npm run lint`
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-09 — Dashboard follow-up: current department card no longer says `Unassigned` for active fallback-owned work
 - Fixed `src/components/ShopFloorLayouts.tsx` so dashboard/grid-digest current-department labels now use the same first-department fallback as the order-detail workflow for non-complete orders.
 - This removes the contradiction where a part could be treated as Machining in move/timer flows but still render as `Unassigned` on the summary card.
