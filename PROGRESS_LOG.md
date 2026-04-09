@@ -197,6 +197,26 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-09 — Order-detail follow-up: persisted Machining default + manual-only department presentation + compact timer dock
+- Fixed order part ownership initialization so newly created/converted order parts now persist the first active department immediately instead of sitting with null `currentDepartmentId`.
+- Fixed order-detail read-model behavior so a part with missing department ownership no longer appears to auto-advance to the next department when the last checklist item in the current department is checked; missing ownership now falls back only to the first active department.
+- Updated `/orders/[id]` left rail to reduce timer footprint:
+  - narrowed the left rail,
+  - shortened timer/action labels,
+  - defaulted the manual move action toward the next ordered department,
+  - moved detailed time notes/history behind an explicit `Show details` toggle so the parts list keeps more vertical space.
+- Added focused Orders service regression coverage proving:
+  - new parts initialize to Machining/first department,
+  - a null-owned part does not visually jump to the next department after checklist completion.
+
+Commands run:
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- `npm run lint`
+
+Verification note:
+- Targeted Orders service tests passed (7/7).
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-08 — Final phase complete: structured quote template block editor + print mapping
 - Extended document template layout normalization from legacy `sections[]` into structured `blocks[]` model (`id`, `type`, `label`, `visible`, `order`, `variant`, `options`) with backward-compatible fallback.
 - Upgraded `/admin/templates` builder to block-based editing with controls for show/hide, label override, variant preset, and quote pricing block options (`showUnitPrice`, `showQuantity`, `showLineTotal`, `showPricingMode`).

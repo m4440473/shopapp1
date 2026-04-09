@@ -2677,3 +2677,46 @@ Goal (1 sentence): Fix the `/orders/[id]` compile error caused by mixing `??` wi
 - [ ] User verify `/orders/[id]` and `/admin` load again without the compile-time 500s.
 
 ---
+## Session Handoff — 2026-04-09 (Order-detail department + timer follow-up)
+
+Goal (1 sentence): Make converted/new orders default part ownership to Machining/first department, stop apparent checklist-driven auto department moves on order detail, and reduce the timer panel footprint so parts stay visually primary.
+
+### What changed
+- Updated `src/modules/orders/orders.service.ts`
+  - Added `initializeCurrentDepartmentForOrder(orderId)` helper.
+  - `createOrderFromPayload()` now initializes part ownership immediately after order creation/checklist sync.
+  - `getOrderDetails()` no longer infers a missing `currentDepartmentId` from open checklist rows; it now falls back only to the first active department.
+  - Missing-department backfill/initialization now assigns the first active department instead of deriving a later stage from checklist completion.
+- Updated `src/app/api/admin/quotes/[id]/convert/route.ts`
+  - Quote conversion now initializes order-part department ownership right after checklist sync, so converted parts persist the default first department immediately.
+- Updated `src/app/orders/[id]/page.tsx`
+  - Narrowed the left rail from `360px` to `320px`.
+  - Shortened timer status/action labels and changed the manual move CTA to default toward the next ordered department (`Submit to ...`).
+  - Added a `Show details` toggle so time-history and manual time notes no longer consume left-rail space by default.
+- Updated `src/modules/orders/__tests__/orders.service.test.ts`
+  - Added regression coverage proving new parts initialize to Machining/first department.
+  - Added regression coverage proving a null-owned part does not visually jump to the next department after checklist completion.
+- Updated continuity docs and added Decision Log entry in `docs/AGENT_CONTEXT.md`.
+
+### Files touched
+- `src/modules/orders/orders.service.ts`
+- `src/app/api/admin/quotes/[id]/convert/route.ts`
+- `src/app/orders/[id]/page.tsx`
+- `src/modules/orders/__tests__/orders.service.test.ts`
+- `docs/AGENT_CONTEXT.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- `npm run lint`
+
+### Verification evidence
+- Targeted Orders service tests passed (7/7).
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify on `/orders/[id]` that converted parts now land in Machining/current first department instead of showing `Unassigned`.
+- [ ] User verify that checking the last checklist item no longer makes the part appear to auto-move departments before using the manual submit/move action.
+- [ ] Optional follow-up: if the owner wants an even more aggressive left-rail reduction, split timer controls and part list into separate stacked cards on mobile/tablet breakpoints only.
