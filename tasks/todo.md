@@ -3,6 +3,52 @@
 ## Session Metadata
 - Date: 2026-04-09
 - Agent: Codex GPT-5
+- Task ID: Order detail timer-link + compact submit destination control
+- Goal: Make the order-detail work dock identify where an already-running timer lives and replace the long `Submit to <Department>` button copy with a compact `Submit To` flow that fits reliably.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated current gap in `src/app/orders/[id]/page.tsx`: the dock only showed a passive `Other timer live` badge with no destination context, and long department names overflowed the manual-submit control.
+
+## Plan First
+- [x] Add an exact active-timer destination link so `Other timer live` opens the active order/part context.
+- [x] Add a compact submit-destination dropdown in the work dock and keep the required note inside the existing move dialog.
+- [x] Keep the current manual-only move rules intact and run relevant verification.
+- [x] Update continuity docs with outcomes and evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- The work dock now turns `Other timer live` into a clickable control that opens the active timer's order and preselects the exact part when available.
+- `/api/timer/active` now returns active-entry context links/order-part summaries so the order detail page can route operators to the right timer instead of a vague status badge.
+- The long `Submit to <Department>` label was replaced by a compact dock flow: destination dropdown plus `Submit To` button, while the existing move dialog still enforces the required note before moving a part.
+
+## Session Metadata
+- Date: 2026-04-09
+- Agent: Codex GPT-5
+- Task ID: Dashboard current-department label consistency follow-up
+- Goal: Stop dashboard/order summary cards from showing `Unassigned` for active parts that the workflow already treats as the first department.
+
+## Dependency Validation
+- [x] Reviewed the existing 2026-04-09 timer/department follow-up notes and confirmed the mismatch was display-only in the dashboard/layout card path.
+- [x] Validated that order-detail/manual-move logic already applies first-department fallback, while `ShopFloorLayouts` still rendered raw null `currentDepartmentId` as `Unassigned`.
+
+## Plan First
+- [x] Update dashboard current-department label shaping to use the same first-department fallback for non-complete orders.
+- [x] Keep completed/closed orders from being mislabeled with a fallback department.
+- [x] Run verification and update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Dashboard/grid digest current-department labels now fall back to the first ordered department for active orders whose parts still have null stored `currentDepartmentId`.
+- Completed/closed orders still avoid that fallback, so the card no longer contradicts the manual-move flow for active work while preserving end-state behavior.
+
+## Session Metadata
+- Date: 2026-04-09
+- Agent: Codex GPT-5
 - Task ID: Order detail department default + timer density + manual-only progression
 - Goal: Make converted/new orders default parts to Machining/first department, stop any apparent checklist-driven auto department progression, and redesign the order-detail timer area so parts stay spatially primary.
 

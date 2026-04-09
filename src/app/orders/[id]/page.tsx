@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   ArrowRightLeft,
   CheckCircle2,
@@ -77,6 +77,7 @@ const statusBadgeStyles: Record<string, string> = {
 
 export default function OrderDetailPage() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const id = pathname?.split('/').pop() ?? '';
   const toast = useToast();
   const [item, setItem] = useState<any | null>(null);
@@ -157,6 +158,7 @@ export default function OrderDetailPage() {
     note: '',
     error: null,
   });
+  const [submitToDepartmentId, setSubmitToDepartmentId] = useState('');
   const [showTimerDetails, setShowTimerDetails] = useState(false);
 
   const parts = useMemo(() => (Array.isArray(item?.parts) ? item.parts : []), [item?.parts]);
@@ -191,6 +193,11 @@ export default function OrderDetailPage() {
   );
 
   const manualMoveDepartments = useMemo(() => departments, [departments]);
+  const selectedCurrentDepartment = manualMoveDepartments.find((department) => department.id === selectedPart?.currentDepartmentId) ?? null;
+  const submitDestinationOptions = useMemo(
+    () => manualMoveDepartments.filter((department) => department.id !== selectedPart?.currentDepartmentId),
+    [manualMoveDepartments, selectedPart?.currentDepartmentId]
+  );
 
   const selectedPartDepartmentHistory = useMemo(() => {
     if (!selectedPartId) return [];
@@ -376,10 +383,15 @@ export default function OrderDetailPage() {
       setSelectedPartId(null);
       return;
     }
+    const requestedPartId = searchParams.get('part');
+    if (requestedPartId && parts.some((part: any) => part.id === requestedPartId)) {
+      setSelectedPartId((prev) => (prev === requestedPartId ? prev : requestedPartId));
+      return;
+    }
     if (!selectedPartId || !parts.some((part: any) => part.id === selectedPartId)) {
       setSelectedPartId(parts[0].id);
     }
-  }, [parts, selectedPartId]);
+  }, [parts, searchParams, selectedPartId]);
 
   useEffect(() => {
     if (!item) return;
@@ -427,6 +439,19 @@ export default function OrderDetailPage() {
 
     setSelectedTimerDepartmentId(timerDepartments[0]?.id ?? '');
   }, [selectedPart?.currentDepartmentId, selectedTimerDepartmentId, timerDepartments]);
+
+  useEffect(() => {
+    if (!submitDestinationOptions.length) {
+      setSubmitToDepartmentId('');
+      return;
+    }
+
+    if (submitToDepartmentId && submitDestinationOptions.some((department) => department.id === submitToDepartmentId)) {
+      return;
+    }
+
+    setSubmitToDepartmentId(submitDestinationOptions[0]?.id ?? '');
+  }, [submitDestinationOptions, submitToDepartmentId]);
 
   useEffect(() => {
     if (!editMode || !canEditParts) return;
@@ -553,18 +578,12 @@ export default function OrderDetailPage() {
     }
   };
 
-  const openMoveDepartmentDialog = () => {
+  const openMoveDepartmentDialog = (preferredDestinationDepartmentId?: string) => {
     if (!selectedPartId) return;
     const currentDepartmentId = selectedPart?.currentDepartmentId ?? '';
-    const currentDepartmentIndex = manualMoveDepartments.findIndex((department) => department.id === currentDepartmentId);
     const defaultDepartmentId =
-      (currentDepartmentIndex >= 0
-        ? manualMoveDepartments
-            .slice(currentDepartmentIndex + 1)
-            .find((department) => department.id !== currentDepartmentId)?.id
-        : undefined) ??
-      manualMoveDepartments.find((department) => department.id !== currentDepartmentId)?.id ??
-      manualMoveDepartments[0]?.id ??
+      preferredDestinationDepartmentId?.trim() ||
+      submitDestinationOptions[0]?.id ||
       '';
     setMoveDepartmentDialog({
       open: true,
@@ -999,8 +1018,16 @@ export default function OrderDetailPage() {
     : 0;
   const selectedPartElapsedSeconds = activeOnSelected ? selectedPartStoredSeconds + selectedActiveElapsedSeconds : selectedPartStoredSeconds;
   const hasActiveEntry = activeEntries.length > 0;
+  const activeElsewhereEntries = activeEntries.filter((entry: any) => {
+    const samePart = entry?.partId === selectedPartId;
+    const sameDepartment = !selectedTimerDepartmentId || entry?.departmentId === selectedTimerDepartmentId;
+    return !(samePart && sameDepartment);
+  });
+  const activeElsewhereEntry = activeElsewhereEntries[0] ?? null;
+  const otherActiveEntryCount = activeElsewhereEntries.length;
+  const otherTimerBadgeLabel =
+    otherActiveEntryCount > 1 ? `${otherActiveEntryCount} other timers live` : 'Other timer live';
   const startHelperLabel = 'Starts a timer on the selected part for the selected department. Department moves are manual only.';
-  const selectedCurrentDepartment = manualMoveDepartments.find((department) => department.id === selectedPart?.currentDepartmentId) ?? null;
   const selectedCurrentDepartmentIndex = selectedCurrentDepartment
     ? manualMoveDepartments.findIndex((department) => department.id === selectedCurrentDepartment.id)
     : -1;
@@ -1161,9 +1188,19 @@ export default function OrderDetailPage() {
                     {selectedPartId ? `Elapsed ${formatDuration(selectedPartElapsedSeconds)}` : 'No part selected'}
                   </div>
                 </div>
-                <Badge className={hasActiveEntry ? 'bg-emerald-500/15 text-emerald-200' : 'bg-muted text-foreground'}>
-                  {activeOnSelected ? 'Running' : hasActiveEntry ? 'Other timer live' : 'Idle'}
-                </Badge>
+                {activeOnSelected ? (
+                  <Badge className="bg-emerald-500/15 text-emerald-200">Running</Badge>
+                ) : activeElsewhereEntry?.href ? (
+                  <Button asChild size="sm" variant="ghost" className="h-7 bg-emerald-500/15 px-2 text-emerald-200 hover:bg-emerald-500/25 hover:text-emerald-100">
+                    <Link href={activeElsewhereEntry.href} title={`Open ${activeElsewhereEntry.order?.orderNumber || 'active order'}${activeElsewhereEntry.part?.partNumber ? ` / ${activeElsewhereEntry.part.partNumber}` : ''}`}>
+                      {otherTimerBadgeLabel}
+                    </Link>
+                  </Button>
+                ) : (
+                  <Badge className={hasActiveEntry ? 'bg-emerald-500/15 text-emerald-200' : 'bg-muted text-foreground'}>
+                    {hasActiveEntry ? otherTimerBadgeLabel : 'Idle'}
+                  </Badge>
+                )}
               </div>
 
               <div className="grid gap-2 sm:grid-cols-2">
@@ -1211,16 +1248,28 @@ export default function OrderDetailPage() {
                   <Square className="h-4 w-4" />
                   Stop
                 </Button>
+                <Select value={submitToDepartmentId} onValueChange={setSubmitToDepartmentId} disabled={!submitDestinationOptions.length || timerSaving || activeOnSelected}>
+                  <SelectTrigger className="h-8">
+                    <SelectValue placeholder="Submit destination" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {submitDestinationOptions.map((department) => (
+                      <SelectItem key={department.id} value={department.id}>
+                        {department.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={!selectedPartId || timerSaving || activeOnSelected || !manualMoveDepartments.length}
-                  onClick={openMoveDepartmentDialog}
+                  disabled={!selectedPartId || timerSaving || activeOnSelected || !submitToDepartmentId}
+                  onClick={() => openMoveDepartmentDialog(submitToDepartmentId)}
                   className="justify-start gap-2"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  {nextDepartmentOption ? `Submit to ${nextDepartmentOption.name}` : 'Move part to department'}
+                  Submit To
                 </Button>
                 <Button
                   type="button"

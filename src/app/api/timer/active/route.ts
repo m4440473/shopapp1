@@ -27,6 +27,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: activeEntriesResult.error }, { status: activeEntriesResult.status });
   }
 
+  const activeEntriesWithContext = await Promise.all(
+    activeEntriesResult.data.entries.map(async (entry) => {
+      const [orderResult, partResult] = await Promise.all([
+        getOrderHeaderInfo(entry.orderId),
+        entry.partId ? getOrderPartSummary(entry.orderId, entry.partId) : Promise.resolve(null),
+      ]);
+
+      const order = orderResult.ok ? (orderResult.data as { order: unknown }).order : null;
+      const part = partResult?.ok ? (partResult.data as { part: unknown }).part : null;
+      const href = entry.partId ? `/orders/${entry.orderId}?part=${entry.partId}` : `/orders/${entry.orderId}`;
+
+      return {
+        ...entry,
+        href,
+        order,
+        part,
+      };
+    })
+  );
+
   const activeEntry = activeResult.data.entry;
   const orderResult = activeEntry ? await getOrderHeaderInfo(activeEntry.orderId) : null;
   const partResult = activeEntry?.partId
@@ -49,7 +69,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     activeEntry,
-    activeEntries: activeEntriesResult.data.entries,
+    activeEntries: activeEntriesWithContext,
     activeOrder,
     activePart,
     totalsSeconds: totalsResult?.ok ? totalsResult.data.totalsSeconds : {},

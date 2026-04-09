@@ -1,3 +1,57 @@
+## Session Handoff — 2026-04-09 (Dashboard current-department label consistency)
+
+Goal (1 sentence): Make dashboard/order summary cards stop calling active work `Unassigned` when the order-detail workflow already treats that part as belonging to the first department.
+
+### What changed
+- Updated `src/components/ShopFloorLayouts.tsx`
+  - `currentDepartmentLabelsByOrder` now falls back to the first ordered department name for non-complete orders when a part still has null `currentDepartmentId`.
+  - Completed/closed orders still skip that fallback so finished work does not get an invented active department label.
+
+### Files touched
+- `src/components/ShopFloorLayouts.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify that the dashboard/order summary card now shows `Machining` (or the current first department) instead of `Unassigned` for new/received work.
+
+## Session Handoff — 2026-04-09 (Order-detail timer context link + compact submit control)
+
+Goal (1 sentence): Make the order-detail work dock tell operators exactly where another live timer is running and replace the overflowing `Submit to <Department>` label with a compact, reliable submit-destination control.
+
+### What changed
+- Updated `src/app/api/timer/active/route.ts`
+  - Enriched `activeEntries` with order/part context and an `href` for each active timer entry.
+  - Deep links now point to `/orders/{id}?part={partId}` when the timer belongs to a specific part.
+- Updated `src/app/orders/[id]/page.tsx`
+  - Added `useSearchParams()` handling so the page can preselect a part from `?part=...`.
+  - Replaced the passive `Other timer live` badge with a clickable control that opens the active timer context.
+  - Added a compact `Submit To` destination dropdown in the dock and kept the existing note-required move dialog as the actual submit confirmation path.
+
+### Files touched
+- `src/app/api/timer/active/route.ts`
+- `src/app/orders/[id]/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify on `/orders/[id]` that clicking `Other timer live` lands on the right order/part and feels obvious enough on the floor.
+- [ ] User verify the new `Submit To` dropdown/button layout feels better with longer department names and still matches the manual move workflow.
+
 ## Session Handoff — 2026-04-08 (Unraid Docker app template refresh)
 
 Goal (1 sentence): Refresh the existing Unraid Docker app template and guide so Unraid install settings match the current ShopApp1 container requirements.
