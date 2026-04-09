@@ -197,6 +197,32 @@ Agents MUST update this at the end of every session.
 
 ## Session Log (append newest at top)
 
+### 2026-04-09 — Dashboard follow-up: current department card no longer says `Unassigned` for active fallback-owned work
+- Fixed `src/components/ShopFloorLayouts.tsx` so dashboard/grid-digest current-department labels now use the same first-department fallback as the order-detail workflow for non-complete orders.
+- This removes the contradiction where a part could be treated as Machining in move/timer flows but still render as `Unassigned` on the summary card.
+- Completed/closed orders still skip the fallback so we do not invent an active department after completion.
+
+Commands run:
+- `npm run lint`
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
+### 2026-04-09 — Order-detail follow-up: active timer deep-link + compact submit destination control
+- Updated `/orders/[id]` work dock so the `Other timer live` status now opens the exact active timer context instead of leaving operators guessing:
+  - active timer summaries now include order/part context and deep links,
+  - order detail now honors `?part=` so the link opens directly on the active part when available.
+- Reworked the manual department-submit controls to avoid long button overflow:
+  - replaced `Submit to <Department>` dock copy with a compact `Submit To` button,
+  - added a paired destination dropdown listing valid departments,
+  - kept the existing note-required move dialog as the final confirmation step.
+
+Commands run:
+- `npm run lint`
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+
 ### 2026-04-09 — Order-detail follow-up: persisted Machining default + manual-only department presentation + compact timer dock
 - Fixed order part ownership initialization so newly created/converted order parts now persist the first active department immediately instead of sitting with null `currentDepartmentId`.
 - Fixed order-detail read-model behavior so a part with missing department ownership no longer appears to auto-advance to the next department when the last checklist item in the current department is checked; missing ownership now falls back only to the first active department.

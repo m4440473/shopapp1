@@ -132,6 +132,7 @@ export function ShopFloorLayouts({
     () => new Map(departments.map((department) => [department.id, department.name] as const)),
     [departments]
   );
+  const firstDepartmentName = departments[0]?.name ?? 'Unassigned';
 
   const selectedDepartmentName = departmentNameById.get(departmentId) ?? 'Unassigned';
 
@@ -187,17 +188,23 @@ export function ShopFloorLayouts({
   const currentDepartmentLabelsByOrder = useMemo(() => {
     return new Map(
       sorted.map((order) => {
+        const orderIsComplete = ['COMPLETE', 'CLOSED'].includes(String(order.status ?? '').toUpperCase());
         const labels = Array.from(
           new Set(
             (order.parts ?? [])
-              .map((part) => (part.currentDepartmentId ? departmentNameById.get(part.currentDepartmentId) ?? part.currentDepartmentId : null))
+              .map((part) => {
+                if (part.currentDepartmentId) {
+                  return departmentNameById.get(part.currentDepartmentId) ?? part.currentDepartmentId;
+                }
+                return orderIsComplete ? null : firstDepartmentName;
+              })
               .filter((value): value is string => Boolean(value))
           )
         );
         return [order.id, labels] as const;
       })
     );
-  }, [departmentNameById, sorted]);
+  }, [departmentNameById, firstDepartmentName, sorted]);
 
   const handleSortChange = (column: (typeof SORT_KEYS)[number]) => {
     setSortKey((prev) => {
