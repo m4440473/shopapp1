@@ -1,3 +1,56 @@
+## Session Handoff — 2026-04-09 (Order-detail submit dialog label correction)
+
+Goal (1 sentence): Make the move-dialog confirm button always reflect the destination department the operator actually selected.
+
+### What changed
+- Updated `src/app/orders/[id]/page.tsx`
+  - Replaced the dialog confirm-button label source so it now reads from `moveDepartmentDialog.destinationDepartmentId`.
+  - The button copy now updates live with the dialog selection (`Submit to Shipping`, etc.) instead of staying tied to the default next-department helper.
+- Updated `tasks/lessons.md`
+  - Added a prevention rule covering stale action labels in selection-driven dialogs/forms.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `tasks/lessons.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify on `/orders/[id]` that changing the dialog destination immediately updates the confirm button label to the same department.
+
+## Session Handoff — 2026-04-09 (Order-detail submit dialog cleanup)
+
+Goal (1 sentence): Remove the redundant submit destination control from the order-detail dock so `Submit To` opens a single dialog that clearly shows the current department and lets the operator choose the destination there.
+
+### What changed
+- Updated `src/app/orders/[id]/page.tsx`
+  - Removed the dock-level submit destination dropdown and its extra local state.
+  - `Submit To` now opens the move dialog directly.
+  - The dialog now shows the current department in a dedicated summary block at the top.
+  - The dialog destination list now contains only valid non-current departments, so operators are not asked to pick the same department twice.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify on `/orders/[id]` that `Submit To` now feels cleaner: one button in the dock, current department shown at top of the dialog, destination chosen only inside the dialog.
+
 ## Session Handoff — 2026-04-09 (Dashboard current-department label consistency)
 
 Goal (1 sentence): Make dashboard/order summary cards stop calling active work `Unassigned` when the order-detail workflow already treats that part as belonging to the first department.

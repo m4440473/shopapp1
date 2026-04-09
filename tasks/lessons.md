@@ -1,3 +1,9 @@
+## 2026-04-09 — UI action labels must follow active selection state
+- Trigger: User caught the move dialog showing `Submit to Fab` while the selected destination was `Shipping`.
+- Mistake pattern: I left the confirm-button label bound to a derived default/next-step value instead of the dialog's actual selected destination state.
+- Preventive rule: For dialogs and forms with mutable selections, audit every visible action label against the live controlled value before closing the task; never leave confirm copy tied to an initialization default.
+- Applied in next session where: 2026-04-09 order-detail submit dialog label fix.
+
 ## 2026-03-19 — SQLite migration default-value trap
 - Trigger: Prisma migrate failed while adding timestamp columns with `DEFAULT CURRENT_TIMESTAMP` via `ALTER TABLE` on SQLite.
 - Mistake pattern: I assumed SQLite could add non-null timestamp columns with non-constant defaults directly.

@@ -158,7 +158,6 @@ export default function OrderDetailPage() {
     note: '',
     error: null,
   });
-  const [submitToDepartmentId, setSubmitToDepartmentId] = useState('');
   const [showTimerDetails, setShowTimerDetails] = useState(false);
 
   const parts = useMemo(() => (Array.isArray(item?.parts) ? item.parts : []), [item?.parts]);
@@ -441,19 +440,6 @@ export default function OrderDetailPage() {
   }, [selectedPart?.currentDepartmentId, selectedTimerDepartmentId, timerDepartments]);
 
   useEffect(() => {
-    if (!submitDestinationOptions.length) {
-      setSubmitToDepartmentId('');
-      return;
-    }
-
-    if (submitToDepartmentId && submitDestinationOptions.some((department) => department.id === submitToDepartmentId)) {
-      return;
-    }
-
-    setSubmitToDepartmentId(submitDestinationOptions[0]?.id ?? '');
-  }, [submitDestinationOptions, submitToDepartmentId]);
-
-  useEffect(() => {
     if (!editMode || !canEditParts) return;
 
     const loadOptions = async () => {
@@ -578,11 +564,10 @@ export default function OrderDetailPage() {
     }
   };
 
-  const openMoveDepartmentDialog = (preferredDestinationDepartmentId?: string) => {
+  const openMoveDepartmentDialog = () => {
     if (!selectedPartId) return;
-    const currentDepartmentId = selectedPart?.currentDepartmentId ?? '';
     const defaultDepartmentId =
-      preferredDestinationDepartmentId?.trim() ||
+      nextDepartmentOption?.id ||
       submitDestinationOptions[0]?.id ||
       '';
     setMoveDepartmentDialog({
@@ -1035,7 +1020,12 @@ export default function OrderDetailPage() {
     selectedCurrentDepartmentIndex >= 0
       ? manualMoveDepartments[selectedCurrentDepartmentIndex + 1] ?? null
       : manualMoveDepartments[0] ?? null;
-  const moveActionLabel = nextDepartmentOption ? `Submit to ${nextDepartmentOption.name}` : 'Move part to department';
+  const selectedMoveDestination = submitDestinationOptions.find(
+    (department) => department.id === moveDepartmentDialog.destinationDepartmentId
+  ) ?? null;
+  const moveActionLabel = selectedMoveDestination
+    ? `Submit to ${selectedMoveDestination.name}`
+    : 'Move part to department';
   const canMarkPartComplete = (selectedCurrentDepartment?.name ?? '').trim().toLowerCase() === 'shipping';
 
   return (
@@ -1098,13 +1088,11 @@ export default function OrderDetailPage() {
             <DialogTitle>Move part to department</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="text-sm text-muted-foreground">
-              Current department:{' '}
-              <span className="font-medium text-foreground">
-                {manualMoveDepartments.find((department) => department.id === selectedPart?.currentDepartmentId)?.name ??
-                  selectedPart?.currentDepartmentId ??
-                  'Unassigned'}
-              </span>
+            <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current department</div>
+              <div className="mt-1 font-semibold text-foreground">
+                {selectedCurrentDepartment?.name ?? selectedPart?.currentDepartmentId ?? 'Unassigned'}
+              </div>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="move-department-select">Destination department</Label>
@@ -1122,7 +1110,7 @@ export default function OrderDetailPage() {
                   <SelectValue placeholder="Choose destination department" />
                 </SelectTrigger>
                 <SelectContent>
-                  {manualMoveDepartments.map((department) => (
+                  {submitDestinationOptions.map((department) => (
                     <SelectItem key={department.id} value={department.id}>
                       {department.name}
                     </SelectItem>
@@ -1248,24 +1236,12 @@ export default function OrderDetailPage() {
                   <Square className="h-4 w-4" />
                   Stop
                 </Button>
-                <Select value={submitToDepartmentId} onValueChange={setSubmitToDepartmentId} disabled={!submitDestinationOptions.length || timerSaving || activeOnSelected}>
-                  <SelectTrigger className="h-8">
-                    <SelectValue placeholder="Submit destination" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {submitDestinationOptions.map((department) => (
-                      <SelectItem key={department.id} value={department.id}>
-                        {department.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={!selectedPartId || timerSaving || activeOnSelected || !submitToDepartmentId}
-                  onClick={() => openMoveDepartmentDialog(submitToDepartmentId)}
+                  disabled={!selectedPartId || timerSaving || activeOnSelected || !submitDestinationOptions.length}
+                  onClick={openMoveDepartmentDialog}
                   className="justify-start gap-2"
                 >
                   <CheckCircle2 className="h-4 w-4" />

@@ -3,6 +3,52 @@
 ## Session Metadata
 - Date: 2026-04-09
 - Agent: Codex GPT-5
+- Task ID: Order detail submit-dialog cleanup
+- Goal: Remove the redundant submit-destination dropdown from the order-detail dock so `Submit To` opens the dialog and the dialog alone owns destination selection.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current issue in `src/app/orders/[id]/page.tsx`: the dock had a destination dropdown plus a second destination selector in the dialog, which duplicated state and made the flow feel broken/redundant.
+
+## Plan First
+- [x] Remove the dock-level destination selector and its state from `/orders/[id]`.
+- [x] Keep `Submit To` as the single trigger and let the dialog own the destination picker plus required note.
+- [x] Keep current department visible at the top of the dialog and limit destination choices to valid non-current departments.
+- [x] Run relevant verification and update continuity docs.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- The left-side dock now shows only the `Submit To` action; the redundant destination dropdown beside it is gone.
+- Clicking `Submit To` now opens the move dialog directly, with the current department surfaced in a dedicated summary block at the top.
+- Destination choice now lives only inside the dialog, and the list excludes the current department so the operator only sees valid targets.
+
+## Session Metadata
+- Date: 2026-04-09
+- Agent: Codex GPT-5
+- Task ID: Order detail submit-dialog label correction
+- Goal: Make the dialog confirm button always reflect the department actually selected in the destination dropdown.
+
+## Dependency Validation
+- [x] Reviewed the just-shipped submit-dialog cleanup and reproduced the remaining gap in `src/app/orders/[id]/page.tsx`: the button label still read from the old `nextDepartmentOption` helper instead of dialog selection state.
+- [x] Logged a prevention rule in `tasks/lessons.md` per workflow requirements after the user correction.
+
+## Plan First
+- [x] Replace the dialog confirm-label source so it derives from `moveDepartmentDialog.destinationDepartmentId`.
+- [x] Keep the rest of the move flow unchanged and re-run verification.
+- [x] Update continuity docs with the correction and evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- The dialog confirm button now follows the currently selected destination department instead of the stale next-department default.
+- Selecting `Shipping` now yields `Submit to Shipping`; selecting another department updates the button label accordingly.
+
+## Session Metadata
+- Date: 2026-04-09
+- Agent: Codex GPT-5
 - Task ID: Order detail timer-link + compact submit destination control
 - Goal: Make the order-detail work dock identify where an already-running timer lives and replace the long `Submit to <Department>` button copy with a compact `Submit To` flow that fits reliably.
 
