@@ -60,6 +60,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-04-09 — BOM analyzer PDF support uses pdf.js page-1 rasterization before vision
+Decision: Add `pdfjs-dist` and `@napi-rs/canvas` and rasterize the first page of uploaded/stored PDFs to PNG server-side before sending the result through the existing print-analyzer vision flow.
+Reason: The BOM analyzer is image-based and the existing `sharp` build in this environment cannot rasterize PDFs, so PDF support requires a dedicated renderer without introducing external system-binary dependencies.
+
 ### 2026-04-09 — Missing part department ownership must default to first department, never inferred next-step routing
 Decision: When an order part has no persisted `currentDepartmentId`, read models and initialization/backfill paths must assign the first active department in ordering (currently Machining) instead of inferring ownership from whichever checklist department still has open items.
 Reason: Inferring department from checklist state makes last-item completion look like an automatic department move, which conflicts with the manual-submit workflow and obscures true ownership after quote conversion or other uninitialized-part paths.

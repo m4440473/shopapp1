@@ -1,3 +1,6 @@
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+
 import OpenAI from 'openai';
 import sharp from 'sharp';
 import { NextResponse } from 'next/server';
@@ -20,6 +23,18 @@ const TITLE_BLOCK_CONFIDENCE_THRESHOLD = 0.55;
 const PASS_ONE_MODEL = 'gpt-4.1-mini';
 const PASS_TWO_MODEL = 'gpt-4.1-mini';
 const PAPER_PRINT_MESSAGE = 'Unable to confidently read general tolerances. Please check the paper print.';
+const PDF_RENDER_SCALE = 2;
+const CANVAS_MODULE_NAME = ['@napi-rs', 'canvas'].join('/');
+
+const require = createRequire(import.meta.url);
+const loadCanvasModule = () => require(CANVAS_MODULE_NAME) as {
+  createCanvas: (width: number, height: number) => {
+    width: number;
+    height: number;
+    getContext: (contextId: '2d') => unknown;
+    encode: (format: 'png') => Promise<Uint8Array>;
+  };
+};
 
 type ModelPayload = {
   rawText: string;
@@ -41,10 +56,10 @@ function extractJsonText(raw: string): string {
   return objectSlice || trimmed;
 }
 
-function decodeImageDataUrl(dataUrl: string): { buffer: Buffer; mimeType: string } {
-  const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+function decodeDataUrl(dataUrl: string): { buffer: Buffer; mimeType: string } {
+  const match = dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
   if (!match) {
-    throw new Error('Invalid image data URL payload.');
+    throw new Error('Invalid file data URL payload.');
   }
 
   const [, mimeType, base64Data] = match;
@@ -56,6 +71,128 @@ function decodeImageDataUrl(dataUrl: string): { buffer: Buffer; mimeType: string
 
 function toDataUrl(buffer: Buffer, mimeType: string): string {
   return `data:${mimeType};base64,${buffer.toString('base64')}`;
+}
+
+function isPdfMimeType(mimeType: string): boolean {
+  return mimeType === 'application/pdf';
+}
+
+type PdfJsModule = {
+  getDocument: (src: {
+    data: Uint8Array;
+    useWorkerFetch: boolean;
+    isEvalSupported: boolean;
+  }) => { promise: Promise<PdfDocumentProxy>; destroy: () => Promise<void> };
+};
+
+type PdfDocumentProxy = {
+  getPage: (pageNumber: number) => Promise<PdfPageProxy>;
+  cleanup: () => Promise<void>;
+};
+
+type PdfPageProxy = {
+  getViewport: (params: { scale: number }) => { width: number; height: number };
+  render: (params: {
+    canvasContext: unknown;
+    viewport: { width: number; height: number };
+    canvasFactory: PdfCanvasFactory;
+  }) => { promise: Promise<void> };
+  cleanup: () => void;
+};
+
+class PdfCanvasFactory {
+  create(width: number, height: number) {
+    if (width <= 0 || height <= 0) {
+      throw new Error('Invalid canvas size');
+    }
+
+    const { createCanvas } = loadCanvasModule();
+    const canvas = createCanvas(Math.ceil(width), Math.ceil(height));
+    return {
+      canvas,
+      context: canvas.getContext('2d'),
+    };
+  }
+
+  reset(target: { canvas: ReturnType<ReturnType<typeof loadCanvasModule>['createCanvas']> }, width: number, height: number) {
+    target.canvas.width = Math.ceil(width);
+    target.canvas.height = Math.ceil(height);
+  }
+
+  destroy(target: { canvas: ReturnType<ReturnType<typeof loadCanvasModule>['createCanvas']> | null; context: unknown | null }) {
+    if (!target.canvas) return;
+
+    target.canvas.width = 0;
+    target.canvas.height = 0;
+    target.canvas = null;
+    target.context = null;
+  }
+}
+
+async function loadPdfJs(): Promise<PdfJsModule> {
+  const pdfJsPath = require.resolve('pdfjs-dist/legacy/build/pdf.mjs');
+  return (await import(pathToFileURL(pdfJsPath).href)) as PdfJsModule;
+}
+
+async function rasterizePdfFirstPage(buffer: Buffer): Promise<Buffer> {
+  const pdfjs = await loadPdfJs();
+  const loadingTask = pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    useWorkerFetch: false,
+    isEvalSupported: false,
+  });
+
+  try {
+    const pdfDocument = await loadingTask.promise;
+
+    try {
+      const page = await pdfDocument.getPage(1);
+
+      try {
+        const viewport = page.getViewport({ scale: PDF_RENDER_SCALE });
+        const canvasFactory = new PdfCanvasFactory();
+        const canvasAndContext = canvasFactory.create(viewport.width, viewport.height);
+
+        try {
+          await page.render({
+            canvasContext: canvasAndContext.context,
+            viewport,
+            canvasFactory,
+          }).promise;
+
+          return Buffer.from(await canvasAndContext.canvas.encode('png'));
+        } finally {
+          canvasFactory.destroy(canvasAndContext);
+        }
+      } finally {
+        page.cleanup();
+      }
+    } finally {
+      await pdfDocument.cleanup();
+    }
+  } finally {
+    await loadingTask.destroy();
+  }
+}
+
+async function normalizeUploadToImageDataUrl(dataUrl: string): Promise<string> {
+  const { buffer, mimeType } = decodeDataUrl(dataUrl);
+
+  if (mimeType.startsWith('image/')) {
+    return toDataUrl(buffer, mimeType);
+  }
+
+  if (!isPdfMimeType(mimeType)) {
+    throw new Error('Unsupported upload type. Use an image or PDF file.');
+  }
+
+  try {
+    const rasterizedPdf = await rasterizePdfFirstPage(buffer);
+    return toDataUrl(rasterizedPdf, 'image/png');
+  } catch (error) {
+    const message = error instanceof Error ? collapseWhitespace(error.message) : 'Unknown PDF conversion error';
+    throw new Error(`Failed to convert PDF to image. ${message}`);
+  }
 }
 
 function uniqueWarnings(...warningSets: string[][]): string[] {
@@ -293,8 +430,14 @@ export async function POST(req: Request) {
     | null;
   const dataUrl = body?.dataUrl;
 
-  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
-    return NextResponse.json({ error: 'Invalid request body. Expected { dataUrl: "data:image/..." }.' }, { status: 400 });
+  if (
+    typeof dataUrl !== 'string' ||
+    (!dataUrl.startsWith('data:image/') && !dataUrl.startsWith('data:application/pdf'))
+  ) {
+    return NextResponse.json(
+      { error: 'Invalid request body. Expected { dataUrl: "data:image/..." } or { dataUrl: "data:application/pdf;..." }.' },
+      { status: 400 }
+    );
   }
 
   if (!process.env.OPENAI_API_KEY) {
@@ -304,8 +447,8 @@ export async function POST(req: Request) {
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   try {
-    const { buffer: imageBuffer, mimeType } = decodeImageDataUrl(dataUrl);
-    const sanitizedFullImageDataUrl = toDataUrl(imageBuffer, mimeType);
+    const sanitizedFullImageDataUrl = await normalizeUploadToImageDataUrl(dataUrl);
+    const { buffer: imageBuffer } = decodeDataUrl(sanitizedFullImageDataUrl);
 
     const passOneResult = await runVisionPass({
       openai,

@@ -108,6 +108,10 @@ async function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+function isPdfMimeType(mimeType: string): boolean {
+  return mimeType === 'application/pdf';
+}
+
 function isAnalyzeErrorPayload(payload: unknown): payload is AnalyzeErrorPayload {
   return Boolean(payload && typeof payload === 'object' && 'error' in payload);
 }
@@ -138,9 +142,10 @@ export function PartBomTab({
         const isImageKind = attachmentKind === 'IMAGE';
         const mimeType = (attachment.mimeType ?? '').toLowerCase();
         const isImageMime = mimeType.startsWith('image/');
-        const isExplicitNonImageMime = Boolean(mimeType && !isImageMime);
-        if (isExplicitNonImageMime) return false;
-        return isPrintKind || isImageKind || isImageMime;
+        const isPdfMime = isPdfMimeType(mimeType);
+        const isExplicitUnsupportedMime = Boolean(mimeType && !isImageMime && !isPdfMime);
+        if (isExplicitUnsupportedMime) return false;
+        return isPrintKind || isImageKind || isImageMime || isPdfMime;
       }),
     [attachments]
   );
@@ -152,7 +157,7 @@ export function PartBomTab({
           const attachmentKind = (attachment.kind ?? '').toUpperCase();
           return {
             id: attachment.id,
-            label: attachment.label?.trim() || 'Image attachment',
+            label: attachment.label?.trim() || 'Print attachment',
             mimeType: attachment.mimeType ?? 'image/*',
             isPreferredPrint: attachmentKind === 'PRINT',
           };
@@ -249,32 +254,36 @@ export function PartBomTab({
 
   const getAttachmentDataUrl = async (attachmentId: string): Promise<string> => {
     const target = imageAttachments.find((attachment) => attachment.id === attachmentId);
-    if (!target) throw new Error('Selected image attachment was not found.');
+    if (!target) throw new Error('Selected print attachment was not found.');
 
     const openHref = target.storagePath ? `/attachments/${target.storagePath}` : target.url;
-    if (!openHref) throw new Error('Selected image attachment has no usable URL.');
+    if (!openHref) throw new Error('Selected print attachment has no usable URL.');
 
     const response = await fetch(openHref, { credentials: 'include' });
-    if (!response.ok) throw new Error('Failed to load selected image attachment.');
+    if (!response.ok) throw new Error('Failed to load selected print attachment.');
 
     const blob = await response.blob();
     const hintedMimeType = (target.mimeType ?? '').toLowerCase();
     const blobMimeType = (blob.type ?? '').toLowerCase();
+    const resolvedMimeType = hintedMimeType || blobMimeType;
+    const isPdf = isPdfMimeType(resolvedMimeType);
     const contentType = hintedMimeType.startsWith('image/')
       ? hintedMimeType
       : blobMimeType.startsWith('image/')
       ? blobMimeType
+      : isPdf
+      ? 'application/pdf'
       : 'image/png';
 
-    if (!hintedMimeType.startsWith('image/') && !blobMimeType.startsWith('image/')) {
-      throw new Error('Selected file is not an image. Choose a PNG/JPG/WEBP file in Notes & Files.');
+    if (!hintedMimeType.startsWith('image/') && !blobMimeType.startsWith('image/') && !isPdf) {
+      throw new Error('Selected file is not a supported print. Choose a PNG/JPG/WEBP/PDF file in Notes & Files.');
     }
 
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result ?? ''));
-      reader.onerror = () => reject(new Error('Failed to read selected image attachment.'));
-      reader.readAsDataURL(new File([blob], 'attachment-image', { type: contentType }));
+      reader.onerror = () => reject(new Error('Failed to read selected print attachment.'));
+      reader.readAsDataURL(new File([blob], isPdf ? 'attachment.pdf' : 'attachment-image', { type: contentType }));
     });
 
     return base64;
@@ -367,7 +376,7 @@ export function PartBomTab({
               <Input
                 id="bom-upload"
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf"
                 className="bg-background/80"
                 onChange={(event) => {
                   setFile(event.currentTarget.files?.[0] ?? null);
@@ -375,7 +384,7 @@ export function PartBomTab({
                   setResult(null);
                 }}
               />
-              <p className="text-xs text-muted-foreground">PNG/JPG/WEBP screenshots or photos of the print. Files marked PRINT in Notes & Files are listed first above.</p>
+              <p className="text-xs text-muted-foreground">PNG/JPG/WEBP screenshots, photos, or first-page PDFs of the print. Files marked PRINT in Notes & Files are listed first above.</p>
             </div>
           </div>
 

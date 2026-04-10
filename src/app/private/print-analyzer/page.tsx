@@ -83,12 +83,12 @@ export default function PrintAnalyzerPage() {
       <div className={styles.container}>
         <section className={styles.card}>
           <h1 className={styles.heading}>Print Analyzer (Private)</h1>
-          <p className={styles.subtle}>Upload a print image and extract feature/tolerance data into structured JSON.</p>
+          <p className={styles.subtle}>Upload a print image or PDF and extract feature/tolerance data into structured JSON.</p>
 
           <div className={styles.row}>
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf"
               onChange={(event) => {
                 const picked = event.currentTarget.files?.[0] ?? null;
                 setFile(picked);

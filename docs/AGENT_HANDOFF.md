@@ -2827,3 +2827,53 @@ Goal (1 sentence): Make converted/new orders default part ownership to Machining
 - [ ] User verify on `/orders/[id]` that converted parts now land in Machining/current first department instead of showing `Unassigned`.
 - [ ] User verify that checking the last checklist item no longer makes the part appear to auto-move departments before using the manual submit/move action.
 - [ ] Optional follow-up: if the owner wants an even more aggressive left-rail reduction, split timer controls and part list into separate stacked cards on mobile/tablet breakpoints only.
+## Session Handoff — 2026-04-09 (BOM analyzer PDF upload support)
+
+Goal (1 sentence): Let the BOM analyzer accept PDFs by rasterizing page 1 to an image before running the existing analyzer flow.
+
+### What changed
+- Updated `src/app/orders/[id]/PartBomTab.tsx`
+  - BOM upload input now accepts `image/*,application/pdf`.
+  - Stored attachment picker now includes PDF print attachments instead of filtering them out as unsupported non-images.
+  - Attachment-loading copy/errors now refer to supported print files rather than image-only files.
+- Updated `src/app/private/print-analyzer/page.tsx`
+  - Private analyzer upload input now accepts `image/*,application/pdf`.
+  - Page copy now explicitly says image or PDF.
+- Updated `src/app/api/print-analyzer/analyze/route.ts`
+  - Route now accepts `data:application/pdf`.
+  - Added server-side PDF page-1 rasterization using `pdfjs-dist` + `@napi-rs/canvas`.
+  - Existing OpenAI/sharp image-analysis pipeline remains unchanged after PDF-to-PNG conversion.
+- Updated `docs/PRINT_ANALYZER.md`
+  - Documented PDF support and clarified that current behavior analyzes the first page.
+- Updated `docs/AGENT_CONTEXT.md`
+  - Added Decision Log entry for the new PDF-rendering dependency choice.
+- Installed dependencies
+  - `pdfjs-dist`
+  - `@napi-rs/canvas`
+
+### Files touched
+- `package.json`
+- `package-lock.json`
+- `src/app/orders/[id]/PartBomTab.tsx`
+- `src/app/private/print-analyzer/page.tsx`
+- `src/app/api/print-analyzer/analyze/route.ts`
+- `docs/PRINT_ANALYZER.md`
+- `docs/AGENT_CONTEXT.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm install pdfjs-dist @napi-rs/canvas`
+- `npm run lint`
+- `npm run build`
+- `node -` (runtime PDF rasterization sanity check against `storage/sterling-tool-and-die/s-k-industrial/std-1007/tdc-british-standard-pipe-threads-1-d367a7f6-608a-47c9-8cea-274c3f180503.pdf`)
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+- Runtime PDF rasterization succeeded with `pdfjs-dist` + `@napi-rs/canvas`: `pdf-render-ok:303905:1224x1584`.
+- `npm run build` still fails in this environment due the existing `next/font` Roboto fetch / `127.0.0.1:9` connection issue, but the PDF-renderer native-module webpack parse failure introduced during this work is gone.
+
+### Next steps
+- [ ] User verify on `/orders/[id]` BOM tab that uploading a PDF or selecting a stored PDF print attachment now analyzes successfully.
+- [ ] Optional follow-up: expose page-selection for multi-page PDFs if the shop starts uploading packet-style prints.

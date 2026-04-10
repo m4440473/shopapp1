@@ -1,7 +1,7 @@
 # Print Analyzer
 
 ## Purpose
-The Print Analyzer is an isolated internal page for extracting structured manufacturing-print data from an uploaded image using OpenAI vision analysis.
+The Print Analyzer is an isolated internal page for extracting structured manufacturing-print data from an uploaded image or PDF using OpenAI vision analysis.
 
 ## Route paths
 - UI: `/private/print-analyzer`
@@ -37,9 +37,14 @@ The Print Analyzer is an isolated internal page for extracting structured manufa
 ## How to use
 1. Start the app.
 2. Navigate directly to `/private/print-analyzer`.
-3. Upload a print image (`PNG`, `JPG`, `WEBP`, or any `image/*` MIME type).
+3. Upload a print image (`PNG`, `JPG`, `WEBP`, or any `image/*` MIME type) or a `PDF`.
 4. Click **Analyze**.
 5. Review extracted units, tolerances, setup/flips analysis, holes/radii/tapped-hole tables, warnings, and raw JSON.
+
+## PDF behavior
+- PDFs are rasterized server-side before analysis.
+- Current behavior uses the first page only.
+- Very large or low-resolution PDFs may still produce weak OCR results after rasterization.
 
 ## Known limitations
 - Blurry, low-resolution, skewed, or partially cropped prints reduce extraction quality.
