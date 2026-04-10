@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 import sharp from 'sharp';
 import { NextResponse } from 'next/server';
 
@@ -21,6 +21,8 @@ const PASS_ONE_MODEL = 'gpt-4.1-mini';
 const PASS_TWO_MODEL = 'gpt-4.1-mini';
 const PAPER_PRINT_MESSAGE = 'Unable to confidently read general tolerances. Please check the paper print.';
 const PDF_RENDER_SCALE = 2;
+const MAX_ANALYZER_IMAGE_DIMENSION = 2200;
+const ANALYZER_IMAGE_JPEG_QUALITY = 82;
 const CANVAS_MODULE_NAME = ['@napi-rs', 'canvas'].join('/');
 const PDFJS_MODULE_NAME = ['pdfjs-dist', 'legacy', 'build', 'pdf.mjs'].join('/');
 
@@ -59,24 +61,71 @@ function extractJsonText(raw: string): string {
 }
 
 function decodeDataUrl(dataUrl: string): { buffer: Buffer; mimeType: string } {
-  const match = dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
-  if (!match) {
+  if (!dataUrl.startsWith('data:')) {
     throw new Error('Invalid file data URL payload.');
   }
 
-  const [, mimeType, base64Data] = match;
+  const commaIndex = dataUrl.indexOf(',');
+  if (commaIndex <= 5) {
+    throw new Error('Invalid file data URL payload.');
+  }
+
+  const header = dataUrl.slice(5, commaIndex);
+  const base64Data = dataUrl.slice(commaIndex + 1);
+  if (!header.endsWith(';base64') || !base64Data) {
+    throw new Error('Invalid file data URL payload.');
+  }
+
+  const mimeType = header.slice(0, -';base64'.length);
+  if (!mimeType) {
+    throw new Error('Invalid file data URL payload.');
+  }
+
   return {
     mimeType,
     buffer: Buffer.from(base64Data, 'base64'),
   };
 }
 
-function toDataUrl(buffer: Buffer, mimeType: string): string {
-  return `data:${mimeType};base64,${buffer.toString('base64')}`;
-}
-
 function isPdfMimeType(mimeType: string): boolean {
   return mimeType === 'application/pdf';
+}
+
+type VisionImageInput = { fileId: string };
+
+async function normalizeImageBufferForAnalysis(
+  buffer: Buffer,
+  mimeType: string
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const input = sharp(buffer, { failOn: 'none' }).rotate();
+  const metadata = await input.metadata();
+  const shouldResize =
+    typeof metadata.width === 'number' &&
+    typeof metadata.height === 'number' &&
+    (metadata.width > MAX_ANALYZER_IMAGE_DIMENSION || metadata.height > MAX_ANALYZER_IMAGE_DIMENSION);
+  const hasAlpha = metadata.hasAlpha === true;
+
+  let pipeline = input;
+  if (shouldResize) {
+    pipeline = pipeline.resize({
+      width: MAX_ANALYZER_IMAGE_DIMENSION,
+      height: MAX_ANALYZER_IMAGE_DIMENSION,
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
+  }
+
+  if (hasAlpha) {
+    return {
+      buffer: await pipeline.png().toBuffer(),
+      mimeType: 'image/png',
+    };
+  }
+
+  return {
+    buffer: await pipeline.jpeg({ quality: ANALYZER_IMAGE_JPEG_QUALITY, mozjpeg: true }).toBuffer(),
+    mimeType: 'image/jpeg',
+  };
 }
 
 type PdfJsModule = {
@@ -177,11 +226,11 @@ async function rasterizePdfFirstPage(buffer: Buffer): Promise<Buffer> {
   }
 }
 
-async function normalizeUploadToImageDataUrl(dataUrl: string): Promise<string> {
+async function normalizeUploadToImageBuffer(dataUrl: string): Promise<{ buffer: Buffer; mimeType: string }> {
   const { buffer, mimeType } = decodeDataUrl(dataUrl);
 
   if (mimeType.startsWith('image/')) {
-    return toDataUrl(buffer, mimeType);
+    return await normalizeImageBufferForAnalysis(buffer, mimeType);
   }
 
   if (!isPdfMimeType(mimeType)) {
@@ -190,7 +239,7 @@ async function normalizeUploadToImageDataUrl(dataUrl: string): Promise<string> {
 
   try {
     const rasterizedPdf = await rasterizePdfFirstPage(buffer);
-    return toDataUrl(rasterizedPdf, 'image/png');
+    return await normalizeImageBufferForAnalysis(rasterizedPdf, 'image/png');
   } catch (error) {
     const message = error instanceof Error ? collapseWhitespace(error.message) : 'Unknown PDF conversion error';
     throw new Error(`Failed to convert PDF to image. ${message}`);
@@ -250,7 +299,7 @@ function computeEstimatedFlips(result: PrintAnalyzerResult): PrintAnalyzerResult
   };
 }
 
-async function cropCorner(imageBuffer: Buffer, corner: CornerName): Promise<string> {
+async function cropCorner(imageBuffer: Buffer, corner: CornerName): Promise<Buffer> {
   const image = sharp(imageBuffer);
   const metadata = await image.metadata();
   const width = metadata.width;
@@ -276,19 +325,61 @@ async function cropCorner(imageBuffer: Buffer, corner: CornerName): Promise<stri
     .png()
     .toBuffer();
 
-  return toDataUrl(zoomedCrop, 'image/png');
+  return zoomedCrop;
+}
+
+async function uploadVisionImageFile({
+  openai,
+  buffer,
+  mimeType,
+  filename,
+}: {
+  openai: OpenAI;
+  buffer: Buffer;
+  mimeType: string;
+  filename: string;
+}): Promise<string> {
+  const uploaded = await openai.files.create({
+    file: await toFile(buffer, filename, { type: mimeType }),
+    purpose: 'vision',
+  });
+
+  if (uploaded.status === 'error') {
+    throw new Error(`OpenAI vision file upload failed for ${filename}.`);
+  }
+
+  if (uploaded.status !== 'processed') {
+    const processed = await openai.files.waitForProcessing(uploaded.id, {
+      pollInterval: 250,
+      maxWait: 30_000,
+    });
+
+    if (processed.status !== 'processed') {
+      throw new Error(`OpenAI vision file did not finish processing for ${filename}.`);
+    }
+  }
+
+  return uploaded.id;
+}
+
+async function deleteOpenAIFileQuietly(openai: OpenAI, fileId: string) {
+  try {
+    await openai.files.delete(fileId);
+  } catch {
+    // Best-effort cleanup only.
+  }
 }
 
 async function runVisionPass({
   openai,
   model,
   prompt,
-  imageDataUrl,
+  imageInput,
 }: {
   openai: OpenAI;
   model: string;
   prompt: string;
-  imageDataUrl: string;
+  imageInput: VisionImageInput;
 }): Promise<ModelPayload | NextResponse> {
   const response = await openai.responses.create({
     model,
@@ -302,7 +393,7 @@ async function runVisionPass({
           },
           {
             type: 'input_image',
-            image_url: imageDataUrl,
+            file_id: imageInput.fileId,
             detail: 'high',
           },
         ],
@@ -447,16 +538,23 @@ export async function POST(req: Request) {
   }
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const temporaryOpenAIFileIds: string[] = [];
 
   try {
-    const sanitizedFullImageDataUrl = await normalizeUploadToImageDataUrl(dataUrl);
-    const { buffer: imageBuffer } = decodeDataUrl(sanitizedFullImageDataUrl);
+    const { buffer: imageBuffer, mimeType: imageMimeType } = await normalizeUploadToImageBuffer(dataUrl);
+    const fullImageFileId = await uploadVisionImageFile({
+      openai,
+      buffer: imageBuffer,
+      mimeType: imageMimeType,
+      filename: `print-analyzer-full.${imageMimeType === 'image/png' ? 'png' : 'jpg'}`,
+    });
+    temporaryOpenAIFileIds.push(fullImageFileId);
 
     const passOneResult = await runVisionPass({
       openai,
       model: PASS_ONE_MODEL,
       prompt: passOnePrompt(),
-      imageDataUrl: sanitizedFullImageDataUrl,
+      imageInput: { fileId: fullImageFileId },
     });
 
     if (passOneResult instanceof NextResponse) {
@@ -485,12 +583,19 @@ export async function POST(req: Request) {
     const passTwoPayloads: TitleBlockTolerancePassResult[] = [];
 
     for (const corner of corners) {
-      const cornerDataUrl = await cropCorner(imageBuffer, corner);
+      const cornerBuffer = await cropCorner(imageBuffer, corner);
+      const cornerFileId = await uploadVisionImageFile({
+        openai,
+        buffer: cornerBuffer,
+        mimeType: 'image/png',
+        filename: `print-analyzer-${corner}.png`,
+      });
+      temporaryOpenAIFileIds.push(cornerFileId);
       const passTwoResult = await runVisionPass({
         openai,
         model: PASS_TWO_MODEL,
         prompt: passTwoPrompt(corner),
-        imageDataUrl: cornerDataUrl,
+        imageInput: { fileId: cornerFileId },
       });
 
       if (passTwoResult instanceof NextResponse) {
@@ -553,5 +658,7 @@ export async function POST(req: Request) {
       },
       { status: 502 }
     );
+  } finally {
+    await Promise.all(temporaryOpenAIFileIds.map((fileId) => deleteOpenAIFileQuietly(openai, fileId)));
   }
 }
