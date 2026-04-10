@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import {
   ArrowRightLeft,
   CheckCircle2,
@@ -13,13 +14,15 @@ import {
   Play,
   Square,
   Timer,
+  UserPlus,
+  Users,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -52,11 +55,42 @@ type ConflictState = {
 };
 
 type SelectOption = { id: string; name: string };
+type TeamUserOption = {
+  id: string;
+  name: string;
+  email?: string | null;
+  role?: string | null;
+  active?: boolean | null;
+};
 type MoveDepartmentDialogState = {
   open: boolean;
   destinationDepartmentId: string;
   note: string;
   error: string | null;
+};
+type SubmitConfirmDialogState = {
+  open: boolean;
+  destinationDepartmentId: string;
+  note: string;
+  error: string | null;
+};
+type InstructionGatePendingAction =
+  | { kind: 'timer-start' }
+  | { kind: 'checklist-toggle'; entry: any; checked: boolean }
+  | { kind: 'submit-department'; destinationDepartmentId: string; note: string };
+type InstructionGateDialogState = {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  pendingAction: InstructionGatePendingAction | null;
+};
+type ChecklistPerformerDialogState = {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  entry: any | null;
+  checked: boolean;
+  performerId: string;
 };
 
 const formatDuration = (seconds: number) => {
@@ -78,6 +112,7 @@ const statusBadgeStyles: Record<string, string> = {
 export default function OrderDetailPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
   const id = pathname?.split('/').pop() ?? '';
   const toast = useToast();
   const [item, setItem] = useState<any | null>(null);
@@ -152,19 +187,106 @@ export default function OrderDetailPage() {
   const [machinists, setMachinists] = useState<SelectOption[]>([]);
   const [materials, setMaterials] = useState<SelectOption[]>([]);
   const [departments, setDepartments] = useState<SelectOption[]>([]);
+  const [teamUsers, setTeamUsers] = useState<TeamUserOption[]>([]);
+  const [assignmentUserId, setAssignmentUserId] = useState('');
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
   const [moveDepartmentDialog, setMoveDepartmentDialog] = useState<MoveDepartmentDialogState>({
     open: false,
     destinationDepartmentId: '',
     note: '',
     error: null,
   });
+  const [submitConfirmDialog, setSubmitConfirmDialog] = useState<SubmitConfirmDialogState>({
+    open: false,
+    destinationDepartmentId: '',
+    note: '',
+    error: null,
+  });
+  const [instructionGateDialog, setInstructionGateDialog] = useState<InstructionGateDialogState>({
+    open: false,
+    loading: false,
+    error: null,
+    pendingAction: null,
+  });
+  const [checklistPerformerDialog, setChecklistPerformerDialog] = useState<ChecklistPerformerDialogState>({
+    open: false,
+    loading: false,
+    error: null,
+    entry: null,
+    checked: false,
+    performerId: '',
+  });
+  const [dismissedInstructionGateKey, setDismissedInstructionGateKey] = useState<string | null>(null);
   const [showTimerDetails, setShowTimerDetails] = useState(false);
+  const [repeatTemplateDialogOpen, setRepeatTemplateDialogOpen] = useState(false);
+  const [repeatTemplateName, setRepeatTemplateName] = useState('');
+  const [repeatTemplateSaving, setRepeatTemplateSaving] = useState(false);
+  const [repeatTemplateError, setRepeatTemplateError] = useState<string | null>(null);
+  const [savedRepeatTemplate, setSavedRepeatTemplate] = useState<{ id: string; name: string } | null>(null);
 
   const parts = useMemo(() => (Array.isArray(item?.parts) ? item.parts : []), [item?.parts]);
   const partIdsParam = useMemo(() => parts.map((part: any) => part.id).filter(Boolean).join(','), [parts]);
   const selectedPart = useMemo(
     () => parts.find((part: any) => part?.id === selectedPartId) ?? null,
     [parts, selectedPartId]
+  );
+  const defaultRepeatTemplateName = useMemo(() => {
+    const customerName = typeof item?.customer?.name === 'string' ? item.customer.name.trim() : 'Customer';
+    const orderNumber = typeof item?.orderNumber === 'string' && item.orderNumber.trim().length ? ` - ${item.orderNumber}` : '';
+    return `${customerName}${orderNumber}`;
+  }, [item?.customer?.name, item?.orderNumber]);
+  const currentUser = session?.user as any;
+  const currentUserId = typeof currentUser?.id === 'string' ? currentUser.id : '';
+  const currentUserName =
+    (typeof currentUser?.name === 'string' && currentUser.name.trim()) ||
+    (typeof currentUser?.email === 'string' && currentUser.email.trim()) ||
+    currentUserId ||
+    'Current user';
+  const selectedPartInstructions = String(selectedPart?.workInstructions ?? '').trim();
+  const selectedPartInstructionsVersion = Math.max(1, Number(selectedPart?.instructionsVersion ?? 1));
+  const selectedPartCurrentDepartmentId = selectedPart?.currentDepartmentId ?? null;
+  const selectedPartInstructionReceipt = useMemo(() => {
+    if (!selectedPartId || !currentUserId || !selectedPartCurrentDepartmentId) return null;
+    const receipts = Array.isArray(selectedPart?.instructionReceipts) ? selectedPart.instructionReceipts : [];
+    return (
+      receipts.find(
+        (receipt: any) =>
+          receipt.userId === currentUserId &&
+          receipt.departmentId === selectedPartCurrentDepartmentId &&
+          Math.max(1, Number(receipt.instructionsVersion ?? 1)) === selectedPartInstructionsVersion,
+      ) ?? null
+    );
+  }, [currentUserId, selectedPart, selectedPartCurrentDepartmentId, selectedPartId, selectedPartInstructionsVersion]);
+  const selectedPartRequiresInstructionGate = Boolean(selectedPartInstructions && selectedPartCurrentDepartmentId && !selectedPartInstructionReceipt);
+  const selectedPartAssignments = useMemo(() => (Array.isArray(selectedPart?.assignments) ? selectedPart.assignments : []), [selectedPart?.assignments]);
+  const assignedWorkerIds = useMemo(() => new Set(selectedPartAssignments.map((assignment: any) => assignment.userId)), [selectedPartAssignments]);
+  const activeTeamUsers = useMemo(
+    () =>
+      teamUsers
+        .filter((user) => user.active !== false)
+        .map((user) => ({
+          ...user,
+          name: user.name?.trim() || user.email?.trim() || user.id,
+        })),
+    [teamUsers],
+  );
+  const performerUsers = useMemo(() => {
+    const users = [...activeTeamUsers];
+    if (currentUserId && !users.some((user) => user.id === currentUserId)) {
+      users.unshift({
+        id: currentUserId,
+        name: currentUserName,
+        email: typeof currentUser?.email === 'string' ? currentUser.email : null,
+        role: typeof currentUser?.role === 'string' ? currentUser.role : null,
+        active: true,
+      });
+    }
+    return users;
+  }, [activeTeamUsers, currentUser, currentUserId, currentUserName]);
+  const availableAssignmentUsers = useMemo(
+    () => performerUsers.filter((user) => !assignedWorkerIds.has(user.id)),
+    [assignedWorkerIds, performerUsers],
   );
   const selectedChecklist = useMemo(() => {
     if (!selectedPartId) return [];
@@ -378,6 +500,37 @@ export default function OrderDetailPage() {
   }, [load]);
 
   useEffect(() => {
+    let active = true;
+    const loadTeamUsers = async () => {
+      try {
+        const res = await fetch('/api/admin/users?take=200', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        const raw = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        if (!active) return;
+        setTeamUsers(
+          raw
+            .map((user: any) => ({
+              id: String(user?.id ?? ''),
+              name: String(user?.name ?? '').trim(),
+              email: typeof user?.email === 'string' ? user.email : null,
+              role: typeof user?.role === 'string' ? user.role : null,
+              active: typeof user?.active === 'boolean' ? user.active : null,
+            }))
+            .filter((user: TeamUserOption) => user.id.length > 0),
+        );
+      } catch {
+        if (active) setTeamUsers([]);
+      }
+    };
+
+    void loadTeamUsers();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!parts.length) {
       setSelectedPartId(null);
       return;
@@ -421,6 +574,12 @@ export default function OrderDetailPage() {
   }, [selectedPart]);
 
   useEffect(() => {
+    if (!repeatTemplateDialogOpen) return;
+    setRepeatTemplateName(defaultRepeatTemplateName);
+    setRepeatTemplateError(null);
+  }, [defaultRepeatTemplateName, repeatTemplateDialogOpen]);
+
+  useEffect(() => {
     if (!timerDepartments.length) {
       setSelectedTimerDepartmentId('');
       return;
@@ -440,7 +599,7 @@ export default function OrderDetailPage() {
   }, [selectedPart?.currentDepartmentId, selectedTimerDepartmentId, timerDepartments]);
 
   useEffect(() => {
-    if (!editMode || !canEditParts) return;
+    if (!canEditParts) return;
 
     const loadOptions = async () => {
       const fetchOptions = async (url: string): Promise<SelectOption[]> => {
@@ -480,10 +639,108 @@ export default function OrderDetailPage() {
     loadPartEvents();
   }, [loadPartEvents]);
 
-  const handleStart = async (): Promise<boolean> => {
+  const isInstructionAcknowledgedForDepartment = (departmentId?: string | null) => {
+    if (!selectedPartId || !departmentId || !currentUserId) return !selectedPartInstructions;
+    const receipts = Array.isArray(selectedPart?.instructionReceipts) ? selectedPart.instructionReceipts : [];
+    return receipts.some(
+      (receipt: any) =>
+        receipt.userId === currentUserId &&
+        receipt.departmentId === departmentId &&
+        Math.max(1, Number(receipt.instructionsVersion ?? 1)) === selectedPartInstructionsVersion,
+    );
+  };
+
+  const buildInstructionGateAction = (pendingAction: InstructionGatePendingAction) => {
+    setDismissedInstructionGateKey(null);
+    setInstructionGateDialog({
+      open: true,
+      loading: false,
+      error: null,
+      pendingAction,
+    });
+  };
+
+  const handleInstructionGateConfirm = async (): Promise<void> => {
+    const pendingAction = instructionGateDialog.pendingAction;
+    if (!selectedPartId) {
+      setInstructionGateDialog((prev) => ({ ...prev, error: 'Select a part and department first.' }));
+      return;
+    }
+
+    const departmentId = !pendingAction
+      ? selectedPartCurrentDepartmentId
+      : pendingAction.kind === 'timer-start'
+        ? selectedTimerDepartmentId
+        : pendingAction.kind === 'checklist-toggle'
+          ? pendingAction.entry?.departmentId ?? selectedPartCurrentDepartmentId
+          : selectedPartCurrentDepartmentId;
+    if (!departmentId) {
+      setInstructionGateDialog((prev) => ({ ...prev, error: 'Select a department first.' }));
+      return;
+    }
+
+    setInstructionGateDialog((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const dismissKey = selectedPartId && selectedPartCurrentDepartmentId
+        ? `${selectedPartId}:${selectedPartCurrentDepartmentId}:${selectedPartInstructionsVersion}`
+        : null;
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/acknowledge-instructions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          departmentId,
+        }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to acknowledge instructions.');
+      }
+
+      setInstructionGateDialog({
+        open: false,
+        loading: false,
+        error: null,
+        pendingAction: null,
+      });
+      setDismissedInstructionGateKey(dismissKey);
+      toast.push('Instructions acknowledged.', 'success');
+
+      if (pendingAction.kind === 'timer-start') {
+        await handleStart({ skipInstructionGate: true });
+      } else if (pendingAction.kind === 'checklist-toggle') {
+        setChecklistPerformerDialog({
+          open: true,
+          loading: false,
+          error: null,
+          entry: pendingAction.entry,
+          checked: pendingAction.checked,
+          performerId: currentUserId || performerUsers[0]?.id || '',
+        });
+      } else if (pendingAction.kind === 'submit-department') {
+        setSubmitConfirmDialog({
+          open: true,
+          destinationDepartmentId: pendingAction.destinationDepartmentId,
+          note: pendingAction.note,
+          error: null,
+        });
+      }
+    } catch (err: any) {
+      const message = err?.message || 'Failed to acknowledge instructions.';
+      setInstructionGateDialog((prev) => ({ ...prev, loading: false, error: message }));
+      toast.push(message, 'error');
+      return;
+    }
+  };
+
+  const handleStart = async ({ skipInstructionGate = false }: { skipInstructionGate?: boolean } = {}): Promise<boolean> => {
     if (!id || !selectedPartId) return false;
     if (!selectedTimerDepartmentId) {
       setTimerError('Please choose a department before starting a timer.');
+      return false;
+    }
+    if (!skipInstructionGate && !isInstructionAcknowledgedForDepartment(selectedTimerDepartmentId)) {
+      buildInstructionGateAction({ kind: 'timer-start' });
       return false;
     }
     setTimerSaving(true);
@@ -578,7 +835,7 @@ export default function OrderDetailPage() {
     });
   };
 
-  const handleSubmitDepartmentComplete = async (): Promise<boolean> => {
+  const handleBeginSubmitDepartmentComplete = async (): Promise<boolean> => {
     if (!id || !selectedPartId) return false;
 
     const currentDepartmentId = selectedPart?.currentDepartmentId ?? '';
@@ -605,9 +862,40 @@ export default function OrderDetailPage() {
       return false;
     }
 
+    if (!isInstructionAcknowledgedForDepartment(currentDepartmentId)) {
+      buildInstructionGateAction({
+        kind: 'submit-department',
+        destinationDepartmentId,
+        note: moveNote,
+      });
+      return false;
+    }
+
+    setSubmitConfirmDialog({
+      open: true,
+      destinationDepartmentId,
+      note: moveNote,
+      error: null,
+    });
+    return true;
+  };
+
+  const handleSubmitDepartmentComplete = async (): Promise<boolean> => {
+    if (!id || !selectedPartId) return false;
+    const destinationDepartmentId = submitConfirmDialog.destinationDepartmentId.trim();
+    const destinationDepartment = manualMoveDepartments.find((department) => department.id === destinationDepartmentId);
+    const moveNote = submitConfirmDialog.note.trim();
+    if (!destinationDepartmentId || !destinationDepartment) {
+      setSubmitConfirmDialog((prev) => ({ ...prev, error: 'Select a valid destination department.' }));
+      return false;
+    }
+    if (!moveNote) {
+      setSubmitConfirmDialog((prev) => ({ ...prev, error: 'A move note is required.' }));
+      return false;
+    }
+
     setTimerSaving(true);
     setTimerError(null);
-    setMoveDepartmentDialog((prev) => ({ ...prev, error: null }));
     try {
       const res = await fetch(`/api/orders/${id}/parts/assign-department`, {
         method: 'POST',
@@ -628,6 +916,12 @@ export default function OrderDetailPage() {
       await load();
       await refreshTimerSummary();
       await loadPartEvents();
+      setSubmitConfirmDialog({
+        open: false,
+        destinationDepartmentId: '',
+        note: '',
+        error: null,
+      });
       setMoveDepartmentDialog({
         open: false,
         destinationDepartmentId: '',
@@ -638,7 +932,7 @@ export default function OrderDetailPage() {
       return true;
     } catch (err: any) {
       const message = err?.message || 'Failed to move part to department.';
-      setMoveDepartmentDialog((prev) => ({ ...prev, error: message }));
+      setSubmitConfirmDialog((prev) => ({ ...prev, error: message }));
       return false;
     } finally {
       setTimerSaving(false);
@@ -711,6 +1005,47 @@ export default function OrderDetailPage() {
       toast.push(message, 'error');
     } finally {
       setStatusSaving(false);
+    }
+  };
+
+  const handleSaveRepeatTemplate = async () => {
+    if (!id || !canEditParts) return;
+    setRepeatTemplateSaving(true);
+    setRepeatTemplateError(null);
+    try {
+      const res = await fetch(`/api/repeat-order-templates/from-order/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: repeatTemplateName.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        const message =
+          typeof payload?.error === 'string'
+            ? payload.error
+            : typeof payload?.error?.message === 'string'
+              ? payload.error.message
+              : 'Failed to save repeat-order template.';
+        throw new Error(message);
+      }
+      const data = await res.json().catch(() => null);
+      const template = data?.template;
+      const savedTemplate =
+        template && typeof template.id === 'string' && typeof template.name === 'string'
+          ? { id: template.id, name: template.name }
+          : null;
+      setSavedRepeatTemplate(savedTemplate);
+      setRepeatTemplateDialogOpen(false);
+      toast.push('Repeat-order template saved.', 'success');
+    } catch (err: any) {
+      const message = err?.message || 'Failed to save repeat-order template.';
+      setRepeatTemplateError(message);
+      toast.push(message, 'error');
+    } finally {
+      setRepeatTemplateSaving(false);
     }
   };
 
@@ -934,6 +1269,7 @@ export default function OrderDetailPage() {
   const postChecklistToggle = async (
     entry: any,
     checked: boolean,
+    performedById: string,
     extra: { reasonCode?: string; reasonText?: string } = {},
   ) => {
     const res = await fetch(`/api/orders/${id}/checklist`, {
@@ -943,6 +1279,7 @@ export default function OrderDetailPage() {
         checklistId: entry.id,
         checked,
         partId: selectedPartId,
+        performedById,
         ...extra,
       }),
       credentials: 'include',
@@ -958,14 +1295,155 @@ export default function OrderDetailPage() {
     if (!selectedPartId) return;
     setChecklistError(null);
 
+    const checklistDepartmentId = entry?.departmentId ?? selectedPartCurrentDepartmentId ?? null;
+    if (checked && checklistDepartmentId && !isInstructionAcknowledgedForDepartment(checklistDepartmentId)) {
+      buildInstructionGateAction({ kind: 'checklist-toggle', entry, checked });
+      return;
+    }
+
+    setChecklistPerformerDialog({
+      open: true,
+      loading: false,
+      error: null,
+      entry,
+      checked,
+      performerId: currentUserId || performerUsers[0]?.id || '',
+    });
+  };
+
+  const handleChecklistPerformerConfirm = async (): Promise<boolean> => {
+    const entry = checklistPerformerDialog.entry;
+    if (!entry || !selectedPartId) return false;
+    const performerId = checklistPerformerDialog.performerId || currentUserId || '';
+    const performer = performerUsers.find((user) => user.id === performerId) ?? null;
+    if (!performerId) {
+      setChecklistPerformerDialog((prev) => ({ ...prev, error: 'Select who performed the work.' }));
+      return false;
+    }
+
+    setChecklistPerformerDialog((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      await postChecklistToggle(entry, checked);
+      await postChecklistToggle(entry, checklistPerformerDialog.checked, performerId);
+      setChecklistPerformerDialog({
+        open: false,
+        loading: false,
+        error: null,
+        entry: null,
+        checked: false,
+        performerId: currentUserId || performerUsers[0]?.id || '',
+      });
       await load();
       await loadPartEvents();
+      toast.push(
+        performer && performer.id !== currentUserId
+          ? `Checklist saved for ${performer.name}.`
+          : 'Checklist saved.',
+        'success',
+      );
+      return true;
     } catch (err: any) {
       const message = err?.message || 'Failed to toggle checklist item.';
+      setChecklistPerformerDialog((prev) => ({ ...prev, loading: false, error: message }));
       setChecklistError(message);
       toast.push(message, 'error');
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedPartId) return;
+    const dismissKey = `${selectedPartId}:${selectedPartCurrentDepartmentId ?? ''}:${selectedPartInstructionsVersion}`;
+    if (!selectedPartInstructions || !selectedPartCurrentDepartmentId || selectedPartInstructionReceipt) {
+      setDismissedInstructionGateKey(null);
+      return;
+    }
+    if (instructionGateDialog.open || checklistPerformerDialog.open || submitConfirmDialog.open) return;
+    if (dismissedInstructionGateKey === dismissKey) return;
+
+    setInstructionGateDialog({
+      open: true,
+      loading: false,
+      error: null,
+      pendingAction: null,
+    });
+  }, [
+    checklistPerformerDialog.open,
+    dismissedInstructionGateKey,
+    instructionGateDialog.open,
+    selectedPartCurrentDepartmentId,
+    selectedPartId,
+    selectedPartInstructionReceipt,
+    selectedPartInstructions,
+    selectedPartInstructionsVersion,
+    submitConfirmDialog.open,
+  ]);
+
+  useEffect(() => {
+    if (!selectedPartId) return;
+    setAssignmentUserId((prev) => {
+      if (prev && performerUsers.some((user) => user.id === prev)) return prev;
+      return currentUserId || performerUsers[0]?.id || '';
+    });
+  }, [currentUserId, performerUsers, selectedPartId]);
+
+  const handleAssignWorkerToSelectedPart = async () => {
+    if (!id || !selectedPartId || !canEditParts) return;
+    if (!assignmentUserId) {
+      setAssignmentError('Choose a worker to assign.');
+      return;
+    }
+
+    setAssignmentSaving(true);
+    setAssignmentError(null);
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/assignments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ userId: assignmentUserId, assignmentType: 'WORKER' }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to assign worker.');
+      }
+      setAssignmentUserId('');
+      await load();
+      await loadPartEvents();
+      toast.push('Worker assigned to part.', 'success');
+    } catch (err: any) {
+      const message = err?.message || 'Failed to assign worker.';
+      setAssignmentError(message);
+      toast.push(message, 'error');
+    } finally {
+      setAssignmentSaving(false);
+    }
+  };
+
+  const handleRemoveWorkerAssignment = async (assignmentId: string) => {
+    if (!id || !selectedPartId || !canEditParts) return;
+    const confirmed = window.confirm('Remove this worker from the part?');
+    if (!confirmed) return;
+
+    setAssignmentSaving(true);
+    setAssignmentError(null);
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/assignments/${assignmentId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to remove worker assignment.');
+      }
+      await load();
+      await loadPartEvents();
+      toast.push('Worker removed from part.', 'success');
+    } catch (err: any) {
+      const message = err?.message || 'Failed to remove worker assignment.';
+      setAssignmentError(message);
+      toast.push(message, 'error');
+    } finally {
+      setAssignmentSaving(false);
     }
   };
 
@@ -1074,6 +1552,58 @@ export default function OrderDetailPage() {
         </DialogContent>
       </Dialog>
       <Dialog
+        open={repeatTemplateDialogOpen}
+        onOpenChange={(open) => {
+          setRepeatTemplateDialogOpen(open);
+          if (!open) setRepeatTemplateError(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save as repeat template</DialogTitle>
+            <DialogDescription>
+              Freeze this order&apos;s parts, charges, files, and instructions so the next reorder starts from a trusted template.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="repeat-template-name">Template name</Label>
+              <Input
+                id="repeat-template-name"
+                value={repeatTemplateName}
+                onChange={(event) => {
+                  setRepeatTemplateName(event.target.value);
+                  setRepeatTemplateError(null);
+                }}
+                placeholder={defaultRepeatTemplateName}
+              />
+            </div>
+            <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm text-muted-foreground">
+              Source order <span className="font-medium text-foreground">#{item.orderNumber}</span> for{' '}
+              <span className="font-medium text-foreground">{item.customer?.name ?? 'this customer'}</span>.
+            </div>
+            {repeatTemplateError ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {repeatTemplateError}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRepeatTemplateDialogOpen(false)}
+              disabled={repeatTemplateSaving}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void handleSaveRepeatTemplate()} disabled={repeatTemplateSaving}>
+              {repeatTemplateSaving ? 'Saving...' : 'Save template'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={moveDepartmentDialog.open}
         onOpenChange={(open) =>
           setMoveDepartmentDialog((prev) => ({
@@ -1155,8 +1685,206 @@ export default function OrderDetailPage() {
             >
               Cancel
             </Button>
+            <Button type="button" onClick={() => void handleBeginSubmitDepartmentComplete()} disabled={timerSaving}>
+              {timerSaving ? 'Reviewing…' : moveActionLabel}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={instructionGateDialog.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDismissedInstructionGateKey(
+              selectedPartId && selectedPartCurrentDepartmentId
+                ? `${selectedPartId}:${selectedPartCurrentDepartmentId}:${selectedPartInstructionsVersion}`
+                : null,
+            );
+          }
+          setInstructionGateDialog((prev) =>
+            open
+              ? { ...prev, open }
+              : {
+                  open: false,
+                  loading: false,
+                  error: null,
+                  pendingAction: null,
+                },
+          );
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Mission brief: read before work</DialogTitle>
+            <div className="text-sm text-muted-foreground">
+              {selectedPart?.partNumber ? `Part ${selectedPart.partNumber}` : 'Selected part'}{selectedCurrentDepartment?.name ? ` · ${selectedCurrentDepartment.name}` : ''}
+            </div>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground">
+              Read this before you start work, check a checklist item, or submit the part forward. Your acknowledgement is recorded for this part and department.
+            </div>
+            <div className="max-h-64 overflow-auto rounded-md border border-border/60 bg-muted/10 p-3 text-sm whitespace-pre-wrap text-foreground">
+              {selectedPartInstructions || 'No part-specific instructions were found for this part.'}
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-foreground">
+                Part: {selectedPart?.partNumber || 'Selected part'}
+              </span>
+              <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-foreground">
+                Department: {selectedCurrentDepartment?.name ?? 'Current department'}
+              </span>
+              <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-foreground">
+                Instruction version: {selectedPartInstructionsVersion}
+              </span>
+            </div>
+            {instructionGateDialog.error ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {instructionGateDialog.error}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setInstructionGateDialog({
+                  open: false,
+                  loading: false,
+                  error: null,
+                  pendingAction: null,
+                });
+                if (selectedPartId && selectedPartCurrentDepartmentId) {
+                  setDismissedInstructionGateKey(
+                    `${selectedPartId}:${selectedPartCurrentDepartmentId}:${selectedPartInstructionsVersion}`,
+                  );
+                }
+              }}
+            >
+              Not now
+            </Button>
+            <Button type="button" onClick={() => void handleInstructionGateConfirm()} disabled={instructionGateDialog.loading}>
+              {instructionGateDialog.loading ? 'Accepting…' : 'I have read this'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={checklistPerformerDialog.open}
+        onOpenChange={(open) =>
+          setChecklistPerformerDialog((prev) => ({
+            ...prev,
+            open,
+            error: open ? prev.error : null,
+            loading: open ? prev.loading : false,
+          }))
+        }
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Who actually did it?</DialogTitle>
+            <div className="text-sm text-muted-foreground">
+              {checklistPerformerDialog.entry?.charge?.name ?? checklistPerformerDialog.entry?.addon?.name ?? 'Checklist item'}
+            </div>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="performer-select">Performed by</Label>
+              <Select
+                value={checklistPerformerDialog.performerId}
+                onValueChange={(value) =>
+                  setChecklistPerformerDialog((prev) => ({
+                    ...prev,
+                    performerId: value,
+                    error: null,
+                  }))
+                }
+              >
+                <SelectTrigger id="performer-select">
+                  <SelectValue placeholder="Choose who performed the work" />
+                </SelectTrigger>
+                <SelectContent>
+                  {performerUsers.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+              Current user defaults to <span className="font-medium text-foreground">{currentUserName}</span>.
+            </div>
+            {checklistPerformerDialog.error ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {checklistPerformerDialog.error}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                setChecklistPerformerDialog({
+                  open: false,
+                  loading: false,
+                  error: null,
+                  entry: null,
+                  checked: false,
+                  performerId: currentUserId || performerUsers[0]?.id || '',
+                })
+              }
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void handleChecklistPerformerConfirm()} disabled={checklistPerformerDialog.loading}>
+              {checklistPerformerDialog.loading ? 'Saving…' : 'Save checklist action'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={submitConfirmDialog.open}
+        onOpenChange={(open) =>
+          setSubmitConfirmDialog((prev) => ({
+            ...prev,
+            open,
+            error: open ? prev.error : null,
+          }))
+        }
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Are you absolutely sure?</DialogTitle>
+            <div className="text-sm text-muted-foreground">
+              This is the second check. Make sure the note and destination are right before we move the part.
+            </div>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Destination</div>
+              <div className="font-medium text-foreground">
+                {manualMoveDepartments.find((department) => department.id === submitConfirmDialog.destinationDepartmentId)?.name ?? 'Unknown department'}
+              </div>
+            </div>
+            <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Move note</div>
+              <div className="whitespace-pre-wrap text-foreground">{submitConfirmDialog.note || 'No note captured.'}</div>
+            </div>
+            {submitConfirmDialog.error ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {submitConfirmDialog.error}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={() => setSubmitConfirmDialog({ open: false, destinationDepartmentId: '', note: '', error: null })}>
+              Back
+            </Button>
             <Button type="button" onClick={() => void handleSubmitDepartmentComplete()} disabled={timerSaving}>
-              {timerSaving ? 'Moving…' : moveActionLabel}
+              {timerSaving ? 'Moving…' : 'Yes, submit it'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1395,6 +2123,11 @@ export default function OrderDetailPage() {
               </div>
               <div className="flex items-center gap-2">
                 {canEditParts ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setRepeatTemplateDialogOpen(true)}>
+                    Save as repeat template
+                  </Button>
+                ) : null}
+                {canEditParts ? (
                   <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => setEditMode((prev) => !prev)}>
                     {editMode ? 'Exit edit mode' : 'Edit order'}
                   </Button>
@@ -1409,6 +2142,19 @@ export default function OrderDetailPage() {
                 <Badge className={statusBadgeStyles[item.status || 'RECEIVED'] || 'bg-primary/10 text-primary'}>{statusLabel}</Badge>
                 <span className="text-sm text-muted-foreground">Due {dueDateLabel}</span>
               </div>
+              {savedRepeatTemplate ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-sm">
+                  <div className="space-y-1">
+                    <p className="font-medium text-foreground">{savedRepeatTemplate.name}</p>
+                    <p className="text-muted-foreground">
+                      Template saved. Launch the next reorder without rebuilding files or part setup.
+                    </p>
+                  </div>
+                  <Button asChild size="sm" className="rounded-full">
+                    <Link href={`/orders/new?templateId=${savedRepeatTemplate.id}`}>Create repeat order</Link>
+                  </Button>
+                </div>
+              ) : null}
               {canEditOrderStatus ? (
                 <div className="grid gap-3 lg:grid-cols-[200px_minmax(0,1fr)_auto] lg:items-end">
                   <div className="grid gap-2">
@@ -1538,6 +2284,143 @@ export default function OrderDetailPage() {
                   <div>
                     <div className="text-xs uppercase tracking-wide text-muted-foreground">Due date</div>
                     <div className="text-foreground">{dueDateLabel}</div>
+                  </div>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="space-y-3 rounded-lg border border-border/60 bg-muted/10 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Read me first</div>
+                        <div className="text-sm font-semibold text-foreground">Part instructions</div>
+                      </div>
+                      <Badge className={selectedPartInstructionReceipt ? 'bg-emerald-500/15 text-emerald-200' : 'bg-amber-500/15 text-amber-100'}>
+                        {selectedPartInstructionReceipt ? 'Read and logged' : selectedPartRequiresInstructionGate ? 'Needs acknowledgement' : 'Optional reference'}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-foreground">
+                        Dept: {selectedCurrentDepartment?.name ?? 'Unassigned'}
+                      </span>
+                      <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-foreground">
+                        Version: {selectedPartInstructionsVersion}
+                      </span>
+                    </div>
+                    {selectedPartInstructions ? (
+                      <div className="rounded-md border border-border/60 bg-background/70 p-3 text-sm whitespace-pre-wrap text-foreground">
+                        {selectedPartInstructions}
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-dashed border-border/70 bg-background/60 p-3 text-sm text-muted-foreground">
+                        No part-specific instructions were entered for this job.
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={selectedPartInstructionReceipt ? 'outline' : 'secondary'}
+                        onClick={() =>
+                          setInstructionGateDialog({
+                            open: true,
+                            loading: false,
+                            error: null,
+                            pendingAction: null,
+                          })
+                        }
+                        disabled={!selectedPartInstructions || !selectedPartCurrentDepartmentId}
+                      >
+                        {selectedPartInstructionReceipt ? 'Review brief' : 'Read and acknowledge'}
+                      </Button>
+                      {selectedPartInstructionReceipt ? (
+                        <span className="text-xs text-muted-foreground">
+                          Logged for {currentUserName} in {selectedCurrentDepartment?.name ?? 'this department'}.
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="space-y-3 rounded-lg border border-border/60 bg-muted/10 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Part workers</div>
+                        <div className="text-sm font-semibold text-foreground">Who is working this part</div>
+                      </div>
+                      <Badge variant="outline">
+                        <Users className="mr-1 h-3.5 w-3.5" />
+                        {selectedPartAssignments.length} assigned
+                      </Badge>
+                    </div>
+                    <div className="rounded-md border border-border/50 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+                      Use this roster for the people actually touching this part. The order-level assigned machinist stays as coordinator only.
+                    </div>
+                    {selectedPartAssignments.length ? (
+                      <div className="space-y-2">
+                        {selectedPartAssignments.map((assignment: any) => (
+                          <div key={assignment.id} className="rounded-md border border-border/60 bg-background/70 p-3 text-sm">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="font-medium text-foreground">
+                                  {assignment.user?.name || assignment.user?.email || 'Unknown user'}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {assignment.assignmentType || 'WORKER'}
+                                  {assignment.assignedBy?.name || assignment.assignedBy?.email ? ` · added by ${assignment.assignedBy?.name || assignment.assignedBy?.email}` : ''}
+                                </div>
+                              </div>
+                              {canEditParts ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => void handleRemoveWorkerAssignment(assignment.id)}
+                                  disabled={assignmentSaving}
+                                >
+                                  Remove
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-dashed border-border/70 bg-background/60 p-3 text-sm text-muted-foreground">
+                        No workers are assigned yet. Add the machinists, floaters, or helpers actually working this part.
+                      </div>
+                    )}
+                    {canEditParts ? (
+                      <div className="space-y-3 rounded-md border border-border/50 bg-background/60 p-3">
+                        <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                          <div className="grid gap-2">
+                            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Add worker</Label>
+                            <Select value={assignmentUserId || '__none__'} onValueChange={(value) => setAssignmentUserId(value === '__none__' ? '' : value)}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Choose a worker" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Choose a worker</SelectItem>
+                                {availableAssignmentUsers.map((user) => (
+                                  <SelectItem key={user.id} value={user.id}>
+                                    {user.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Button type="button" onClick={() => void handleAssignWorkerToSelectedPart()} disabled={assignmentSaving || !assignmentUserId}>
+                            <UserPlus className="mr-2 h-4 w-4" />
+                            Add
+                          </Button>
+                        </div>
+                        {assignmentError ? (
+                          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                            {assignmentError}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-dashed border-border/70 bg-background/60 p-3 text-xs text-muted-foreground">
+                        Only admins can add or remove workers from a part.
+                      </div>
+                    )}
                   </div>
                 </div>
                 {editMode && canEditParts ? (
@@ -1903,6 +2786,11 @@ export default function OrderDetailPage() {
                       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.departmentName}</div>
                       {group.entries.map((entry: any) => {
                         const label = entry.charge?.name ?? entry.addon?.name ?? 'Checklist item';
+                        const performedByLabel =
+                          entry.performedBy?.name ||
+                          entry.performedBy?.email ||
+                          entry.meta?.performedByLabel ||
+                          null;
                         return (
                           <label
                             key={entry.id}
@@ -1917,6 +2805,11 @@ export default function OrderDetailPage() {
                                 <div className="font-medium text-foreground">{label}</div>
                                 {entry.addon?.description ? (
                                   <div className="text-xs text-muted-foreground">{entry.addon.description}</div>
+                                ) : null}
+                                {performedByLabel ? (
+                                  <div className="text-xs text-muted-foreground">
+                                    {entry.completed ? 'Performed by' : 'Last marked by'} {performedByLabel}
+                                  </div>
                                 ) : null}
                               </div>
                             </div>
@@ -1953,12 +2846,28 @@ export default function OrderDetailPage() {
                 ) : partEvents.length ? (
                   partEvents.map((event) => (
                     <div key={event.id} className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm">
+                      {(() => {
+                        const actorLabel = event.user?.name || event.user?.email || 'System';
+                        const performerLabel =
+                          event.meta?.performedByLabel ||
+                          event.meta?.performerLabel ||
+                          event.meta?.performedByName ||
+                          null;
+                        const actorDiffers = performerLabel && performerLabel !== actorLabel;
+                        return (
+                          <>
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                        <span>{event.user?.name || event.user?.email || 'System'}</span>
+                        <span>{actorLabel}</span>
                         <span>{new Date(event.createdAt).toLocaleString()}</span>
                       </div>
                       <div className="mt-1 font-medium text-foreground">{event.message}</div>
-                      <div className="text-xs text-muted-foreground">{event.type}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {event.type}
+                        {actorDiffers ? ` · performed by ${performerLabel}` : ''}
+                      </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   ))
                 ) : (

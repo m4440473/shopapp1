@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
-import { logPartEvent, syncOrderWorkflowStatus } from '@/modules/orders/orders.service';
+import { logPartEvent, requirePartInstructionAcknowledgement, syncOrderWorkflowStatus } from '@/modules/orders/orders.service';
 import { TimeEntryResume } from '@/modules/time/time.schema';
-import { resumeTimeEntry } from '@/modules/time/time.service';
+import { getTimeEntryDetails, resumeTimeEntry } from '@/modules/time/time.service';
 
 export async function POST(req: NextRequest) {
   const session = await getServerAuthSession();
@@ -16,6 +16,24 @@ export async function POST(req: NextRequest) {
   const parsed = TimeEntryResume.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const entryResult = await getTimeEntryDetails(userId, parsed.data.entryId);
+  if (entryResult.ok === false) {
+    return NextResponse.json({ error: entryResult.error }, { status: entryResult.status });
+  }
+
+  const priorEntry = entryResult.data.entry;
+  if (priorEntry.partId && priorEntry.departmentId) {
+    const ackResult = await requirePartInstructionAcknowledgement({
+      orderId: priorEntry.orderId,
+      partId: priorEntry.partId,
+      userId,
+      departmentId: priorEntry.departmentId,
+    });
+    if (ackResult.ok === false) {
+      return NextResponse.json({ error: ackResult.error }, { status: ackResult.status });
+    }
   }
 
   const result = await resumeTimeEntry(userId, parsed.data);

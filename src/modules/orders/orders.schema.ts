@@ -41,6 +41,7 @@ export const OrderPartCreate = z.object({
   stockSize: z.string().trim().max(200).optional(),
   cutLength: z.string().trim().max(200).optional(),
   notes: z.string().trim().max(500).optional(),
+  workInstructions: z.string().trim().max(4000).optional(),
   addonSelections: z.array(OrderPartAddonSelection).optional().default([]),
 });
 
@@ -52,6 +53,7 @@ export const OrderPartUpdate = z
     stockSize: z.string().trim().max(200).nullable().optional(),
     cutLength: z.string().trim().max(200).nullable().optional(),
     notes: z.string().trim().max(500).nullable().optional(),
+    workInstructions: z.string().trim().max(4000).nullable().optional(),
   })
   .refine((value) => Object.values(value).some((v) => v !== undefined), {
     message: 'At least one field is required to update a part',

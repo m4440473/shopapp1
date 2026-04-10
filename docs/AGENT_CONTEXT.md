@@ -60,6 +60,23 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-04-10 - Repeat-order backend snapshots manufacturing definition only and validates template-instantiation inputs strictly
+Decision: Repeat-order template snapshotting must not carry the source order PO into template defaults, template-based order creation must reject unknown or duplicate `templatePartId` overrides, provided order numbers must obey the same business-prefix rule as standard order creation, and template instantiation must fail fast when a template has no parts.
+Reason: Repeat orders should preserve reusable manufacturing intent without leaking stale execution/chatter fields, and the backend must keep template instantiation deterministic so the UI cannot silently create malformed orders from bad override payloads.
+
+
+### 2026-04-10 — Repeat orders use frozen order-based templates; floor accountability is part-level
+Decision: Add a dedicated repeat-order template domain built from existing orders (not live-order flags and not quote reuse), preserve `Order.assignedMachinistId` as coordinator-only, add part-level worker assignments, explicit part work instructions with versioned acknowledgement receipts, and separate checklist actor vs performer attribution.
+Reason: The shop needs fast repeat-order creation from existing manufacturing definitions plus auditable proof of who read instructions, who did the work, and who recorded it, without mixing reusable template state with live execution history.
+
+### 2026-04-10 — Vendor directory expands with searchable `contact` and `materials`; rollback imported rows before reimport
+Decision: Extend `Vendor` with first-class `contact` and `materials` text fields, include both in Vendors search/import CRUD paths, and clear the unreferenced partial spreadsheet import before the next import run.
+Reason: The supplier workbook already exposes contact/material columns, and the owner wants vendor lookup by material without forcing a larger normalized many-to-many materials model yet.
+
+### 2026-04-10 — Vendors spreadsheet import uses stateless preview/mapping with `xlsx` and preserves the current Vendor schema
+Decision: Add the `xlsx` dependency and implement a stateless Vendors import flow that reparses the uploaded spreadsheet for both preview and confirm-import, letting admins choose sheet, header row, column mapping, and duplicate behavior while still importing only into the existing `Vendor` fields (`name`, `url`, `phone`, `notes`).
+Reason: The provided supplier list is a legacy `.xls` workbook rather than a flat CSV, and the current Vendor model is intentionally small; a preview-and-map flow reduces import risk without forcing an immediate vendor-schema expansion.
+
 ### 2026-04-09 — BOM analyzer PDF support uses pdf.js page-1 rasterization before vision
 Decision: Add `pdfjs-dist` and `@napi-rs/canvas` and rasterize the first page of uploaded/stored PDFs to PNG server-side before sending the result through the existing print-analyzer vision flow.
 Reason: The BOM analyzer is image-based and the existing `sharp` build in this environment cannot rasterize PDFs, so PDF support requires a dedicated renderer without introducing external system-binary dependencies.
@@ -176,3 +193,4 @@ Reason: Avoid scattered domain logic and enable multi-agent work without drift.
 ### 2026-01-28 — Establish continuity docs
 Decision: Add AGENTS.md, PROGRESS_LOG.md, and docs/AGENT_HANDOFF.md.
 Reason: Multi-agent continuity must be enforced by repo artifacts, not memory.
+

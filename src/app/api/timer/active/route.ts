@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 
 import { getOrderHeaderInfo, getOrderPartSummary } from '@/modules/orders/orders.service';
-import { getActiveTimeEntries, getActiveTimeEntry, getOrderPartTimeTotals, getTimeEntrySummary } from '@/modules/time/time.service';
+import {
+  getActiveTimeEntries,
+  getActiveTimeEntry,
+  getOrderPartTimeTotals,
+  getPartActivitySummary,
+  getTimeEntrySummary,
+} from '@/modules/time/time.service';
 
 export async function GET(req: NextRequest) {
   const session = await getServerAuthSession();
@@ -67,6 +73,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: summaryResult.error }, { status: summaryResult.status });
   }
 
+  const partActivityResult = partIds.length ? await getPartActivitySummary(partIds) : null;
+  if (partActivityResult && partActivityResult.ok === false) {
+    return NextResponse.json({ error: partActivityResult.error }, { status: partActivityResult.status });
+  }
+
   return NextResponse.json({
     activeEntry,
     activeEntries: activeEntriesWithContext,
@@ -74,5 +85,6 @@ export async function GET(req: NextRequest) {
     activePart,
     totalsSeconds: totalsResult?.ok ? totalsResult.data.totalsSeconds : {},
     lastPartEntries: summaryResult?.ok ? summaryResult.data.lastPartEntries : {},
+    partActivity: partActivityResult?.ok ? partActivityResult.data.partActivity : {},
   });
 }

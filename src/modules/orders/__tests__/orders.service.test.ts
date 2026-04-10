@@ -1,10 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('orders.service completion gating', () => {
   beforeEach(() => {
     process.env.TEST_MODE = 'true';
     process.env.TEST_MODE_USE_MOCK_REPOS = 'true';
     vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('rejects completing a part when checklist items remain', async () => {
@@ -163,5 +167,113 @@ describe('orders.service completion gating', () => {
     const machiningOrder = payload.items.find((order) => order.orderId === 'order_test_001');
     expect(machiningOrder?.parts.some((part) => part.id === 'part_test_001')).toBe(true);
     expect(machiningOrder?.parts.find((part) => part.id === 'part_test_001')?.currentDepartmentId).toBe('dept_test_001');
+  });
+
+  it('blocks checklist toggles until required instructions are acknowledged', async () => {
+    const { toggleChecklistItem } = await import('../orders.service');
+
+    const result = await toggleChecklistItem({
+      orderId: 'order_test_001',
+      checklistId: 'checklist_ack_test_001',
+      checked: true,
+      togglerId: 'user_test_machinist',
+      employeeName: 'Alex Machinist',
+    });
+
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; status: number }).status).toBe(409);
+    expect((result as { ok: false; error: { code: string } }).error.code).toBe('INSTRUCTION_ACK_REQUIRED');
+  });
+
+  it('blocks department submit until required instructions are acknowledged', async () => {
+    const { submitDepartmentComplete } = await import('../orders.service');
+
+    const result = await submitDepartmentComplete({
+      orderId: 'order_test_001',
+      partId: 'part_ack_test_001',
+      userId: 'user_test_machinist',
+    });
+
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; status: number }).status).toBe(409);
+    expect((result as { ok: false; error: { code: string } }).error.code).toBe('INSTRUCTION_ACK_REQUIRED');
+  });
+
+  it('records checklist actor and performer distinctly after acknowledgement', async () => {
+    const { acknowledgePartInstructions, getOrderDetails, listPartEvents, toggleChecklistItem } = await import('../orders.service');
+
+    const ack = await acknowledgePartInstructions({
+      orderId: 'order_test_001',
+      partId: 'part_ack_test_001',
+      departmentId: 'dept_test_001',
+      userId: 'user_test_machinist',
+    });
+    expect(ack.ok).toBe(true);
+
+    const toggle = await toggleChecklistItem({
+      orderId: 'order_test_001',
+      checklistId: 'checklist_ack_test_001',
+      checked: true,
+      togglerId: 'user_test_machinist',
+      employeeName: 'Alex Machinist',
+      performedById: 'user_test_helper',
+    });
+    expect(toggle.ok).toBe(true);
+
+    const details = await getOrderDetails('order_test_001', true);
+    expect(details.ok).toBe(true);
+    const checklistItem = (details as { ok: true; data: { item: { checklist: Array<{ id: string; toggledBy?: { id: string }; performedBy?: { id: string } }> } } }).data.item.checklist
+      .find((item) => item.id === 'checklist_ack_test_001');
+    expect(checklistItem?.toggledBy?.id).toBe('user_test_machinist');
+    expect(checklistItem?.performedBy?.id).toBe('user_test_helper');
+
+    const events = await listPartEvents({ orderId: 'order_test_001', partId: 'part_ack_test_001' });
+    expect(events.ok).toBe(true);
+    const checklistEvent = (events as { ok: true; data: { events: Array<{ type: string; message: string; meta: any }> } }).data.events
+      .find((event) => event.type === 'CHECKLIST_TOGGLED');
+    expect(checklistEvent?.message).toContain('marked Jamie Helper as completing');
+    expect(checklistEvent?.meta?.actorUserId).toBe('user_test_machinist');
+    expect(checklistEvent?.meta?.performedById).toBe('user_test_helper');
+  });
+
+  it('surfaces assigned workers and shared part activity in order details', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-03T10:00:00Z'));
+
+    const { assignWorkerToPart, getOrderDetails } = await import('../orders.service');
+    const { startTimeEntry } = await import('@/modules/time/time.service');
+
+    const firstAssignment = await assignWorkerToPart({
+      orderId: 'order_test_001',
+      partId: 'part_test_001',
+      userId: 'user_test_machinist',
+      assignedById: 'test-user',
+    });
+    const secondAssignment = await assignWorkerToPart({
+      orderId: 'order_test_001',
+      partId: 'part_test_001',
+      userId: 'user_test_helper',
+      assignedById: 'test-user',
+    });
+    expect(firstAssignment.ok).toBe(true);
+    expect(secondAssignment.ok).toBe(true);
+
+    const started = await startTimeEntry('user_test_machinist', {
+      orderId: 'order_test_001',
+      partId: 'part_test_001',
+      departmentId: 'dept_test_001',
+      operation: 'Part Work',
+    });
+    expect(started.ok).toBe(true);
+
+    const details = await getOrderDetails('order_test_001', true);
+    expect(details.ok).toBe(true);
+    const part = (details as { ok: true; data: { item: { parts: Array<{ id: string; assignments: any[]; partActivity: any }> } } }).data.item.parts
+      .find((entry) => entry.id === 'part_test_001');
+
+    expect(part?.assignments).toHaveLength(2);
+    expect(part?.partActivity?.activeTimers.some((entry: any) => entry.userId === 'user_test_machinist')).toBe(true);
+    expect(part?.partActivity?.timeByUser.some((entry: any) => entry.user?.id === 'user_test_helper' && entry.seconds > 0)).toBe(true);
+    expect(part?.partActivity?.totalSeconds).toBeGreaterThan(0);
   });
 });

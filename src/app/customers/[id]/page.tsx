@@ -3,8 +3,10 @@ import { notFound, redirect } from 'next/navigation';
 import { format } from 'date-fns';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { buildSignInRedirectPath } from '@/lib/auth-redirect';
+import { canAccessAdmin } from '@/lib/rbac';
 import { Printer, UserCircle, Phone, Mail, MapPin, Activity, Package2 } from 'lucide-react';
 
+import { CustomerRepeatTemplateSection } from '@/components/repeat-orders/CustomerRepeatTemplateSection';
 import { getCustomerDetail } from '@/modules/customers/customers.service';
 import { EditCustomerDialog } from '@/components/EditCustomerDialog';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +40,7 @@ export default async function CustomerDetailPage({ params }: CustomerPageProps) 
   }
 
   const customer = await getCustomerDetail(id);
+  const canManageRepeatTemplates = canAccessAdmin(session.user as any);
 
   if (!customer) {
     notFound();
@@ -159,71 +162,77 @@ export default async function CustomerDetailPage({ params }: CustomerPageProps) 
           </Card>
         </div>
 
-        <Card className="overflow-hidden">
-          <CardHeader className="border-b border-border/60 bg-card/80 backdrop-blur">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Package2 className="h-5 w-5 text-muted-foreground" /> Order history
-            </CardTitle>
-            <CardDescription>Every order we&apos;ve produced for {customer.name}.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            {orders.length ? (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-border/60">
-                      <TableHead className="w-[140px]">Order</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Received</TableHead>
-                      <TableHead>Due</TableHead>
-                      <TableHead>Priority</TableHead>
-                      <TableHead>Machinist</TableHead>
-                      <TableHead>Parts</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {orders.map((order) => (
-                      <TableRow key={order.id} className="border-border/60">
-                        <TableCell className="font-semibold text-primary">
-                          <Link href={`/orders/${order.id}`} className="hover:underline">
-                            #{order.orderNumber}
-                          </Link>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={`rounded-full px-3 py-1 text-[0.7rem] uppercase tracking-wide ${
-                              STATUS_STYLES[order.status] ?? 'border-border/60 bg-secondary/40 text-foreground'
-                            }`}
-                          >
-                            {order.status.replace(/_/g, ' ')}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{formatDate(order.receivedDate)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{formatDate(order.dueDate)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{order.priority}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{order.partsCount}</TableCell>
-                        <TableCell className="text-right text-sm">
-                          <Link href={`/orders/${order.id}`} className="text-primary hover:underline">
-                            View order
-                          </Link>
-                        </TableCell>
+        <div className="space-y-6">
+          {canManageRepeatTemplates ? (
+            <CustomerRepeatTemplateSection customerId={customer.id} customerName={customer.name} />
+          ) : null}
+
+          <Card className="overflow-hidden">
+            <CardHeader className="border-b border-border/60 bg-card/80 backdrop-blur">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Package2 className="h-5 w-5 text-muted-foreground" /> Order history
+              </CardTitle>
+              <CardDescription>Every order we&apos;ve produced for {customer.name}.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {orders.length ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-border/60">
+                        <TableHead className="w-[140px]">Order</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Received</TableHead>
+                        <TableHead>Due</TableHead>
+                        <TableHead>Priority</TableHead>
+                        <TableHead>Machinist</TableHead>
+                        <TableHead>Parts</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : (
-              <div className="px-6 py-12 text-center text-sm text-muted-foreground">
-                No orders recorded for this customer yet.
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {orders.map((order) => (
+                        <TableRow key={order.id} className="border-border/60">
+                          <TableCell className="font-semibold text-primary">
+                            <Link href={`/orders/${order.id}`} className="hover:underline">
+                              #{order.orderNumber}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={`rounded-full px-3 py-1 text-[0.7rem] uppercase tracking-wide ${
+                                STATUS_STYLES[order.status] ?? 'border-border/60 bg-secondary/40 text-foreground'
+                              }`}
+                            >
+                              {order.status.replace(/_/g, ' ')}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{formatDate(order.receivedDate)}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{formatDate(order.dueDate)}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{order.priority}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{order.partsCount}</TableCell>
+                          <TableCell className="text-right text-sm">
+                            <Link href={`/orders/${order.id}`} className="text-primary hover:underline">
+                              View order
+                            </Link>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="px-6 py-12 text-center text-sm text-muted-foreground">
+                  No orders recorded for this customer yet.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

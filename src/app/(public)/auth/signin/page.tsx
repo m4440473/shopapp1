@@ -20,7 +20,21 @@ export default function SignInPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await signIn('credentials', { email, password, redirect: true, callbackUrl });
+    setError(null);
+
+    const result = await signIn('credentials', {
+      email,
+      password,
+      redirect: false,
+      callbackUrl,
+    });
+
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+
+    window.location.assign(callbackUrl);
   }
 
   return (

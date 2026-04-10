@@ -66,6 +66,8 @@ export type MockOrderPart = {
   status: string | null;
   materialId: string | null;
   currentDepartmentId: string | null;
+  workInstructions?: string | null;
+  instructionsVersion?: number;
 };
 
 export type MockOrderCharge = {
@@ -91,6 +93,28 @@ export type MockOrderChecklist = {
   departmentId: string | null;
   completed: boolean;
   isActive: boolean;
+  toggledById?: string | null;
+  performedById?: string | null;
+};
+
+export type MockOrderPartAssignment = {
+  id: string;
+  partId: string;
+  userId: string;
+  assignedById: string | null;
+  assignmentType: string;
+  isActive: boolean;
+  removedAt: Date | null;
+  createdAt: Date;
+};
+
+export type MockPartInstructionReceipt = {
+  id: string;
+  partId: string;
+  userId: string;
+  departmentId: string;
+  instructionsVersion: number;
+  acknowledgedAt: Date;
 };
 
 export type MockStatusHistory = {
@@ -179,6 +203,8 @@ export type MockSeedState = {
   orderParts: MockOrderPart[];
   orderCharges: MockOrderCharge[];
   orderChecklist: MockOrderChecklist[];
+  orderPartAssignments: MockOrderPartAssignment[];
+  partInstructionReceipts: MockPartInstructionReceipt[];
   statusHistory: MockStatusHistory[];
   notes: MockNote[];
   orderAttachments: MockOrderAttachment[];
@@ -205,6 +231,14 @@ export function createMockSeedState(): MockSeedState {
       id: 'user_test_machinist',
       name: 'Alex Machinist',
       email: 'machinist@local',
+      role: 'MACHINIST',
+      admin: false,
+      active: true,
+    },
+    {
+      id: 'user_test_helper',
+      name: 'Jamie Helper',
+      email: 'helper@local',
       role: 'MACHINIST',
       admin: false,
       active: true,
@@ -322,6 +356,18 @@ export function createMockSeedState(): MockSeedState {
       materialId: 'material_test_001',
       currentDepartmentId: 'dept_test_001',
     },
+    {
+      id: 'part_ack_test_001',
+      orderId: 'order_test_001',
+      partNumber: 'ACME-ACK',
+      quantity: 1,
+      description: 'Ack-gated finishing part',
+      status: 'IN_PROGRESS',
+      materialId: 'material_test_001',
+      currentDepartmentId: 'dept_test_001',
+      workInstructions: 'Read setup note. Verify soft jaws and deburr before submit.',
+      instructionsVersion: 1,
+    },
   ];
 
   const orderCharges: MockOrderCharge[] = [
@@ -351,6 +397,19 @@ export function createMockSeedState(): MockSeedState {
       sortOrder: 2,
       completedAt: null,
     },
+    {
+      id: 'charge_ack_test_001',
+      orderId: 'order_test_001',
+      partId: 'part_ack_test_001',
+      departmentId: 'dept_test_001',
+      addonId: null,
+      name: 'Soft Jaw Setup',
+      kind: 'LABOR',
+      unitPrice: '30.00',
+      quantity: '1',
+      sortOrder: 3,
+      completedAt: null,
+    },
   ];
 
   const orderChecklist: MockOrderChecklist[] = [
@@ -364,7 +423,22 @@ export function createMockSeedState(): MockSeedState {
       completed: false,
       isActive: true,
     },
+    {
+      id: 'checklist_ack_test_001',
+      orderId: 'order_test_001',
+      partId: 'part_ack_test_001',
+      chargeId: 'charge_ack_test_001',
+      addonId: null,
+      departmentId: 'dept_test_001',
+      completed: false,
+      isActive: true,
+      toggledById: null,
+      performedById: null,
+    },
   ];
+
+  const orderPartAssignments: MockOrderPartAssignment[] = [];
+  const partInstructionReceipts: MockPartInstructionReceipt[] = [];
 
   const statusHistory: MockStatusHistory[] = [
     {
@@ -442,6 +516,18 @@ export function createMockSeedState(): MockSeedState {
       createdAt: baseDate,
       updatedAt: laterDate,
     },
+    {
+      id: 'time_entry_test_002',
+      userId: 'user_test_helper',
+      orderId: 'order_test_001',
+      partId: 'part_test_001',
+      departmentId: 'dept_test_001',
+      operation: 'Part Work',
+      startedAt: new Date('2026-02-02T09:00:00Z'),
+      endedAt: new Date('2026-02-02T09:20:00Z'),
+      createdAt: new Date('2026-02-02T09:00:00Z'),
+      updatedAt: new Date('2026-02-02T09:20:00Z'),
+    },
   ];
 
   return {
@@ -454,6 +540,8 @@ export function createMockSeedState(): MockSeedState {
     orderParts,
     orderCharges,
     orderChecklist,
+    orderPartAssignments,
+    partInstructionReceipts,
     statusHistory,
     notes,
     orderAttachments,

@@ -42,6 +42,8 @@ export const VendorUpsert = z.object({
   name: z.string().trim().min(2).max(120),
   url: z.string().url().max(300).optional(),
   phone: z.string().trim().max(40).optional(),
+  contact: z.string().trim().max(120).optional(),
+  materials: z.string().trim().max(300).optional(),
   notes: z.string().trim().max(500).optional(),
 });
 export const VendorPatch = VendorUpsert.partial();

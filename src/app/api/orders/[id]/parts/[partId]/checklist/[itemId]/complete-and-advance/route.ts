@@ -14,6 +14,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!json?.confirm) {
     return NextResponse.json({ error: 'confirm=true is required' }, { status: 400 });
   }
+  const performedById = typeof json?.performedById === 'string' ? json.performedById.trim() : undefined;
 
   const { id, partId, itemId } = await params;
   const result = await completeChecklistAndAdvance({
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     partId,
     checklistId: itemId,
     actorUserId: (session.user as any)?.id as string | undefined,
+    performedById,
   });
 
   if (result.ok === false) {
