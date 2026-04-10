@@ -2827,6 +2827,36 @@ Goal (1 sentence): Make converted/new orders default part ownership to Machining
 - [ ] User verify on `/orders/[id]` that converted parts now land in Machining/current first department instead of showing `Unassigned`.
 - [ ] User verify that checking the last checklist item no longer makes the part appear to auto-move departments before using the manual submit/move action.
 - [ ] Optional follow-up: if the owner wants an even more aggressive left-rail reduction, split timer controls and part list into separate stacked cards on mobile/tablet breakpoints only.
+## Session Handoff — 2026-04-10 (BOM analyzer PDF runtime loader fix)
+
+Goal (1 sentence): Fix the PDF analyzer runtime import strategy so PDF uploads succeed on the live local Next server, especially on port `3000`.
+
+### What changed
+- Updated `src/app/api/print-analyzer/analyze/route.ts`
+  - Removed the earlier `createRequire` / filesystem-path PDF module loading approach that failed inside the Next bundled route runtime.
+  - Switched both `pdfjs-dist` and `@napi-rs/canvas` loading to runtime dynamic imports.
+  - Kept the existing page-1 PDF rasterization behavior and analyzer pipeline intact.
+- Local runtime verification
+  - Reclaimed port `3000` from the stale local Next process and restarted the updated workspace there.
+  - Confirmed the live analyzer route now accepts a PDF request successfully on `http://127.0.0.1:3000`.
+
+### Files touched
+- `src/app/api/print-analyzer/analyze/route.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+- `node -` (live PDF smoke test against `http://127.0.0.1:3000/api/print-analyzer/analyze`)
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+- Live PDF analyzer request on port `3000` returned `200` with structured JSON instead of the earlier module-resolution error.
+
+### Next steps
+- [ ] Push this runtime-loader follow-up to the existing PR branch so the GitHub PR matches the working local server.
+
 ## Session Handoff — 2026-04-09 (BOM analyzer PDF upload support)
 
 Goal (1 sentence): Let the BOM analyzer accept PDFs by rasterizing page 1 to an image before running the existing analyzer flow.

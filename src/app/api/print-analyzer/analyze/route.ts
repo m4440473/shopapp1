@@ -1,6 +1,3 @@
-import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
-
 import OpenAI from 'openai';
 import sharp from 'sharp';
 import { NextResponse } from 'next/server';
@@ -25,9 +22,9 @@ const PASS_TWO_MODEL = 'gpt-4.1-mini';
 const PAPER_PRINT_MESSAGE = 'Unable to confidently read general tolerances. Please check the paper print.';
 const PDF_RENDER_SCALE = 2;
 const CANVAS_MODULE_NAME = ['@napi-rs', 'canvas'].join('/');
+const PDFJS_MODULE_NAME = ['pdfjs-dist', 'legacy', 'build', 'pdf.mjs'].join('/');
 
-const require = createRequire(import.meta.url);
-const loadCanvasModule = () => require(CANVAS_MODULE_NAME) as {
+type CanvasModule = {
   createCanvas: (width: number, height: number) => {
     width: number;
     height: number;
@@ -35,6 +32,11 @@ const loadCanvasModule = () => require(CANVAS_MODULE_NAME) as {
     encode: (format: 'png') => Promise<Uint8Array>;
   };
 };
+
+async function loadCanvasModule(): Promise<CanvasModule> {
+  const dynamicImport = new Function('specifier', 'return import(specifier);') as (specifier: string) => Promise<unknown>;
+  return (await dynamicImport(CANVAS_MODULE_NAME)) as CanvasModule;
+}
 
 type ModelPayload = {
   rawText: string;
@@ -101,12 +103,12 @@ type PdfPageProxy = {
 };
 
 class PdfCanvasFactory {
-  create(width: number, height: number) {
+  async create(width: number, height: number) {
     if (width <= 0 || height <= 0) {
       throw new Error('Invalid canvas size');
     }
 
-    const { createCanvas } = loadCanvasModule();
+    const { createCanvas } = await loadCanvasModule();
     const canvas = createCanvas(Math.ceil(width), Math.ceil(height));
     return {
       canvas,
@@ -130,8 +132,8 @@ class PdfCanvasFactory {
 }
 
 async function loadPdfJs(): Promise<PdfJsModule> {
-  const pdfJsPath = require.resolve('pdfjs-dist/legacy/build/pdf.mjs');
-  return (await import(pathToFileURL(pdfJsPath).href)) as PdfJsModule;
+  const dynamicImport = new Function('specifier', 'return import(specifier);') as (specifier: string) => Promise<unknown>;
+  return (await dynamicImport(PDFJS_MODULE_NAME)) as PdfJsModule;
 }
 
 async function rasterizePdfFirstPage(buffer: Buffer): Promise<Buffer> {
@@ -151,7 +153,7 @@ async function rasterizePdfFirstPage(buffer: Buffer): Promise<Buffer> {
       try {
         const viewport = page.getViewport({ scale: PDF_RENDER_SCALE });
         const canvasFactory = new PdfCanvasFactory();
-        const canvasAndContext = canvasFactory.create(viewport.width, viewport.height);
+        const canvasAndContext = await canvasFactory.create(viewport.width, viewport.height);
 
         try {
           await page.render({

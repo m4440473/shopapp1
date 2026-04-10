@@ -1680,6 +1680,19 @@ Commands run:
 
 Verification note:
 - Lint passed with no ESLint warnings/errors.
+### 2026-04-10 — BOM analyzer PDF runtime loader follow-up
+- Fixed the PDF analyzer route's runtime module loading so PDF uploads work inside the live Next server bundle instead of failing on module-resolution errors.
+- Replaced the earlier `createRequire` / filesystem import approaches with runtime dynamic imports for both `pdfjs-dist` and `@napi-rs/canvas` in `src/app/api/print-analyzer/analyze/route.ts`.
+- Reclaimed port `3000` from the stale local Next process and restarted the updated workspace there so local testing matches the expected app URL.
+
+Commands run:
+- `npm run lint`
+- `node -` (live PDF smoke test against `http://127.0.0.1:3000/api/print-analyzer/analyze`)
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Live PDF analyzer request on port `3000` returned `200` with structured JSON instead of the prior module-resolution failure.
+
 ### 2026-04-09 — BOM analyzer PDF upload support
 - Added PDF support to the BOM analyzer upload surfaces:
   - `/orders/[id]` BOM tab now accepts `application/pdf` in the file picker,

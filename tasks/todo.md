@@ -2015,3 +2015,27 @@ Commands run:
 - `/api/print-analyzer/analyze` now accepts `data:application/pdf` uploads, rasterizes page 1 to PNG with `pdfjs-dist` + `@napi-rs/canvas`, and then reuses the existing image-based analysis pipeline.
 - Added a Decision Log entry for the new PDF-rendering dependency choice and updated docs to reflect first-page PDF support.
 - Production build still fails in this workspace because of the existing `next/font` Roboto fetch / `127.0.0.1:9` environment issue, but the earlier native-canvas webpack parse failure introduced during this work has been eliminated.
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: BOM analyzer PDF runtime loader fix
+- Goal: Fix the PDF analyzer runtime import path so PDF uploads work on the live Next dev server, including the app running on port 3000.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the follow-up failure from the live app: PDF uploads still failed at runtime because the route could not resolve `pdfjs-dist` / `@napi-rs/canvas` correctly inside the Next bundled server context.
+
+## Plan First
+- [x] Replace the route's filesystem/`createRequire`-based PDF loader path with a runtime-safe dynamic import approach for both `pdfjs-dist` and `@napi-rs/canvas`.
+- [x] Verify the route still lints cleanly.
+- [x] Verify against the live local server on port `3000` with a real PDF upload request.
+- [x] Update continuity docs with the follow-up fix and evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] live `POST /api/print-analyzer/analyze` PDF smoke test against `http://127.0.0.1:3000`
+
+## Review + Results
+- The PDF analyzer route now resolves both `pdfjs-dist` and `@napi-rs/canvas` via runtime dynamic imports instead of the earlier module-path strategies that broke inside the Next server bundle.
+- Port `3000` was reclaimed from the stale local Next process and restarted with the updated workspace server.
+- A real PDF request to `http://127.0.0.1:3000/api/print-analyzer/analyze` now succeeds with `200` and structured analyzer JSON instead of the previous module-resolution failure.
