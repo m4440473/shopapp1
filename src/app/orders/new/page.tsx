@@ -50,6 +50,7 @@ import {
   getWorkItemPricingSemantic,
 } from '@/modules/pricing/work-item-pricing';
 import { calculatePartLotTotal, type PartPricingMode } from '@/modules/pricing/part-pricing';
+import type { RepeatOrderTemplateDetail } from '@/modules/repeat-orders/repeat-orders.types';
 
 const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 const OPTIONAL_VALUE = '__none__';
@@ -85,13 +86,17 @@ type PartAddonSelection = {
 };
 type PartInput = {
   key: string;
+  templatePartId?: string;
   partNumber: string;
   quantity: number;
   materialId?: string;
   stockSize?: string;
   cutLength?: string;
   notes?: string;
+  workInstructions?: string;
   addonSelections: PartAddonSelection[];
+  templateCharges?: RepeatOrderTemplateDetail['parts'][number]['charges'];
+  templateAttachments?: RepeatOrderTemplateDetail['parts'][number]['attachments'];
 };
 
 type PartPricingState = {
@@ -103,13 +108,17 @@ type AttachmentInput = { url: string; storagePath: string; label: string; mimeTy
 
 const emptyPart = (): PartInput => ({
   key: createKey(),
+  templatePartId: undefined,
   partNumber: '',
   quantity: 1,
   materialId: '',
   stockSize: '',
   cutLength: '',
   notes: '',
+  workInstructions: '',
   addonSelections: [],
+  templateCharges: [],
+  templateAttachments: [],
 });
 const emptyAttachment = (): AttachmentInput => ({ url: '', storagePath: '', label: '', mimeType: '', uploading: false });
 
@@ -191,9 +200,14 @@ function NewOrderForm() {
   const [createdOrderId, setCreatedOrderId] = React.useState<string | null>(null);
   const [quotePrefillError, setQuotePrefillError] = React.useState<string | null>(null);
   const [quotePrefillLoading, setQuotePrefillLoading] = React.useState(false);
+  const [repeatTemplate, setRepeatTemplate] = React.useState<RepeatOrderTemplateDetail | null>(null);
+  const [repeatTemplateError, setRepeatTemplateError] = React.useState<string | null>(null);
+  const [repeatTemplateLoading, setRepeatTemplateLoading] = React.useState(false);
   const [currentStep, setCurrentStep] = React.useState(0);
+  const templateId = searchParams.get('templateId');
   const quoteId = searchParams.get('quoteId');
-  const conversionMode = Boolean(quoteId);
+  const templateMode = Boolean(templateId);
+  const conversionMode = !templateMode && Boolean(quoteId);
   const steps = [
     { key: 'info', label: 'Order info' },
     { key: 'parts', label: 'Parts' },
@@ -273,7 +287,63 @@ function NewOrderForm() {
   }, [business]);
 
   React.useEffect(() => {
-    if (!quoteId) return;
+    if (!templateId) {
+      setRepeatTemplate(null);
+      setRepeatTemplateError(null);
+      setRepeatTemplateLoading(false);
+      return;
+    }
+    setRepeatTemplateLoading(true);
+    setRepeatTemplateError(null);
+    fetch(`/api/repeat-order-templates/${templateId}`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        const template = data?.template;
+        if (!template) throw new Error('Repeat-order template not found');
+        setRepeatTemplate(template);
+        setBusiness(template.business as BusinessCode);
+        setCustomerId(template.customerId ?? '');
+        setVendorId(template.vendorId ?? '');
+        setAssignedMachinistId('');
+        setPoNumber('');
+        setPriority(template.priority ?? 'NORMAL');
+        setDueDate(defaultDueDate());
+        setMaterialNeeded(Boolean(template.materialNeeded));
+        setMaterialOrdered(Boolean(template.materialOrdered));
+        setModelIncluded(Boolean(template.modelIncluded));
+        setNotes(template.notes ?? '');
+        setSelectedAddonIds([]);
+        setCustomFieldValues({});
+        setParts(
+          (template.parts ?? []).length
+            ? [...template.parts]
+                .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                .map((part: any) => ({
+                  key: createKey(),
+                  templatePartId: part.id,
+                  partNumber: part.partNumber ?? '',
+                  quantity: part.quantity ?? 1,
+                  materialId: part.materialId ?? '',
+                  stockSize: part.stockSize ?? '',
+                  cutLength: part.cutLength ?? '',
+                  notes: part.notes ?? '',
+                  workInstructions: part.workInstructions ?? '',
+                  addonSelections: [],
+                  templateCharges: Array.isArray(part.charges) ? part.charges : [],
+                  templateAttachments: Array.isArray(part.attachments) ? part.attachments : [],
+                }))
+            : [emptyPart()]
+        );
+      })
+      .catch(() => {
+        setRepeatTemplate(null);
+        setRepeatTemplateError('Unable to prefill from repeat template. You can choose another template or start a manual order.');
+      })
+      .finally(() => setRepeatTemplateLoading(false));
+  }, [templateId]);
+
+  React.useEffect(() => {
+    if (templateMode || !quoteId) return;
     setQuotePrefillLoading(true);
     setQuotePrefillError(null);
     fetch(`/api/admin/quotes/${quoteId}`, { credentials: 'include' })
@@ -414,7 +484,7 @@ function NewOrderForm() {
         setQuotePrefillError('Unable to prefill from quote. You can still create the order manually.');
       })
       .finally(() => setQuotePrefillLoading(false));
-  }, [quoteId]);
+  }, [quoteId, templateMode]);
 
   React.useEffect(() => {
     if (!parts.length) return;
@@ -446,6 +516,21 @@ function NewOrderForm() {
   const activePart = React.useMemo(
     () => parts.find((part) => part.key === activePartKey) ?? parts[0],
     [activePartKey, parts],
+  );
+  const templateOrderAttachments = React.useMemo(
+    () => (Array.isArray(repeatTemplate?.attachments) ? repeatTemplate.attachments : []),
+    [repeatTemplate?.attachments],
+  );
+  const templatePartAttachmentEntries = React.useMemo(
+    () =>
+      parts.flatMap((part, index) =>
+        (part.templateAttachments ?? []).map((attachment, attachmentIndex) => ({
+          key: `${part.key}-${attachment.id ?? attachmentIndex}`,
+          partLabel: part.partNumber || `Part ${index + 1}`,
+          attachment,
+        })),
+      ),
+    [parts],
   );
   const availableItems = React.useMemo(
     () =>
@@ -700,6 +785,14 @@ function NewOrderForm() {
           }),
       }))
       .filter((part) => part.partNumber.length > 0);
+    const cleanedTemplateParts = parts
+      .map((part) => ({
+        templatePartId: part.templatePartId?.trim() || '',
+        quantity: Number.isFinite(part.quantity) ? part.quantity : 1,
+        notes: part.notes?.trim() ? part.notes.trim() : null,
+        workInstructions: part.workInstructions?.trim() ? part.workInstructions.trim() : null,
+      }))
+      .filter((part) => part.templatePartId.length > 0);
 
     if (!customerId) {
       setMessage('Please choose a customer.');
@@ -707,8 +800,14 @@ function NewOrderForm() {
       return;
     }
 
-    if (cleanedParts.length === 0) {
+    if (!templateMode && cleanedParts.length === 0) {
       setMessage('Add at least one part with a part number.');
+      setLoading(false);
+      return;
+    }
+
+    if (templateMode && (!templateId || cleanedTemplateParts.length === 0)) {
+      setMessage('This repeat template did not load correctly. Please reload it from the customer or order screen.');
       setLoading(false);
       return;
     }
@@ -719,10 +818,10 @@ function NewOrderForm() {
       return;
     }
 
-    const missingFields = customFields.filter(
-      (field) => field.isRequired && !hasCustomFieldValue(customFieldValues[field.id])
-    );
-    if (missingFields.length) {
+    const missingFields = templateMode
+      ? []
+      : customFields.filter((field) => field.isRequired && !hasCustomFieldValue(customFieldValues[field.id]));
+    if (!templateMode && missingFields.length) {
       setMessage(`Fill in required custom fields: ${missingFields.map((field) => field.name).join(', ')}.`);
       setLoading(false);
       return;
@@ -765,6 +864,42 @@ function NewOrderForm() {
         .map((field) => ({ fieldId: field.id, value: customFieldValues[field.id] }))
         .filter((entry) => hasCustomFieldValue(entry.value)),
     } as any;
+
+    if (templateMode && templateId) {
+      const res = await fetch(`/api/repeat-order-templates/${templateId}/create-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          dueDate: resolvedDueDate,
+          priority,
+          vendorId: vendorId || undefined,
+          poNumber: poNumber || undefined,
+          assignedMachinistId: assignedMachinistId || undefined,
+          materialNeeded,
+          materialOrdered,
+          modelIncluded,
+          notes: notes.trim() || undefined,
+          parts: cleanedTemplateParts,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        const newId = typeof data?.id === 'string' ? data.id : null;
+        setMessage('Repeat order created.');
+        setCreatedOrderId(newId);
+        if (newId) {
+          router.push(`/orders/${newId}`);
+        }
+      } else {
+        const errorMessage = await extractErrorMessage(res, 'Repeat-order creation failed. Please try again.');
+        setMessage(errorMessage);
+        setCreatedOrderId(null);
+      }
+      setLoading(false);
+      return;
+    }
 
     if (conversionMode && quoteId) {
       const res = await fetch(`/api/admin/quotes/${quoteId}/convert`, {
@@ -876,18 +1011,65 @@ function NewOrderForm() {
       <div className="space-y-2">
         <p className="text-xs uppercase tracking-[0.4em] text-primary/70">Intake</p>
         <h1 className="text-4xl font-semibold text-foreground">
-          {conversionMode ? 'Convert quote to order' : 'Create a production order'}
+          {templateMode ? 'Create a repeat order' : conversionMode ? 'Convert quote to order' : 'Create a production order'}
         </h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          {conversionMode
+          {templateMode
+            ? 'This order is prefilled from a frozen repeat template. Review the launch details, tweak the PO and part-specific notes, and send it back to the floor.'
+            : conversionMode
             ? 'We prefill everything we can from the quote. Review the details and supply the missing order info before creating it.'
             : 'Order numbers are generated for you, starting at 1001. Gather every part, attachment, and add-on service before the job hits the floor.'}
         </p>
+        {templateMode && repeatTemplate && (
+          <p className="text-sm text-muted-foreground">
+            Template: <code className="rounded bg-muted px-1 py-0.5 text-xs">{repeatTemplate.name}</code>
+            {repeatTemplate.sourceOrderNumber ? (
+              <>
+                {' '}from order{' '}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">{repeatTemplate.sourceOrderNumber}</code>
+              </>
+            ) : null}
+          </p>
+        )}
+        {templateMode && repeatTemplate ? (
+          <div className="grid gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 md:grid-cols-[1.2fr_0.8fr]">
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-[0.3em] text-primary/70">Repeat Launch</p>
+              <p className="text-sm text-foreground">
+                This screen is for launching a fresh order from a frozen template.
+                You can change scheduling, PO, assignment, part notes, and work instructions.
+              </p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-foreground">Editable: PO, due date, priority</span>
+                <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-foreground">Editable: part notes + work instructions</span>
+                <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-foreground">Frozen: routing, charges, template files</span>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-1">
+              <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-3">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Parts</div>
+                <div className="mt-1 text-xl font-semibold text-foreground">{parts.length}</div>
+              </div>
+              <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-3">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Order Files</div>
+                <div className="mt-1 text-xl font-semibold text-foreground">{templateOrderAttachments.length}</div>
+              </div>
+              <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-3">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Part Files</div>
+                <div className="mt-1 text-xl font-semibold text-foreground">{templatePartAttachmentEntries.length}</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {conversionMode && (
           <p className="text-sm text-muted-foreground">
             Quote ID: <code className="rounded bg-muted px-1 py-0.5 text-xs">{quoteId}</code>
           </p>
         )}
+        {repeatTemplateLoading && templateMode && (
+          <p className="text-sm text-muted-foreground">Prefilling from repeat template...</p>
+        )}
+        {repeatTemplateError && <p className="text-sm text-destructive">{repeatTemplateError}</p>}
         {quotePrefillLoading && conversionMode && (
           <p className="text-sm text-muted-foreground">Prefilling from quote…</p>
         )}
@@ -935,7 +1117,7 @@ function NewOrderForm() {
               <Label htmlFor="business">Business</Label>
               <Select
                 value={business}
-                disabled={conversionMode}
+                disabled={conversionMode || templateMode}
                 onValueChange={(value) => setBusiness(value as BusinessCode)}
               >
                 <SelectTrigger id="business" className="border-border/60 bg-background/80">
@@ -952,7 +1134,7 @@ function NewOrderForm() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="customer">Customer</Label>
-              <Select value={customerId} onValueChange={setCustomerId} disabled={conversionMode}>
+              <Select value={customerId} onValueChange={setCustomerId} disabled={conversionMode || templateMode}>
                 <SelectTrigger id="customer" className="border-border/60 bg-background/80">
                   <SelectValue placeholder="Select a customer" />
                 </SelectTrigger>
@@ -971,7 +1153,7 @@ function NewOrderForm() {
                     variant="ghost"
                     size="sm"
                     className="justify-start px-0 text-sm text-primary"
-                    disabled={conversionMode}
+                    disabled={conversionMode || templateMode}
                   >
                     + Add customer
                   </Button>
@@ -1099,21 +1281,23 @@ function NewOrderForm() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/60 bg-card/70 backdrop-blur">
-              <CardHeader>
-                <CardTitle>Custom intake fields</CardTitle>
-                <CardDescription>Additional fields configured for this business.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <CustomFieldInputs
-                  fields={customFields}
-                  values={customFieldValues}
-                  onChange={(fieldId, value) =>
-                    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
-                  }
-                />
-              </CardContent>
-            </Card>
+            {!templateMode && (
+              <Card className="border-border/60 bg-card/70 backdrop-blur">
+                <CardHeader>
+                  <CardTitle>Custom intake fields</CardTitle>
+                  <CardDescription>Additional fields configured for this business.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <CustomFieldInputs
+                    fields={customFields}
+                    values={customFieldValues}
+                    onChange={(fieldId, value) =>
+                      setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
+                    }
+                  />
+                </CardContent>
+              </Card>
+            )}
 
             <Card className="border-border/60 bg-card/70 backdrop-blur">
               <CardHeader>
@@ -1168,38 +1352,48 @@ function NewOrderForm() {
             <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
                 <CardTitle>Parts in this order</CardTitle>
-                <CardDescription>Track every unique part, quantity, and preferred material.</CardDescription>
+                <CardDescription>
+                  {templateMode
+                    ? 'Review the saved part setup, then adjust only what this repeat run needs.'
+                    : 'Track every unique part, quantity, and preferred material.'}
+                </CardDescription>
               </div>
-              <Button
-                type="button"
-                variant="secondary"
-                className="rounded-full border border-primary/40 bg-primary/10 text-primary"
-                onClick={addPartRow}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" /> Add part
-              </Button>
+              {!templateMode && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="rounded-full border border-primary/40 bg-primary/10 text-primary"
+                  onClick={addPartRow}
+                >
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add part
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="grid gap-6 lg:grid-cols-[320px_1fr]">
               <AvailableItemsLibrary
                 title="Available items library"
                 description={
-                  conversionMode
+                  templateMode
+                    ? 'Charges and checklist structure come from the repeat template and are read-only here.'
+                    : conversionMode
                     ? 'Add-ons come from the quote and are read-only here.'
                     : 'Drag items onto the selected part or click Add.'
                 }
                 items={availableItems}
                 onAddItem={(item) => {
-                  if (!activePart || conversionMode) return;
+                  if (!activePart || conversionMode || templateMode) return;
                   addAddonSelection(activePart.key, item.id);
                 }}
-                disabled={conversionMode}
+                disabled={conversionMode || templateMode}
               />
               <div className="space-y-4">
                 <div className="rounded-lg border border-border/60 bg-background/60 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Parts list</p>
-                      <p className="text-xs text-muted-foreground">Select a part to assign add-ons.</p>
+                      <p className="text-xs text-muted-foreground">
+                        {templateMode ? 'Select a part to review notes, work instructions, and saved files.' : 'Select a part to assign add-ons.'}
+                      </p>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -1228,7 +1422,7 @@ function NewOrderForm() {
                         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                           Selected part
                         </h3>
-                        {parts.length > 1 && (
+                        {!templateMode && parts.length > 1 && (
                           <Button type="button" variant="ghost" size="sm" onClick={() => removePart(activePart.key)}>
                             Remove
                           </Button>
@@ -1241,6 +1435,7 @@ function NewOrderForm() {
                             value={activePart.partNumber}
                             onChange={(e) => updatePart(activePart.key, { partNumber: e.target.value })}
                             placeholder="e.g. SP-1024"
+                            disabled={templateMode}
                             required
                           />
                         </div>
@@ -1259,6 +1454,7 @@ function NewOrderForm() {
                             value={activePart.stockSize || ''}
                             onChange={(e) => updatePart(activePart.key, { stockSize: e.target.value })}
                             placeholder="e.g. 2in x 12in bar"
+                            disabled={templateMode}
                           />
                         </div>
                         <div className="grid gap-2">
@@ -1267,6 +1463,7 @@ function NewOrderForm() {
                             value={activePart.cutLength || ''}
                             onChange={(e) => updatePart(activePart.key, { cutLength: e.target.value })}
                             placeholder="e.g. 6.5 in"
+                            disabled={templateMode}
                           />
                         </div>
                         <div className="grid gap-2">
@@ -1276,6 +1473,7 @@ function NewOrderForm() {
                             onValueChange={(value) =>
                               updatePart(activePart.key, { materialId: value === OPTIONAL_VALUE ? '' : value })
                             }
+                            disabled={templateMode}
                           >
                             <SelectTrigger className="border-border/60 bg-background/80">
                               <SelectValue placeholder="Optional" />
@@ -1299,67 +1497,151 @@ function NewOrderForm() {
                             className="min-h-[100px]"
                           />
                         </div>
+                        <div className="grid gap-2 md:col-span-2">
+                          <Label>Work instructions</Label>
+                          <Textarea
+                            value={activePart.workInstructions || ''}
+                            onChange={(e) => updatePart(activePart.key, { workInstructions: e.target.value })}
+                            placeholder="Must-read floor instructions for this part."
+                            className="min-h-[120px]"
+                          />
+                        </div>
+                        {templateMode && (
+                          <div className="grid gap-2 md:col-span-2">
+                            <Label>Work instructions</Label>
+                            <Textarea
+                              value={activePart.workInstructions || ''}
+                              onChange={(e) => updatePart(activePart.key, { workInstructions: e.target.value })}
+                              placeholder="Required setup or must-read instructions for this part"
+                              className="min-h-[140px]"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <AssignedItemsPanel
-                      title="Assigned add-ons & labor"
-                      description={
-                        conversionMode
-                          ? 'Add-ons are read-only while converting from a quote.'
-                          : 'Drop items here or use Add from the library.'
-                      }
-                      assignments={activePart.addonSelections.map((selection) => ({
-                        key: selection.key,
-                        itemId: selection.addonId,
-                        units: selection.units,
-                        notes: selection.notes,
-                      }))}
-                      itemsById={availableItemsById}
-                      onAddItem={(itemId) => {
-                        if (conversionMode) return;
-                        addAddonSelection(activePart.key, itemId);
-                      }}
-                      onUpdateAssignment={(key, patch) => {
-                        if (conversionMode) return;
-                        const updates: Partial<PartAddonSelection> = {};
-                        if (patch.units !== undefined) updates.units = patch.units;
-                        if (patch.notes !== undefined) updates.notes = patch.notes;
-                        updateAddonSelection(activePart.key, key, updates);
-                      }}
-                      onRemoveAssignment={(key) => {
-                        if (conversionMode) return;
-                        removeAddonSelection(activePart.key, key);
-                      }}
-                      onMoveAssignment={(key, direction) => {
-                        if (conversionMode) return;
-                        moveAddonSelection(activePart.key, key, direction);
-                      }}
-                      renderMeta={(assignment, item) => {
-                        if (!item) return null;
-                        if (getWorkItemPricingSemantic(item) === 'CHECKLIST_ONLY') {
-                          return (
-                            <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                              No charge (checklist only).
-                            </div>
-                          );
-                        }
-                        if (typeof item.rateCents !== 'number') {
-                          return (
-                            <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                              Price unavailable for this add-on.
-                            </div>
-                          );
-                        }
-                        const units = numberFromString(assignment.units);
-                        const totalCents = calculateAssignmentTotalCents({ item, units });
-                        return (
-                          <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
-                            {formatCurrency(item.rateCents)} x {units.toFixed(2)} = {formatCurrency(totalCents)}
+                    {templateMode ? (
+                      <div className="grid gap-4 xl:grid-cols-2">
+                        <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                            Saved process items
+                          </h3>
+                          <div className="mt-3 space-y-3">
+                            {(activePart.templateCharges ?? []).length ? (
+                              (activePart.templateCharges ?? []).map((charge, index) => (
+                                <div key={charge.id ?? `${charge.name}-${index}`} className="rounded-lg border border-border/60 bg-muted/10 px-3 py-3 text-sm">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="font-medium text-foreground">{charge.name}</span>
+                                    <span className="text-xs uppercase tracking-wide text-muted-foreground">{charge.kind}</span>
+                                  </div>
+                                  <div className="mt-1 text-xs text-muted-foreground">
+                                    Qty {charge.quantity} at ${charge.unitPrice} each
+                                  </div>
+                                  {charge.description ? (
+                                    <p className="mt-2 text-sm text-muted-foreground">{charge.description}</p>
+                                  ) : null}
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No saved charges on this part.</p>
+                            )}
                           </div>
-                        );
-                      }}
-                      disabled={conversionMode}
-                    />
+                        </div>
+                        <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                            Saved part files
+                          </h3>
+                          <div className="mt-3 space-y-3">
+                            {(activePart.templateAttachments ?? []).length ? (
+                              (activePart.templateAttachments ?? []).map((attachment, index) => {
+                                const href = attachment.storagePath
+                                  ? `/attachments/${attachment.storagePath}`
+                                  : attachment.url;
+                                return (
+                                  <div key={attachment.id ?? `${attachment.label}-${index}`} className="rounded-lg border border-border/60 bg-muted/10 px-3 py-3 text-sm">
+                                    <div className="font-medium text-foreground">{attachment.label || 'Template attachment'}</div>
+                                    <div className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
+                                      {attachment.kind}
+                                    </div>
+                                    {href ? (
+                                      <a
+                                        href={href}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="mt-2 inline-flex font-medium text-primary hover:underline"
+                                      >
+                                        Open file
+                                      </a>
+                                    ) : null}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No saved files on this part.</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <AssignedItemsPanel
+                        title="Assigned add-ons & labor"
+                        description={
+                          conversionMode
+                            ? 'Add-ons are read-only while converting from a quote.'
+                            : 'Drop items here or use Add from the library.'
+                        }
+                        assignments={activePart.addonSelections.map((selection) => ({
+                          key: selection.key,
+                          itemId: selection.addonId,
+                          units: selection.units,
+                          notes: selection.notes,
+                        }))}
+                        itemsById={availableItemsById}
+                        onAddItem={(itemId) => {
+                          if (conversionMode || templateMode) return;
+                          addAddonSelection(activePart.key, itemId);
+                        }}
+                        onUpdateAssignment={(key, patch) => {
+                          if (conversionMode || templateMode) return;
+                          const updates: Partial<PartAddonSelection> = {};
+                          if (patch.units !== undefined) updates.units = patch.units;
+                          if (patch.notes !== undefined) updates.notes = patch.notes;
+                          updateAddonSelection(activePart.key, key, updates);
+                        }}
+                        onRemoveAssignment={(key) => {
+                          if (conversionMode || templateMode) return;
+                          removeAddonSelection(activePart.key, key);
+                        }}
+                        onMoveAssignment={(key, direction) => {
+                          if (conversionMode || templateMode) return;
+                          moveAddonSelection(activePart.key, key, direction);
+                        }}
+                        renderMeta={(assignment, item) => {
+                          if (!item) return null;
+                          if (getWorkItemPricingSemantic(item) === 'CHECKLIST_ONLY') {
+                            return (
+                              <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                                No charge (checklist only).
+                              </div>
+                            );
+                          }
+                          if (typeof item.rateCents !== 'number') {
+                            return (
+                              <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                                Price unavailable for this add-on.
+                              </div>
+                            );
+                          }
+                          const units = numberFromString(assignment.units);
+                          const totalCents = calculateAssignmentTotalCents({ item, units });
+                          return (
+                            <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
+                              {formatCurrency(item.rateCents)} x {units.toFixed(2)} = {formatCurrency(totalCents)}
+                            </div>
+                          );
+                        }}
+                        disabled={conversionMode || templateMode}
+                      />
+                    )}
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground">Select a part to edit details.</p>
@@ -1450,7 +1732,64 @@ function NewOrderForm() {
               </CardContent>
             </Card>
 
-            {conversionMode ? (
+            {templateMode ? (
+              <Card className="border-border/60 bg-card/70 backdrop-blur">
+                <CardHeader>
+                  <CardTitle>Template files</CardTitle>
+                  <CardDescription>Saved order files and part files will copy into the new order automatically.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  <div className="space-y-3">
+                    <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Order-level files</p>
+                    {templateOrderAttachments.length ? (
+                      templateOrderAttachments.map((attachment, index) => {
+                        const href = attachment.storagePath ? `/attachments/${attachment.storagePath}` : attachment.url;
+                        return (
+                          <div key={attachment.id ?? `${attachment.label}-${index}`} className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm">
+                            <div className="font-medium text-foreground">{attachment.label || 'Template attachment'}</div>
+                            <div className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
+                              {attachment.kind}
+                            </div>
+                            {href ? (
+                              <a href={href} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex font-medium text-primary hover:underline">
+                                Open file
+                              </a>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No order-level files saved on this template.</p>
+                    )}
+                  </div>
+                  <div className="space-y-3">
+                    <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Part files</p>
+                    {templatePartAttachmentEntries.length ? (
+                      templatePartAttachmentEntries.map((entry) => {
+                        const href = entry.attachment.storagePath
+                          ? `/attachments/${entry.attachment.storagePath}`
+                          : entry.attachment.url;
+                        return (
+                          <div key={entry.key} className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm">
+                            <div className="font-medium text-foreground">{entry.attachment.label || 'Template attachment'}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {entry.partLabel} · {entry.attachment.kind}
+                            </div>
+                            {href ? (
+                              <a href={href} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex font-medium text-primary hover:underline">
+                                Open file
+                              </a>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No part files saved on this template.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : conversionMode ? (
               <Card className="border-border/60 bg-card/70 backdrop-blur">
                 <CardHeader>
                   <CardTitle>Attachments</CardTitle>
@@ -1585,13 +1924,15 @@ function NewOrderForm() {
               <CardHeader>
                 <CardTitle>Checklist items & notes</CardTitle>
                 <CardDescription>
-                  {conversionMode
+                  {templateMode
+                    ? 'Charges, checklist structure, and saved notes are coming from the repeat template.'
+                    : conversionMode
                     ? 'Checklist items will be pulled from the quote parts during conversion.'
                     : 'Select checklist items that should be applied to every part.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-6">
-                {!conversionMode && (
+                {!conversionMode && !templateMode && (
                   <div className="grid gap-2">
                     <Label>Checklist items (applied per part)</Label>
                     <div className="grid gap-3 rounded-lg border border-border/60 bg-background/60 p-4 sm:grid-cols-2">
@@ -1628,6 +1969,11 @@ function NewOrderForm() {
                     </div>
                   </div>
                 )}
+                {templateMode && (
+                  <div className="rounded-lg border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                    Template charges and checklist structure will be recreated on the new order. Use the part editor above if you need to tweak per-part notes or work instructions before launch.
+                  </div>
+                )}
                 {conversionMode && (
                   <div className="rounded-lg border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
                     Add-ons and labor will copy from the quote parts and become part-level charges and checklist items.
@@ -1652,7 +1998,7 @@ function NewOrderForm() {
                   Orders auto-number starting at 1001
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Button type="submit" disabled={loading} className="rounded-full bg-primary px-6 text-primary-foreground shadow-lg shadow-primary/30">
+                  <Button type="submit" disabled={loading || repeatTemplateLoading} className="rounded-full bg-primary px-6 text-primary-foreground shadow-lg shadow-primary/30">
                     {loading ? 'Submitting…' : 'Create order'}
                   </Button>
                   <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
@@ -1737,3 +2083,4 @@ const extractErrorMessage = async (res: Response, fallback: string) => {
     return fallback;
   }
 };
+

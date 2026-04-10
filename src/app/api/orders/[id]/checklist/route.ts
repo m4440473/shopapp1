@@ -18,7 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const json = await req.json().catch(() => null);
-    const { checklistId, chargeId, addonId, partId, departmentId, checked, reasonCode, reasonText } = json ?? {};
+    const { checklistId, chargeId, addonId, partId, departmentId, checked, performedById, reasonCode, reasonText } = json ?? {};
     if (!checklistId && !chargeId && !addonId) {
       return NextResponse.json({ error: 'Missing checklistId' }, { status: 400 });
     }
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       addonId,
       partId,
       checked,
+      performedById: typeof performedById === 'string' ? performedById : undefined,
       employeeName: togglerName,
       togglerId,
       reasonCode,

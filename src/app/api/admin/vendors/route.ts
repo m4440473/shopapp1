@@ -31,7 +31,18 @@ export async function GET(req: NextRequest) {
   const cursor = searchParams.get('cursor');
   const take = Number(searchParams.get('take') || '20');
 
-  const where = q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { url: { contains: q, mode: 'insensitive' } }, { phone: { contains: q, mode: 'insensitive' } }, { notes: { contains: q, mode: 'insensitive' } }] } as any : undefined;
+  const where = q
+    ? ({
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { url: { contains: q, mode: 'insensitive' } },
+          { phone: { contains: q, mode: 'insensitive' } },
+          { contact: { contains: q, mode: 'insensitive' } },
+          { materials: { contains: q, mode: 'insensitive' } },
+          { notes: { contains: q, mode: 'insensitive' } },
+        ],
+      } as any)
+    : undefined;
   const items = await prisma.vendor.findMany({
     where,
     orderBy: { id: 'asc' },

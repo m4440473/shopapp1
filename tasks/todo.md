@@ -1,4 +1,238 @@
+## Repeat Orders + Operator Accountability v1 - Final Integration
+- [x] Prisma/data model changes landed for repeat templates, part assignments, instruction receipts, checklist performer attribution, and part work instructions.
+- [x] Repeat-order backend/API landed: snapshot from order, list/fetch templates, create order from template.
+- [x] Accountability backend landed: assignment CRUD, acknowledgement gating, performer attribution, part activity summaries, timer start/resume guards.
+- [x] Order-detail UI landed: worker assignment panel, mission-brief acknowledgement modal, submit reconfirmation dialog, performer picker, clearer actor-vs-performer log context.
+- [x] Order-create repeat-order UI landed: `/orders/new?templateId=...` prefill, repeat-template submit path, template-mode read-only routing/file behavior, work-instructions editing.
+
+## Final Verification
+- [x] `npx prisma validate`
+- [x] `npx prisma migrate dev --name repeat_orders_operator_accountability_v1`
+- [x] `npx eslint --ext .ts,.tsx src/app/orders/new/page.tsx src/app/orders/[id]/page.tsx src/modules/repeat-orders src/app/api/repeat-order-templates src/modules/orders/orders.service.ts src/modules/time/time.service.ts src/app/api/timer/start/route.ts src/app/api/timer/resume/route.ts src/app/api/timer/active/route.ts src/app/api/orders/[id]/parts/[partId]/checklist/[itemId]/complete-and-advance/route.ts`
+- [x] `npm run test -- src/modules/repeat-orders/__tests__/repeat-orders.service.test.ts src/modules/orders/__tests__/orders.service.test.ts src/modules/time/__tests__/time.service.test.ts`
+
+## Notes
+- `npx prisma generate` hit a Windows file-lock `EPERM`, but the generated client types for the new models were present and the subsequent lint/tests passed.
+- Focused Vitest execution required an outside-sandbox rerun because sandboxed esbuild hit Windows `spawn EPERM`.
+
+## Accountability Backend Results
+- [x] Kept edits limited to orders/time backend logic, the required order/timer API routes, mock repos, and focused backend tests.
+- [x] Finished part worker assignment service/route behavior and order-detail read-model shaping.
+- [x] Finished part instruction acknowledgement receipts/status behavior and deterministic gating hooks.
+- [x] Enforced acknowledgement gating on timer start/resume, checklist toggle, and department submit.
+- [x] Persisted checklist performer attribution separately from toggler attribution and enriched checklist part-event metadata with actor/perfomer labels + ids.
+- [x] Added shared part activity read models for order detail and /api/timer/active.
+
+## Accountability Backend Verification
+- [x] 
+pm run test -- src/modules/orders/__tests__/orders.service.test.ts
+- [x] 
+pm run test -- src/modules/time/__tests__/time.service.test.ts *(required outside-sandbox rerun after sandboxed Vitest/esbuild hit Windows spawn EPERM)*
+- [x] 
+pm run lint
+## Scope Adjustment
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Adjustment: User narrowed the active implementation scope to the repeat-order backend only. Accountability backend work remains in the tree but is out of write scope for the remainder of this session.
+
+## Repeat-Order Backend Slice
+- [x] Keep edits limited to:
+  - `src/modules/repeat-orders/**`,
+  - `src/app/api/repeat-order-templates/**`,
+  - minimal shared backend/test/doc touches required to support template snapshot/create-order behavior.
+- [x] Harden repeat-order template snapshot/create-order behavior:
+  - do not carry stale PO chatter into template defaults,
+  - validate provided order-number prefix against the standard business prefix rule,
+  - reject duplicate/unknown template part overrides,
+  - reject template-based order creation when the template has no parts.
+- [x] Add focused repeat-order service tests for template snapshot and order instantiation.
+- [x] Verify with focused tests and record evidence in continuity docs.
+
+## Scope Adjustment (Superseded)
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Adjustment: User narrowed the active implementation scope to the accountability backend only. Repeat-order work remains in the tree but is out of write scope for the remainder of this session.
+
+## Accountability Backend Slice
+- [ ] Keep edits limited to:
+  - src/modules/orders/** backend logic,
+  - src/modules/time/** backend logic,
+  - src/app/api/orders/** backend routes needed for assignments / acknowledgements / checklist attribution,
+  - src/app/api/timer/** backend routes needed for acknowledgement gating / shared part activity,
+  - focused backend tests.
+- [ ] Finish part worker assignment CRUD/read models on the service + route layer.
+- [ ] Finish part instruction acknowledgement receipts and expose status/read models for the current part/department version.
+- [ ] Enforce deterministic acknowledgement gating on:
+  - timer start,
+  - checklist toggle,
+  - department submit.
+- [ ] Persist performer attribution separately from checklist toggler attribution and enrich part-event metadata for actor vs performer rendering.
+- [ ] Add shared part activity read models:
+  - assigned workers,
+  - active timers on a part,
+  - accumulated time by user for a part.
+- [ ] Verify with focused orders/time tests and record evidence in continuity docs.
 # tasks/todo.md — Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: Vendors contact/materials schema follow-up + import rollback
+- Goal: Add first-class searchable `contact` and `materials` fields for vendors, update the importer/search/UI to use them, and remove the recent partial vendor import so data can be reimported cleanly.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current vendor state:
+  - recent spreadsheet import created many vendor rows beyond the original seeded baseline,
+  - only `Grainger` is currently referenced (`quoteVendorItemCount = 1`),
+  - none of the imported spreadsheet vendors are referenced by orders or quote vendor items, so rollback is safe.
+- [x] Validated the current gap in code:
+  - Vendor schema still stores supplier contact/material info only indirectly in `notes`,
+  - Vendors search does not have first-class `contact`/`materials` fields to query.
+
+## Plan First
+- [x] Add `contact` and `materials` to the Vendor schema, validation, and CRUD paths.
+- [x] Update the Vendors importer/search/UI so `Contact` and `Material` map into searchable first-class fields instead of `notes`.
+- [x] Remove the recently imported vendor rows while preserving the seeded baseline/linked vendor records.
+- [x] Run relevant verification and update continuity docs with evidence.
+
+## Verification Checklist
+- [x] `npx prisma migrate dev`
+- [x] vendor-reference audit via `node -`
+- [x] rollback delete script via `node -`
+- [x] `npm run lint`
+- [x] `npm run test -- src/modules/vendors/__tests__/vendor-import.test.ts`
+- [x] `node -` real workbook preview parse + post-rollback vendor check
+
+## Review + Results
+- Added searchable Vendor `contact` and `materials` fields instead of burying supplier contact/material metadata in `notes`.
+- Updated the importer so the real workbook now maps:
+  - `Company -> name`
+  - `Web page -> url`
+  - `Phone -> phone`
+  - `Contact -> contact`
+  - `Material -> materials`
+- Rolled back the recent partial import safely by deleting 37 unreferenced vendor rows and preserving the baseline seeded rows (`Grainger`, `McMaster-Carr`).
+- Prisma migration applied successfully; `prisma generate` still hit a Windows file-lock rename `EPERM`, but the client remained usable and successfully queried the new fields afterward.
+
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: Vendors preview-and-map importer
+- Goal: Add a Vendors import workflow that can upload a spreadsheet, preview parsed rows, map columns into the current Vendor schema, and import selected data safely.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated current Vendors scope in code:
+  - `Vendor` currently stores only `name`, `url`, `phone`, and `notes`.
+  - `Vendor.name` is unique, so imports must detect or handle duplicates.
+  - The current admin Vendors UI/API only supports manual CRUD; there is no import flow yet.
+- [x] Validated the source-file shape enough to plan importer behavior:
+  - `C:\Users\user\Downloads\Suppliers.xls` is a legacy Excel `.xls` workbook, not CSV.
+  - Embedded workbook text indicates supplier-style columns such as company, phone, contact, and web page, plus section/category headers and some fax/address/email fragments.
+
+## Plan First
+- [x] Add a parser path that can read legacy `.xls` uploads for preview/import.
+- [x] Implement admin-only Vendors preview/import API routes that:
+  - accept spreadsheet upload,
+  - extract headers/rows,
+  - let the client map source columns to `name`, `url`, `phone`, and `notes`,
+  - support duplicate-handling rules that preserve the current unique-name constraint.
+- [x] Add Vendors-page UI for file upload, column mapping, preview rows, and import results.
+- [x] Run relevant verification and update continuity docs with evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `npm run test -- src/modules/vendors/__tests__/vendor-import.test.ts`
+- [x] `node -` real workbook preview parse against `C:\Users\user\Downloads\Suppliers.xls`
+
+## Review + Results
+- Added a new admin-only preview-and-map importer on `/admin/vendors` without removing the existing manual vendor CRUD flow.
+- Added stateless preview/import parsing for `.xls`, `.xlsx`, and `.csv` uploads via `xlsx`, including:
+  - sheet selection,
+  - configurable header row,
+  - suggested field mappings,
+  - duplicate handling by vendor name (`skip` or `update`).
+- Verified the real `Suppliers.xls` workbook parses successfully with:
+  - selected sheet `Steel Suppliers`,
+  - columns `Company`, `Phone`, `Contact`, `Web page`, `Material`,
+  - suggested mapping `Company -> name`, `Web page -> url`, `Phone -> phone`, `Contact -> notes`.
+
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: BOM analyzer oversized-image normalization
+- Goal: Prevent large image uploads from crashing the analyzer route by normalizing image payloads before the OpenAI vision calls.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current analyzer path in `src/app/api/print-analyzer/analyze/route.ts`:
+  - uploads are accepted as raw `data:image/*` or `data:application/pdf`,
+  - image uploads are passed through without any resize/compression guard,
+  - the route returns `502` with `Maximum call stack size exceeded` for a reported ~`4 MB` image, indicating the path is not resilient to large payloads.
+
+## Plan First
+- [x] Add a server-side image normalization step for image uploads before any OpenAI vision request.
+- [x] Keep PDF behavior intact, but route PDF raster output through the same normalization path so all analyzer inputs share one bounded image-prep contract.
+- [x] Add/update focused verification for the analyzer route path and run the relevant checks.
+- [x] Update continuity docs with the new guardrail and evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] Live oversized-image analyzer POST against `http://127.0.0.1:3000/api/print-analyzer/analyze`
+
+## Review + Results
+- Replaced the large-string `data:` URL regex parser with a delimiter-based parser after isolating the `Maximum call stack size exceeded` failure to `decodeDataUrl()` for a large base64 image payload.
+- Removed the analyzer route's server-side image data-URL roundtrip so normalized uploads stay as raw `Buffer`s after request parsing.
+- Switched the vision requests to OpenAI uploaded files (`purpose: vision` + Responses `input_image.file_id`) so the analyzer no longer forwards large inline base64 image strings to the OpenAI SDK.
+- Verified the previously failing oversized image path now succeeds: a locally generated `~5.9 MB` JPEG returned `200` with structured analyzer JSON instead of a `502` stack-overflow error.
+
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: Repair stale dev server on port 3000
+- Goal: Recover the broken local Next dev server on port `3000` so admin quote print stops throwing the webpack/runtime error and serves normally again.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, and `tasks/lessons.md` before intervention.
+- [x] Verified the issue was isolated to the existing local `3000` dev server, not the current source tree:
+  - a fresh dev server on `3001` rendered `/admin/quotes/cmnsw7c34000tq7rcbjgn7aeq/print` successfully,
+  - the existing `3000` server returned `500` with a broken `.next/server/...` `ENOENT` dev-build state.
+
+## Plan First
+- [x] Confirm whether the quote print runtime failure reproduces on a fresh compile before changing code.
+- [x] Refresh the stale `3000` Next dev process if the code path is already healthy on a fresh server.
+- [x] Re-verify the exact authenticated quote print route on `3000` after restart.
+- [x] Update continuity docs with the operational fix and evidence.
+
+## Verification Checklist
+- [x] Fresh auth + quote print request against `http://127.0.0.1:3000/admin/quotes/cmnsw7c34000tq7rcbjgn7aeq/print`
+
+## Review + Results
+- Confirmed the reported runtime error was caused by a stale/broken local dev server state on port `3000`, not by a remaining source-level bug in the quote print route.
+- Stopped the stale `3000` Next process, restarted the workspace dev server on `3000`, and verified the same authenticated quote print route now returns `200`.
+
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: LAN/IP-safe post-sign-in redirect
+- Goal: Keep post-login navigation on the active browser origin instead of bouncing successful sign-ins back to localhost.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, and `tasks/lessons.md` before implementation.
+- [x] Validated the scoped auth path in `src/app/(public)/auth/signin/page.tsx`: the sign-in form used `signIn(..., { redirect: true })`, which let NextAuth choose the final origin and reintroduced localhost when the configured auth base URL still pointed at loopback.
+
+## Plan First
+- [x] Keep the fix scoped to the sign-in page rather than refactoring shared auth infrastructure.
+- [x] Change credential sign-in to `redirect: false` and navigate manually to the normalized relative callback path on success so the browser stays on the current LAN/IP origin.
+- [x] Run verification and update continuity docs with the outcome.
+
+## Verification Checklist
+- [x] `npm run lint`
+
+## Review + Results
+- Credential sign-in now completes with `redirect: false`, then the browser manually navigates to the normalized relative callback path.
+- Because the final navigation is now handled by the current browser window instead of NextAuth's configured base URL, successful sign-ins stay on the active LAN/IP origin rather than bouncing back to `localhost`.
 
 ## Session Metadata
 - Date: 2026-04-09
@@ -2039,3 +2273,66 @@ Commands run:
 - The PDF analyzer route now resolves both `pdfjs-dist` and `@napi-rs/canvas` via runtime dynamic imports instead of the earlier module-path strategies that broke inside the Next server bundle.
 - Port `3000` was reclaimed from the stale local Next process and restarted with the updated workspace server.
 - A real PDF request to `http://127.0.0.1:3000/api/print-analyzer/analyze` now succeeds with `200` and structured analyzer JSON instead of the previous module-resolution failure.
+# tasks/todo.md - Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: Repeat Orders + Operator Accountability v1
+- Goal: Add repeat-order templates, part-level worker accountability, required-read acknowledgements, and checklist performer attribution without collapsing the existing order/time architecture.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated current architecture constraints:
+  - Orders still use order-level `assignedMachinistId`.
+  - Timers are already part-linked and user-owned.
+  - Checklist attribution currently stores only `toggledById`.
+  - Notes are order-level; part-specific audit behavior lives in `PartEvent`.
+- [x] Validated existing reuse points:
+  - quote -> order conversion already copies parts/files and initializes checklist/current department.
+  - order-create flow already supports prefilled order draft semantics and canonical file storage.
+
+## Plan First
+- [x] Add Prisma models/fields for:
+  - repeat-order templates + template children,
+  - part worker assignments,
+  - part work instructions + versioning,
+  - part instruction receipts,
+  - checklist performer attribution.
+- [x] Update shared schemas/types and repo/service contracts to match the new model.
+- [x] Implement repeat-order backend flow:
+  - snapshot template from order,
+  - list/fetch templates,
+  - create order from template with fresh checklist/files.
+- [x] Implement repeat-order UI:
+  - save template on order detail,
+  - template-based prefill on `/orders/new`,
+  - create repeat order review flow.
+- [x] Implement accountability backend:
+  - part assignments CRUD/read models,
+  - acknowledgement gating for timer/checklist/submit,
+  - actor + performer checklist persistence.
+- [x] Implement accountability UI:
+  - part worker panel,
+  - must-read modal,
+  - submit reconfirmation dialog,
+  - checklist performer dialog,
+  - improved log rendering.
+- [x] Run focused verification and update continuity docs with evidence.
+
+## Verification Checklist
+- [x] `npx prisma migrate dev`
+- [x] `npx prisma generate`
+- [x] focused repeat-order tests
+- [x] focused orders/time/accountability tests
+- [x] `npm run lint`
+
+## Review + Results
+- Completed the UI implementation for the order-detail accountability slice and left the repeat-order backend/UI changes already present in the tree intact.
+- Verification:
+  - `npx eslint "src/app/orders/[id]/page.tsx"` passed.
+  - `npx eslint "src/app/orders/new/page.tsx"` passed.
+  - `npx tsc --noEmit --pretty false` hit unrelated pre-existing repo errors outside this slice (admin quote typing, print-analyzer canvas typing, mock repo type drift, and `sterling-site` module resolution), so I treated the full repo type-check as a known baseline issue rather than a regression from this UI work.
+- Next if we continue here: fix the repo-wide type-check baseline or split the remaining UI polish into smaller validation-targeted passes.
+
+

@@ -9,6 +9,7 @@ import {
   findTimeEntryById,
   listActiveTimeEntriesForUser,
   listTimeEntriesForOrderParts,
+  listTimeEntriesForPartsDetailed,
   updateClosedTimeEntryById,
 } from '@/repos/time';
 import type {
@@ -50,6 +51,22 @@ export async function getActiveTimeEntry(userId: string): Promise<ServiceResult<
 export async function getActiveTimeEntries(userId: string): Promise<ServiceResult<{ entries: TimeEntry[] }>> {
   const entries = await listActiveTimeEntriesForUser(userId);
   return ok({ entries });
+}
+
+export async function getTimeEntryDetails(
+  userId: string,
+  entryId: string,
+): Promise<ServiceResult<{ entry: TimeEntry }>> {
+  const entry = await findTimeEntryById(entryId);
+  if (!entry) {
+    return fail(404, 'Time entry not found.');
+  }
+
+  if (entry.userId !== userId) {
+    return fail(403, 'Cannot access a time entry owned by another user.');
+  }
+
+  return ok({ entry });
 }
 
 export async function getTimeEntrySummary(
@@ -250,6 +267,105 @@ export async function getOrderPartTimeTotals(
   });
 
   return ok({ totalsSeconds });
+}
+
+export async function getPartActivitySummary(
+  partIds: string[],
+): Promise<
+  ServiceResult<{
+    partActivity: Record<
+      string,
+      {
+        activeTimers: Array<Record<string, unknown>>;
+        timeByUser: Array<Record<string, unknown>>;
+        totalSeconds: number;
+      }
+    >;
+  }>
+> {
+  if (!partIds.length) return ok({ partActivity: {} });
+
+  const entries = await listTimeEntriesForPartsDetailed(partIds);
+  const partIdSet = new Set(partIds);
+  const partActivity = Object.fromEntries(
+    partIds.map((partId) => [
+      partId,
+      {
+        activeTimers: [] as Array<Record<string, unknown>>,
+        timeByUser: [] as Array<Record<string, unknown>>,
+        totalSeconds: 0,
+      },
+    ]),
+  ) as Record<
+    string,
+    {
+      activeTimers: Array<Record<string, unknown>>;
+      timeByUser: Array<Record<string, unknown>>;
+      totalSeconds: number;
+    }
+  >;
+
+  const totalsByPartUser = new Map<string, { partId: string; user: any; seconds: number }>();
+
+  entries.forEach((entry) => {
+    if (!entry.partId || !partIdSet.has(entry.partId)) return;
+    const bucket = partActivity[entry.partId];
+    if (!bucket) return;
+
+    if (!entry.endedAt) {
+      bucket.activeTimers.push({
+        id: entry.id,
+        orderId: entry.orderId,
+        partId: entry.partId,
+        departmentId: entry.departmentId,
+        departmentName: entry.department?.name ?? null,
+        userId: entry.userId,
+        user: entry.user ?? null,
+        operation: entry.operation,
+        startedAt: entry.startedAt,
+        elapsedSeconds: Math.max(0, Math.floor((Date.now() - entry.startedAt.getTime()) / 1000)),
+      });
+      return;
+    }
+
+    const diffMs = entry.endedAt.getTime() - entry.startedAt.getTime();
+    if (diffMs <= 0) return;
+
+    const seconds = Math.floor(diffMs / 1000);
+    bucket.totalSeconds += seconds;
+    const key = `${entry.partId}:${entry.userId}`;
+    const existing = totalsByPartUser.get(key);
+    if (existing) {
+      existing.seconds += seconds;
+      return;
+    }
+
+    totalsByPartUser.set(key, {
+      partId: entry.partId,
+      user: entry.user ?? null,
+      seconds,
+    });
+  });
+
+  totalsByPartUser.forEach((entry) => {
+    partActivity[entry.partId]?.timeByUser.push({
+      userId: entry.user?.id ?? null,
+      user: entry.user ?? null,
+      seconds: entry.seconds,
+    });
+  });
+
+  Object.values(partActivity).forEach((entry) => {
+    entry.activeTimers.sort((a: any, b: any) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+    entry.timeByUser.sort((a: any, b: any) => {
+      if (b.seconds !== a.seconds) return b.seconds - a.seconds;
+      const aName = a.user?.name ?? a.user?.email ?? a.userId ?? '';
+      const bName = b.user?.name ?? b.user?.email ?? b.userId ?? '';
+      return String(aName).localeCompare(String(bName), undefined, { sensitivity: 'base' });
+    });
+  });
+
+  return ok({ partActivity });
 }
 
 export function computeEntryMinutes(entries: Array<Pick<TimeEntry, 'startedAt' | 'endedAt'>>) {

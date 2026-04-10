@@ -265,8 +265,39 @@ export async function findOrderWithDetails(id: string) {
     where: { id },
     include: {
       customer: true,
-      parts: { include: { material: true, attachments: true, charges: { include: { department: true } }, partEvents: { orderBy: { createdAt: 'desc' }, take: 1 } } },
-      checklist: { include: { addon: true, department: true, part: true, charge: true } },
+      parts: {
+        include: {
+          material: true,
+          attachments: true,
+          charges: { include: { department: true } },
+          partEvents: { orderBy: { createdAt: 'desc' }, take: 1 },
+          assignments: {
+            where: { isActive: true },
+            orderBy: [{ createdAt: 'asc' }],
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+              assignedBy: { select: { id: true, name: true, email: true } },
+            },
+          },
+          instructionReceipts: {
+            orderBy: { acknowledgedAt: 'desc' },
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+              department: { select: { id: true, name: true } },
+            },
+          },
+        },
+      },
+      checklist: {
+        include: {
+          addon: true,
+          department: true,
+          part: true,
+          charge: true,
+          toggledBy: { select: { id: true, name: true, email: true } },
+          performedBy: { select: { id: true, name: true, email: true } },
+        },
+      },
       charges: { include: { department: true, part: true }, orderBy: { sortOrder: 'asc' } },
       statusHistory: { orderBy: { createdAt: 'asc' } },
       notes: { orderBy: { createdAt: 'asc' }, include: { user: true } },
@@ -397,21 +428,30 @@ export async function findUserById(userId: string) {
   return prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
 }
 
+export async function findUserSummaryById(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, email: true, active: true },
+  });
+}
+
 export async function updateChecklistCompletion({
   checklistId,
   checked,
   toggledById,
+  performedById,
   chargeId,
 }: {
   checklistId: string;
   checked: boolean;
   toggledById: string | null;
+  performedById?: string | null;
   chargeId?: string | null;
 }) {
   await prisma.$transaction([
     prisma.orderChecklist.update({
       where: { id: checklistId },
-      data: { completed: checked, toggledById },
+      data: { completed: checked, toggledById, performedById: performedById ?? toggledById },
     }),
     ...(chargeId
       ? [
@@ -472,7 +512,13 @@ export async function findOrderSummary(id: string) {
 export async function findOrderPartSummary(orderId: string, partId: string) {
   return prisma.orderPart.findFirst({
     where: { id: partId, orderId },
-    select: { id: true, partNumber: true },
+    select: {
+      id: true,
+      partNumber: true,
+      currentDepartmentId: true,
+      workInstructions: true,
+      instructionsVersion: true,
+    },
   });
 }
 
@@ -562,6 +608,8 @@ export async function findPartForRouting(partId: string, db: DbClient = prisma) 
       orderId: true,
       status: true,
       currentDepartmentId: true,
+      workInstructions: true,
+      instructionsVersion: true,
       checklistItems: {
         where: { isActive: true },
         include: {
@@ -584,12 +632,24 @@ export async function updatePartCurrentDepartment(partId: string, currentDepartm
 }
 
 export async function setChecklistCompletion(
-  { checklistId, checked, toggledById, chargeId }: { checklistId: string; checked: boolean; toggledById: string | null; chargeId?: string | null },
+  {
+    checklistId,
+    checked,
+    toggledById,
+    performedById,
+    chargeId,
+  }: {
+    checklistId: string;
+    checked: boolean;
+    toggledById: string | null;
+    performedById?: string | null;
+    chargeId?: string | null;
+  },
   db: DbClient = prisma,
 ) {
   await db.orderChecklist.update({
     where: { id: checklistId },
-    data: { completed: checked, toggledById },
+    data: { completed: checked, toggledById, performedById: performedById ?? toggledById },
   });
 
   if (chargeId) {
@@ -615,6 +675,7 @@ export async function createOrderPartWithCharges({
     stockSize?: string | null;
     cutLength?: string | null;
     notes?: string | null;
+    workInstructions?: string | null;
   };
   sourcePartId?: string | null;
   userId?: string | null;
@@ -630,6 +691,7 @@ export async function createOrderPartWithCharges({
         stockSize: partData.stockSize ?? null,
         cutLength: partData.cutLength ?? null,
         notes: partData.notes ?? null,
+        workInstructions: partData.workInstructions ?? null,
       },
     });
 
@@ -995,6 +1057,118 @@ export async function updatePartAttachmentStoragePath(attachmentId: string, stor
 
 export async function deletePartAttachment(attachmentId: string) {
   return prisma.partAttachment.delete({ where: { id: attachmentId } });
+}
+
+export async function listPartAssignments(partId: string) {
+  return prisma.orderPartAssignment.findMany({
+    where: { partId, isActive: true },
+    orderBy: [{ createdAt: 'asc' }],
+    include: {
+      user: { select: { id: true, name: true, email: true, active: true } },
+      assignedBy: { select: { id: true, name: true, email: true } },
+    },
+  });
+}
+
+export async function findActivePartAssignment(partId: string, userId: string) {
+  return prisma.orderPartAssignment.findFirst({
+    where: { partId, userId, isActive: true },
+    include: {
+      user: { select: { id: true, name: true, email: true, active: true } },
+      assignedBy: { select: { id: true, name: true, email: true } },
+    },
+  });
+}
+
+export async function createPartAssignment({
+  partId,
+  userId,
+  assignedById,
+  assignmentType,
+}: {
+  partId: string;
+  userId: string;
+  assignedById?: string | null;
+  assignmentType?: string;
+}) {
+  return prisma.orderPartAssignment.create({
+    data: {
+      partId,
+      userId,
+      assignedById: assignedById ?? null,
+      assignmentType: assignmentType ?? 'WORKER',
+      isActive: true,
+    },
+    include: {
+      user: { select: { id: true, name: true, email: true, active: true } },
+      assignedBy: { select: { id: true, name: true, email: true } },
+    },
+  });
+}
+
+export async function deactivatePartAssignment(assignmentId: string) {
+  return prisma.orderPartAssignment.update({
+    where: { id: assignmentId },
+    data: {
+      isActive: false,
+      removedAt: new Date(),
+    },
+    include: {
+      user: { select: { id: true, name: true, email: true, active: true } },
+      assignedBy: { select: { id: true, name: true, email: true } },
+    },
+  });
+}
+
+export async function listInstructionReceiptsForPart(partId: string) {
+  return prisma.partInstructionReceipt.findMany({
+    where: { partId },
+    orderBy: { acknowledgedAt: 'desc' },
+    include: {
+      user: { select: { id: true, name: true, email: true, active: true } },
+      department: { select: { id: true, name: true } },
+    },
+  });
+}
+
+export async function findInstructionReceipt({
+  partId,
+  userId,
+  departmentId,
+  instructionsVersion,
+}: {
+  partId: string;
+  userId: string;
+  departmentId: string;
+  instructionsVersion: number;
+}) {
+  return prisma.partInstructionReceipt.findFirst({
+    where: { partId, userId, departmentId, instructionsVersion },
+    include: {
+      user: { select: { id: true, name: true, email: true, active: true } },
+      department: { select: { id: true, name: true } },
+    },
+  });
+}
+
+export async function createInstructionReceipt({
+  partId,
+  userId,
+  departmentId,
+  instructionsVersion,
+}: {
+  partId: string;
+  userId: string;
+  departmentId: string;
+  instructionsVersion: number;
+}) {
+  return prisma.partInstructionReceipt.create({
+    data: { partId, userId, departmentId, instructionsVersion },
+    include: {
+      user: { select: { id: true, name: true, email: true, active: true } },
+      department: { select: { id: true, name: true } },
+    },
+  });
 }
 
 export async function listAddons({

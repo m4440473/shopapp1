@@ -83,5 +83,16 @@ export function createMockTimeRepo() {
         (entry) => entry.orderId === orderId && entry.partId && partIds.includes(entry.partId) && entry.endedAt
       );
     },
+
+    async listTimeEntriesForPartsDetailed(partIds: string[]) {
+      return state.timeEntries
+        .filter((entry) => entry.partId && partIds.includes(entry.partId))
+        .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+        .map((entry) => ({
+          ...entry,
+          user: state.users.find((user) => user.id === entry.userId) ?? null,
+          department: state.departments.find((department) => department.id === entry.departmentId) ?? null,
+        }));
+    },
   };
 }

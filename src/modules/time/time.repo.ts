@@ -59,6 +59,18 @@ export async function listTimeEntriesForOrderParts(orderId: string, partIds: str
   });
 }
 
+export async function listTimeEntriesForPartsDetailed(partIds: string[]) {
+  if (!partIds.length) return [];
+  return prisma.timeEntry.findMany({
+    where: { partId: { in: partIds } },
+    orderBy: [{ startedAt: 'desc' }],
+    include: {
+      user: { select: { id: true, name: true, email: true, active: true } },
+      department: { select: { id: true, name: true } },
+    },
+  });
+}
+
 export async function createTimeEntry(data: {
   orderId: string;
   partId?: string | null;

@@ -4,6 +4,12 @@
 - Preventive rule: For dialogs and forms with mutable selections, audit every visible action label against the live controlled value before closing the task; never leave confirm copy tied to an initialization default.
 - Applied in next session where: 2026-04-09 order-detail submit dialog label fix.
 
+## 2026-04-10 — Large `data:` URLs should not be parsed with regex in route handlers
+- Trigger: BOM analyzer returned `Maximum call stack size exceeded` for a ~`4 MB` to `6 MB` image upload.
+- Mistake pattern: I used a regex-based `data:` URL parser in a Next route path that had to process multi-megabyte base64 strings.
+- Preventive rule: For large upload payloads in route handlers, avoid regex parsing on entire base64 `data:` URLs; use delimiter-based parsing and prefer raw buffers or file uploads over repeated base64 roundtrips.
+- Applied in next session where: 2026-04-10 BOM analyzer oversized-image normalization fix.
+
 ## 2026-03-19 — SQLite migration default-value trap
 - Trigger: Prisma migrate failed while adding timestamp columns with `DEFAULT CURRENT_TIMESTAMP` via `ALTER TABLE` on SQLite.
 - Mistake pattern: I assumed SQLite could add non-null timestamp columns with non-constant defaults directly.

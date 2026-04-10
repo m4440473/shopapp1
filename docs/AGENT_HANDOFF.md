@@ -1,3 +1,472 @@
+## Session Handoff - 2026-04-10 (Order-detail UX polish)
+
+Goal (1 sentence): Apply a small clarity pass to the order-detail accountability UI so the mission brief and part-worker roster are easier to scan on the floor.
+
+### What changed
+- Updated `src/app/orders/[id]/page.tsx`
+  - Refined the mission-brief modal copy to better explain when acknowledgement is required and that the receipt is logged.
+  - Added quick chips for part, department, and instruction version in the brief modal.
+  - Updated the overview instructions card to use clearer acknowledgement-state wording.
+  - Added a small roster explainer to the worker panel and improved the empty-state wording.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx src/app/orders/[id]/page.tsx`
+
+### Verification evidence
+- Targeted ESLint passed.
+
+## Session Handoff - 2026-04-10 (Repeat-order UX polish)
+
+Goal (1 sentence): Apply a small clarity pass to the repeat-order launch screen so template mode is easier to understand on first use.
+
+### What changed
+- Updated `src/app/orders/new/page.tsx`
+  - Added a repeat-launch summary banner explaining which fields are editable and which parts of the template are frozen.
+  - Added quick counts for parts, order files, and part files at the top of template mode.
+  - Removed a duplicate template-mode work-instructions textarea from the selected-part editor.
+
+### Files touched
+- `src/app/orders/new/page.tsx`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx src/app/orders/new/page.tsx`
+
+### Verification evidence
+- Targeted ESLint passed.
+
+## Session Handoff - 2026-04-10 (Repeat Orders + Operator Accountability v1 final integration)
+
+Goal (1 sentence): Finish the end-to-end Repeat Orders + Operator Accountability v1 slice across schema, backend, routes, order detail UI, and template-based order creation UI.
+
+### What changed
+- Prisma/data model
+  - Added repeat-order template models plus part/charge/attachment children.
+  - Added `OrderPartAssignment`, `PartInstructionReceipt`, `OrderPart.workInstructions`, `OrderPart.instructionsVersion`, and `OrderChecklist.performedById`.
+- Repeat-order backend/API
+  - Added `src/modules/repeat-orders/**` service/repo/schema/types.
+  - Added `/api/repeat-order-templates`, `/from-order/[orderId]`, `/[id]`, and `/[id]/create-order`.
+  - Template creation snapshots manufacturing definition only; execution history is excluded.
+- Accountability backend/API
+  - Added part-worker assignment behavior, acknowledgement receipt/status helpers, checklist performer attribution, shared part activity summaries, and deterministic acknowledgement gating for timer start/resume, checklist toggle, and department submit.
+  - Timer/checklist routes now surface `INSTRUCTION_ACK_REQUIRED` consistently.
+- Order detail UI
+  - Added worker assignment panel, mission-brief acknowledgement modal, second-step submit confirmation, checklist performer picker, and clearer actor-vs-performer log rendering in `src/app/orders/[id]/page.tsx`.
+- Order create repeat-order UI
+  - `src/app/orders/new/page.tsx` now supports template mode via `templateId`, prefills from repeat templates, submits through the repeat-template create-order route, disables mutable routing/file controls for frozen template launches, and exposes part work-instruction editing.
+
+### Files touched
+- `prisma/schema.prisma`
+- `prisma/migrations/20260410153846_repeat_orders_operator_accountability_v1/migration.sql`
+- `src/modules/orders/orders.repo.ts`
+- `src/modules/orders/orders.schema.ts`
+- `src/modules/orders/orders.service.ts`
+- `src/modules/time/time.service.ts`
+- `src/modules/repeat-orders/repeat-orders.repo.ts`
+- `src/modules/repeat-orders/repeat-orders.schema.ts`
+- `src/modules/repeat-orders/repeat-orders.service.ts`
+- `src/modules/repeat-orders/repeat-orders.types.ts`
+- `src/modules/repeat-orders/__tests__/repeat-orders.service.test.ts`
+- `src/modules/orders/__tests__/orders.service.test.ts`
+- `src/modules/time/__tests__/time.service.test.ts`
+- `src/app/api/repeat-order-templates/route.ts`
+- `src/app/api/repeat-order-templates/from-order/[orderId]/route.ts`
+- `src/app/api/repeat-order-templates/[id]/route.ts`
+- `src/app/api/repeat-order-templates/[id]/create-order/route.ts`
+- `src/app/api/timer/start/route.ts`
+- `src/app/api/timer/resume/route.ts`
+- `src/app/api/timer/active/route.ts`
+- `src/app/api/orders/[id]/parts/[partId]/checklist/[itemId]/complete-and-advance/route.ts`
+- `src/app/orders/[id]/page.tsx`
+- `src/app/orders/new/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx prisma validate`
+- `npx prisma migrate dev --name repeat_orders_operator_accountability_v1`
+- `npx prisma generate`
+- `npx eslint --ext .ts,.tsx src/app/orders/new/page.tsx src/app/orders/[id]/page.tsx src/modules/repeat-orders src/app/api/repeat-order-templates src/modules/orders/orders.service.ts src/modules/time/time.service.ts src/app/api/timer/start/route.ts src/app/api/timer/resume/route.ts src/app/api/timer/active/route.ts src/app/api/orders/[id]/parts/[partId]/checklist/[itemId]/complete-and-advance/route.ts`
+- `npm run test -- src/modules/repeat-orders/__tests__/repeat-orders.service.test.ts src/modules/orders/__tests__/orders.service.test.ts src/modules/time/__tests__/time.service.test.ts`
+
+### Verification evidence
+- Prisma validate passed.
+- Migration applied successfully for `repeat_orders_operator_accountability_v1`.
+- Focused ESLint passed on the touched repeat-order and accountability files.
+- Focused tests passed: repeat orders `4/4`, orders `11/11`, time `7/7` (`22/22` total).
+- `npx prisma generate` hit a Windows file-lock `EPERM`, but the generated client contained the new types/models and the subsequent lint/tests passed.
+- Focused Vitest execution required an outside-sandbox rerun after in-sandbox Windows `spawn EPERM`.
+
+### Follow-up assumptions / caveats
+- Repo-wide type-check still has unrelated baseline errors outside this feature slice.
+- Repeat-order UI intentionally treats template routing/files as frozen in v1; bossman can override order-level fields and part notes/instructions, but not rebuild the template routing from the create screen.
+- `Order.assignedMachinistId` remains coordinator-only; actual floor execution is part-level through `OrderPartAssignment`.
+
+## Session Handoff - 2026-04-10 (Repeat orders + operator accountability UI)
+
+Goal (1 sentence): Finish the order-detail UI slice for Repeat Orders + Operator Accountability v1: part-worker assignment panel, must-read instruction gate, submit reconfirmation, checklist performer selection, and clearer part log phrasing.
+
+### What changed
+- Updated `src/app/orders/[id]/page.tsx`
+  - Added a part-worker assignment panel that uses the existing `/api/orders/[id]/parts/[partId]/assignments` GET/POST/DELETE routes.
+  - Added a must-read mission-brief modal/read gate using `/api/orders/[id]/parts/[partId]/acknowledge-instructions`.
+  - Added a second-step submit reconfirmation dialog for the existing department-submit flow.
+  - Added a checklist performer-selection dialog with the current session user preselected and persisted through `performedById`.
+  - Updated part log rendering to surface actor vs performer context more clearly.
+  - Kept the changes inside the order-detail page and reused the backend contracts already in the tree.
+- Updated continuity docs:
+  - `tasks/todo.md`
+  - `PROGRESS_LOG.md`
+  - `docs/AGENT_CONTEXT.md` was already updated earlier in the session for the repeat-order/accountability decision log entry.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint "src/app/orders/[id]/page.tsx"`
+- `npx eslint "src/app/orders/new/page.tsx"`
+- `npx tsc --noEmit --pretty false`
+
+### Verification evidence
+- Targeted ESLint passed on both edited order UI pages.
+- Full repo type-check still reports unrelated pre-existing errors outside this UI slice:
+  - `src/app/admin/quotes/[id]/page.tsx`
+  - `src/app/api/admin/vendors/import/route.ts`
+  - `src/app/api/print-analyzer/analyze/route.ts`
+  - `src/lib/quote-part-pricing.ts`
+  - `src/repos/index.ts`
+  - `src/repos/mock/orders.ts`
+  - `sterling-site/vite.config.ts`
+- I treated those as baseline issues rather than regressions from this work.
+
+### UI contract assumptions
+- Checklist performer selection should stay client-side and continue sending `performedById` through the existing checklist routes.
+- The instruction gate is per user + part + department version, so the UI should continue to re-open the brief only when the receipt is missing.
+- Submit reconfirmation remains a client-side affordance only; the backend already logs the submit event and enforces the receipt check.
+
+## Session Handoff - 2026-04-10 (Accountability backend only)
+
+Goal (1 sentence): Finish the accountability backend slice only: part-worker assignments, instruction acknowledgements, checklist performer attribution, shared part activity read models, and backend gating without touching the UI.
+
+### What changed
+- Updated src/modules/orders/orders.service.ts
+  - Added reusable checklist audit-message/event metadata shaping so actor vs performer are stored distinctly.
+  - Added order-detail partActivity read-model shaping per part using shared time-entry summaries.
+  - Finished part worker assignment service behavior and instruction acknowledgement/status helpers.
+  - Enforced instruction acknowledgement gating for checklist toggles and department submit.
+  - Extended last-checklist complete-and-advance flow to accept/store performedById and log the checklist action separately from department movement.
+  - Tightened submit-department transaction usage so time adjustments and department changes use the same transaction client.
+- Updated timer backend routes:
+  - src/app/api/timer/start/route.ts now blocks timer start on missing instruction acknowledgement.
+  - src/app/api/timer/resume/route.ts now applies the same gate before resuming a part-linked timer.
+  - src/app/api/timer/active/route.ts now returns shared partActivity for requested part IDs.
+- Updated src/app/api/orders/[id]/parts/[partId]/checklist/[itemId]/complete-and-advance/route.ts
+  - Accepts optional performedById so the confirmed last-item completion path matches the normal checklist attribution contract.
+- Updated src/modules/time/time.service.ts
+  - Added getTimeEntryDetails() for safe route-level resume gating.
+  - Added getPartActivitySummary() for cross-user active-timer and accumulated-time read models.
+- Updated mock repos/seeds:
+  - src/repos/mock/seed.ts
+  - src/repos/mock/orders.ts
+  - src/repos/mock/time.ts
+  - Added seeded helper user, ack-gated part/checklist, part assignments, instruction receipts, and richer time-entry fixtures so focused backend tests cover the new contracts.
+- Updated focused backend tests:
+  - src/modules/orders/__tests__/orders.service.test.ts
+  - src/modules/time/__tests__/time.service.test.ts
+
+### Files touched
+- src/modules/orders/orders.service.ts
+- src/modules/time/time.service.ts
+- src/app/api/timer/start/route.ts
+- src/app/api/timer/resume/route.ts
+- src/app/api/timer/active/route.ts
+- src/app/api/orders/[id]/parts/[partId]/checklist/[itemId]/complete-and-advance/route.ts
+- src/repos/mock/seed.ts
+- src/repos/mock/orders.ts
+- src/repos/mock/time.ts
+- src/modules/orders/__tests__/orders.service.test.ts
+- src/modules/time/__tests__/time.service.test.ts
+- 	asks/todo.md
+- PROGRESS_LOG.md
+- docs/AGENT_HANDOFF.md
+
+### Commands run
+- 
+pm run test -- src/modules/orders/__tests__/orders.service.test.ts
+- 
+pm run test -- src/modules/time/__tests__/time.service.test.ts
+- 
+pm run lint
+
+### Verification evidence
+- Focused Orders service tests passed (11/11).
+- Focused Time service tests passed (7/7).
+- 
+pm run test -- src/modules/time/__tests__/time.service.test.ts required an outside-sandbox rerun because sandboxed Vitest/esbuild hit Windows spawn EPERM at startup.
+- Lint passed with no ESLint warnings/errors.
+
+### UI/backend integration assumptions
+- Checklist mutation routes now support optional performedById; UI should send it whenever the operator marks work completed for someone else.
+- /api/timer/start and /api/timer/resume now return the existing 409 error envelope with error.code = INSTRUCTION_ACK_REQUIRED when acknowledgement is missing; UI should intercept that and open the must-read modal instead of treating it as a generic conflict.
+- /api/timer/active?orderId=...&partIds=... now returns additive partActivity data keyed by part ID; UI can consume it without breaking older fields.
+- Order detail payloads now include part.partActivity plus part.assignments and part.instructionReceipts; UI can render shared-worker/time context directly from the existing order GET route.
+- Department submit already writes a distinct DEPARTMENT_SUBMIT_CONFIRMED part event on every submit call; the UI still needs to own the fresh confirmation dialog before making that POST.
+## Session Handoff - 2026-04-10 (Repeat-order backend only)
+
+Goal (1 sentence): Finish the repeat-order template backend slice only, keeping the work scoped to template snapshot/list/fetch/create-order behavior plus minimal contract hardening.
+
+### What changed
+- Updated `src/modules/repeat-orders/repeat-orders.service.ts`
+  - Repeat-order template snapshot no longer stores the source order PO as template notes.
+  - Template-based order creation now rejects templates with no parts.
+  - Duplicate or unknown `templatePartId` override rows now fail fast with `400` instead of being silently ignored/overwritten.
+  - Provided order numbers now obey the same business-prefix validation used by normal order creation.
+  - Successful template-based order creation still reuses the existing order post-create lifecycle helpers for checklist sync, current-department initialization, workflow sync, and canonical attachment copying.
+- Added `src/modules/repeat-orders/__tests__/repeat-orders.service.test.ts`
+  - Covers snapshot behavior, unknown template-part override rejection, invalid order-number rejection, and successful order creation from a template.
+- Updated continuity docs and Decision Log for the repeat-order backend contract.
+
+### Files touched
+- `src/modules/repeat-orders/repeat-orders.service.ts`
+- `src/modules/repeat-orders/__tests__/repeat-orders.service.test.ts`
+- `docs/AGENT_CONTEXT.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint src/modules/repeat-orders/repeat-orders.service.ts src/modules/repeat-orders/repeat-orders.repo.ts src/modules/repeat-orders/repeat-orders.schema.ts src/modules/repeat-orders/repeat-orders.types.ts src/modules/repeat-orders/__tests__/repeat-orders.service.test.ts src/app/api/repeat-order-templates/route.ts src/app/api/repeat-order-templates/from-order/[orderId]/route.ts src/app/api/repeat-order-templates/[id]/route.ts src/app/api/repeat-order-templates/[id]/create-order/route.ts`
+- `npm run test -- src/modules/repeat-orders/__tests__/repeat-orders.service.test.ts`
+
+### Verification evidence
+- ESLint passed on the touched repeat-order/API files with no reported issues.
+- Focused repeat-order service tests passed (4/4).
+- The test run required an outside-sandbox rerun because sandboxed Vitest/esbuild hit Windows `spawn EPERM`.
+
+### Follow-up contract assumptions for UI/backend integration
+- UI should treat template-level `notes` as explicit reusable defaults only; the backend no longer derives them from the source order PO.
+- UI must send only known template part IDs in `parts[].templatePartId` when posting `/api/repeat-order-templates/[id]/create-order`.
+- If UI supplies `orderNumber`, it must already match the business prefix format (for example `STD-1234` for `STD` templates).
+- Attachment rows can continue to reference template storage paths at create time; the backend still runs canonical post-create file copying for the new order.
+
+## Session Handoff — 2026-04-10 (Vendors contact/materials follow-up + rollback)
+
+Goal (1 sentence): Make vendor contact/material data searchable as first-class fields and clear the partial spreadsheet import so the next import lands cleanly.
+
+### What changed
+- Updated `prisma/schema.prisma`
+  - Added `Vendor.contact` and `Vendor.materials`.
+- Added `prisma/migrations/20260410103000_add_vendor_contact_materials/migration.sql`
+  - Applies the new Vendor columns.
+- Updated `src/lib/zod.ts`
+  - Added `contact` and `materials` to Vendor validation.
+- Updated `src/app/api/admin/vendors/route.ts`
+  - Vendors search now matches `contact` and `materials`.
+- Updated `src/modules/vendors/vendor-import.ts`
+  - Import preview now suggests `Contact` and `Material` columns.
+  - Import row mapping now writes to `contact` and `materials` instead of stuffing those fields into `notes`.
+- Updated `src/app/api/admin/vendors/import/route.ts`
+  - Import endpoint now accepts `contactColumn` and `materialsColumn`.
+  - Duplicate-update path now updates `contact` and `materials`.
+- Updated `src/app/admin/vendors/client.tsx`
+  - Added `contact` and `materials` to manual vendor CRUD.
+  - Added importer mapping controls for `Contact` and `Materials`.
+  - Expanded import result preview to show imported contact/material values.
+- Operational cleanup
+  - Audited vendor references before rollback and confirmed only `Grainger` was linked (via one `QuoteVendorItem`).
+  - Deleted 37 unreferenced imported vendor rows, leaving the baseline seeded rows (`Grainger`, `McMaster-Carr`) in place.
+- Updated continuity docs and added a Decision Log entry in `docs/AGENT_CONTEXT.md`.
+
+### Files touched
+- `prisma/schema.prisma`
+- `prisma/migrations/20260410103000_add_vendor_contact_materials/migration.sql`
+- `src/lib/zod.ts`
+- `src/app/api/admin/vendors/route.ts`
+- `src/modules/vendors/vendor-import.ts`
+- `src/app/api/admin/vendors/import/route.ts`
+- `src/app/admin/vendors/client.tsx`
+- `docs/AGENT_CONTEXT.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx prisma migrate dev`
+- `npx prisma generate`
+- vendor-reference audit via `node -`
+- rollback delete script via `node -`
+- `npm run lint`
+- `npm run test -- src/modules/vendors/__tests__/vendor-import.test.ts`
+- `node -` (real workbook preview parse + vendor post-rollback check)
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+- Focused Vendors importer test passed (1/1) outside sandbox.
+- Prisma migration `20260410103000_add_vendor_contact_materials` applied successfully.
+- `npx prisma generate` still hit a Windows file-lock rename `EPERM`, but the Prisma Client is usable and successfully queried `contact`/`materials` after the migration.
+- Real workbook preview parse now suggests:
+  - `Company -> name`
+  - `Web page -> url`
+  - `Phone -> phone`
+  - `Contact -> contact`
+  - `Material -> materials`
+- Post-rollback vendor check confirmed only:
+  - `Grainger`
+  - `McMaster-Carr`
+
+### Next steps
+- [ ] User verify on `/admin/vendors` that search now feels right for `materials` and `contact`.
+- [ ] Re-import the supplier workbook using the new `Contact`/`Materials` mappings.
+- [ ] Optional follow-up: if filtering by material needs to be more than free-text search, add a dedicated material filter UI on the Vendors page.
+
+## Session Handoff — 2026-04-10 (Vendors preview-and-map importer)
+
+Goal (1 sentence): Add a safe Vendors import workflow that can preview and map spreadsheet columns before writing supplier data into the app's current Vendor schema.
+
+### What changed
+- Added `src/modules/vendors/vendor-import.ts`
+  - Parses `.xls`, `.xlsx`, and `.csv` workbooks via `xlsx`.
+  - Detects a likely header row, normalizes columns, suggests mappings, and shapes mapped Vendor rows for import.
+- Added `src/app/api/admin/vendors/import/route.ts`
+  - New admin-only import endpoint with two stateless actions:
+    - `preview`: parse workbook, choose sheet/header row, return columns and preview rows,
+    - `import`: reparse workbook with the chosen mapping and create/update vendors.
+  - Supports duplicate handling by vendor name (`skip` or `update`).
+- Updated `src/app/admin/vendors/client.tsx`
+  - Added spreadsheet upload, sheet selection, header-row selection, raw preview, parsed preview, column mapping UI, duplicate-mode selection, and import-results summary.
+  - Preserved the existing manual Vendors CRUD flow below the new importer.
+- Added `src/modules/vendors/__tests__/vendor-import.test.ts`
+  - Covers header-row detection.
+- Updated continuity docs and added a Decision Log entry in `docs/AGENT_CONTEXT.md`.
+- Installed dependency
+  - `xlsx`
+
+### Files touched
+- `package.json`
+- `package-lock.json`
+- `src/app/admin/vendors/client.tsx`
+- `src/app/api/admin/vendors/import/route.ts`
+- `src/modules/vendors/vendor-import.ts`
+- `src/modules/vendors/__tests__/vendor-import.test.ts`
+- `docs/AGENT_CONTEXT.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm install xlsx`
+- `npm run lint`
+- `npm run test -- src/modules/vendors/__tests__/vendor-import.test.ts`
+- `node -` (real workbook preview parse against `C:\Users\user\Downloads\Suppliers.xls`)
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+- Focused Vendors importer test passed (1/1) after rerunning outside sandbox because Vitest/esbuild hit sandbox `spawn EPERM`.
+- Real preview parse of `C:\Users\user\Downloads\Suppliers.xls` succeeded with:
+  - selected sheet `Steel Suppliers`,
+  - header row `1`,
+  - columns `Company`, `Phone`, `Contact`, `Web page`, `Material`,
+  - suggested mapping `Company -> name`, `Web page -> url`, `Phone -> phone`, `Contact -> notes`.
+
+### Next steps
+- [ ] User verify on `/admin/vendors` that the preview/import UI feels right with the real workbook and the chosen mappings.
+- [ ] Optional follow-up: if the shop needs category/contact/email/fax/address as first-class fields instead of folded notes, expand the `Vendor` schema before a full production import.
+
+## Session Handoff — 2026-04-10 (BOM analyzer oversized-image stack-overflow fix)
+
+Goal (1 sentence): Make large image uploads stop crashing the BOM analyzer route and complete successfully through the existing analysis flow.
+
+### What changed
+- Updated `src/app/api/print-analyzer/analyze/route.ts`
+  - Replaced the regex-based `data:` URL parser with a delimiter-based parser after isolating the stack overflow to `decodeDataUrl()` for multi-megabyte base64 payloads.
+  - Removed the route's server-side image data-URL roundtrip so normalized uploads stay as raw `Buffer`s after request parsing.
+  - Switched OpenAI vision requests from inline base64 `image_url` payloads to uploaded OpenAI files using `purpose: vision` and Responses `input_image.file_id`.
+  - Added best-effort cleanup of the temporary OpenAI files after each analyzer request.
+- Updated `tasks/lessons.md`
+  - Added a prevention rule covering regex parsing of large base64 `data:` URLs in route handlers.
+
+### Files touched
+- `src/app/api/print-analyzer/analyze/route.ts`
+- `tasks/todo.md`
+- `tasks/lessons.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+- local oversized-image POST to `http://127.0.0.1:3000/api/print-analyzer/analyze`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+- A locally generated `~5.9 MB` JPEG that previously returned `502` with `Maximum call stack size exceeded` now returns `200` with structured analyzer JSON in about `29.7s`.
+
+### Next steps
+- [ ] User verify in the BOM tab or `/private/print-analyzer` that the previously failing real-world image now analyzes successfully.
+
+## Session Handoff — 2026-04-10 (Repair stale local dev server on port 3000)
+
+Goal (1 sentence): Recover the broken local Next dev server on port `3000` so admin quote print works again without the webpack/runtime crash.
+
+### What changed
+- Operational recovery only; no source files changed for the quote print page itself.
+- Confirmed the current quote print code path was healthy on a fresh dev server:
+  - `/admin/quotes/cmnsw7c34000tq7rcbjgn7aeq/print` returned `200` on a fresh server at `3001`.
+- Confirmed the existing `3000` server had a broken local build state:
+  - same route returned `500`,
+  - failure text referenced a missing `.next/server/...` file (`ENOENT`), consistent with a stale/corrupted dev build.
+- Stopped the stale Next process on `3000` and restarted the workspace dev server on `3000`.
+
+### Files touched
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- local auth + quote print probes against `http://127.0.0.1:3001` and `http://127.0.0.1:3000`
+- `Stop-Process -Id 41880 -Force`
+- restarted local dev server on port `3000`
+
+### Verification evidence
+- After restart, authenticated request to `http://127.0.0.1:3000/admin/quotes/cmnsw7c34000tq7rcbjgn7aeq/print` returned `200`.
+
+### Next steps
+- [ ] User verify the browser tab on the live `3000` app no longer shows the quote print webpack/runtime error.
+
+## Session Handoff — 2026-04-10 (LAN/IP-safe post-sign-in redirect)
+
+Goal (1 sentence): Keep successful credential sign-ins on the browser's active LAN/IP origin instead of bouncing back to localhost.
+
+### What changed
+- Updated `src/app/(public)/auth/signin/page.tsx`
+  - Changed the credential sign-in submit flow from `redirect: true` to `redirect: false`.
+  - On success, the page now manually navigates to the normalized relative `callbackUrl` with `window.location.assign(callbackUrl)`.
+  - Preserved existing callback sanitization so only safe in-app relative destinations are used.
+
+### Files touched
+- `src/app/(public)/auth/signin/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+
+### Next steps
+- [ ] User verify that signing in from the LAN/IP-hosted app now returns to the same IP-based origin instead of `localhost`.
+
 ## Session Handoff — 2026-04-09 (Order-detail submit dialog label correction)
 
 Goal (1 sentence): Make the move-dialog confirm button always reflect the destination department the operator actually selected.
@@ -2907,3 +3376,5 @@ Goal (1 sentence): Let the BOM analyzer accept PDFs by rasterizing page 1 to an 
 ### Next steps
 - [ ] User verify on `/orders/[id]` BOM tab that uploading a PDF or selecting a stored PDF print attachment now analyzes successfully.
 - [ ] Optional follow-up: expose page-selection for multi-page PDFs if the shop starts uploading packet-style prints.
+
+

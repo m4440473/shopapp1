@@ -202,4 +202,39 @@ describe('time.service', () => {
     expect(editResult.ok).toBe(false);
     expect((editResult as { ok: false; status: number }).status).toBe(409);
   });
+
+  it('builds shared part activity with active timers and time by user', async () => {
+    vi.setSystemTime(new Date('2026-02-03T00:00:00Z'));
+    vi.resetModules();
+    const { getPartActivitySummary, startTimeEntry } = await import('../time.service');
+
+    const startResult = await startTimeEntry('user_test_machinist', {
+      orderId: 'order_test_001',
+      partId: 'part_test_001',
+      departmentId: 'dept_test_001',
+      operation: 'Part Work',
+    });
+    expect(startResult.ok).toBe(true);
+
+    const activityResult = await getPartActivitySummary(['part_test_001']);
+    expect(activityResult.ok).toBe(true);
+
+    const activity = (activityResult as {
+      ok: true;
+      data: {
+        partActivity: Record<
+          string,
+          {
+            activeTimers: Array<{ userId: string; elapsedSeconds: number }>;
+            timeByUser: Array<{ user?: { id?: string | null }; seconds: number }>;
+            totalSeconds: number;
+          }
+        >;
+      };
+    }).data.partActivity['part_test_001'];
+
+    expect(activity.activeTimers.some((entry) => entry.userId === 'user_test_machinist')).toBe(true);
+    expect(activity.timeByUser.some((entry) => entry.user?.id === 'user_test_helper' && entry.seconds > 0)).toBe(true);
+    expect(activity.totalSeconds).toBeGreaterThan(0);
+  });
 });

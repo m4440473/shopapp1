@@ -67,8 +67,15 @@ import {
   findPartForRouting,
   findChecklistForRoutingById,
   findPartWithOrderInfo,
-  findUserById,
+  findUserSummaryById,
   listPartEventsForPart,
+  listPartAssignments,
+  findActivePartAssignment,
+  createPartAssignment,
+  deactivatePartAssignment,
+  listInstructionReceiptsForPart,
+  findInstructionReceipt,
+  createInstructionReceipt,
   listAddons,
   listAddonsByIds,
   listChecklistItems,
@@ -101,6 +108,7 @@ import {
   generateNextOrderNumber,
   syncChecklistForOrder,
 } from '@/repos/orders';
+import { listTimeEntriesForPartsDetailed } from '@/repos/time';
 
 export { generateNextOrderNumber, syncChecklistForOrder };
 export type { OrderFilterState, OrderListItem, OrderWithMeta };
@@ -192,6 +200,171 @@ function isBackwardsMove(fromDepartmentId: string | null | undefined, toDepartme
 function getDepartmentName(departments: DepartmentSortEntry[], departmentId: string | null | undefined) {
   if (!departmentId) return 'Done';
   return departments.find((dept) => dept.id === departmentId)?.name ?? departmentId;
+}
+
+function getUserLabel(user: { id?: string | null; name?: string | null; email?: string | null } | null | undefined) {
+  return user?.name?.trim() || user?.email?.trim() || user?.id || 'Unknown user';
+}
+
+function hasWorkInstructions(part: { workInstructions?: string | null }) {
+  return Boolean(part.workInstructions?.trim());
+}
+
+function buildChecklistAudit({
+  checked,
+  label,
+  actorUserId,
+  actorLabel,
+  performerUserId,
+  performerLabel,
+}: {
+  checked: boolean;
+  label: string;
+  actorUserId?: string | null;
+  actorLabel: string;
+  performerUserId?: string | null;
+  performerLabel: string;
+}) {
+  const actorIsPerformer = !actorUserId || !performerUserId || actorUserId === performerUserId;
+  return {
+    historyReason: actorIsPerformer
+      ? `Checklist "${label}" ${checked ? 'checked' : 'unchecked'} by ${performerLabel}`
+      : `Checklist "${label}" ${checked ? 'checked' : 'unchecked'} by ${actorLabel} for ${performerLabel}`,
+    eventMessage: actorIsPerformer
+      ? `${performerLabel} ${checked ? 'checked' : 'unchecked'} ${label}.`
+      : `${actorLabel} marked ${performerLabel} as ${checked ? 'completing' : 'undoing'} ${label}.`,
+  };
+}
+
+function buildPartActivityByPart(
+  partIds: string[],
+  entries: Array<{
+    id: string;
+    orderId: string;
+    partId: string | null;
+    departmentId: string | null;
+    userId: string;
+    operation: string | null;
+    startedAt: Date;
+    endedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    user?: { id: string; name?: string | null; email?: string | null; active?: boolean | null } | null;
+    department?: { id: string; name?: string | null } | null;
+  }>,
+) {
+  const partIdSet = new Set(partIds);
+  const activityByPart = Object.fromEntries(
+    partIds.map((partId) => [
+      partId,
+      {
+        activeTimers: [] as Array<Record<string, unknown>>,
+        timeByUser: [] as Array<Record<string, unknown>>,
+        totalSeconds: 0,
+      },
+    ]),
+  ) as Record<string, { activeTimers: Array<Record<string, unknown>>; timeByUser: Array<Record<string, unknown>>; totalSeconds: number }>;
+
+  const totalsByPartUser = new Map<string, { partId: string; user: { id: string; name?: string | null; email?: string | null; active?: boolean | null } | null; seconds: number }>();
+
+  entries.forEach((entry) => {
+    if (!entry.partId || !partIdSet.has(entry.partId)) return;
+    const bucket = activityByPart[entry.partId];
+    if (!bucket) return;
+
+    if (!entry.endedAt) {
+      bucket.activeTimers.push({
+        id: entry.id,
+        orderId: entry.orderId,
+        partId: entry.partId,
+        departmentId: entry.departmentId,
+        departmentName: entry.department?.name ?? null,
+        userId: entry.userId,
+        user: entry.user ?? null,
+        operation: entry.operation ?? null,
+        startedAt: entry.startedAt,
+        elapsedSeconds: Math.max(0, Math.floor((Date.now() - entry.startedAt.getTime()) / 1000)),
+      });
+      return;
+    }
+
+    const diffMs = entry.endedAt.getTime() - entry.startedAt.getTime();
+    if (diffMs <= 0) return;
+
+    const seconds = Math.floor(diffMs / 1000);
+    bucket.totalSeconds += seconds;
+    const mapKey = `${entry.partId}:${entry.userId}`;
+    const existing = totalsByPartUser.get(mapKey);
+    if (existing) {
+      existing.seconds += seconds;
+      return;
+    }
+
+    totalsByPartUser.set(mapKey, {
+      partId: entry.partId,
+      user: entry.user ?? null,
+      seconds,
+    });
+  });
+
+  totalsByPartUser.forEach((entry) => {
+    activityByPart[entry.partId]?.timeByUser.push({
+      userId: entry.user?.id ?? null,
+      user: entry.user ?? null,
+      seconds: entry.seconds,
+    });
+  });
+
+  Object.values(activityByPart).forEach((entry) => {
+    entry.activeTimers.sort((a: any, b: any) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+    entry.timeByUser.sort((a: any, b: any) => {
+      if (b.seconds !== a.seconds) return b.seconds - a.seconds;
+      const aLabel = getUserLabel(a.user ?? null);
+      const bLabel = getUserLabel(b.user ?? null);
+      return aLabel.localeCompare(bLabel, undefined, { sensitivity: 'base' });
+    });
+  });
+
+  return activityByPart;
+}
+
+async function requireInstructionAcknowledgement({
+  orderId,
+  partId,
+  userId,
+  departmentId,
+}: {
+  orderId: string;
+  partId: string;
+  userId?: string | null;
+  departmentId?: string | null;
+}) {
+  if (!userId) return fail(401, 'Unauthorized');
+  if (!departmentId) return ok({ required: false, receipt: null, part: null });
+
+  const part = await findPartForRouting(partId);
+  if (!part || part.orderId !== orderId) return fail(404, 'Part not found');
+  if (!hasWorkInstructions(part)) return ok({ required: false, receipt: null, part });
+
+  const receipt = await findInstructionReceipt({
+    partId,
+    userId,
+    departmentId,
+    instructionsVersion: Math.max(1, Number(part.instructionsVersion ?? 1)),
+  });
+
+  if (receipt) {
+    return ok({ required: false, receipt, part });
+  }
+
+  return fail(409, {
+    code: 'INSTRUCTION_ACK_REQUIRED',
+    message: 'Read and acknowledge the part instructions before continuing.',
+    partId,
+    departmentId,
+    instructionsVersion: Math.max(1, Number(part.instructionsVersion ?? 1)),
+    workInstructions: part.workInstructions ?? '',
+  });
 }
 
 function isPartComplete(part: { id?: string | null; status?: string | null }, checklist: Array<{ partId?: string | null; completed?: boolean | null; isActive?: boolean | null }>) {
@@ -374,6 +547,7 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
             stockSize: p.stockSize ?? null,
             cutLength: p.cutLength ?? null,
             notes: p.notes ?? null,
+            workInstructions: p.workInstructions ?? null,
           })),
         },
         attachments: body.attachments.length
@@ -575,6 +749,10 @@ export async function getOrderDetails(id: string, isAdmin: boolean) {
   const order = await findOrderWithDetails(id);
   if (!order) return fail(404, 'Not found');
   const departments = await listDepartmentsOrdered();
+  const partIds = Array.isArray(order.parts) ? order.parts.map((part: any) => part.id).filter(Boolean) : [];
+  const partActivityById = partIds.length
+    ? buildPartActivityByPart(partIds, await listTimeEntriesForPartsDetailed(partIds))
+    : {};
 
   const sanitized = sanitizePricingForNonAdmin(order, isAdmin) as any;
   sanitized.status = normalizeOrderWorkflowStatus(sanitized.status);
@@ -589,6 +767,15 @@ export async function getOrderDetails(id: string, isAdmin: boolean) {
           ...part,
           currentDepartmentId: fallbackDepartmentId,
           status: isComplete ? 'COMPLETE' : 'IN_PROGRESS',
+          instructionsVersion: Math.max(1, Number(part.instructionsVersion ?? 1)),
+          workInstructions: part.workInstructions ?? '',
+          assignments: Array.isArray(part.assignments) ? part.assignments : [],
+          instructionReceipts: Array.isArray(part.instructionReceipts) ? part.instructionReceipts : [],
+          partActivity: partActivityById[part.id] ?? {
+            activeTimers: [],
+            timeByUser: [],
+            totalSeconds: 0,
+          },
         };
       })
     : sanitized.parts;
@@ -678,6 +865,152 @@ export async function updateOrderWorkflowStatusByAdmin({
 export async function assignMachinistToOrder(orderId: string, machinistId: string | null) {
   const order = await updateOrderAssignee(orderId, machinistId);
   return ok({ item: order });
+}
+
+export async function listPartWorkers(orderId: string, partId: string) {
+  const part = await findOrderPart(orderId, partId);
+  if (!part) return fail(404, 'Part not found');
+  const assignments = await listPartAssignments(partId);
+  return ok({ assignments });
+}
+
+export async function assignWorkerToPart({
+  orderId,
+  partId,
+  userId,
+  assignedById,
+  assignmentType,
+}: {
+  orderId: string;
+  partId: string;
+  userId: string;
+  assignedById?: string | null;
+  assignmentType?: string;
+}) {
+  const [part, worker, existing] = await Promise.all([
+    findOrderPart(orderId, partId),
+    findUserSummaryById(userId),
+    findActivePartAssignment(partId, userId),
+  ]);
+  if (!part) return fail(404, 'Part not found');
+  if (!worker || worker.active === false) return fail(404, 'Worker not found');
+  if (existing) return ok({ assignment: existing, created: false });
+
+  const assignment = await createPartAssignment({ partId, userId, assignedById, assignmentType });
+  await recordPartEvent({
+    orderId,
+    partId,
+    userId: assignedById ?? null,
+    type: 'PART_WORKER_ASSIGNED',
+    message: `${getUserLabel(worker)} assigned to part.`,
+    meta: { assignmentId: assignment.id, assignedUserId: worker.id, assignmentType: assignment.assignmentType },
+  });
+  return ok({ assignment, created: true });
+}
+
+export async function removeWorkerFromPart({
+  orderId,
+  partId,
+  assignmentId,
+  removedById,
+}: {
+  orderId: string;
+  partId: string;
+  assignmentId: string;
+  removedById?: string | null;
+}) {
+  const part = await findOrderPart(orderId, partId);
+  if (!part) return fail(404, 'Part not found');
+
+  const assignments = await listPartAssignments(partId);
+  const assignment = assignments.find((entry: any) => entry.id === assignmentId);
+  if (!assignment) return fail(404, 'Assignment not found');
+
+  const removed = await deactivatePartAssignment(assignmentId);
+  await recordPartEvent({
+    orderId,
+    partId,
+    userId: removedById ?? null,
+    type: 'PART_WORKER_REMOVED',
+    message: `${getUserLabel(assignment.user)} removed from part.`,
+    meta: { assignmentId: removed.id, removedUserId: assignment.userId },
+  });
+  return ok({ assignment: removed });
+}
+
+export async function acknowledgePartInstructions({
+  orderId,
+  partId,
+  departmentId,
+  userId,
+}: {
+  orderId: string;
+  partId: string;
+  departmentId: string;
+  userId: string;
+}) {
+  const part = await findPartForRouting(partId);
+  if (!part || part.orderId !== orderId) return fail(404, 'Part not found');
+  if (!departmentId) return fail(400, 'Department is required');
+  if (!hasWorkInstructions(part)) return fail(400, 'This part has no required instructions.');
+
+  const instructionsVersion = Math.max(1, Number(part.instructionsVersion ?? 1));
+  const existing = await findInstructionReceipt({ partId, userId, departmentId, instructionsVersion });
+  if (existing) return ok({ receipt: existing, created: false });
+
+  const receipt = await createInstructionReceipt({ partId, userId, departmentId, instructionsVersion });
+  await recordPartEvent({
+    orderId,
+    partId,
+    userId,
+    type: 'PART_INSTRUCTIONS_ACKNOWLEDGED',
+    message: 'Part instructions acknowledged.',
+    meta: { departmentId, instructionsVersion, receiptId: receipt.id },
+  });
+  return ok({ receipt, created: true });
+}
+
+export async function getPartInstructionStatus({
+  orderId,
+  partId,
+  userId,
+}: {
+  orderId: string;
+  partId: string;
+  userId?: string | null;
+}) {
+  const part = await findPartForRouting(partId);
+  if (!part || part.orderId !== orderId) return fail(404, 'Part not found');
+
+  const receipts = await listInstructionReceiptsForPart(partId);
+  const activeReceipt =
+    userId && part.currentDepartmentId
+      ? receipts.find(
+          (receipt: any) =>
+            receipt.userId === userId &&
+            receipt.departmentId === part.currentDepartmentId &&
+            receipt.instructionsVersion === Math.max(1, Number(part.instructionsVersion ?? 1)),
+        ) ?? null
+      : null;
+
+  return ok({
+    partId,
+    currentDepartmentId: part.currentDepartmentId ?? null,
+    workInstructions: part.workInstructions ?? '',
+    instructionsVersion: Math.max(1, Number(part.instructionsVersion ?? 1)),
+    requiresAcknowledgement: hasWorkInstructions(part),
+    activeReceipt,
+    receipts,
+  });
+}
+
+export async function requirePartInstructionAcknowledgement(input: {
+  orderId: string;
+  partId: string;
+  userId?: string | null;
+  departmentId?: string | null;
+}) {
+  return requireInstructionAcknowledgement(input);
 }
 
 
@@ -804,14 +1137,61 @@ export async function previewChecklistComplete({ orderId, partId, checklistId }:
   });
 }
 
-export async function completeChecklistAndAdvance({ orderId, partId, checklistId, actorUserId }: { orderId: string; partId: string; checklistId: string; actorUserId?: string }) {
+export async function completeChecklistAndAdvance({
+  orderId,
+  partId,
+  checklistId,
+  actorUserId,
+  performedById,
+}: {
+  orderId: string;
+  partId: string;
+  checklistId: string;
+  actorUserId?: string;
+  performedById?: string | null;
+}) {
+  const checklist = await findChecklistForRoutingById(checklistId);
+  if (!checklist || checklist.orderId !== orderId || checklist.partId !== partId) return fail(404, 'Checklist item not found');
+  const actor = actorUserId ? await findUserSummaryById(actorUserId) : null;
+  if (actorUserId && !actor) return fail(404, 'Actor not found');
+  const performer = performedById
+    ? await findUserSummaryById(performedById)
+    : actor;
+  if (performedById && !performer) return fail(404, 'Performer not found');
+  const finalPerformedById = performer?.id ?? actor?.id ?? null;
+  const actorLabel = getUserLabel(actor);
+  const performerLabel = getUserLabel(performer ?? actor);
+  const checklistLabel = checklist.charge?.name ?? checklist.addon?.name ?? 'Checklist';
+  const audit = buildChecklistAudit({
+    checked: true,
+    label: checklistLabel,
+    actorUserId: actor?.id ?? null,
+    actorLabel,
+    performerUserId: finalPerformedById,
+    performerLabel,
+  });
+
+  const ackResult = await requireInstructionAcknowledgement({
+    orderId,
+    partId,
+    userId: actorUserId ?? null,
+    departmentId: checklist.departmentId ?? checklist.part?.currentDepartmentId ?? null,
+  });
+  if (ackResult.ok === false) return ackResult;
+
   const result = await runInTransaction(async (tx) => {
     const checklist = await findChecklistForRoutingById(checklistId, tx);
     if (!checklist || checklist.orderId !== orderId || checklist.partId !== partId) {
       throw new Error('CHECKLIST_NOT_FOUND');
     }
 
-    await setChecklistCompletion({ checklistId, checked: true, toggledById: actorUserId ?? null, chargeId: checklist.chargeId }, tx);
+    await setChecklistCompletion({
+      checklistId,
+      checked: true,
+      toggledById: actorUserId ?? null,
+      performedById: finalPerformedById,
+      chargeId: checklist.chargeId,
+    }, tx);
     const recompute = await recomputePartDepartment(partId, { actorUserId, tx });
     if (recompute.ok === false) {
       throw new Error(typeof recompute.error === 'string' ? recompute.error : 'Failed to recompute department');
@@ -823,6 +1203,32 @@ export async function completeChecklistAndAdvance({ orderId, partId, checklistId
   });
 
   if (!result) return fail(404, 'Checklist item not found');
+  await createStatusHistoryEntry({
+    orderId,
+    from: `${checklistLabel} unchecked`,
+    to: `${checklistLabel} checked`,
+    userId: actor?.id ?? undefined,
+    reason: audit.historyReason,
+  });
+  await recordPartEvent({
+    orderId,
+    partId,
+    userId: actor?.id ?? null,
+    type: 'CHECKLIST_TOGGLED',
+    message: audit.eventMessage,
+    meta: {
+      checklistId,
+      checklistLabel,
+      checked: true,
+      actorUserId: actor?.id ?? null,
+      actorLabel,
+      performedById: finalPerformedById,
+      performedByLabel: performerLabel,
+      chargeId: checklist.chargeId ?? null,
+      addonId: checklist.addonId ?? null,
+      departmentId: checklist.departmentId ?? null,
+    },
+  });
   await syncOrderWorkflowStatus(orderId, { userId: actorUserId ?? null });
   return ok({ part: { id: partId, currentDepartmentId: result.currentDepartmentId, flagged: result.flagged } });
 }
@@ -834,6 +1240,7 @@ export async function toggleChecklistItem({
   addonId,
   partId,
   checked,
+  performedById,
   employeeName,
   togglerId,
   reasonCode,
@@ -845,6 +1252,7 @@ export async function toggleChecklistItem({
   addonId?: string;
   partId?: string;
   checked: boolean;
+  performedById?: string | null;
   employeeName?: string;
   togglerId?: string;
   reasonCode?: string;
@@ -870,25 +1278,48 @@ export async function toggleChecklistItem({
   if (existingChecklist.addonId && !addonExists) return fail(404, 'Addon not found');
 
   const previousState = existingChecklist.completed ?? false;
-  const toggler = togglerId ? await findUserById(togglerId) : null;
+  const toggler = togglerId ? await findUserSummaryById(togglerId) : null;
   const toggledById = toggler ? toggler.id : null;
+  const performer = performedById ? await findUserSummaryById(performedById) : toggler;
+  if (performedById && !performer) return fail(404, 'Performer not found');
+  const finalPerformedById = performer?.id ?? toggledById ?? null;
+
+  if (existingChecklist.partId) {
+    const ackResult = await requireInstructionAcknowledgement({
+      orderId,
+      partId: existingChecklist.partId,
+      userId: toggledById ?? null,
+      departmentId: existingChecklist.departmentId ?? null,
+    });
+    if (ackResult.ok === false) return ackResult;
+  }
 
   await setChecklistCompletion({
     checklistId: existingChecklist.id,
     checked,
     toggledById,
+    performedById: finalPerformedById,
     chargeId: existingChecklist.chargeId,
   });
 
   const label = charge?.name ?? addonExists?.name ?? 'Checklist';
-  const togglerLabel = employeeName?.trim() || toggledById || 'Unknown user';
+  const togglerLabel = employeeName?.trim() || getUserLabel(toggler) || toggledById || 'Unknown user';
+  const performerLabel = performer ? getUserLabel(performer) : togglerLabel;
+  const audit = buildChecklistAudit({
+    checked,
+    label,
+    actorUserId: toggledById,
+    actorLabel: togglerLabel,
+    performerUserId: finalPerformedById,
+    performerLabel,
+  });
 
   await createStatusHistoryEntry({
     orderId,
     from: `${label} ${previousState ? 'checked' : 'unchecked'}`,
     to: `${label} ${checked ? 'checked' : 'unchecked'}`,
     userId: toggledById ?? undefined,
-    reason: `Checklist "${label}" ${checked ? 'checked' : 'unchecked'} by ${togglerLabel}`,
+    reason: audit.historyReason,
   });
 
   if (existingChecklist.partId) {
@@ -897,8 +1328,20 @@ export async function toggleChecklistItem({
       partId: existingChecklist.partId,
       userId: toggledById ?? undefined,
       type: 'CHECKLIST_TOGGLED',
-      message: `${label} ${checked ? 'checked' : 'unchecked'}.`,
-      meta: { checklistId: existingChecklist.id, checked },
+      message: audit.eventMessage,
+      meta: {
+        checklistId: existingChecklist.id,
+        checklistLabel: label,
+        checked,
+        actorUserId: toggledById,
+        actorLabel: togglerLabel,
+        performedById: finalPerformedById,
+        performedByLabel: performerLabel,
+        toggledById,
+        chargeId: existingChecklist.chargeId ?? null,
+        addonId: existingChecklist.addonId ?? null,
+        departmentId: existingChecklist.departmentId ?? null,
+      },
     });
 
   }
@@ -1106,6 +1549,7 @@ export async function addOrderPart({
       stockSize: payload.stockSize ?? null,
       cutLength: payload.cutLength ?? null,
       notes: payload.notes ?? null,
+      workInstructions: payload.workInstructions ?? null,
     },
     sourcePartId: sourcePart?.id ?? null,
     userId: userId ?? null,
@@ -1144,6 +1588,12 @@ export async function updateOrderPartDetails({
   if (payload.stockSize !== undefined) data.stockSize = payload.stockSize;
   if (payload.cutLength !== undefined) data.cutLength = payload.cutLength;
   if (payload.notes !== undefined) data.notes = payload.notes;
+  if (payload.workInstructions !== undefined) {
+    data.workInstructions = payload.workInstructions;
+    if ((payload.workInstructions ?? null) !== (existing.workInstructions ?? null)) {
+      data.instructionsVersion = (existing.instructionsVersion ?? 1) + 1;
+    }
+  }
 
   const part = await updateOrderPart(partId, data);
 
@@ -1470,6 +1920,14 @@ export async function submitDepartmentComplete({
   const currentDepartmentId = part.currentDepartmentId ?? findNextDepartmentWithOpenChecklist(part.checklistItems ?? [], departments);
   if (!currentDepartmentId) return fail(409, 'Part has no active department to submit.');
 
+  const ackResult = await requireInstructionAcknowledgement({
+    orderId,
+    partId,
+    userId: userId ?? null,
+    departmentId: currentDepartmentId,
+  });
+  if (ackResult.ok === false) return ackResult;
+
   const currentDepartmentItems = (part.checklistItems ?? []).filter(
     (item) => item.isActive !== false && item.departmentId === currentDepartmentId,
   );
@@ -1485,6 +1943,19 @@ export async function submitDepartmentComplete({
   const nextDepartmentId = findNextDepartmentWithOpenChecklist(part.checklistItems ?? [], departments);
 
   const result = await runInTransaction(async (tx) => {
+    await recordPartEvent({
+      orderId,
+      partId,
+      userId: userId ?? null,
+      type: 'DEPARTMENT_SUBMIT_CONFIRMED',
+      message: `Department submit confirmed for ${getDepartmentName(departments, currentDepartmentId)}.`,
+      meta: {
+        departmentId: currentDepartmentId,
+        additionalSeconds: additionalSeconds ?? 0,
+        adjustmentNote: adjustmentNote?.trim() || null,
+      },
+    }, tx);
+
     if (typeof additionalSeconds === 'number' && additionalSeconds > 0) {
       await createPartTimeAdjustment({
         orderId,
@@ -1492,11 +1963,11 @@ export async function submitDepartmentComplete({
         userId: userId ?? null,
         seconds: Math.floor(additionalSeconds),
         note: adjustmentNote?.trim() || 'Additional submitted time.',
-      });
+      }, tx);
     }
 
     if (nextDepartmentId) {
-      await updatePartCurrentDepartment(partId, nextDepartmentId);
+      await updatePartCurrentDepartment(partId, nextDepartmentId, tx);
       await recordPartEvent({
         orderId,
         partId,
@@ -1510,11 +1981,11 @@ export async function submitDepartmentComplete({
           additionalSeconds: additionalSeconds ?? 0,
           adjustmentNote: adjustmentNote?.trim() || null,
         },
-      });
+      }, tx);
       return { currentDepartmentId: nextDepartmentId, status: 'IN_PROGRESS' as const };
     }
 
-    await updatePartCurrentDepartment(partId, null);
+    await updatePartCurrentDepartment(partId, null, tx);
     await recordPartEvent({
       orderId,
       partId,

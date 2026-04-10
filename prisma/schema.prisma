@@ -16,17 +16,22 @@ model User {
   // Credentials provider (nullable)
   passwordHash String?
 
-  orders              Order[]              @relation("AssignedOrders")
-  quotes              Quote[]
-  notes               Note[]
-  timeLogs            TimeLog[]
-  timeEntries         TimeEntry[]
-  checklistToggles    OrderChecklist[]     @relation("ChecklistToggledBy")
-  uploadedAttachments Attachment[]         @relation("UserAttachments")
-  statusHistories     StatusHistory[]      @relation("UserStatusHistory")
-  partEvents          PartEvent[]
-  partTimeAdjustments PartTimeAdjustment[]
-  partBomAnalyses     PartBomAnalysis[]
+  orders               Order[]                  @relation("AssignedOrders")
+  quotes               Quote[]
+  notes                Note[]
+  timeLogs             TimeLog[]
+  timeEntries          TimeEntry[]
+  checklistToggles     OrderChecklist[]         @relation("ChecklistToggledBy")
+  uploadedAttachments  Attachment[]             @relation("UserAttachments")
+  statusHistories      StatusHistory[]          @relation("UserStatusHistory")
+  partEvents           PartEvent[]
+  partTimeAdjustments  PartTimeAdjustment[]
+  partBomAnalyses      PartBomAnalysis[]
+  performedChecklist   OrderChecklist[]         @relation("ChecklistPerformedBy")
+  partAssignments      OrderPartAssignment[]    @relation("PartAssignmentUser")
+  assignedPartWork     OrderPartAssignment[]    @relation("PartAssignmentAssignedBy")
+  instructionReceipts  PartInstructionReceipt[]
+  repeatOrderTemplates RepeatOrderTemplate[]    @relation("RepeatOrderTemplateCreatedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -40,8 +45,9 @@ model Customer {
   email   String?
   address String?
 
-  orders Order[]
-  quotes Quote[]
+  orders               Order[]
+  quotes               Quote[]
+  repeatOrderTemplates RepeatOrderTemplate[]
 
   @@unique([name])
   @@index([name])
@@ -53,69 +59,76 @@ model Material {
   spec  String?
   notes String?
 
-  parts      OrderPart[]
-  quoteParts QuotePart[] @relation("QuotePartMaterial")
+  parts                    OrderPart[]
+  quoteParts               QuotePart[]               @relation("QuotePartMaterial")
+  repeatOrderTemplateParts RepeatOrderTemplatePart[]
 }
 
 model Vendor {
-  id    String  @id @default(cuid())
-  name  String  @unique
-  url   String?
-  phone String?
-  notes String?
+  id        String  @id @default(cuid())
+  name      String  @unique
+  url       String?
+  phone     String?
+  contact   String?
+  materials String?
+  notes     String?
 
-  orders           Order[]
-  quoteVendorItems QuoteVendorItem[]
+  orders               Order[]
+  quoteVendorItems     QuoteVendorItem[]
+  repeatOrderTemplates RepeatOrderTemplate[]
 }
 
 model Order {
-  id                  String               @id @default(cuid())
-  orderNumber         String               @unique
-  business            String               @default("STD")
-  customerId          String
-  customer            Customer             @relation(fields: [customerId], references: [id])
-  status              String
-  priority            String
-  dueDate             DateTime
-  receivedDate        DateTime
-  modelIncluded       Boolean              @default(false)
-  materialNeeded      Boolean              @default(false)
-  materialOrdered     Boolean              @default(false)
-  vendorId            String?
-  vendor              Vendor?              @relation(fields: [vendorId], references: [id])
-  poNumber            String?
-  assignedMachinistId String?
-  assignedMachinist   User?                @relation("AssignedOrders", fields: [assignedMachinistId], references: [id])
-  parts               OrderPart[]
-  checklist           OrderChecklist[]
-  charges             OrderCharge[]
-  attachments         Attachment[]
-  partAttachments     PartAttachment[]
-  notes               Note[]
-  timeLogs            TimeLog[]
-  timeEntries         TimeEntry[]
-  statusHistory       StatusHistory[]
-  partEvents          PartEvent[]
-  partTimeAdjustments PartTimeAdjustment[]
-  bomAnalyses         PartBomAnalysis[]
+  id                   String                @id @default(cuid())
+  orderNumber          String                @unique
+  business             String                @default("STD")
+  customerId           String
+  customer             Customer              @relation(fields: [customerId], references: [id])
+  status               String
+  priority             String
+  dueDate              DateTime
+  receivedDate         DateTime
+  modelIncluded        Boolean               @default(false)
+  materialNeeded       Boolean               @default(false)
+  materialOrdered      Boolean               @default(false)
+  vendorId             String?
+  vendor               Vendor?               @relation(fields: [vendorId], references: [id])
+  poNumber             String?
+  assignedMachinistId  String?
+  assignedMachinist    User?                 @relation("AssignedOrders", fields: [assignedMachinistId], references: [id])
+  parts                OrderPart[]
+  checklist            OrderChecklist[]
+  charges              OrderCharge[]
+  attachments          Attachment[]
+  partAttachments      PartAttachment[]
+  notes                Note[]
+  timeLogs             TimeLog[]
+  timeEntries          TimeEntry[]
+  statusHistory        StatusHistory[]
+  partEvents           PartEvent[]
+  partTimeAdjustments  PartTimeAdjustment[]
+  bomAnalyses          PartBomAnalysis[]
+  repeatOrderTemplates RepeatOrderTemplate[]
 }
 
 model OrderPart {
-  id                  String               @id @default(cuid())
+  id                  String                   @id @default(cuid())
   orderId             String
-  order               Order                @relation(fields: [orderId], references: [id])
+  order               Order                    @relation(fields: [orderId], references: [id])
   partNumber          String
   quantity            Int
   materialId          String?
-  material            Material?            @relation(fields: [materialId], references: [id])
+  material            Material?                @relation(fields: [materialId], references: [id])
   currentDepartmentId String?
-  currentDepartment   Department?          @relation(fields: [currentDepartmentId], references: [id])
+  currentDepartment   Department?              @relation(fields: [currentDepartmentId], references: [id])
   notes               String?
+  workInstructions    String?
+  instructionsVersion Int                      @default(1)
   stockSize           String?
   cutLength           String?
-  status              String               @default("IN_PROGRESS")
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  status              String                   @default("IN_PROGRESS")
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
   charges             OrderCharge[]
   attachments         PartAttachment[]
   checklistItems      OrderChecklist[]
@@ -123,26 +136,30 @@ model OrderPart {
   partEvents          PartEvent[]
   timeAdjustments     PartTimeAdjustment[]
   bomAnalyses         PartBomAnalysis[]
+  assignments         OrderPartAssignment[]
+  instructionReceipts PartInstructionReceipt[]
 }
 
 model OrderChecklist {
-  id           String       @id @default(cuid())
-  orderId      String
-  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  partId       String?
-  part         OrderPart?   @relation(fields: [partId], references: [id], onDelete: SetNull)
-  chargeId     String?
-  charge       OrderCharge? @relation(fields: [chargeId], references: [id], onDelete: SetNull)
-  departmentId String?
-  department   Department?  @relation(fields: [departmentId], references: [id])
-  addonId      String?
-  addon        Addon?       @relation(fields: [addonId], references: [id])
-  completed    Boolean      @default(false)
-  isActive     Boolean      @default(true)
-  toggledById  String?
-  toggledBy    User?        @relation("ChecklistToggledBy", fields: [toggledById], references: [id])
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id            String       @id @default(cuid())
+  orderId       String
+  order         Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partId        String?
+  part          OrderPart?   @relation(fields: [partId], references: [id], onDelete: SetNull)
+  chargeId      String?
+  charge        OrderCharge? @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+  departmentId  String?
+  department    Department?  @relation(fields: [departmentId], references: [id])
+  addonId       String?
+  addon         Addon?       @relation(fields: [addonId], references: [id])
+  completed     Boolean      @default(false)
+  isActive      Boolean      @default(true)
+  toggledById   String?
+  toggledBy     User?        @relation("ChecklistToggledBy", fields: [toggledById], references: [id])
+  performedById String?
+  performedBy   User?        @relation("ChecklistPerformedBy", fields: [performedById], references: [id])
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   @@unique([orderId, addonId, partId])
   @@unique([orderId, chargeId])
@@ -286,6 +303,7 @@ model Addon {
   quoteSelections QuoteAddonSelection[]
   orderChecklist  OrderChecklist[]
   orderCharges    OrderCharge[]
+  repeatOrderTemplateCharges RepeatOrderTemplateCharge[] @relation("RepeatTemplateChargeAddon")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -295,18 +313,20 @@ model Addon {
 }
 
 model Department {
-  id             String           @id @default(cuid())
-  name           String           @unique
-  slug           String           @unique
-  sortOrder      Int              @default(0)
-  isActive       Boolean          @default(true)
-  addons         Addon[]
-  charges        OrderCharge[]
-  timeEntries    TimeEntry[]
-  checklistItems OrderChecklist[]
-  currentParts   OrderPart[]
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id                         String                      @id @default(cuid())
+  name                       String                      @unique
+  slug                       String                      @unique
+  sortOrder                  Int                         @default(0)
+  isActive                   Boolean                     @default(true)
+  addons                     Addon[]
+  charges                    OrderCharge[]
+  timeEntries                TimeEntry[]
+  checklistItems             OrderChecklist[]
+  currentParts               OrderPart[]
+  instructionReceipts        PartInstructionReceipt[]
+  repeatOrderTemplateCharges RepeatOrderTemplateCharge[]
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
 }
 
 model OrderCharge {
@@ -350,6 +370,133 @@ model PartAttachment {
 
   @@index([orderId])
   @@index([partId])
+  @@index([storagePath])
+}
+
+model OrderPartAssignment {
+  id             String    @id @default(cuid())
+  partId         String
+  part           OrderPart @relation(fields: [partId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User      @relation("PartAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedById   String?
+  assignedBy     User?     @relation("PartAssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  assignmentType String    @default("WORKER")
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  removedAt      DateTime?
+
+  @@index([partId])
+  @@index([userId])
+  @@index([partId, userId, isActive])
+}
+
+model PartInstructionReceipt {
+  id                  String     @id @default(cuid())
+  partId              String
+  part                OrderPart  @relation(fields: [partId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  departmentId        String
+  department          Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  instructionsVersion Int
+  acknowledgedAt      DateTime   @default(now())
+
+  @@unique([partId, userId, departmentId, instructionsVersion])
+  @@index([partId])
+  @@index([userId])
+  @@index([departmentId])
+}
+
+model RepeatOrderTemplate {
+  id              String                          @id @default(cuid())
+  customerId      String
+  customer        Customer                        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sourceOrderId   String?
+  sourceOrder     Order?                          @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
+  name            String
+  business        String                          @default("STD")
+  vendorId        String?
+  vendor          Vendor?                         @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  materialNeeded  Boolean                         @default(false)
+  materialOrdered Boolean                         @default(false)
+  modelIncluded   Boolean                         @default(false)
+  priority        String                          @default("NORMAL")
+  notes           String?
+  createdById     String?
+  createdBy       User?                           @relation("RepeatOrderTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  parts           RepeatOrderTemplatePart[]
+  attachments     RepeatOrderTemplateAttachment[]
+  createdAt       DateTime                        @default(now())
+  updatedAt       DateTime                        @updatedAt
+
+  @@index([customerId])
+  @@index([sourceOrderId])
+  @@index([createdById])
+}
+
+model RepeatOrderTemplatePart {
+  id                  String                          @id @default(cuid())
+  templateId          String
+  template            RepeatOrderTemplate             @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  partNumber          String
+  quantity            Int
+  materialId          String?
+  material            Material?                       @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  workInstructions    String?
+  instructionsVersion Int                             @default(1)
+  notes               String?
+  stockSize           String?
+  cutLength           String?
+  sortOrder           Int                             @default(0)
+  charges             RepeatOrderTemplateCharge[]
+  attachments         RepeatOrderTemplateAttachment[]
+  createdAt           DateTime                        @default(now())
+  updatedAt           DateTime                        @updatedAt
+
+  @@index([templateId])
+  @@index([materialId])
+}
+
+model RepeatOrderTemplateCharge {
+  id             String                  @id @default(cuid())
+  templatePartId String
+  templatePart   RepeatOrderTemplatePart @relation(fields: [templatePartId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department              @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  addonId        String?
+  addon          Addon?                  @relation("RepeatTemplateChargeAddon", fields: [addonId], references: [id], onDelete: SetNull)
+  kind           String
+  name           String
+  description    String?
+  quantity       Decimal                 @default(1)
+  unitPrice      Decimal                 @default(0)
+  sortOrder      Int                     @default(0)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@index([templatePartId])
+  @@index([departmentId])
+}
+
+model RepeatOrderTemplateAttachment {
+  id             String                   @id @default(cuid())
+  templateId     String
+  template       RepeatOrderTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templatePartId String?
+  templatePart   RepeatOrderTemplatePart? @relation(fields: [templatePartId], references: [id], onDelete: Cascade)
+  kind           String                   @default("OTHER")
+  url            String?
+  storagePath    String?
+  label          String?
+  mimeType       String?
+  sortOrder      Int                      @default(0)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@index([templateId])
+  @@index([templatePartId])
   @@index([storagePath])
 }
 

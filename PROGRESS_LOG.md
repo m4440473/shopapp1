@@ -1,3 +1,113 @@
+### 2026-04-10 - Order-detail UX polish follow-up
+- Tightened the mission-brief and worker-roster presentation in `src/app/orders/[id]/page.tsx`.
+- Mission brief now shows clearer acknowledgement copy plus quick chips for part, department, and instruction version.
+- Overview instructions panel now uses more explicit state labels (`Read and logged`, `Needs acknowledgement`, `Optional reference`).
+- Worker panel now reads more like a real part roster and explains the coordinator-vs-worker split more clearly.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx src/app/orders/[id]/page.tsx`
+
+Verification note:
+- Targeted ESLint passed.
+
+### 2026-04-10 - Repeat-order UX polish follow-up
+- Tightened the repeat-order launch screen in `src/app/orders/new/page.tsx`.
+- Added a clearer top-of-page repeat-launch summary that shows what is editable versus frozen.
+- Surfaced quick counts for parts, order-level template files, and part-level template files.
+- Removed the duplicate template-mode work-instructions field so the part editor only shows one instruction box.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx src/app/orders/new/page.tsx`
+
+Verification note:
+- Targeted ESLint passed.
+
+### 2026-04-10 - Repeat Orders + Operator Accountability v1 completed
+- Finished the full v1 slice across schema, backend, routes, and UI.
+- Repeat-order work now supports:
+  - saving a frozen template from an existing order,
+  - loading template-backed order creation at `/orders/new?templateId=...`,
+  - creating a brand-new order from the template without copying execution history.
+- Accountability work now supports:
+  - part-level worker assignments,
+  - part work instructions with per-user/per-department acknowledgement receipts,
+  - acknowledgement gating on timer start/resume, checklist completion, and department submit,
+  - checklist actor vs performer attribution,
+  - richer part activity and log context.
+- Order detail UI now includes:
+  - worker assignment panel,
+  - mission-brief acknowledgement modal,
+  - submit reconfirmation dialog,
+  - performer picker on checklist actions,
+  - clearer part-event rendering.
+- Order create UI now respects repeat-template mode and keeps frozen routing/files read-only while still allowing PO, due date, quantity, notes, and work-instruction overrides.
+
+Commands run:
+- `npx prisma validate`
+- `npx prisma migrate dev --name repeat_orders_operator_accountability_v1`
+- `npx eslint --ext .ts,.tsx src/app/orders/new/page.tsx src/app/orders/[id]/page.tsx src/modules/repeat-orders src/app/api/repeat-order-templates src/modules/orders/orders.service.ts src/modules/time/time.service.ts src/app/api/timer/start/route.ts src/app/api/timer/resume/route.ts src/app/api/timer/active/route.ts src/app/api/orders/[id]/parts/[partId]/checklist/[itemId]/complete-and-advance/route.ts`
+- `npm run test -- src/modules/repeat-orders/__tests__/repeat-orders.service.test.ts src/modules/orders/__tests__/orders.service.test.ts src/modules/time/__tests__/time.service.test.ts`
+
+Verification note:
+- Focused ESLint passed on the touched repeat-order and accountability paths.
+- Focused tests passed: repeat orders `4/4`, orders `11/11`, time `7/7` (`22/22` total).
+- Vitest needed an outside-sandbox rerun after the in-sandbox Windows `spawn EPERM` failure.
+- Repo-wide type-check still has unrelated baseline issues outside this scope; I did not treat them as regressions from this work.
+
+### 2026-04-10 - Repeat orders + operator accountability UI
+- Added order-detail UI for:
+  - part-worker assignment panel using the existing assignment endpoints,
+  - mission-brief must-read modal/read gate using the part instruction acknowledgement endpoint,
+  - second-step submit reconfirmation dialog for department submit,
+  - checklist performer selection dialog with the current user preselected,
+  - richer part log rendering so actor vs performer context is clearer.
+- Kept the order-detail work scoped to the UI layer and reused the backend contract that is already in the tree.
+- Updated `tasks/todo.md`, `docs/AGENT_CONTEXT.md`, and this continuity trail so the next agent inherits the current state.
+
+Commands run:
+- `npx eslint "src/app/orders/[id]/page.tsx"`
+- `npx eslint "src/app/orders/new/page.tsx"`
+- `npx tsc --noEmit --pretty false`
+
+Verification note:
+- The targeted ESLint runs passed.
+- Full repo type-check still reports unrelated pre-existing errors outside this slice, so I did not treat it as a regression from the UI changes.
+
+### 2026-04-10 - Accountability backend only: assignments, acknowledgements, actor/perfomer logs, shared part activity
+- Scoped the in-flight Repeat Orders + Operator Accountability work down to the accountability backend only and left repeat-order/UI files untouched.
+- Orders backend:
+  - finished part worker assignment CRUD service behavior already wired through the existing /api/orders/[id]/parts/[partId]/assignments routes,
+  - finished part instruction acknowledgement status/receipt behavior and reuseable INSTRUCTION_ACK_REQUIRED gating,
+  - enriched checklist events/history so actor vs performer are stored distinctly in both persistence and part-event metadata,
+  - added order-detail read-model shaping for partActivity per part (ctiveTimers, 	imeByUser, 	otalSeconds).
+- Timer/backend routes:
+  - /api/timer/start now blocks start until the current user has acknowledged the active part instructions for the target department,
+  - /api/timer/resume applies the same acknowledgement gate before resuming a part-linked timer,
+  - /api/timer/active now returns shared partActivity summaries for requested part IDs.
+- Mock repos/seeds were updated to cover:
+  - checklist performer attribution,
+  - part assignments,
+  - instruction receipts,
+  - shared part-time activity across multiple users.
+- Added focused backend coverage for:
+  - acknowledgement-gated checklist toggles,
+  - acknowledgement-gated department submit,
+  - actor-vs-performer checklist logging,
+  - part worker + shared activity read models,
+  - time-service shared part activity summaries.
+
+Commands run:
+- 
+pm run test -- src/modules/orders/__tests__/orders.service.test.ts
+- 
+pm run test -- src/modules/time/__tests__/time.service.test.ts
+- 
+pm run lint
+
+Verification note:
+- Orders backend tests passed (11/11).
+- Time backend tests passed (7/7) after an outside-sandbox rerun because sandboxed Vitest/esbuild hit Windows spawn EPERM.
+- Lint passed with no ESLint warnings/errors.
 ### 2026-04-08 — Unraid Docker app template refresh
 - Updated `unraid/my-shopapp1.xml` to better match the current ShopApp1 container setup:
   - normalized app name to `ShopApp1`,
@@ -196,6 +306,129 @@ Agents MUST update this at the end of every session.
 - All charge kinds are now canonically per-part (`partId` required for all kinds); any order-level charge behavior is legacy drift to be removed.
 
 ## Session Log (append newest at top)
+
+### 2026-04-10 - Repeat-order backend: hardened template snapshot/create-order contracts and added focused service coverage
+- Audited the existing repeat-order backend domain under `src/modules/repeat-orders` and kept the implementation scoped there rather than spreading more logic into order-detail UI paths.
+- Hardened template snapshot/create-order behavior:
+  - template snapshot no longer carries the source order PO into template defaults,
+  - template-based order creation now rejects templates with no parts,
+  - duplicate or unknown `templatePartId` overrides now fail fast with `400`,
+  - provided order numbers must match the same business-prefix rule as normal order creation.
+- Kept repeat-order instantiation reusing the normal post-create order lifecycle helpers already present in Orders service:
+  - `generateNextOrderNumber`,
+  - `syncChecklistForOrder`,
+  - `initializeCurrentDepartmentForOrder`,
+  - `syncOrderWorkflowStatus`,
+  - `ensureOrderFilesInCanonicalStorage`.
+- Added focused repeat-order service tests covering template snapshot behavior, invalid override handling, invalid order-number handling, and successful template-based order instantiation.
+
+Commands run:
+- `npx eslint src/modules/repeat-orders/repeat-orders.service.ts src/modules/repeat-orders/repeat-orders.repo.ts src/modules/repeat-orders/repeat-orders.schema.ts src/modules/repeat-orders/repeat-orders.types.ts src/modules/repeat-orders/__tests__/repeat-orders.service.test.ts src/app/api/repeat-order-templates/route.ts src/app/api/repeat-order-templates/from-order/[orderId]/route.ts src/app/api/repeat-order-templates/[id]/route.ts src/app/api/repeat-order-templates/[id]/create-order/route.ts` 
+- `npm run test -- src/modules/repeat-orders/__tests__/repeat-orders.service.test.ts`
+
+Verification note:
+- ESLint passed on the touched repeat-order/API files with no reported issues.
+- Focused repeat-order service tests passed (4/4) after rerunning outside sandbox because Vitest/esbuild hit the usual Windows `spawn EPERM` in sandbox.
+
+
+### 2026-04-10 — Vendors follow-up: added searchable contact/materials fields and rolled back the partial import
+- Extended the `Vendor` schema with first-class `contact` and `materials` fields so supplier contact/material data is searchable without burying it in `notes`.
+- Updated Vendors validation, CRUD forms, search, and importer mapping so:
+  - `Contact` can import into `contact`,
+  - `Material` can import into `materials`,
+  - Vendors search now matches `contact` and `materials` in addition to `name`, `url`, `phone`, and `notes`.
+- Applied Prisma migration `20260410103000_add_vendor_contact_materials`.
+- Rolled back the recent partial spreadsheet import by deleting 37 unreferenced vendor rows, preserving the baseline seeded records (`Grainger`, `McMaster-Carr`) and any linked vendor data.
+- Verified the real workbook preview now suggests:
+  - `Company -> name`
+  - `Web page -> url`
+  - `Phone -> phone`
+  - `Contact -> contact`
+  - `Material -> materials`
+
+Commands run:
+- `npx prisma migrate dev`
+- `npx prisma generate`
+- vendor-reference audit via `node -`
+- rollback delete script via `node -`
+- `npm run lint`
+- `npm run test -- src/modules/vendors/__tests__/vendor-import.test.ts`
+- `node -` (real workbook preview parse + post-rollback vendor check)
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Focused Vendors importer test passed (1/1) outside sandbox.
+- Prisma migration applied successfully; `npx prisma generate` still reported a Windows file-lock rename `EPERM`, but the generated client is usable and successfully queried the new `contact`/`materials` fields afterward.
+- Post-rollback vendor check confirmed only `Grainger` and `McMaster-Carr` remain.
+
+### 2026-04-10 — Vendors import workflow: preview-and-map spreadsheet importer added
+- Added an admin-only Vendors spreadsheet import flow on `/admin/vendors` that supports:
+  - spreadsheet upload (`.xls`, `.xlsx`, `.csv`),
+  - sheet selection,
+  - configurable header row,
+  - preview of raw rows and parsed rows,
+  - column mapping into the current Vendor schema (`name`, `url`, `phone`, `notes`),
+  - duplicate handling (`skip` or `update`) by vendor name.
+- Added `POST /api/admin/vendors/import` for both preview and import actions using a stateless reparse flow.
+- Added `src/modules/vendors/vendor-import.ts` to centralize workbook parsing, header detection, mapping suggestions, and row shaping.
+- Added the `xlsx` dependency so the app can read the provided legacy `Suppliers.xls` workbook reliably.
+- Verified the real workbook parse path against `C:\Users\user\Downloads\Suppliers.xls`:
+  - selected sheet defaulted to `Steel Suppliers`,
+  - detected columns were `Company`, `Phone`, `Contact`, `Web page`, and `Material`,
+  - suggested mapping resolved to `Company -> name`, `Web page -> url`, `Phone -> phone`, `Contact -> notes`.
+
+Commands run:
+- `npm install xlsx`
+- `npm run lint`
+- `npm run test -- src/modules/vendors/__tests__/vendor-import.test.ts`
+- `node -` (real workbook preview parse against `C:\Users\user\Downloads\Suppliers.xls`)
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Focused Vendors importer test passed (1/1) after rerunning outside sandbox because Vitest/esbuild hit sandbox `spawn EPERM`.
+- Real workbook preview parse succeeded and produced the expected supplier-style column mapping suggestions for the uploaded `.xls`.
+
+### 2026-04-10 — BOM analyzer oversized-image fix: large image uploads no longer stack-overflow
+- Fixed `src/app/api/print-analyzer/analyze/route.ts` so large image uploads no longer fail with `Maximum call stack size exceeded`.
+- Root cause and fixes:
+  - replaced the route's regex-based `data:` URL parser with a delimiter-based parser after isolating the stack overflow to `decodeDataUrl()` on a multi-megabyte base64 string,
+  - removed the server-side image data-URL roundtrip so normalized analyzer inputs stay as raw `Buffer`s after request parsing,
+  - switched OpenAI vision calls from inline base64 `image_url` payloads to uploaded OpenAI files (`purpose: vision` + Responses `input_image.file_id`) with best-effort cleanup after each request.
+- Added a prevention rule in `tasks/lessons.md` covering large base64 route payload parsing.
+
+Commands run:
+- `npm run lint`
+- local oversized-image POST to `http://127.0.0.1:3000/api/print-analyzer/analyze`
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- A locally generated `~5.9 MB` JPEG that previously returned `502` with `Maximum call stack size exceeded` now returns `200` with structured analyzer JSON in about 29.7s.
+
+### 2026-04-10 — Local dev recovery: restarted stale port-3000 Next server after broken `.next` runtime state
+- Investigated the admin quote print runtime error shown on the live local app and confirmed the current code path was healthy on a fresh dev compile.
+- Verified divergence between servers:
+  - fresh `3001` dev server served `/admin/quotes/cmnsw7c34000tq7rcbjgn7aeq/print` successfully,
+  - existing `3000` dev server returned `500` from a broken `.next/server/...` `ENOENT` state.
+- Stopped the stale `3000` Next process, restarted the workspace dev server on `3000`, and re-verified the same authenticated quote print route now returns `200`.
+
+Commands run:
+- local auth + route probes against `http://127.0.0.1:3001` and `http://127.0.0.1:3000`
+- `Stop-Process -Id 41880 -Force`
+- restarted local dev server on port `3000`
+
+Verification note:
+- After restart, authenticated request to `http://127.0.0.1:3000/admin/quotes/cmnsw7c34000tq7rcbjgn7aeq/print` returned `200` instead of the prior `500` runtime failure.
+
+### 2026-04-10 — Auth redirect hotfix: credential sign-in now stays on current LAN/IP origin
+- Fixed `src/app/(public)/auth/signin/page.tsx` so credential sign-in no longer relies on NextAuth's final redirect origin selection when login succeeds.
+- Switched the sign-in submit flow to `redirect: false` and manually navigated to the normalized relative callback path after a successful response.
+- This keeps post-login navigation on the active browser origin, which avoids the localhost bounce when the auth/base URL config still points at loopback.
+
+Commands run:
+- `npm run lint`
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
 
 ### 2026-04-09 — Order-detail submit dialog follow-up: confirm button now tracks selected destination
 - Fixed `src/app/orders/[id]/page.tsx` so the dialog confirm button label now derives from the actual selected destination department instead of the stale `nextDepartmentOption` helper.
@@ -1711,3 +1944,5 @@ Verification note:
 - Lint passed with no ESLint warnings/errors.
 - Runtime PDF rasterization check succeeded: `pdf-render-ok:303905:1224x1584`.
 - `npm run build` still fails in this environment because of the existing `next/font` Roboto fetch / `127.0.0.1:9` connection issue, but the PDF-renderer native-module webpack parse error is resolved.
+
+

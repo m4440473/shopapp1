@@ -12,6 +12,8 @@ export function createMockOrdersRepo() {
     charge: state.orderCharges.length + 1,
     status: state.statusHistory.length + 1,
     partTimeAdjustment: state.partTimeAdjustments.length + 1,
+    assignment: state.orderPartAssignments.length + 1,
+    receipt: state.partInstructionReceipts.length + 1,
   };
 
   const nextId = (prefix: string) => {
@@ -37,11 +39,28 @@ export function createMockOrdersRepo() {
         ...charge,
         department: state.departments.find((dept) => dept.id === charge.departmentId) ?? null,
       }));
+    const assignments = state.orderPartAssignments
+      .filter((assignment) => assignment.partId === part.id && assignment.isActive)
+      .map((assignment) => ({
+        ...assignment,
+        user: state.users.find((user) => user.id === assignment.userId) ?? null,
+        assignedBy: state.users.find((user) => user.id === assignment.assignedById) ?? null,
+      }));
+    const instructionReceipts = state.partInstructionReceipts
+      .filter((receipt) => receipt.partId === part.id)
+      .sort((a, b) => b.acknowledgedAt.getTime() - a.acknowledgedAt.getTime())
+      .map((receipt) => ({
+        ...receipt,
+        user: state.users.find((user) => user.id === receipt.userId) ?? null,
+        department: state.departments.find((dept) => dept.id === receipt.departmentId) ?? null,
+      }));
     return {
       ...part,
       material,
       attachments,
       charges,
+      assignments,
+      instructionReceipts,
     };
   };
 
@@ -136,6 +155,8 @@ export function createMockOrdersRepo() {
           status: null,
           materialId: (part.materialId as string) ?? null,
           currentDepartmentId: null,
+          workInstructions: (part.workInstructions as string) ?? null,
+          instructionsVersion: 1,
         };
         state.orderParts.push(createdPart);
         return createdPart;
@@ -170,6 +191,8 @@ export function createMockOrdersRepo() {
         department: state.departments.find((dept) => dept.id === entry.departmentId) ?? null,
         part: state.orderParts.find((part) => part.id === entry.partId) ?? null,
         charge: state.orderCharges.find((charge) => charge.id === entry.chargeId) ?? null,
+        toggledBy: state.users.find((user) => user.id === entry.toggledById) ?? null,
+        performedBy: state.users.find((user) => user.id === entry.performedById) ?? null,
       }));
       const charges = findOrderCharges(order.id).map((charge) => ({
         ...charge,
@@ -197,6 +220,13 @@ export function createMockOrdersRepo() {
           ...adjustment,
           user: state.users.find((user) => user.id === adjustment.userId) ?? null,
         }));
+      const timeEntries = state.timeEntries
+        .filter((entry) => entry.orderId === order.id)
+        .map((entry) => ({
+          ...entry,
+          user: state.users.find((user) => user.id === entry.userId) ?? null,
+          department: state.departments.find((department) => department.id === entry.departmentId) ?? null,
+        }));
       return {
         ...order,
         customer,
@@ -208,6 +238,7 @@ export function createMockOrdersRepo() {
         attachments,
         partAttachments,
         partTimeAdjustments,
+        timeEntries,
         assignedMachinist,
         vendor: null,
       };
@@ -325,10 +356,26 @@ export function createMockOrdersRepo() {
       return user ? { id: user.id } : null;
     },
 
-    async updateChecklistCompletion({ checklistId, checked }: { checklistId: string; checked: boolean }) {
+    async findUserSummaryById(userId: string) {
+      return state.users.find((item) => item.id === userId) ?? null;
+    },
+
+    async updateChecklistCompletion({
+      checklistId,
+      checked,
+      toggledById,
+      performedById,
+    }: {
+      checklistId: string;
+      checked: boolean;
+      toggledById?: string | null;
+      performedById?: string | null;
+    }) {
       const item = state.orderChecklist.find((entry) => entry.id === checklistId);
       if (item) {
         item.completed = checked;
+        item.toggledById = toggledById ?? null;
+        item.performedById = performedById ?? toggledById ?? null;
       }
     },
 
@@ -383,9 +430,11 @@ export function createMockOrdersRepo() {
       const part = state.orderParts.find((item) => item.orderId === orderId && item.id === partId);
       if (!part) return null;
       return {
-        ...part,
-        order: state.orders.find((order) => order.id === orderId) ?? null,
-        material: state.materials.find((material) => material.id === part.materialId) ?? null,
+        id: part.id,
+        partNumber: part.partNumber,
+        currentDepartmentId: part.currentDepartmentId,
+        workInstructions: part.workInstructions ?? '',
+        instructionsVersion: part.instructionsVersion ?? 1,
       };
     },
 
@@ -460,7 +509,7 @@ export function createMockOrdersRepo() {
                   const chargeAddon = charge?.addonId ? state.addons.find((addon) => addon.id === charge.addonId) ?? null : null;
                   return charge ? { ...charge, addon: chargeAddon } : null;
                 })()
-              : null,
+                    : null,
           })),
       };
     },
@@ -469,13 +518,28 @@ export function createMockOrdersRepo() {
       const part = state.orderParts.find((item) => item.id === partId);
       if (!part) throw new Error('Part not found');
       part.currentDepartmentId = currentDepartmentId;
+       part.status = currentDepartmentId ? 'IN_PROGRESS' : 'COMPLETE';
       return part;
     },
 
-    async setChecklistCompletion({ checklistId, checked, toggledById, chargeId }: { checklistId: string; checked: boolean; toggledById: string | null; chargeId?: string | null }) {
+    async setChecklistCompletion({
+      checklistId,
+      checked,
+      toggledById,
+      performedById,
+      chargeId,
+    }: {
+      checklistId: string;
+      checked: boolean;
+      toggledById: string | null;
+      performedById?: string | null;
+      chargeId?: string | null;
+    }) {
       const checklist = state.orderChecklist.find((item) => item.id === checklistId);
       if (!checklist) return;
       checklist.completed = checked;
+      checklist.toggledById = toggledById ?? null;
+      checklist.performedById = performedById ?? toggledById ?? null;
       if (chargeId) {
         const charge = state.orderCharges.find((item) => item.id === chargeId);
         if (charge) charge.completedAt = checked ? new Date() : null;
@@ -511,6 +575,8 @@ export function createMockOrdersRepo() {
         status: null,
         materialId: partData.materialId ?? null,
         currentDepartmentId: null,
+        workInstructions: partData.workInstructions ?? null,
+        instructionsVersion: 1,
       };
       state.orderParts.push(part);
       return part;
@@ -766,6 +832,134 @@ export function createMockOrdersRepo() {
       const index = state.partAttachments.findIndex((item) => item.id === attachmentId);
       if (index >= 0) state.partAttachments.splice(index, 1);
       return { id: attachmentId };
+    },
+
+    async listPartAssignments(partId: string) {
+      return state.orderPartAssignments
+        .filter((assignment) => assignment.partId === partId && assignment.isActive)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        .map((assignment) => ({
+          ...assignment,
+          user: state.users.find((user) => user.id === assignment.userId) ?? null,
+          assignedBy: state.users.find((user) => user.id === assignment.assignedById) ?? null,
+        }));
+    },
+
+    async findActivePartAssignment(partId: string, userId: string) {
+      const assignment = state.orderPartAssignments.find(
+        (entry) => entry.partId === partId && entry.userId === userId && entry.isActive,
+      );
+      if (!assignment) return null;
+      return {
+        ...assignment,
+        user: state.users.find((user) => user.id === assignment.userId) ?? null,
+        assignedBy: state.users.find((user) => user.id === assignment.assignedById) ?? null,
+      };
+    },
+
+    async createPartAssignment({
+      partId,
+      userId,
+      assignedById,
+      assignmentType,
+    }: {
+      partId: string;
+      userId: string;
+      assignedById?: string | null;
+      assignmentType?: string;
+    }) {
+      const assignment = {
+        id: nextId('assignment'),
+        partId,
+        userId,
+        assignedById: assignedById ?? null,
+        assignmentType: assignmentType ?? 'WORKER',
+        isActive: true,
+        removedAt: null,
+        createdAt: new Date(),
+      };
+      state.orderPartAssignments.push(assignment);
+      return {
+        ...assignment,
+        user: state.users.find((user) => user.id === assignment.userId) ?? null,
+        assignedBy: state.users.find((user) => user.id === assignment.assignedById) ?? null,
+      };
+    },
+
+    async deactivatePartAssignment(assignmentId: string) {
+      const assignment = state.orderPartAssignments.find((entry) => entry.id === assignmentId);
+      if (!assignment) throw new Error('Assignment not found');
+      assignment.isActive = false;
+      assignment.removedAt = new Date();
+      return {
+        ...assignment,
+        user: state.users.find((user) => user.id === assignment.userId) ?? null,
+        assignedBy: state.users.find((user) => user.id === assignment.assignedById) ?? null,
+      };
+    },
+
+    async listInstructionReceiptsForPart(partId: string) {
+      return state.partInstructionReceipts
+        .filter((receipt) => receipt.partId === partId)
+        .sort((a, b) => b.acknowledgedAt.getTime() - a.acknowledgedAt.getTime())
+        .map((receipt) => ({
+          ...receipt,
+          user: state.users.find((user) => user.id === receipt.userId) ?? null,
+          department: state.departments.find((department) => department.id === receipt.departmentId) ?? null,
+        }));
+    },
+
+    async findInstructionReceipt({
+      partId,
+      userId,
+      departmentId,
+      instructionsVersion,
+    }: {
+      partId: string;
+      userId: string;
+      departmentId: string;
+      instructionsVersion: number;
+    }) {
+      const receipt = state.partInstructionReceipts.find(
+        (entry) =>
+          entry.partId === partId &&
+          entry.userId === userId &&
+          entry.departmentId === departmentId &&
+          entry.instructionsVersion === instructionsVersion,
+      );
+      if (!receipt) return null;
+      return {
+        ...receipt,
+        user: state.users.find((user) => user.id === receipt.userId) ?? null,
+        department: state.departments.find((department) => department.id === receipt.departmentId) ?? null,
+      };
+    },
+
+    async createInstructionReceipt({
+      partId,
+      userId,
+      departmentId,
+      instructionsVersion,
+    }: {
+      partId: string;
+      userId: string;
+      departmentId: string;
+      instructionsVersion: number;
+    }) {
+      const receipt = {
+        id: nextId('receipt'),
+        partId,
+        userId,
+        departmentId,
+        instructionsVersion,
+        acknowledgedAt: new Date(),
+      };
+      state.partInstructionReceipts.push(receipt);
+      return {
+        ...receipt,
+        user: state.users.find((user) => user.id === receipt.userId) ?? null,
+        department: state.departments.find((department) => department.id === receipt.departmentId) ?? null,
+      };
     },
 
     async listAddons({ take }: { where?: Record<string, unknown>; take: number; cursor?: string | null }) {

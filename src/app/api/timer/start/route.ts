@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { authRequiredResponse } from '@/lib/auth-api';
 
-import { getDepartmentsOrdered, getOrderHeaderInfo, getOrderPartSummary, logPartEvent, syncOrderWorkflowStatus } from '@/modules/orders/orders.service';
+import {
+  getDepartmentsOrdered,
+  getOrderHeaderInfo,
+  getOrderPartSummary,
+  logPartEvent,
+  requirePartInstructionAcknowledgement,
+  syncOrderWorkflowStatus,
+} from '@/modules/orders/orders.service';
 import { TimeEntryStart } from '@/modules/time/time.schema';
 import { getActiveTimeEntries, getActiveTimeEntry, startTimeEntryWithConflict } from '@/modules/time/time.service';
 
@@ -39,6 +46,16 @@ export async function POST(req: NextRequest) {
   const partCheck = await getOrderPartSummary(orderId, partId);
   if (partCheck.ok === false) {
     return NextResponse.json({ error: partCheck.error }, { status: partCheck.status });
+  }
+
+  const ackResult = await requirePartInstructionAcknowledgement({
+    orderId,
+    partId,
+    userId,
+    departmentId,
+  });
+  if (ackResult.ok === false) {
+    return NextResponse.json({ error: ackResult.error }, { status: ackResult.status });
   }
 
   const result = await startTimeEntryWithConflict(userId, {
