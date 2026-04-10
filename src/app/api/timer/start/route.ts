@@ -11,7 +11,7 @@ import {
   syncOrderWorkflowStatus,
 } from '@/modules/orders/orders.service';
 import { TimeEntryStart } from '@/modules/time/time.schema';
-import { getActiveTimeEntries, getActiveTimeEntry, startTimeEntryWithConflict } from '@/modules/time/time.service';
+import { getActiveTimeEntry, startTimeEntryWithConflict } from '@/modules/time/time.service';
 
 export async function POST(req: NextRequest) {
   const session = await getServerAuthSession();
@@ -66,15 +66,7 @@ export async function POST(req: NextRequest) {
   });
   if (result.ok === false) {
     if (result.status === 409) {
-      const activeEntriesResult = await getActiveTimeEntries(userId);
-      if (activeEntriesResult.ok === false) {
-        return NextResponse.json({ error: activeEntriesResult.error }, { status: activeEntriesResult.status });
-      }
-      const matchingDepartmentEntry =
-        activeEntriesResult.data.entries.find((entry) => entry.departmentId === departmentId) ?? null;
-      const activeResult = matchingDepartmentEntry
-        ? ({ ok: true, data: { entry: matchingDepartmentEntry } } as const)
-        : await getActiveTimeEntry(userId);
+      const activeResult = await getActiveTimeEntry(userId);
       if (activeResult.ok === false) {
         return NextResponse.json({ error: activeResult.error }, { status: activeResult.status });
       }

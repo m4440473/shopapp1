@@ -1006,6 +1006,53 @@ export function createMockOrdersRepo() {
         });
     },
 
+    async searchKioskPartsForDepartment({
+      departmentId,
+      query,
+      take = 30,
+    }: {
+      departmentId: string;
+      query?: string;
+      take?: number;
+    }) {
+      const normalized = query?.trim().toLowerCase() ?? '';
+      return state.orderParts
+        .filter((part) => {
+          if (part.currentDepartmentId !== departmentId) return false;
+          if (part.status === 'COMPLETE') return false;
+          if (!normalized) return true;
+          const order = state.orders.find((item) => item.id === part.orderId);
+          const customer = order ? state.customers.find((item) => item.id === order.customerId) : null;
+          return (
+            (part.partNumber ?? '').toLowerCase().includes(normalized) ||
+            (order?.orderNumber ?? '').toLowerCase().includes(normalized) ||
+            (customer?.name ?? '').toLowerCase().includes(normalized)
+          );
+        })
+        .slice(0, take)
+        .map((part) => {
+          const order = state.orders.find((item) => item.id === part.orderId);
+          const customer = order ? state.customers.find((item) => item.id === order.customerId) : null;
+          return {
+            id: part.id,
+            partNumber: part.partNumber,
+            quantity: part.quantity,
+            currentDepartmentId: part.currentDepartmentId,
+            currentDepartment: state.departments.find((department) => department.id === part.currentDepartmentId) ?? null,
+            orderId: part.orderId,
+            order: order
+              ? {
+                  id: order.id,
+                  orderNumber: order.orderNumber,
+                  dueDate: order.dueDate,
+                  priority: order.priority,
+                  customer: customer ? { id: customer.id, name: customer.name } : null,
+                }
+              : null,
+          };
+        });
+    },
+
 
     async getDashboardOrderOverview() {
       const totalOrders = state.orders.length;

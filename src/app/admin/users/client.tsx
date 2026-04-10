@@ -32,7 +32,12 @@ interface Item {
   email?: string;
   role?: string;
   active?: boolean;
+  kioskEnabled?: boolean;
+  primaryDepartmentId?: string | null;
+  primaryDepartment?: { id: string; name: string } | null;
 }
+
+type DepartmentOption = { id: string; name: string };
 
 type DialogState = { mode: 'create' | 'edit'; data?: Item } | null;
 
@@ -41,11 +46,15 @@ export default function Client({ initial }: { initial: any }) {
   const [nextCursor, setNextCursor] = useState<string | null>(initial.nextCursor ?? null);
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [form, setForm] = useState({
     name: '',
     email: '',
     role: 'MACHINIST',
     active: 'true',
+    kioskEnabled: 'false',
+    primaryDepartmentId: '',
+    kioskPin: '',
     password: '',
     confirmPassword: '',
   });
@@ -54,17 +63,40 @@ export default function Client({ initial }: { initial: any }) {
   const isAdmin = canAccessAdmin(user ?? undefined);
 
   useEffect(() => {
+    if (!isAdmin) return;
+    fetchJson<any>('/api/admin/departments')
+      .then((data) => {
+        const next = Array.isArray(data?.items) ? data.items : [];
+        setDepartments(next.map((item: any) => ({ id: item.id, name: item.name })));
+      })
+      .catch(() => setDepartments([]));
+  }, [isAdmin]);
+
+  useEffect(() => {
     if (dialog?.mode === 'edit' && dialog.data) {
       setForm({
         name: dialog.data.name ?? '',
         email: dialog.data.email ?? '',
         role: dialog.data.role ?? 'MACHINIST',
         active: dialog.data.active ? 'true' : 'false',
+        kioskEnabled: dialog.data.kioskEnabled ? 'true' : 'false',
+        primaryDepartmentId: dialog.data.primaryDepartmentId ?? '',
+        kioskPin: '',
         password: '',
         confirmPassword: '',
       });
     } else if (dialog?.mode === 'create') {
-      setForm({ name: '', email: '', role: 'MACHINIST', active: 'true', password: '', confirmPassword: '' });
+      setForm({
+        name: '',
+        email: '',
+        role: 'MACHINIST',
+        active: 'true',
+        kioskEnabled: 'false',
+        primaryDepartmentId: '',
+        kioskPin: '',
+        password: '',
+        confirmPassword: '',
+      });
     }
   }, [dialog]);
 
@@ -89,6 +121,9 @@ export default function Client({ initial }: { initial: any }) {
         email: form.email,
         role: form.role,
         active: form.active === 'true',
+        kioskEnabled: form.kioskEnabled === 'true',
+        primaryDepartmentId: form.primaryDepartmentId || undefined,
+        kioskPin: form.kioskPin || undefined,
         ...(form.password ? { password: form.password } : {}),
       };
 
@@ -144,6 +179,12 @@ export default function Client({ initial }: { initial: any }) {
         key: 'active',
         header: 'Active',
         render: (value: any) => (value ? 'true' : 'false'),
+      },
+      {
+        key: 'kioskEnabled',
+        header: 'Kiosk',
+        render: (value: any, row: Item) =>
+          value ? `Yes${row.primaryDepartment?.name ? ` · ${row.primaryDepartment.name}` : ''}` : 'No',
       },
     ],
     []
@@ -245,6 +286,60 @@ export default function Client({ initial }: { initial: any }) {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="userKioskEnabled">Kiosk timing</Label>
+                <Select
+                  value={form.kioskEnabled}
+                  onValueChange={(value) => setForm((prev) => ({ ...prev, kioskEnabled: value }))}
+                >
+                  <SelectTrigger id="userKioskEnabled">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="false">disabled</SelectItem>
+                    <SelectItem value="true">enabled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="userPrimaryDepartment">Primary department</Label>
+                <Select
+                  value={form.primaryDepartmentId || '__none__'}
+                  onValueChange={(value) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      primaryDepartmentId: value === '__none__' ? '' : value,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="userPrimaryDepartment">
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No default department</SelectItem>
+                    {departments.map((department) => (
+                      <SelectItem key={department.id} value={department.id}>
+                        {department.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="userKioskPin">{dialog?.mode === 'edit' ? 'New kiosk PIN' : 'Kiosk PIN'}</Label>
+              <Input
+                id="userKioskPin"
+                inputMode="numeric"
+                value={form.kioskPin}
+                onChange={(e) => setForm((prev) => ({ ...prev, kioskPin: e.target.value.replace(/\D+/g, '') }))}
+                placeholder={dialog?.mode === 'edit' ? 'Leave blank to keep current PIN' : '4 to 8 digits'}
+              />
+              <p className="text-xs text-muted-foreground">
+                Required when kiosk timing is enabled. PINs must be 4 to 8 digits.
+              </p>
             </div>
             <div className="grid gap-2 md:grid-cols-2">
               <div className="grid gap-2">

@@ -1,3 +1,57 @@
+### 2026-04-10 - Order-detail kiosk timing follow-up: embedded PIN + part picker on `/orders/[id]`
+- Reworked the kiosk-only timer experience on `src/app/orders/[id]/page.tsx` so kiosk-enabled machinists no longer have to leave the order-detail page to start or manage time.
+- Replaced the old `Open kiosk` fallback with in-page kiosk controls in the existing timer area:
+  - `Start timer` now opens a dialog on the order page,
+  - the dialog now requires worker, department, and PIN selection before start,
+  - the dialog lets the user choose a part from the current order before starting.
+- Added in-page kiosk pause/stop handling on the same timer header, including PIN re-unlock when the kiosk session is missing.
+- Reused the existing kiosk unlock/session/start/pause/finish/switch API routes so worker ownership, default-department usage, and active-timer switch confirmation all stay server-enforced.
+- Collapsed the extra kiosk/timer helper copy, time breakdown, and last-action readout behind the existing `Show details` affordance so the timer header stays visually quiet by default.
+- Follow-up simplification: the order-detail worker picker now treats all active users as eligible for this PIN flow instead of filtering by `kioskEnabled`, while still requiring that selected user's PIN.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+Verification note:
+- Targeted ESLint passed.
+
+### 2026-04-10 - Shared kiosk timing + read-only order detail for floor users
+- Added kiosk-ready user timing fields and admin management support:
+  - `User.kioskEnabled`,
+  - `User.kioskPinHash`,
+  - `User.primaryDepartmentId`.
+- Added `src/lib/kiosk-session.ts` and dedicated kiosk API routes under `src/app/api/kiosk/**` for:
+  - PIN unlock,
+  - kiosk session fetch,
+  - kiosk lock/reset,
+  - department part search,
+  - worker-scoped timer start/pause/finish.
+- Added `/kiosk` as a dedicated timing-only shared-station page:
+  - PIN unlock,
+  - current worker + active timer status,
+  - primary-department default with override,
+  - searchable department-ready part list,
+  - explicit pause/stop/switch flow.
+- Changed timer behavior to one active timer total per worker instead of one active timer per worker per department.
+- Added reporting-oriented timer summaries in `src/modules/time/time.service.ts` for:
+  - totals by part + department,
+  - totals by part + user,
+  - totals by department + user,
+  - active timer by user.
+- Kept `/orders/[id]` readable for floor workers but now hides timer controls for kiosk-enabled machinists and points them to `/kiosk` for timing.
+- Hardened user-repo sanitization so kiosk PIN hashes are no longer leaked through sanitized user payloads.
+
+Commands run:
+- `npx prisma migrate dev --name kiosk_user_timing_v1`
+- `npx eslint --ext .ts,.tsx -- "src/app/kiosk/page.tsx" "src/app/api/kiosk/unlock/route.ts" "src/app/api/kiosk/session/route.ts" "src/app/api/kiosk/lock/route.ts" "src/app/api/kiosk/parts/route.ts" "src/app/api/kiosk/timer/route.ts" "src/app/api/orders/[id]/route.ts" "src/app/api/timer/start/route.ts" "src/app/orders/[id]/page.tsx" "src/components/AppNav.tsx" "src/modules/kiosk/kiosk.service.ts" "src/modules/kiosk/kiosk.schema.ts" "src/modules/time/time.service.ts" "src/modules/users/users.repo.ts" "src/repos/users.ts" "src/repos/mock/users.ts" "src/repos/mock/seed.ts" "src/modules/time/__tests__/time.service.test.ts" "src/modules/kiosk/__tests__/kiosk.service.test.ts"`
+- `npm run test -- src/modules/time/__tests__/time.service.test.ts src/modules/kiosk/__tests__/kiosk.service.test.ts`
+
+Verification note:
+- Prisma migration applied successfully and created `prisma/migrations/20260410174437_kiosk_user_timing_v1/migration.sql`.
+- Targeted ESLint passed.
+- Focused kiosk/time tests passed (`11/11`) after an outside-sandbox rerun because sandboxed Vitest/esbuild hit Windows `spawn EPERM`.
+- Prisma generate inside the migration hit a Windows file-lock `EPERM` while renaming the Prisma query engine DLL, but the migration completed and the focused checks passed afterward.
+
 ### 2026-04-10 - Order-detail layout shift for part-heavy orders
 - Reworked `src/app/orders/[id]/page.tsx` so the left rail is now dedicated to parts only instead of splitting space with the timer/work dock.
 - Added a dedicated scroll area for the part list so long orders stay navigable without the timer controls consuming that column.

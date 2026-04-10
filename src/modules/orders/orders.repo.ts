@@ -1303,3 +1303,50 @@ export async function searchOrdersByTerm(query: string, variants: string[]) {
     take: 60,
   });
 }
+
+export async function searchKioskPartsForDepartment({
+  departmentId,
+  query,
+  take = 30,
+}: {
+  departmentId: string;
+  query?: string;
+  take?: number;
+}) {
+  const normalized = query?.trim();
+
+  return prisma.orderPart.findMany({
+    where: {
+      currentDepartmentId: departmentId,
+      status: { not: 'COMPLETE' },
+      ...(normalized
+        ? {
+            OR: [
+              { partNumber: { contains: normalized, mode: 'insensitive' } },
+              { order: { orderNumber: { contains: normalized, mode: 'insensitive' } } },
+              { order: { customer: { name: { contains: normalized, mode: 'insensitive' } } } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ order: { dueDate: 'asc' } }, { order: { orderNumber: 'asc' } }, { partNumber: 'asc' }],
+    take,
+    select: {
+      id: true,
+      partNumber: true,
+      quantity: true,
+      currentDepartmentId: true,
+      currentDepartment: { select: { id: true, name: true } },
+      orderId: true,
+      order: {
+        select: {
+          id: true,
+          orderNumber: true,
+          dueDate: true,
+          priority: true,
+          customer: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+}

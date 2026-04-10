@@ -1,6 +1,82 @@
 ## Session Metadata
 - Date: 2026-04-10
 - Agent: Codex GPT-5
+- Task ID: Order-detail embedded kiosk timing follow-up
+- Goal: Replace the separate kiosk-page launch from `/orders/[id]` with an in-page PIN-and-part kiosk timer dialog while keeping kiosk/user/department timing rules intact.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current kiosk behavior in code:
+  - kiosk-enabled machinists already lose normal timer controls on `/orders/[id]`,
+  - the fallback currently sends them to `/kiosk`,
+  - kiosk unlock/session/timer APIs already exist and should be reused instead of duplicating timer business logic.
+
+## Plan First
+- [x] Replace the order-detail kiosk fallback CTA with inline kiosk timer controls and a modal dialog.
+- [x] Reuse kiosk unlock/session/start/pause/finish/switch APIs from the order page so PIN, worker ownership, and department rules stay server-enforced.
+- [x] Run focused verification and update continuity docs with the revised UX behavior.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+## Review + Results
+- Replaced the `/orders/[id]` kiosk fallback link with in-page kiosk controls in the existing timer area.
+- Kiosk-enabled machinists now open a modal on the order page to:
+  - choose a worker,
+  - choose a department,
+  - enter that worker's PIN,
+  - choose a part from the current order,
+  - start work without leaving the order-detail screen.
+- Pause/stop actions for kiosk-enabled machinists now also work from the order page and reuse the same kiosk unlock/session flow when needed.
+- Existing kiosk API/session/timer enforcement stays intact, including:
+  - user-specific timer ownership,
+  - explicit department choice with worker-default suggestion,
+  - active-timer switch confirmation when another timer is already running.
+- Moved the helper/status/time-breakdown content under `Show details` so the timer header stays cleaner by default.
+
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: Shared kiosk timing + read-only order detail for floor users
+- Goal: Add a PIN-based shared kiosk timing flow with one-active-timer-per-worker enforcement, keep order detail available for review, and hide timer actions there for kiosk-designated floor users.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated current code shape:
+  - `TimeEntry` already stores `userId`, `partId`, and `departmentId`,
+  - timer services currently allow one active timer per user per department, not one total,
+  - `/orders/[id]` still owns the current timer controls,
+  - there is no kiosk session/auth flow yet,
+  - admin Users UI/API exists and is the right setup surface for kiosk fields.
+
+## Plan First
+- [x] Extend `User` and admin user management for kiosk PIN/default department/kiosk eligibility.
+- [x] Add kiosk session helpers and kiosk auth/session/timer/search API routes.
+- [x] Change timer backend enforcement to one active timer total per worker and include conflict context for switch UX.
+- [x] Add `/kiosk` timing UI and hide order-detail timer actions for kiosk-enabled floor users while preserving read-only review access.
+- [x] Add/update focused tests and run relevant verification.
+- [x] Update continuity docs with evidence and behavior notes.
+
+## Verification Checklist
+- [x] `npx prisma migrate dev --name kiosk_user_timing_v1`
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/kiosk/page.tsx" "src/app/api/kiosk/unlock/route.ts" "src/app/api/kiosk/session/route.ts" "src/app/api/kiosk/lock/route.ts" "src/app/api/kiosk/parts/route.ts" "src/app/api/kiosk/timer/route.ts" "src/app/api/orders/[id]/route.ts" "src/app/api/timer/start/route.ts" "src/app/orders/[id]/page.tsx" "src/components/AppNav.tsx" "src/modules/kiosk/kiosk.service.ts" "src/modules/kiosk/kiosk.schema.ts" "src/modules/time/time.service.ts" "src/modules/users/users.repo.ts" "src/repos/users.ts" "src/repos/mock/users.ts" "src/repos/mock/seed.ts" "src/modules/time/__tests__/time.service.test.ts" "src/modules/kiosk/__tests__/kiosk.service.test.ts"`
+- [x] `npm run test -- src/modules/time/__tests__/time.service.test.ts src/modules/kiosk/__tests__/kiosk.service.test.ts`
+
+## Review + Results
+- Added kiosk-ready user fields (`kioskEnabled`, `kioskPinHash`, `primaryDepartmentId`) plus admin management support for PIN/default department setup.
+- Added a dedicated `/kiosk` flow with PIN unlock, signed kiosk session cookie, department-scoped part search, active-timer context, and explicit start/pause/stop/switch actions.
+- Changed timer enforcement to one active timer total per worker, regardless of department, while preserving `departmentId` on each `TimeEntry` and adding reporting summaries for part/department/user rollups.
+- Kept `/orders/[id]` available for notes/files/checklists/logs, but hid timer controls there for kiosk-enabled machinists and replaced them with a kiosk-only timing message/link.
+- Added focused kiosk/time tests and captured the Prisma client file-lock caveat during migration.
+
+## Notes
+- `npx prisma migrate dev --name kiosk_user_timing_v1` applied successfully and created `prisma/migrations/20260410174437_kiosk_user_timing_v1/migration.sql`.
+- Prisma generate inside the migration hit a Windows file-lock `EPERM` while renaming `query_engine-windows.dll.node`; the migration itself completed and focused lint/tests passed afterward.
+- Focused Vitest execution still required an outside-sandbox rerun because sandboxed esbuild hit Windows `spawn EPERM`.
+
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
 - Task ID: Order-detail layout shift for part-heavy orders
 - Goal: Give the full left rail to the parts list, move timer/submit controls into the top of the right-side detail area, and remove the admin order-status block from this screen.
 

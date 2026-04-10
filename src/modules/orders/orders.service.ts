@@ -745,7 +745,10 @@ export async function ensureOrderFilesInCanonicalStorage(orderId: string) {
   return ok({ ok: true });
 }
 
-export async function getOrderDetails(id: string, isAdmin: boolean) {
+export async function getOrderDetails(
+  id: string,
+  options: { isAdmin: boolean; canUseTimerControls?: boolean },
+) {
   const order = await findOrderWithDetails(id);
   if (!order) return fail(404, 'Not found');
   const departments = await listDepartmentsOrdered();
@@ -754,7 +757,7 @@ export async function getOrderDetails(id: string, isAdmin: boolean) {
     ? buildPartActivityByPart(partIds, await listTimeEntriesForPartsDetailed(partIds))
     : {};
 
-  const sanitized = sanitizePricingForNonAdmin(order, isAdmin) as any;
+  const sanitized = sanitizePricingForNonAdmin(order, options.isAdmin) as any;
   sanitized.status = normalizeOrderWorkflowStatus(sanitized.status);
   sanitized.parts = Array.isArray(sanitized.parts)
     ? sanitized.parts.map((part: any) => {
@@ -783,7 +786,11 @@ export async function getOrderDetails(id: string, isAdmin: boolean) {
   return ok({
     item: sanitized,
     departments,
-    permissions: { canEditParts: isAdmin, canEditOrderStatus: isAdmin },
+    permissions: {
+      canEditParts: options.isAdmin,
+      canEditOrderStatus: options.isAdmin,
+      canUseTimerControls: options.canUseTimerControls !== false,
+    },
   });
 }
 

@@ -5,6 +5,10 @@ export type MockUser = {
   role: string;
   admin: boolean;
   active: boolean;
+  kioskEnabled?: boolean;
+  kioskPinHash?: string | null;
+  primaryDepartmentId?: string | null;
+  primaryDepartment?: { id: string; name: string } | null;
 };
 
 export type MockCustomer = {
@@ -226,6 +230,10 @@ export function createMockSeedState(): MockSeedState {
       role: 'ADMIN',
       admin: true,
       active: true,
+      kioskEnabled: false,
+      kioskPinHash: null,
+      primaryDepartmentId: null,
+      primaryDepartment: null,
     },
     {
       id: 'user_test_machinist',
@@ -234,6 +242,10 @@ export function createMockSeedState(): MockSeedState {
       role: 'MACHINIST',
       admin: false,
       active: true,
+      kioskEnabled: true,
+      kioskPinHash: '$2a$10$zi2x9sQLiP8W.idNF7RWMO7Y6YyQzTAXJCTDIVMUuc2ayfmwgyY0y',
+      primaryDepartmentId: 'dept_test_001',
+      primaryDepartment: { id: 'dept_test_001', name: 'Machining' },
     },
     {
       id: 'user_test_helper',
@@ -242,6 +254,10 @@ export function createMockSeedState(): MockSeedState {
       role: 'MACHINIST',
       admin: false,
       active: true,
+      kioskEnabled: true,
+      kioskPinHash: '$2a$10$jqCXFAh0oeY59faoQzQPiOUYNTzudIvIYa7jqWL85BoeK9d6oaKtO',
+      primaryDepartmentId: 'dept_test_002',
+      primaryDepartment: { id: 'dept_test_002', name: 'Finishing' },
     },
   ];
 

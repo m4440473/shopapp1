@@ -4,17 +4,24 @@ import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessAdmin } from '@/lib/rbac';
 import { OrderUpdate } from '@/modules/orders/orders.schema';
 import { getOrderDetails, updateOrderDetails } from '@/modules/orders/orders.service';
+import { findUserById } from '@/repos/users';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerAuthSession();
   if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = (session as any).user;
   const isAdmin = canAccessAdmin(user);
+  const userId = typeof user?.id === 'string' ? user.id : '';
+  const currentUser = userId ? await findUserById(userId) : null;
+  const canUseTimerControls = !(
+    currentUser?.role === 'MACHINIST' &&
+    currentUser?.kioskEnabled === true
+  );
 
   const { id } = await params;
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
-  const result = await getOrderDetails(id, isAdmin);
+  const result = await getOrderDetails(id, { isAdmin, canUseTimerControls });
   if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

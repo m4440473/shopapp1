@@ -60,6 +60,14 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-04-10 - Order detail is now the primary kiosk-timing entry for floor users
+Decision: Keep the kiosk session/PIN/timer APIs and `/kiosk` route, but move the primary worker-facing kiosk timing flow back into `/orders/[id]` by opening an in-page PIN + part-picker dialog from the order-detail timer area for kiosk-enabled machinists.
+Reason: Floor users already live in order detail while reviewing notes/files/checklists, so sending them to a separate kiosk page for the same timer action adds friction without changing the timer enforcement model.
+
+### 2026-04-10 - Floor timing uses a dedicated kiosk with user-owned timers; `/orders/[id]` stays review-first
+Decision: Add PIN-based kiosk identity on `User` (`kioskEnabled`, `kioskPinHash`, `primaryDepartmentId`), move floor timing into a dedicated `/kiosk` flow with its own signed kiosk session, enforce one active timer total per worker, and keep `/orders/[id]` readable for floor workers while hiding timer controls there for kiosk-enabled machinists.
+Reason: The shop has shared-floor computers and workers who still need order notes/files/checklists but get confused by timer controls in the full order view. User-owned kiosk timing preserves worker accountability and bottleneck reporting without forcing five persistent browser logins or multiple incognito-tab identities.
+
 ### 2026-04-10 - Repeat-order backend snapshots manufacturing definition only and validates template-instantiation inputs strictly
 Decision: Repeat-order template snapshotting must not carry the source order PO into template defaults, template-based order creation must reject unknown or duplicate `templatePartId` overrides, provided order numbers must obey the same business-prefix rule as standard order creation, and template instantiation must fail fast when a template has no parts.
 Reason: Repeat orders should preserve reusable manufacturing intent without leaking stale execution/chatter fields, and the backend must keep template instantiation deterministic so the UI cannot silently create malformed orders from bad override payloads.

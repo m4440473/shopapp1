@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessAdmin } from '@/lib/rbac';
 import { hash } from 'bcryptjs';
-import { updateUser } from '@/repos/users';
+import { findUserById, updateUser } from '@/repos/users';
 import { UserPatch } from '@/lib/zod';
 
 async function requireAdmin(): Promise<NextResponse | null> {
@@ -20,9 +20,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
   const parsed = UserPatch.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-  const { password, ...data } = parsed.data as any;
+  const existing = await findUserById(id);
+  if (!existing) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+  const { password, kioskPin, kioskEnabled, primaryDepartmentId, ...data } = parsed.data as any;
+  const nextKioskEnabled = kioskEnabled ?? existing.kioskEnabled;
+  const nextPrimaryDepartmentId =
+    primaryDepartmentId !== undefined ? primaryDepartmentId || null : existing.primaryDepartmentId ?? null;
+  if (nextKioskEnabled && !nextPrimaryDepartmentId) {
+    return NextResponse.json({ error: 'Primary department is required when kiosk access is enabled.' }, { status: 400 });
+  }
+  if (nextKioskEnabled && !kioskPin && !existing.kioskPinHash) {
+    return NextResponse.json({ error: 'Kiosk PIN is required before kiosk access can be enabled.' }, { status: 400 });
+  }
   const item = await updateUser(id, {
     ...data,
+    ...(kioskEnabled !== undefined ? { kioskEnabled } : {}),
+    ...(primaryDepartmentId !== undefined ? { primaryDepartmentId: primaryDepartmentId || null } : {}),
+    ...(kioskPin ? { kioskPinHash: await hash(kioskPin, 10) } : {}),
     ...(password ? { passwordHash: await hash(password, 10) } : {}),
   });
   return NextResponse.json({ ok: true, item });
