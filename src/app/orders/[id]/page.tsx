@@ -122,11 +122,6 @@ export default function OrderDetailPage() {
   const [activeTab, setActiveTab] = useState<PartTab>('overview');
   const [noteText, setNoteText] = useState('');
   const [canEditParts, setCanEditParts] = useState(false);
-  const [canEditOrderStatus, setCanEditOrderStatus] = useState(false);
-  const [statusDraft, setStatusDraft] = useState<'RECEIVED' | 'IN_PROGRESS' | 'COMPLETE' | 'CLOSED'>('RECEIVED');
-  const [statusReason, setStatusReason] = useState('');
-  const [statusSaving, setStatusSaving] = useState(false);
-  const [statusError, setStatusError] = useState<string | null>(null);
   const [partEvents, setPartEvents] = useState<any[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [timerError, setTimerError] = useState<string | null>(null);
@@ -438,9 +433,6 @@ export default function OrderDetailPage() {
           : []
       );
       setCanEditParts(Boolean(data?.permissions?.canEditParts));
-      setCanEditOrderStatus(Boolean(data?.permissions?.canEditOrderStatus));
-      setStatusDraft((data?.item?.status ?? 'RECEIVED') as 'RECEIVED' | 'IN_PROGRESS' | 'COMPLETE' | 'CLOSED');
-      setStatusError(null);
       setError(null);
       return data.item;
     } catch (err: any) {
@@ -640,6 +632,7 @@ export default function OrderDetailPage() {
   }, [loadPartEvents]);
 
   const isInstructionAcknowledgedForDepartment = (departmentId?: string | null) => {
+    if (!selectedPartInstructions) return true;
     if (!selectedPartId || !departmentId || !currentUserId) return !selectedPartInstructions;
     const receipts = Array.isArray(selectedPart?.instructionReceipts) ? selectedPart.instructionReceipts : [];
     return receipts.some(
@@ -679,6 +672,35 @@ export default function OrderDetailPage() {
       return;
     }
 
+    if (!selectedPartInstructions) {
+      setInstructionGateDialog({
+        open: false,
+        loading: false,
+        error: null,
+        pendingAction: null,
+      });
+      if (pendingAction?.kind === 'timer-start') {
+        await handleStart({ skipInstructionGate: true });
+      } else if (pendingAction?.kind === 'checklist-toggle') {
+        setChecklistPerformerDialog({
+          open: true,
+          loading: false,
+          error: null,
+          entry: pendingAction.entry,
+          checked: pendingAction.checked,
+          performerId: currentUserId || performerUsers[0]?.id || '',
+        });
+      } else if (pendingAction?.kind === 'submit-department') {
+        setSubmitConfirmDialog({
+          open: true,
+          destinationDepartmentId: pendingAction.destinationDepartmentId,
+          note: pendingAction.note,
+          error: null,
+        });
+      }
+      return;
+    }
+
     setInstructionGateDialog((prev) => ({ ...prev, loading: true, error: null }));
     try {
       const dismissKey = selectedPartId && selectedPartCurrentDepartmentId
@@ -706,9 +728,9 @@ export default function OrderDetailPage() {
       setDismissedInstructionGateKey(dismissKey);
       toast.push('Instructions acknowledged.', 'success');
 
-      if (pendingAction.kind === 'timer-start') {
+      if (pendingAction?.kind === 'timer-start') {
         await handleStart({ skipInstructionGate: true });
-      } else if (pendingAction.kind === 'checklist-toggle') {
+      } else if (pendingAction?.kind === 'checklist-toggle') {
         setChecklistPerformerDialog({
           open: true,
           loading: false,
@@ -717,7 +739,7 @@ export default function OrderDetailPage() {
           checked: pendingAction.checked,
           performerId: currentUserId || performerUsers[0]?.id || '',
         });
-      } else if (pendingAction.kind === 'submit-department') {
+      } else if (pendingAction?.kind === 'submit-department') {
         setSubmitConfirmDialog({
           open: true,
           destinationDepartmentId: pendingAction.destinationDepartmentId,
@@ -980,33 +1002,6 @@ export default function OrderDetailPage() {
     await handleActivateSelectedPart();
   };
 
-
-  const handleSaveStatus = async () => {
-    if (!id || !canEditOrderStatus) return;
-    setStatusSaving(true);
-    setStatusError(null);
-    try {
-      const res = await fetch(`/api/orders/${id}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ status: statusDraft, reason: statusReason }),
-      });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to update order status.');
-      }
-      setStatusReason('');
-      await load();
-      toast.push('Order status updated.', 'success');
-    } catch (err: any) {
-      const message = err?.message || 'Failed to update order status.';
-      setStatusError(message);
-      toast.push(message, 'error');
-    } finally {
-      setStatusSaving(false);
-    }
-  };
 
   const handleSaveRepeatTemplate = async () => {
     if (!id || !canEditParts) return;
@@ -1765,7 +1760,7 @@ export default function OrderDetailPage() {
               Not now
             </Button>
             <Button type="button" onClick={() => void handleInstructionGateConfirm()} disabled={instructionGateDialog.loading}>
-              {instructionGateDialog.loading ? 'Accepting…' : 'I have read this'}
+              {!selectedPartInstructions ? 'Continue' : instructionGateDialog.loading ? 'Accepting…' : 'I have read this'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1890,186 +1885,20 @@ export default function OrderDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        <Card className="flex flex-col">
+      <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <Card className="flex min-h-0 flex-col">
           <div className="sticky top-0 z-10 border-b border-border/60 bg-background/95 p-4">
-            <div className="grid gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Work Dock</div>
-                  <div className="text-sm font-medium text-foreground">
-                    {selectedPart?.partNumber || 'No part selected'}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {selectedPartId ? `Elapsed ${formatDuration(selectedPartElapsedSeconds)}` : 'No part selected'}
-                  </div>
-                </div>
-                {activeOnSelected ? (
-                  <Badge className="bg-emerald-500/15 text-emerald-200">Running</Badge>
-                ) : activeElsewhereEntry?.href ? (
-                  <Button asChild size="sm" variant="ghost" className="h-7 bg-emerald-500/15 px-2 text-emerald-200 hover:bg-emerald-500/25 hover:text-emerald-100">
-                    <Link href={activeElsewhereEntry.href} title={`Open ${activeElsewhereEntry.order?.orderNumber || 'active order'}${activeElsewhereEntry.part?.partNumber ? ` / ${activeElsewhereEntry.part.partNumber}` : ''}`}>
-                      {otherTimerBadgeLabel}
-                    </Link>
-                  </Button>
-                ) : (
-                  <Badge className={hasActiveEntry ? 'bg-emerald-500/15 text-emerald-200' : 'bg-muted text-foreground'}>
-                    {hasActiveEntry ? otherTimerBadgeLabel : 'Idle'}
-                  </Badge>
-                )}
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Select value={selectedTimerDepartmentId} onValueChange={setSelectedTimerDepartmentId}>
-                  <SelectTrigger className="h-8">
-                    <SelectValue placeholder="Choose timer department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {timerDepartments.map((department) => (
-                      <SelectItem key={department.id} value={department.id}>
-                        {department.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!selectedPartId || timerSaving || activeOnSelected || !selectedTimerDepartmentId}
-                  onClick={handleActivateSelectedPart}
-                  className="justify-start gap-2"
-                >
-                  <Play className="h-4 w-4" />
-                  Start timer
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!selectedActiveEntry || timerSaving}
-                  onClick={() => void handlePause(selectedActiveEntry?.id)}
-                  className="justify-start gap-2"
-                >
-                  <PauseCircle className="h-4 w-4" />
-                  Pause
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={!selectedActiveEntry || timerSaving}
-                  onClick={() => void handleFinish(selectedActiveEntry?.id)}
-                  className="justify-start gap-2"
-                >
-                  <Square className="h-4 w-4" />
-                  Stop
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!selectedPartId || timerSaving || activeOnSelected || !submitDestinationOptions.length}
-                  onClick={openMoveDepartmentDialog}
-                  className="justify-start gap-2"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Submit To
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={!selectedPartId || timerSaving || !canMarkPartComplete}
-                  onClick={handleCompleteSelectedPart}
-                  className="justify-start gap-2"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Complete in Shipping
-                </Button>
-              </div>
-
-              <div className="grid gap-2 rounded-md border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground md:grid-cols-2">
-                <div className="flex items-start gap-2">
-                  <ArrowRightLeft className="mt-0.5 h-3.5 w-3.5" />
-                  <span>{startHelperLabel}</span>
-                </div>
-                <div>
-                  {lastPartEvent ? (
-                    <span>
-                      Last action: <span className="font-medium text-foreground">{lastPartEvent.message}</span> ·{' '}
-                      {new Date(lastPartEvent.createdAt).toLocaleString()}
-                    </span>
-                  ) : (
-                    <span>Last action: none yet for this part.</span>
-                  )}
-                </div>
-              </div>
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="uppercase tracking-wide">Parts</span>
+              {timerLoading ? <span>Refreshing…</span> : <span>{parts.length} total</span>}
             </div>
-            {timerError ? (
-              <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                {timerError}
-              </div>
-            ) : null}
-            {selectedPartId ? (
-              <div className="mt-3 rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
-                <div><span className="font-medium text-foreground">Total time:</span> {formatDuration(selectedPartStoredSeconds)}</div>
-                <div>Timer time: {formatDuration(selectedPartTimerSeconds)}</div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>Manual added time: {formatDuration(selectedPartManualSeconds)}</span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setShowTimerDetails((prev) => !prev)}
-                    className="h-7 px-2 text-xs"
-                  >
-                    {showTimerDetails ? 'Hide details' : 'Show details'}
-                  </Button>
-                </div>
-                {showTimerDetails && partManualAdjustments.length ? (
-                  <div className="mt-2 space-y-1">
-                    {partManualAdjustments.map((adjustment: any) => (
-                      <div key={adjustment.id}>
-                        +{formatDuration(Number(adjustment.seconds ?? 0))} — {adjustment.note}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {showTimerDetails && selectedPartDepartmentHistory.length ? (
-                  <div className="mt-3 space-y-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Department history totals</div>
-                    <div className="grid gap-2">
-                      {selectedPartDepartmentHistory.map((group) => (
-                        <div key={group.departmentId ?? '__none__'} className="rounded border border-border/60 bg-background/70 p-2">
-                          <div className="text-[11px] text-muted-foreground">{group.departmentName}</div>
-                          <div className="text-sm font-semibold text-foreground">{formatDuration(group.totalSeconds)}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="space-y-1">
-                      {selectedPartDepartmentHistory.map((group) => (
-                        <div key={`${group.departmentId ?? '__none__'}_rows`} className="rounded border border-border/50 bg-background/50 p-2">
-                          <div className="mb-1 text-[11px] font-medium text-foreground">{group.departmentName}</div>
-                          {group.entries.slice(0, 3).map((entry: any) => (
-                            <div key={entry.id} className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                              <span>{new Date(entry.startedAt).toLocaleString()}</span>
-                              <span className="font-medium text-foreground">{formatDuration(entry.durationSeconds)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
           </div>
-          <CardContent className="flex-1 space-y-3 p-4">
+          <CardContent className="flex-1 min-h-0 space-y-3 overflow-hidden p-4">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>Parts</span>
-              {timerLoading ? <span>Refreshing…</span> : null}
+              <span>{selectedPartId ? 'Select a part to inspect details' : 'Choose a part to begin'}</span>
             </div>
-            <div className="space-y-2">
+            <div className="max-h-[calc(100vh-260px)] space-y-2 overflow-y-auto pr-1">
               {parts.map((part: any, index: number) => {
                 const isSelected = part.id === selectedPartId;
                 const partLabel = part.partNumber || `Part ${index + 1}`;
@@ -2155,55 +1984,177 @@ export default function OrderDetailPage() {
                   </Button>
                 </div>
               ) : null}
-              {canEditOrderStatus ? (
-                <div className="grid gap-3 lg:grid-cols-[200px_minmax(0,1fr)_auto] lg:items-end">
-                  <div className="grid gap-2">
-                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">Order status</Label>
-                    <Select
-                      value={statusDraft}
-                      onValueChange={(value) => {
-                        setStatusDraft(value as 'RECEIVED' | 'IN_PROGRESS' | 'COMPLETE' | 'CLOSED');
-                        setStatusError(null);
-                      }}
-                    >
-                      <SelectTrigger className="border-border/60 bg-background/80 text-left">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="RECEIVED">Received</SelectItem>
-                        <SelectItem value="IN_PROGRESS">In progress</SelectItem>
-                        <SelectItem value="COMPLETE">Complete</SelectItem>
-                        <SelectItem value="CLOSED">Closed</SelectItem>
-                      </SelectContent>
-                    </Select>
+              <div className="space-y-3 rounded-lg border border-border/60 bg-background/70 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Part Controls</div>
+                    <div className="text-sm font-medium text-foreground">
+                      {selectedPart?.partNumber || 'No part selected'}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {selectedPartId ? `Elapsed ${formatDuration(selectedPartElapsedSeconds)}` : 'Pick a part from the left to start work.'}
+                    </div>
                   </div>
-                  <div className="grid gap-2">
-                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">Admin reason</Label>
-                    <Textarea
-                      rows={2}
-                      value={statusReason}
-                      onChange={(e) => {
-                        setStatusReason(e.target.value);
-                        setStatusError(null);
-                      }}
-                      placeholder="Why are you changing the order status?"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2 lg:items-end">
-                    <Button size="sm" onClick={handleSaveStatus} disabled={statusSaving}>
-                      {statusSaving ? 'Saving…' : 'Save status'}
+                  {activeOnSelected ? (
+                    <Badge className="bg-emerald-500/15 text-emerald-200">Running</Badge>
+                  ) : activeElsewhereEntry?.href ? (
+                    <Button asChild size="sm" variant="ghost" className="h-7 bg-emerald-500/15 px-2 text-emerald-200 hover:bg-emerald-500/25 hover:text-emerald-100">
+                      <Link href={activeElsewhereEntry.href} title={`Open ${activeElsewhereEntry.order?.orderNumber || 'active order'}${activeElsewhereEntry.part?.partNumber ? ` / ${activeElsewhereEntry.part.partNumber}` : ''}`}>
+                        {otherTimerBadgeLabel}
+                      </Link>
                     </Button>
-                    <p className="max-w-xs text-xs text-muted-foreground lg:text-right">
-                      Admin override. Shop-floor part activity will still auto-sync this order later.
-                    </p>
+                  ) : (
+                    <Badge className={hasActiveEntry ? 'bg-emerald-500/15 text-emerald-200' : 'bg-muted text-foreground'}>
+                      {hasActiveEntry ? otherTimerBadgeLabel : 'Idle'}
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="grid gap-2 lg:grid-cols-[220px_repeat(4,minmax(0,1fr))]">
+                  <Select value={selectedTimerDepartmentId} onValueChange={setSelectedTimerDepartmentId}>
+                    <SelectTrigger className="h-9 border-border/60 bg-background/80">
+                      <SelectValue placeholder="Choose timer department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timerDepartments.map((department) => (
+                        <SelectItem key={department.id} value={department.id}>
+                          {department.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!selectedPartId || timerSaving || activeOnSelected || !selectedTimerDepartmentId}
+                    onClick={handleActivateSelectedPart}
+                    className="justify-center gap-2"
+                  >
+                    <Play className="h-4 w-4" />
+                    Start timer
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!selectedActiveEntry || timerSaving}
+                    onClick={() => void handlePause(selectedActiveEntry?.id)}
+                    className="justify-center gap-2"
+                  >
+                    <PauseCircle className="h-4 w-4" />
+                    Pause
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={!selectedActiveEntry || timerSaving}
+                    onClick={() => void handleFinish(selectedActiveEntry?.id)}
+                    className="justify-center gap-2"
+                  >
+                    <Square className="h-4 w-4" />
+                    Stop
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!selectedPartId || timerSaving || activeOnSelected || !submitDestinationOptions.length}
+                    onClick={openMoveDepartmentDialog}
+                    className="justify-center gap-2"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Submit to
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
+                  <div className="flex items-start gap-2">
+                    <ArrowRightLeft className="mt-0.5 h-3.5 w-3.5" />
+                    <span>{startHelperLabel}</span>
                   </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={!selectedPartId || timerSaving || !canMarkPartComplete}
+                    onClick={handleCompleteSelectedPart}
+                    className="gap-2"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Complete in Shipping
+                  </Button>
                 </div>
-              ) : null}
-              {statusError ? (
-                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                  {statusError}
+
+                {timerError ? (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {timerError}
+                  </div>
+                ) : null}
+                {selectedPartId ? (
+                  <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+                    <div><span className="font-medium text-foreground">Total time:</span> {formatDuration(selectedPartStoredSeconds)}</div>
+                    <div>Timer time: {formatDuration(selectedPartTimerSeconds)}</div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Manual added time: {formatDuration(selectedPartManualSeconds)}</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowTimerDetails((prev) => !prev)}
+                        className="h-7 px-2 text-xs"
+                      >
+                        {showTimerDetails ? 'Hide details' : 'Show details'}
+                      </Button>
+                    </div>
+                    {showTimerDetails && partManualAdjustments.length ? (
+                      <div className="mt-2 space-y-1">
+                        {partManualAdjustments.map((adjustment: any) => (
+                          <div key={adjustment.id}>
+                            +{formatDuration(Number(adjustment.seconds ?? 0))} — {adjustment.note}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {showTimerDetails && selectedPartDepartmentHistory.length ? (
+                      <div className="mt-3 space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Department history totals</div>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          {selectedPartDepartmentHistory.map((group) => (
+                            <div key={group.departmentId ?? '__none__'} className="rounded border border-border/60 bg-background/70 p-2">
+                              <div className="text-[11px] text-muted-foreground">{group.departmentName}</div>
+                              <div className="text-sm font-semibold text-foreground">{formatDuration(group.totalSeconds)}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="space-y-1">
+                          {selectedPartDepartmentHistory.map((group) => (
+                            <div key={`${group.departmentId ?? '__none__'}_rows`} className="rounded border border-border/50 bg-background/50 p-2">
+                              <div className="mb-1 text-[11px] font-medium text-foreground">{group.departmentName}</div>
+                              {group.entries.slice(0, 3).map((entry: any) => (
+                                <div key={entry.id} className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                  <span>{new Date(entry.startedAt).toLocaleString()}</span>
+                                  <span className="font-medium text-foreground">{formatDuration(entry.durationSeconds)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="text-xs text-muted-foreground">
+                  {lastPartEvent ? (
+                    <span>
+                      Last action: <span className="font-medium text-foreground">{lastPartEvent.message}</span> ·{' '}
+                      {new Date(lastPartEvent.createdAt).toLocaleString()}
+                    </span>
+                  ) : (
+                    <span>Last action: none yet for this part.</span>
+                  )}
                 </div>
-              ) : null}
+              </div>
             </div>
             <div className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-md bg-muted/20 p-1">
               {visibleTabs.map((tab) => {

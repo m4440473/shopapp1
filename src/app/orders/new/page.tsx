@@ -150,6 +150,15 @@ const buildConversionNote = (quote: any) => {
   return content.length ? content : '';
 };
 
+const buildConversionWorkInstructions = (quote: any, part: any) => {
+  const sections: string[] = [];
+  const quoteRequirements = typeof quote?.requirements === 'string' ? quote.requirements.trim() : '';
+  const partSpecificNote = typeof part?.notes === 'string' ? part.notes.trim() : '';
+  if (quoteRequirements) sections.push(`Quote requirements:\n${quoteRequirements}`);
+  if (partSpecificNote) sections.push(`Part-specific note:\n${partSpecificNote}`);
+  return sections.join('\n\n').trim();
+};
+
 const defaultDueDate = () => {
   const base = new Date();
   base.setDate(base.getDate() + 14);
@@ -378,6 +387,7 @@ function NewOrderForm() {
                       stockSize: part.stockSize ?? null,
                       cutLength: part.cutLength ?? null,
                     }),
+                    workInstructions: buildConversionWorkInstructions(quote, part),
                     addonSelections: selections.map((selection: any) => ({
                       key: createKey(),
                       addonId: selection.addonId ?? selection.addon?.id ?? '',
@@ -1976,7 +1986,7 @@ function NewOrderForm() {
                 )}
                 {conversionMode && (
                   <div className="rounded-lg border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-                    Add-ons and labor will copy from the quote parts and become part-level charges and checklist items.
+                    Add-ons and labor will copy from the quote parts and become part-level charges and checklist items. Mission-brief instructions will seed from quote requirements plus each part&apos;s quote notes.
                   </div>
                 )}
                 <div className="grid gap-2">

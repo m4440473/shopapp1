@@ -1,3 +1,60 @@
+## Session Handoff - 2026-04-10 (Order-detail layout shift for part-heavy orders)
+
+Goal (1 sentence): Give the full left side of `/orders/[id]` to the parts list, move timer/submit controls into the top of the right-side detail area, and remove the admin order-status override block from this screen.
+
+### What changed
+- Updated `src/app/orders/[id]/page.tsx`
+  - Removed the left-rail work-dock block entirely.
+  - Turned the left card into a dedicated parts-only panel with its own scroll area sized for long part lists.
+  - Moved timer controls, submit action, complete-in-shipping action, timer summary, and last-action context into the top summary area of the right-hand detail card.
+  - Removed the admin order-status override UI and its unused client-side state/handler from this page.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+### Verification evidence
+- Targeted ESLint passed.
+
+### Layout note for the next agent
+- The left rail is now intentionally parts-only for high-part-count orders.
+- Timer and submit controls now belong to the right-side header area above the tabbed part detail content; avoid reintroducing large non-part panels into the left column unless the owner explicitly asks for it.
+
+## Session Handoff - 2026-04-10 (Mission-brief acknowledge fix + quote conversion instruction seeding)
+
+Goal (1 sentence): Keep the mission-brief accept flow usable on order detail and ensure quote-created orders actually seed meaningful part-level mission-brief text.
+
+### What changed
+- Updated `src/app/orders/[id]/page.tsx`
+  - Fixed the department instruction-check helper so parts with no `workInstructions` are treated as having nothing to acknowledge instead of reopening the mission brief and failing with `This part has no required instructions.`
+  - Fixed the mission-brief confirm flow so manual acknowledgement no longer crashes when the dialog was opened without a gated pending action.
+  - Changed the empty-brief primary action label to `Continue` so the modal still has a clear exit path when no required-read text exists.
+- Updated `src/app/orders/new/page.tsx`
+  - Quote conversion prefill now seeds each part's `workInstructions` from quote-level `Requirements / process notes` plus that part's quote `Part notes`.
+  - Added conversion-mode review copy explaining where mission-brief instructions come from.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `src/app/orders/new/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx" "src/app/orders/new/page.tsx"`
+
+### Verification evidence
+- Targeted ESLint passed on both touched UI files.
+
+### Behavior note for the next agent
+- Mission-brief required-read text is driven by `OrderPart.workInstructions`, not general order notes.
+- For quote conversion, that field is now seeded from the quote's `Requirements / process notes` plus the part's `Part notes`; manual/repeat-order flows can still edit `Work instructions` directly from `/orders/new`.
+
 ## Session Handoff - 2026-04-10 (Order-detail UX polish)
 
 Goal (1 sentence): Apply a small clarity pass to the order-detail accountability UI so the mission brief and part-worker roster are easier to scan on the floor.

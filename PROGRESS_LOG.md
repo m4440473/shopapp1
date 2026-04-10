@@ -1,3 +1,31 @@
+### 2026-04-10 - Order-detail layout shift for part-heavy orders
+- Reworked `src/app/orders/[id]/page.tsx` so the left rail is now dedicated to parts only instead of splitting space with the timer/work dock.
+- Added a dedicated scroll area for the part list so long orders stay navigable without the timer controls consuming that column.
+- Moved the timer department picker, timer start/pause/stop actions, submit action, complete-in-shipping action, and timer summary into the top of the right-side detail card.
+- Removed the admin order-status override UI and related client-side state from this page so the right side stays focused on the selected part.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+Verification note:
+- Targeted ESLint passed.
+
+### 2026-04-10 - Mission-brief acknowledge fix + quote conversion instruction seeding
+- Fixed the order-detail mission-brief modal on `src/app/orders/[id]/page.tsx` so empty instruction sets no longer trigger the broken acknowledgement path:
+  - department acknowledgement checks now short-circuit when a part has no `workInstructions`,
+  - the modal's primary action now safely continues/closes when there is nothing to acknowledge,
+  - manual acknowledgement no longer crashes on the success path when the dialog was opened without a pending gated action.
+- Updated quote-to-order prefill in `src/app/orders/new/page.tsx` so converted orders now seed part-level `workInstructions` from:
+  - quote-level `Requirements / process notes`,
+  - each part's quote `Part notes`.
+- Added a small conversion-mode review note clarifying where the mission-brief text comes from during quote conversion.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx" "src/app/orders/new/page.tsx"`
+
+Verification note:
+- Targeted ESLint passed on both touched UI files.
+
 ### 2026-04-10 - Order-detail UX polish follow-up
 - Tightened the mission-brief and worker-roster presentation in `src/app/orders/[id]/page.tsx`.
 - Mission brief now shows clearer acknowledgement copy plus quick chips for part, department, and instruction version.
