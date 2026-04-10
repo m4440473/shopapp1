@@ -1680,3 +1680,21 @@ Commands run:
 
 Verification note:
 - Lint passed with no ESLint warnings/errors.
+### 2026-04-09 — BOM analyzer PDF upload support
+- Added PDF support to the BOM analyzer upload surfaces:
+  - `/orders/[id]` BOM tab now accepts `application/pdf` in the file picker,
+  - stored `PRINT` attachments with `application/pdf` now appear in the BOM analyzer attachment picker,
+  - `/private/print-analyzer` now accepts PDF uploads too.
+- Reworked `POST /api/print-analyzer/analyze` so it now accepts `data:application/pdf` payloads, rasterizes page 1 to PNG with `pdfjs-dist` + `@napi-rs/canvas`, and then runs the existing image-based OpenAI vision flow unchanged after that conversion step.
+- Added Decision Log entry documenting the new PDF-rendering dependency choice and updated `docs/PRINT_ANALYZER.md` to describe first-page PDF behavior.
+
+Commands run:
+- `npm install pdfjs-dist @napi-rs/canvas`
+- `npm run lint`
+- `npm run build`
+- `node -` (runtime PDF rasterization sanity check against stored PDF `storage/sterling-tool-and-die/s-k-industrial/std-1007/tdc-british-standard-pipe-threads-1-d367a7f6-608a-47c9-8cea-274c3f180503.pdf`)
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Runtime PDF rasterization check succeeded: `pdf-render-ok:303905:1224x1584`.
+- `npm run build` still fails in this environment because of the existing `next/font` Roboto fetch / `127.0.0.1:9` connection issue, but the PDF-renderer native-module webpack parse error is resolved.

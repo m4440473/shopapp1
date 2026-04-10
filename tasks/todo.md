@@ -1984,3 +1984,34 @@ Commands run:
 - Replaced the mixed `??`/`||` prompt interpolation with a separate `currentDepartmentLabel` value so `/orders/[id]` can compile again.
 
 ---
+## Session Metadata
+- Date: 2026-04-09
+- Agent: Codex GPT-5
+- Task ID: BOM analyzer PDF upload support
+- Goal: Let the BOM analyzer accept PDF uploads and stored PDF print attachments by rasterizing the first page into an image before running the existing analyzer flow.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current blocker in code:
+  - BOM upload inputs only accept `image/*`,
+  - BOM attachment filtering excludes explicit non-image MIME types,
+  - `/api/print-analyzer/analyze` rejects anything not starting with `data:image/`.
+- [x] Confirmed the existing `sharp` build cannot rasterize PDFs here, so a dedicated server-side PDF renderer is required for reliable support.
+
+## Plan First
+- [x] Update BOM/private analyzer upload surfaces to accept `application/pdf` alongside images and stop filtering stored PDF print attachments out of the picker.
+- [x] Extend the print-analyzer API to accept `data:application/pdf;base64,...`, rasterize the first page to PNG, and then continue through the existing analysis pipeline.
+- [x] Update user-facing copy/docs so the supported upload types match the real behavior.
+- [x] Run relevant verification and update continuity docs with evidence.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] PDF rasterization sanity check against a real stored PDF using `pdfjs-dist` + `@napi-rs/canvas`
+- [x] `npm run build` *(still fails in this environment for pre-existing `next/font` Roboto fetch / `127.0.0.1:9` connection issue, but no new PDF-renderer bundling error remains)*
+
+## Review + Results
+- BOM upload surfaces now accept `PDF` alongside images in both the order-detail BOM tab and the private analyzer page.
+- Stored `PRINT` attachments with `application/pdf` are now eligible in the BOM picker instead of being filtered out as unsupported non-images.
+- `/api/print-analyzer/analyze` now accepts `data:application/pdf` uploads, rasterizes page 1 to PNG with `pdfjs-dist` + `@napi-rs/canvas`, and then reuses the existing image-based analysis pipeline.
+- Added a Decision Log entry for the new PDF-rendering dependency choice and updated docs to reflect first-page PDF support.
+- Production build still fails in this workspace because of the existing `next/font` Roboto fetch / `127.0.0.1:9` environment issue, but the earlier native-canvas webpack parse failure introduced during this work has been eliminated.
