@@ -92,16 +92,17 @@ describe('time.service', () => {
       departmentId: 'dept_test_002',
       operation: 'Part Work',
     });
-    expect(parallelResult.ok).toBe(true);
+    expect(parallelResult.ok).toBe(false);
+    expect((parallelResult as { ok: false; status: number }).status).toBe(409);
 
     const activeResult = await getActiveTimeEntry('user_test_machinist');
     expect(activeResult.ok).toBe(true);
     const activeEntry = (activeResult as { ok: true; data: { entry: any } }).data.entry;
-    expect(['part_test_001', 'part_test_002']).toContain(activeEntry?.partId);
+    expect(activeEntry?.partId).toBe('part_test_001');
     expect(activeEntry?.endedAt).toBeNull();
   });
 
-  it('tracks separate department timers without overlap inflation', async () => {
+  it('prevents overlapping timers across departments for the same user', async () => {
     vi.setSystemTime(new Date('2026-02-03T00:00:00Z'));
     vi.resetModules();
     const { getOrderPartTimeTotals, startTimeEntry, startTimeEntryWithConflict, stopTimeEntryById } = await import('../time.service');
@@ -126,20 +127,17 @@ describe('time.service', () => {
       departmentId: 'dept_test_002',
       operation: 'Part Work',
     });
-    expect(secondDepartmentStart.ok).toBe(true);
-    const secondEntryId = (secondDepartmentStart as { ok: true; data: { entry: any } }).data.entry.id;
+    expect(secondDepartmentStart.ok).toBe(false);
 
     vi.setSystemTime(new Date('2026-02-03T00:25:00Z'));
     const stoppedFirst = await stopTimeEntryById('user_test_machinist', firstEntryId);
-    const stoppedSecond = await stopTimeEntryById('user_test_machinist', secondEntryId);
     expect(stoppedFirst.ok).toBe(true);
-    expect(stoppedSecond.ok).toBe(true);
 
     const totalsResult = await getOrderPartTimeTotals(switchOrderId, [firstPartId, secondPartId]);
     expect(totalsResult.ok).toBe(true);
     const totals = (totalsResult as { ok: true; data: { totalsSeconds: Record<string, number> } }).data.totalsSeconds;
     expect(totals[firstPartId]).toBe(1500);
-    expect(totals[secondPartId]).toBe(900);
+    expect(totals[secondPartId] ?? 0).toBe(0);
   });
 
 
@@ -236,5 +234,36 @@ describe('time.service', () => {
     expect(activity.activeTimers.some((entry) => entry.userId === 'user_test_machinist')).toBe(true);
     expect(activity.timeByUser.some((entry) => entry.user?.id === 'user_test_helper' && entry.seconds > 0)).toBe(true);
     expect(activity.totalSeconds).toBeGreaterThan(0);
+  });
+
+  it('builds reporting summaries by part, department, and user', async () => {
+    vi.setSystemTime(new Date('2026-02-03T00:00:00Z'));
+    vi.resetModules();
+    const { getPartTimeReportingSummary, startTimeEntry } = await import('../time.service');
+
+    const startResult = await startTimeEntry('user_test_machinist', {
+      orderId: 'order_test_002',
+      partId: 'part_test_003',
+      departmentId: 'dept_test_001',
+      operation: 'Part Work',
+    });
+    expect(startResult.ok).toBe(true);
+
+    const summaryResult = await getPartTimeReportingSummary(['part_test_001', 'part_test_003']);
+    expect(summaryResult.ok).toBe(true);
+    const summary = (summaryResult as {
+      ok: true;
+      data: {
+        totalsByPartDepartment: Record<string, Record<string, number>>;
+        totalsByPartUser: Record<string, Record<string, number>>;
+        totalsByDepartmentUser: Record<string, Record<string, number>>;
+        activeByUser: Record<string, { partId: string | null }>;
+      };
+    }).data;
+
+    expect(summary.totalsByPartDepartment['part_test_001']?.dept_test_001).toBeGreaterThan(0);
+    expect(summary.totalsByPartUser['part_test_001']?.user_test_helper).toBeGreaterThan(0);
+    expect(summary.totalsByDepartmentUser['dept_test_001']?.user_test_helper).toBeGreaterThan(0);
+    expect(summary.activeByUser['user_test_machinist']?.partId).toBe('part_test_003');
   });
 });

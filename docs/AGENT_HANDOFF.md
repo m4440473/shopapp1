@@ -1,3 +1,122 @@
+## Session Handoff - 2026-04-10 (Order-detail embedded kiosk timing follow-up)
+
+Goal (1 sentence): Keep kiosk timing rules intact, but let kiosk-enabled machinists start and manage timers directly from the order-detail timer area instead of bouncing out to a separate kiosk page.
+
+### What changed
+- Updated [page.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/orders/[id]/page.tsx)
+  - Replaced the old kiosk-only fallback message/link in the timer area with in-page kiosk controls.
+  - Added an order-detail kiosk dialog that:
+    - requires worker selection, department selection, and PIN entry for kiosk timer starts,
+    - lets the worker choose a part from the current order,
+    - starts the timer without leaving `/orders/[id]`.
+- Added in-page kiosk pause/stop handling, including PIN re-unlock when needed.
+- Reused the existing kiosk start/switch behavior so active-timer conflicts still surface `Pause & switch` / `Stop & switch`.
+- Moved the extra kiosk helper copy, timer breakdown, and last-action text under `Show details` so the timer header stays compact by default.
+- Follow-up: the worker picker now uses all active users, not just kiosk-enabled users; PIN is still required for the selected worker.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+### Verification evidence
+- Targeted ESLint passed.
+
+### Behavior note for the next agent
+- `/kiosk` still exists, but `/orders/[id]` now owns the primary kiosk timing workflow for kiosk-enabled machinists.
+- The order-detail kiosk dialog intentionally reuses the existing kiosk unlock/session/timer APIs rather than calling normal `/api/timer/*` routes directly.
+- Order-detail kiosk starts now require explicit worker + department + PIN selection.
+- The selected worker's primary department is used only as a default suggestion in the dialog, not as a hidden/forced choice.
+- The backend kiosk-service path no longer blocks selected workers based on `kioskEnabled`; it only requires an active user plus that user's PIN.
+
+## Session Handoff - 2026-04-10 (Shared kiosk timing + read-only order detail for floor users)
+
+Goal (1 sentence): Move floor timing into a dedicated shared-computer kiosk while keeping `/orders/[id]` available for job review and hiding timer controls there for kiosk-designated machinists.
+
+### What changed
+- Prisma/data model
+  - Added `User.kioskEnabled`, `User.kioskPinHash`, and `User.primaryDepartmentId`.
+  - Added `prisma/migrations/20260410174437_kiosk_user_timing_v1/migration.sql`.
+- Admin user management
+  - Updated the admin users schema/UI/API so admins can enable kiosk timing, assign a primary department, and set/reset a worker PIN.
+  - Hardened sanitized user payloads so `kioskPinHash` is not leaked.
+- Timer backend
+  - Changed timer enforcement in `src/modules/time/time.service.ts` from one-active-per-user-per-department to one-active-per-user-total.
+  - Added reporting-oriented timer summaries keyed by part/department/user.
+  - Simplified timer conflict lookup in `src/app/api/timer/start/route.ts` to use the worker’s single active timer.
+- Kiosk flow
+  - Added `src/lib/kiosk-session.ts` for signed kiosk cookie sessions.
+  - Added `src/modules/kiosk/kiosk.schema.ts` and `src/modules/kiosk/kiosk.service.ts`.
+  - Added kiosk routes:
+    - `src/app/api/kiosk/unlock/route.ts`
+    - `src/app/api/kiosk/session/route.ts`
+    - `src/app/api/kiosk/lock/route.ts`
+    - `src/app/api/kiosk/parts/route.ts`
+    - `src/app/api/kiosk/timer/route.ts`
+  - Added `src/app/kiosk/page.tsx` as the shared-station timing UI with PIN unlock, department default/override, active timer state, searchable parts, and explicit switch handling.
+- Order detail / navigation
+  - Updated `src/app/api/orders/[id]/route.ts` and `src/modules/orders/orders.service.ts` to return `permissions.canUseTimerControls`.
+  - Updated `src/app/orders/[id]/page.tsx` to hide timer controls for kiosk-enabled machinists while keeping timer summaries, notes, files, checklist, and log visible.
+  - Added a `Kiosk` nav link in `src/components/AppNav.tsx` for machinists/admins.
+- Focused tests
+  - Extended `src/modules/time/__tests__/time.service.test.ts` for one-active-timer-total semantics and reporting summary coverage.
+  - Added `src/modules/kiosk/__tests__/kiosk.service.test.ts`.
+
+### Files touched
+- `prisma/schema.prisma`
+- `prisma/migrations/20260410174437_kiosk_user_timing_v1/migration.sql`
+- `src/lib/zod.ts`
+- `src/lib/kiosk-session.ts`
+- `src/app/admin/users/page.tsx`
+- `src/app/admin/users/client.tsx`
+- `src/app/api/admin/users/route.ts`
+- `src/app/api/admin/users/[id]/route.ts`
+- `src/app/api/orders/[id]/route.ts`
+- `src/app/api/timer/start/route.ts`
+- `src/app/api/kiosk/unlock/route.ts`
+- `src/app/api/kiosk/session/route.ts`
+- `src/app/api/kiosk/lock/route.ts`
+- `src/app/api/kiosk/parts/route.ts`
+- `src/app/api/kiosk/timer/route.ts`
+- `src/app/kiosk/page.tsx`
+- `src/app/orders/[id]/page.tsx`
+- `src/components/AppNav.tsx`
+- `src/modules/orders/orders.service.ts`
+- `src/modules/time/time.service.ts`
+- `src/modules/time/__tests__/time.service.test.ts`
+- `src/modules/users/users.repo.ts`
+- `src/modules/kiosk/kiosk.schema.ts`
+- `src/modules/kiosk/kiosk.service.ts`
+- `src/modules/kiosk/__tests__/kiosk.service.test.ts`
+- `src/repos/users.ts`
+- `src/repos/orders.ts`
+- `src/repos/mock/seed.ts`
+- `src/repos/mock/users.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx prisma migrate dev --name kiosk_user_timing_v1`
+- `npx eslint --ext .ts,.tsx -- "src/app/kiosk/page.tsx" "src/app/api/kiosk/unlock/route.ts" "src/app/api/kiosk/session/route.ts" "src/app/api/kiosk/lock/route.ts" "src/app/api/kiosk/parts/route.ts" "src/app/api/kiosk/timer/route.ts" "src/app/api/orders/[id]/route.ts" "src/app/api/timer/start/route.ts" "src/app/orders/[id]/page.tsx" "src/components/AppNav.tsx" "src/modules/kiosk/kiosk.service.ts" "src/modules/kiosk/kiosk.schema.ts" "src/modules/time/time.service.ts" "src/modules/users/users.repo.ts" "src/repos/users.ts" "src/repos/mock/users.ts" "src/repos/mock/seed.ts" "src/modules/time/__tests__/time.service.test.ts" "src/modules/kiosk/__tests__/kiosk.service.test.ts"`
+- `npm run test -- src/modules/time/__tests__/time.service.test.ts src/modules/kiosk/__tests__/kiosk.service.test.ts`
+
+### Verification evidence
+- Migration applied successfully and created `20260410174437_kiosk_user_timing_v1`.
+- Targeted ESLint passed.
+- Focused kiosk/time tests passed (`11/11` total).
+- Vitest still required an outside-sandbox rerun because sandboxed esbuild hit Windows `spawn EPERM`.
+- Prisma generate during migration hit a Windows file-lock `EPERM` while renaming the query engine DLL, but the migration itself completed and the focused checks passed afterward.
+
+### Follow-up assumptions / caveats
+- Kiosk timing is intentionally PIN-based and cookie-scoped, separate from normal NextAuth browser sessions.
+- `/orders/[id]` remains the review surface for kiosk-enabled machinists, but timing must now happen on `/kiosk`.
+- The older 2026-04-07 “one active timer per `(user, department)`” decision is now superseded by one active timer total per worker.
+
 ## Session Handoff - 2026-04-10 (Order-detail layout shift for part-heavy orders)
 
 Goal (1 sentence): Give the full left side of `/orders/[id]` to the parts list, move timer/submit controls into the top of the right-side detail area, and remove the admin order-status override block from this screen.

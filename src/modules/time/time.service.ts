@@ -3,7 +3,6 @@ import {
   closeTimeEntryById,
   createTimeEntry,
   findActiveTimeEntryForUser,
-  findActiveTimeEntryForUserDepartment,
   findLatestTimeEntriesForUserParts,
   findLatestTimeEntryForUserOrder,
   findTimeEntryById,
@@ -101,9 +100,9 @@ export async function startTimeEntry(
   input: TimeEntryStartInput
 ): Promise<ServiceResult<{ entry: TimeEntry }>> {
   const now = new Date();
-  const activeInDepartment = await findActiveTimeEntryForUserDepartment(userId, input.departmentId);
-  if (activeInDepartment) {
-    return fail(409, 'An active timer already exists for this department.');
+  const active = await findActiveTimeEntryForUser(userId);
+  if (active) {
+    return fail(409, 'An active timer already exists for this user.');
   }
 
   try {
@@ -126,7 +125,7 @@ export async function startTimeEntryWithConflict(
   userId: string,
   input: TimeEntryStartInput
 ): Promise<ServiceResult<{ entry: TimeEntry }>> {
-  const active = await findActiveTimeEntryForUserDepartment(userId, input.departmentId);
+  const active = await findActiveTimeEntryForUser(userId);
   if (active) {
     return fail(409, 'Active time entry already running.');
   }
@@ -229,9 +228,9 @@ export async function resumeTimeEntry(
   }
 
   const now = new Date();
-  const activeInDepartment = await findActiveTimeEntryForUserDepartment(userId, previous.departmentId);
-  if (activeInDepartment) {
-    return fail(409, 'An active timer already exists for this department.');
+  const active = await findActiveTimeEntryForUser(userId);
+  if (active) {
+    return fail(409, 'An active timer already exists for this user.');
   }
 
   try {
@@ -366,6 +365,64 @@ export async function getPartActivitySummary(
   });
 
   return ok({ partActivity });
+}
+
+export async function getPartTimeReportingSummary(
+  partIds: string[],
+): Promise<
+  ServiceResult<{
+    totalsByPartDepartment: Record<string, Record<string, number>>;
+    totalsByPartUser: Record<string, Record<string, number>>;
+    totalsByDepartmentUser: Record<string, Record<string, number>>;
+    activeByUser: Record<string, TimeEntry>;
+  }>
+> {
+  if (!partIds.length) {
+    return ok({
+      totalsByPartDepartment: {},
+      totalsByPartUser: {},
+      totalsByDepartmentUser: {},
+      activeByUser: {},
+    });
+  }
+
+  const entries = await listTimeEntriesForPartsDetailed(partIds);
+  const totalsByPartDepartment: Record<string, Record<string, number>> = {};
+  const totalsByPartUser: Record<string, Record<string, number>> = {};
+  const totalsByDepartmentUser: Record<string, Record<string, number>> = {};
+  const activeByUser: Record<string, TimeEntry> = {};
+
+  entries.forEach((entry) => {
+    if (!entry.partId) return;
+
+    if (!entry.endedAt) {
+      if (!activeByUser[entry.userId]) {
+        activeByUser[entry.userId] = entry;
+      }
+      return;
+    }
+
+    const diffMs = entry.endedAt.getTime() - entry.startedAt.getTime();
+    if (diffMs <= 0) return;
+
+    const seconds = Math.floor(diffMs / 1000);
+    const partDepartmentKey = entry.departmentId ?? '__none__';
+    const departmentUserKey = entry.departmentId ?? '__none__';
+
+    totalsByPartDepartment[entry.partId] ??= {};
+    totalsByPartDepartment[entry.partId][partDepartmentKey] =
+      (totalsByPartDepartment[entry.partId][partDepartmentKey] ?? 0) + seconds;
+
+    totalsByPartUser[entry.partId] ??= {};
+    totalsByPartUser[entry.partId][entry.userId] =
+      (totalsByPartUser[entry.partId][entry.userId] ?? 0) + seconds;
+
+    totalsByDepartmentUser[departmentUserKey] ??= {};
+    totalsByDepartmentUser[departmentUserKey][entry.userId] =
+      (totalsByDepartmentUser[departmentUserKey][entry.userId] ?? 0) + seconds;
+  });
+
+  return ok({ totalsByPartDepartment, totalsByPartUser, totalsByDepartmentUser, activeByUser });
 }
 
 export function computeEntryMinutes(entries: Array<Pick<TimeEntry, 'startedAt' | 'endedAt'>>) {

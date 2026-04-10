@@ -13,6 +13,9 @@ model User {
   name         String?
   role         String  @default("MACHINIST")
   active       Boolean @default(true)
+  kioskEnabled Boolean @default(false)
+  kioskPinHash String?
+  primaryDepartmentId String?
   // Credentials provider (nullable)
   passwordHash String?
 
@@ -32,6 +35,7 @@ model User {
   assignedPartWork     OrderPartAssignment[]    @relation("PartAssignmentAssignedBy")
   instructionReceipts  PartInstructionReceipt[]
   repeatOrderTemplates RepeatOrderTemplate[]    @relation("RepeatOrderTemplateCreatedBy")
+  primaryDepartment    Department?              @relation("UserPrimaryDepartment", fields: [primaryDepartmentId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -325,6 +329,7 @@ model Department {
   currentParts               OrderPart[]
   instructionReceipts        PartInstructionReceipt[]
   repeatOrderTemplateCharges RepeatOrderTemplateCharge[]
+  primaryUsers               User[]                      @relation("UserPrimaryDepartment")
   createdAt                  DateTime                    @default(now())
   updatedAt                  DateTime                    @updatedAt
 }

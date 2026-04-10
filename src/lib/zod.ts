@@ -11,12 +11,16 @@ export const RoleEnum = z.enum(['ADMIN', 'MACHINIST', 'VIEWER']);
 
 /** USERS */
 const Password = z.string().min(8).max(100);
+const KioskPin = z.string().regex(/^\d{4,8}$/u, 'Kiosk PIN must be 4 to 8 digits');
 
 export const UserCreate = z.object({
   email: z.string().email(),
   name: z.string().trim().max(100).optional(),
   role: RoleEnum.default('MACHINIST'),
   active: z.boolean().default(true),
+  kioskEnabled: z.boolean().default(false),
+  primaryDepartmentId: z.string().trim().min(1).optional(),
+  kioskPin: KioskPin.optional(),
   password: Password.optional(),
 });
 export const UserUpdate = z.object({
@@ -24,6 +28,9 @@ export const UserUpdate = z.object({
   name: z.string().trim().max(100).optional(),
   role: RoleEnum.optional(),
   active: z.boolean().optional(),
+  kioskEnabled: z.boolean().optional(),
+  primaryDepartmentId: z.string().trim().min(1).optional(),
+  kioskPin: KioskPin.optional(),
   password: Password.optional(),
 });
 export const UserUpsert = UserCreate;           // for POST

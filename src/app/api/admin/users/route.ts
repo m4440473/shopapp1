@@ -42,9 +42,18 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = UserUpsert.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-  const { password, ...data } = parsed.data as any;
+  const { password, kioskPin, kioskEnabled, primaryDepartmentId, ...data } = parsed.data as any;
+  if (kioskEnabled && !primaryDepartmentId) {
+    return NextResponse.json({ error: 'Primary department is required when kiosk access is enabled.' }, { status: 400 });
+  }
+  if (kioskEnabled && !kioskPin) {
+    return NextResponse.json({ error: 'Kiosk PIN is required when kiosk access is enabled.' }, { status: 400 });
+  }
   const item = await createUser({
     ...data,
+    kioskEnabled: Boolean(kioskEnabled),
+    primaryDepartmentId: primaryDepartmentId || null,
+    ...(kioskPin ? { kioskPinHash: await hash(kioskPin, 10) } : {}),
     ...(password ? { passwordHash: await hash(password, 10) } : {}),
   });
   return NextResponse.json({ ok: true, item });

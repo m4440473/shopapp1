@@ -82,3 +82,4 @@ export const listAddonsByIds = repo.listAddonsByIds;
 export const listReadyOrderPartsForDepartment = repo.listReadyOrderPartsForDepartment;
 export const getDashboardOrderOverview = repo.getDashboardOrderOverview;
 export const searchOrdersByTerm = repo.searchOrdersByTerm;
+export const searchKioskPartsForDepartment = repo.searchKioskPartsForDepartment;

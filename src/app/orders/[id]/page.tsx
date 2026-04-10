@@ -61,6 +61,9 @@ type TeamUserOption = {
   email?: string | null;
   role?: string | null;
   active?: boolean | null;
+  kioskEnabled?: boolean | null;
+  primaryDepartmentId?: string | null;
+  primaryDepartment?: { id: string; name: string } | null;
 };
 type MoveDepartmentDialogState = {
   open: boolean;
@@ -92,6 +95,23 @@ type ChecklistPerformerDialogState = {
   checked: boolean;
   performerId: string;
 };
+type KioskTimerDialogMode = 'start' | 'pause' | 'finish';
+type KioskTimerDialogState = {
+  open: boolean;
+  mode: KioskTimerDialogMode;
+  workerId: string;
+  departmentId: string;
+  pin: string;
+  partId: string;
+  loading: boolean;
+  error: string | null;
+  conflict: {
+    activeEntry: any | null;
+    activeOrder: any | null;
+    activePart: any | null;
+    elapsedSeconds: number;
+  } | null;
+};
 
 const formatDuration = (seconds: number) => {
   const clamped = Math.max(0, seconds);
@@ -122,6 +142,9 @@ export default function OrderDetailPage() {
   const [activeTab, setActiveTab] = useState<PartTab>('overview');
   const [noteText, setNoteText] = useState('');
   const [canEditParts, setCanEditParts] = useState(false);
+  const [canUseTimerControls, setCanUseTimerControls] = useState(true);
+  const [kioskSession, setKioskSession] = useState<any | null>(null);
+  const [kioskSessionLoading, setKioskSessionLoading] = useState(false);
   const [partEvents, setPartEvents] = useState<any[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [timerError, setTimerError] = useState<string | null>(null);
@@ -219,6 +242,17 @@ export default function OrderDetailPage() {
   const [repeatTemplateSaving, setRepeatTemplateSaving] = useState(false);
   const [repeatTemplateError, setRepeatTemplateError] = useState<string | null>(null);
   const [savedRepeatTemplate, setSavedRepeatTemplate] = useState<{ id: string; name: string } | null>(null);
+  const [kioskTimerDialog, setKioskTimerDialog] = useState<KioskTimerDialogState>({
+    open: false,
+    mode: 'start',
+    workerId: '',
+    departmentId: '',
+    pin: '',
+    partId: '',
+    loading: false,
+    error: null,
+    conflict: null,
+  });
 
   const parts = useMemo(() => (Array.isArray(item?.parts) ? item.parts : []), [item?.parts]);
   const partIdsParam = useMemo(() => parts.map((part: any) => part.id).filter(Boolean).join(','), [parts]);
@@ -282,6 +316,11 @@ export default function OrderDetailPage() {
   const availableAssignmentUsers = useMemo(
     () => performerUsers.filter((user) => !assignedWorkerIds.has(user.id)),
     [assignedWorkerIds, performerUsers],
+  );
+  const kioskWorkers = useMemo(() => activeTeamUsers, [activeTeamUsers]);
+  const selectedKioskWorker = useMemo(
+    () => kioskWorkers.find((user) => user.id === kioskTimerDialog.workerId) ?? null,
+    [kioskTimerDialog.workerId, kioskWorkers],
   );
   const selectedChecklist = useMemo(() => {
     if (!selectedPartId) return [];
@@ -433,6 +472,7 @@ export default function OrderDetailPage() {
           : []
       );
       setCanEditParts(Boolean(data?.permissions?.canEditParts));
+      setCanUseTimerControls(Boolean(data?.permissions?.canUseTimerControls ?? true));
       setError(null);
       return data.item;
     } catch (err: any) {
@@ -487,9 +527,42 @@ export default function OrderDetailPage() {
     }
   }, [id, partIdsParam]);
 
+  const refreshKioskSession = React.useCallback(async () => {
+    if (canUseTimerControls) {
+      setKioskSession(null);
+      return null;
+    }
+
+    setKioskSessionLoading(true);
+    try {
+      const res = await fetch('/api/kiosk/session', { credentials: 'include' });
+      if (res.status === 401) {
+        setKioskSession(null);
+        return null;
+      }
+      if (!res.ok) throw res;
+      const data = await res.json().catch(() => null);
+      setKioskSession(data);
+      return data;
+    } catch {
+      setKioskSession(null);
+      return null;
+    } finally {
+      setKioskSessionLoading(false);
+    }
+  }, [canUseTimerControls]);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (canUseTimerControls) {
+      setKioskSession(null);
+      return;
+    }
+    void refreshKioskSession();
+  }, [canUseTimerControls, refreshKioskSession]);
 
   useEffect(() => {
     let active = true;
@@ -508,6 +581,15 @@ export default function OrderDetailPage() {
               email: typeof user?.email === 'string' ? user.email : null,
               role: typeof user?.role === 'string' ? user.role : null,
               active: typeof user?.active === 'boolean' ? user.active : null,
+              kioskEnabled: typeof user?.kioskEnabled === 'boolean' ? user.kioskEnabled : null,
+              primaryDepartmentId: typeof user?.primaryDepartmentId === 'string' ? user.primaryDepartmentId : null,
+              primaryDepartment:
+                user?.primaryDepartment && typeof user.primaryDepartment === 'object'
+                  ? {
+                      id: String(user.primaryDepartment.id ?? ''),
+                      name: String(user.primaryDepartment.name ?? '').trim(),
+                    }
+                  : null,
             }))
             .filter((user: TeamUserOption) => user.id.length > 0),
         );
@@ -841,6 +923,309 @@ export default function OrderDetailPage() {
     } finally {
       setTimerSaving(false);
     }
+  };
+
+  const closeKioskTimerDialog = () => {
+    setKioskTimerDialog({
+      open: false,
+      mode: 'start',
+      workerId: '',
+      departmentId: '',
+      pin: '',
+      partId: '',
+      loading: false,
+      error: null,
+      conflict: null,
+    });
+  };
+
+  const openKioskTimerDialog = (mode: KioskTimerDialogMode) => {
+    const defaultWorkerId = kioskSession?.worker?.id ?? currentUserId ?? kioskWorkers[0]?.id ?? '';
+    const defaultWorker =
+      kioskWorkers.find((user) => user.id === defaultWorkerId) ??
+      kioskWorkers[0] ??
+      null;
+    const defaultDepartmentId =
+      defaultWorker?.primaryDepartmentId ??
+      selectedTimerDepartmentId ??
+      timerDepartments[0]?.id ??
+      '';
+    setKioskTimerDialog({
+      open: true,
+      mode,
+      workerId: defaultWorkerId,
+      departmentId: defaultDepartmentId,
+      pin: '',
+      partId: selectedPartId ?? parts[0]?.id ?? '',
+      loading: false,
+      error: null,
+      conflict: null,
+    });
+  };
+
+  const unlockKioskSession = async ({ workerId, pin }: { workerId: string; pin: string }) => {
+    const res = await fetch('/api/kiosk/unlock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ userId: workerId, pin }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to unlock kiosk.');
+    }
+    setKioskSession(data);
+    return data;
+  };
+
+  const ensureKioskSession = async ({ workerId, pin }: { workerId: string; pin: string }) => {
+    if (!workerId) {
+      setKioskTimerDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Choose a worker first.',
+      }));
+      return null;
+    }
+    if (!pin.trim()) {
+      setKioskTimerDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Enter your PIN to continue.',
+      }));
+      return null;
+    }
+
+    try {
+      return await unlockKioskSession({ workerId, pin: pin.trim() });
+    } catch (error: any) {
+      setKioskTimerDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: error?.message || 'Failed to unlock kiosk.',
+      }));
+      return null;
+    }
+  };
+
+  const runKioskTimerAction = async (action: 'pause' | 'finish'): Promise<boolean> => {
+    setTimerSaving(true);
+    setTimerError(null);
+    try {
+      const res = await fetch(`/api/kiosk/timer/${action}`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (res.status === 401) {
+          setKioskSession(null);
+          openKioskTimerDialog(action);
+          setKioskTimerDialog((prev) => ({
+            ...prev,
+            error: 'Enter your PIN to continue.',
+          }));
+          return false;
+        }
+        setTimerError(typeof data?.error === 'string' ? data.error : `Failed to ${action} timer.`);
+        return false;
+      }
+      if (action === 'finish') {
+        await load();
+      }
+      await refreshTimerSummary();
+      await loadPartEvents();
+      await refreshKioskSession();
+      return true;
+    } catch {
+      setTimerError(`Failed to ${action} timer.`);
+      return false;
+    } finally {
+      setTimerSaving(false);
+    }
+  };
+
+  const handleKioskDialogConfirm = async (): Promise<boolean> => {
+    if (!id) return false;
+
+    setKioskTimerDialog((prev) => ({
+      ...prev,
+      loading: true,
+      error: null,
+    }));
+
+    const sessionData = await ensureKioskSession({
+      workerId: kioskTimerDialog.workerId,
+      pin: kioskTimerDialog.pin,
+    });
+    if (!sessionData) {
+      return false;
+    }
+
+    if (kioskTimerDialog.mode === 'pause' || kioskTimerDialog.mode === 'finish') {
+      closeKioskTimerDialog();
+      return runKioskTimerAction(kioskTimerDialog.mode);
+    }
+
+    const partId = kioskTimerDialog.partId.trim();
+    if (!partId) {
+      setKioskTimerDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Choose a part on this order.',
+      }));
+      return false;
+    }
+
+    const departmentId = kioskTimerDialog.departmentId.trim();
+    if (!departmentId) {
+      setKioskTimerDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'This kiosk user does not have a default department configured.',
+      }));
+      return false;
+    }
+
+    try {
+      const res = await fetch('/api/kiosk/timer/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          orderId: id,
+          partId,
+          departmentId,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (res.status === 409 && data?.error?.requiredAction === 'switch_confirmation') {
+          setKioskTimerDialog((prev) => ({
+            ...prev,
+            loading: false,
+            error: null,
+            conflict: {
+              activeEntry: data.error.activeEntry ?? null,
+              activeOrder: data.error.activeOrder ?? null,
+              activePart: data.error.activePart ?? null,
+              elapsedSeconds: Number(data.error.elapsedSeconds ?? 0),
+            },
+          }));
+          return false;
+        }
+        if (res.status === 401) {
+          setKioskSession(null);
+        }
+        setKioskTimerDialog((prev) => ({
+          ...prev,
+          loading: false,
+          error:
+            typeof data?.error === 'string'
+              ? data.error
+              : typeof data?.error?.message === 'string'
+                ? data.error.message
+                : 'Failed to start timer.',
+        }));
+        return false;
+      }
+
+      setSelectedPartId(partId);
+      closeKioskTimerDialog();
+      await refreshTimerSummary();
+      await loadPartEvents();
+      await refreshKioskSession();
+      return true;
+    } catch {
+      setKioskTimerDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Failed to start timer.',
+      }));
+      return false;
+    }
+  };
+
+  const handleKioskSwitch = async (stopMode: 'pause' | 'finish'): Promise<boolean> => {
+    if (!id) return false;
+
+    setKioskTimerDialog((prev) => ({
+      ...prev,
+      loading: true,
+      error: null,
+    }));
+
+    const sessionData = await ensureKioskSession({
+      workerId: kioskTimerDialog.workerId,
+      pin: kioskTimerDialog.pin,
+    });
+    if (!sessionData) {
+      return false;
+    }
+
+    const partId = kioskTimerDialog.partId.trim();
+    const departmentId = kioskTimerDialog.departmentId.trim();
+    if (!partId || !departmentId) {
+      setKioskTimerDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Choose a part and make sure your kiosk department is configured.',
+      }));
+      return false;
+    }
+
+    try {
+      const res = await fetch('/api/kiosk/timer/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          orderId: id,
+          partId,
+          departmentId,
+          stopMode,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (res.status === 401) {
+          setKioskSession(null);
+        }
+        setKioskTimerDialog((prev) => ({
+          ...prev,
+          loading: false,
+          error:
+            typeof data?.error === 'string'
+              ? data.error
+              : typeof data?.error?.message === 'string'
+                ? data.error.message
+                : 'Failed to switch timer.',
+        }));
+        return false;
+      }
+
+      setSelectedPartId(partId);
+      closeKioskTimerDialog();
+      await refreshTimerSummary();
+      await loadPartEvents();
+      await refreshKioskSession();
+      return true;
+    } catch {
+      setKioskTimerDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Failed to switch timer.',
+      }));
+      return false;
+    }
+  };
+
+  const handleKioskAction = async (action: 'pause' | 'finish'): Promise<boolean> => {
+    if (!kioskSession) {
+      openKioskTimerDialog(action);
+      return false;
+    }
+    return runKioskTimerAction(action);
   };
 
   const openMoveDepartmentDialog = () => {
@@ -1486,6 +1871,10 @@ export default function OrderDetailPage() {
   const otherTimerBadgeLabel =
     otherActiveEntryCount > 1 ? `${otherActiveEntryCount} other timers live` : 'Other timer live';
   const startHelperLabel = 'Starts a timer on the selected part for the selected department. Department moves are manual only.';
+  const kioskDefaultDepartmentName = selectedKioskWorker?.primaryDepartment?.name ?? kioskSession?.worker?.primaryDepartment?.name ?? null;
+  const kioskHelperLabel = kioskDefaultDepartmentName
+    ? `Choose a worker, choose a department, and enter that worker's PIN to time this order. ${kioskDefaultDepartmentName} is the current default department for the selected worker.`
+    : 'Choose a worker, choose a department, and enter that worker\'s PIN to time this order.';
   const selectedCurrentDepartmentIndex = selectedCurrentDepartment
     ? manualMoveDepartments.findIndex((department) => department.id === selectedCurrentDepartment.id)
     : -1;
@@ -1500,6 +1889,7 @@ export default function OrderDetailPage() {
     ? `Submit to ${selectedMoveDestination.name}`
     : 'Move part to department';
   const canMarkPartComplete = (selectedCurrentDepartment?.name ?? '').trim().toLowerCase() === 'shipping';
+  const timerReadOnlyMessage = 'Use your PIN to start, pause, stop, or switch timers for floor work on this order.';
 
   return (
     <div className="space-y-6">
@@ -1543,6 +1933,205 @@ export default function OrderDetailPage() {
             <Button type="button" onClick={() => void handleConflictAction('finish')}>
               Finish &amp; Switch
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={kioskTimerDialog.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeKioskTimerDialog();
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {kioskTimerDialog.mode === 'start'
+                ? 'Start kiosk timer'
+                : kioskTimerDialog.mode === 'pause'
+                  ? 'Pause kiosk timer'
+                  : 'Stop kiosk timer'}
+            </DialogTitle>
+            <DialogDescription>
+              {kioskTimerDialog.mode === 'start'
+                ? 'Choose the worker, department, and part for this order, then enter that worker\'s PIN to start timing without leaving this page.'
+                : 'Choose the worker and department, then enter that worker\'s PIN to confirm the timer action.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="kiosk-order-worker">Worker</Label>
+              <Select
+                value={kioskTimerDialog.workerId || '__none__'}
+                onValueChange={(value) => {
+                  const nextWorkerId = value === '__none__' ? '' : value;
+                  const nextWorker =
+                    kioskWorkers.find((user) => user.id === nextWorkerId) ?? null;
+                  setKioskTimerDialog((prev) => ({
+                    ...prev,
+                    workerId: nextWorkerId,
+                    departmentId:
+                      nextWorker?.primaryDepartmentId ??
+                      prev.departmentId ??
+                      timerDepartments[0]?.id ??
+                      '',
+                    error: null,
+                    conflict: null,
+                  }));
+                }}
+              >
+                <SelectTrigger id="kiosk-order-worker">
+                  <SelectValue placeholder="Choose worker" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Choose worker</SelectItem>
+                  {kioskWorkers.map((worker) => (
+                    <SelectItem key={worker.id} value={worker.id}>
+                      {worker.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="kiosk-order-department">Department</Label>
+              <Select
+                value={kioskTimerDialog.departmentId || '__none__'}
+                onValueChange={(value) =>
+                  setKioskTimerDialog((prev) => ({
+                    ...prev,
+                    departmentId: value === '__none__' ? '' : value,
+                    error: null,
+                    conflict: null,
+                  }))
+                }
+              >
+                <SelectTrigger id="kiosk-order-department">
+                  <SelectValue placeholder="Choose department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Choose department</SelectItem>
+                  {timerDepartments.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedKioskWorker?.primaryDepartment?.name ? (
+                <div className="text-xs text-muted-foreground">
+                  Default for {selectedKioskWorker.name}: {selectedKioskWorker.primaryDepartment.name}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="kiosk-order-pin">PIN</Label>
+              <Input
+                id="kiosk-order-pin"
+                type="password"
+                inputMode="numeric"
+                value={kioskTimerDialog.pin}
+                onChange={(event) =>
+                  setKioskTimerDialog((prev) => ({
+                    ...prev,
+                    pin: event.target.value,
+                    error: null,
+                    conflict: null,
+                  }))
+                }
+                placeholder={selectedKioskWorker ? `Enter ${selectedKioskWorker.name}'s PIN` : 'Enter worker PIN'}
+              />
+            </div>
+
+            {kioskTimerDialog.mode === 'start' ? (
+              <div className="grid gap-2">
+                <Label htmlFor="kiosk-order-part">Part on this order</Label>
+                <Select
+                  value={kioskTimerDialog.partId || '__none__'}
+                  onValueChange={(value) =>
+                    setKioskTimerDialog((prev) => ({
+                      ...prev,
+                      partId: value === '__none__' ? '' : value,
+                      error: null,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="kiosk-order-part">
+                    <SelectValue placeholder="Choose part to start" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Choose part</SelectItem>
+                    {parts.map((part: any, index: number) => (
+                      <SelectItem key={part.id} value={part.id}>
+                        {part.partNumber || `Part ${index + 1}`} · Qty {part.quantity ?? 1}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
+            {kioskTimerDialog.conflict ? (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm text-foreground">
+                <div className="font-medium">
+                  Timer already running on{' '}
+                  {kioskTimerDialog.conflict.activeOrder?.orderNumber || 'another order'}
+                  {kioskTimerDialog.conflict.activePart?.partNumber
+                    ? ` · ${kioskTimerDialog.conflict.activePart.partNumber}`
+                    : ''}
+                </div>
+                <div className="mt-1 text-muted-foreground">
+                  Elapsed {formatDuration(kioskTimerDialog.conflict.elapsedSeconds ?? 0)}.
+                </div>
+                <div className="mt-1 text-muted-foreground">
+                  Choose whether to pause or stop that timer before switching to this order.
+                </div>
+              </div>
+            ) : null}
+
+            {kioskTimerDialog.error ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {kioskTimerDialog.error}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={closeKioskTimerDialog} disabled={kioskTimerDialog.loading}>
+              Cancel
+            </Button>
+            {kioskTimerDialog.conflict ? (
+              <>
+                <Button type="button" variant="secondary" onClick={() => void handleKioskSwitch('pause')} disabled={kioskTimerDialog.loading}>
+                  {kioskTimerDialog.loading ? 'Switching…' : 'Pause & switch'}
+                </Button>
+                <Button type="button" onClick={() => void handleKioskSwitch('finish')} disabled={kioskTimerDialog.loading}>
+                  {kioskTimerDialog.loading ? 'Switching…' : 'Stop & switch'}
+                </Button>
+              </>
+            ) : (
+              <Button type="button" onClick={() => void handleKioskDialogConfirm()} disabled={kioskTimerDialog.loading}>
+                {kioskTimerDialog.loading
+                  ? kioskTimerDialog.mode === 'start'
+                    ? 'Starting…'
+                    : kioskTimerDialog.mode === 'pause'
+                      ? 'Pausing…'
+                      : 'Stopping…'
+                  : kioskSession
+                    ? kioskTimerDialog.mode === 'start'
+                      ? 'Start timer'
+                      : kioskTimerDialog.mode === 'pause'
+                        ? 'Pause timer'
+                        : 'Stop timer'
+                    : kioskTimerDialog.mode === 'start'
+                      ? 'Unlock & start'
+                      : kioskTimerDialog.mode === 'pause'
+                        ? 'Unlock & pause'
+                        : 'Unlock & stop'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2010,79 +2599,125 @@ export default function OrderDetailPage() {
                   )}
                 </div>
 
-                <div className="grid gap-2 lg:grid-cols-[220px_repeat(4,minmax(0,1fr))]">
-                  <Select value={selectedTimerDepartmentId} onValueChange={setSelectedTimerDepartmentId}>
-                    <SelectTrigger className="h-9 border-border/60 bg-background/80">
-                      <SelectValue placeholder="Choose timer department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {timerDepartments.map((department) => (
-                        <SelectItem key={department.id} value={department.id}>
-                          {department.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={!selectedPartId || timerSaving || activeOnSelected || !selectedTimerDepartmentId}
-                    onClick={handleActivateSelectedPart}
-                    className="justify-center gap-2"
-                  >
-                    <Play className="h-4 w-4" />
-                    Start timer
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={!selectedActiveEntry || timerSaving}
-                    onClick={() => void handlePause(selectedActiveEntry?.id)}
-                    className="justify-center gap-2"
-                  >
-                    <PauseCircle className="h-4 w-4" />
-                    Pause
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={!selectedActiveEntry || timerSaving}
-                    onClick={() => void handleFinish(selectedActiveEntry?.id)}
-                    className="justify-center gap-2"
-                  >
-                    <Square className="h-4 w-4" />
-                    Stop
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={!selectedPartId || timerSaving || activeOnSelected || !submitDestinationOptions.length}
-                    onClick={openMoveDepartmentDialog}
-                    className="justify-center gap-2"
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Submit to
-                  </Button>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
-                  <div className="flex items-start gap-2">
-                    <ArrowRightLeft className="mt-0.5 h-3.5 w-3.5" />
-                    <span>{startHelperLabel}</span>
+                {canUseTimerControls ? (
+                  <div className="grid gap-2 lg:grid-cols-[220px_repeat(4,minmax(0,1fr))]">
+                    <Select value={selectedTimerDepartmentId} onValueChange={setSelectedTimerDepartmentId}>
+                      <SelectTrigger className="h-9 border-border/60 bg-background/80">
+                        <SelectValue placeholder="Choose timer department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {timerDepartments.map((department) => (
+                          <SelectItem key={department.id} value={department.id}>
+                            {department.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!selectedPartId || timerSaving || activeOnSelected || !selectedTimerDepartmentId}
+                      onClick={handleActivateSelectedPart}
+                      className="justify-center gap-2"
+                    >
+                      <Play className="h-4 w-4" />
+                      Start timer
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!selectedActiveEntry || timerSaving}
+                      onClick={() => void handlePause(selectedActiveEntry?.id)}
+                      className="justify-center gap-2"
+                    >
+                      <PauseCircle className="h-4 w-4" />
+                      Pause
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={!selectedActiveEntry || timerSaving}
+                      onClick={() => void handleFinish(selectedActiveEntry?.id)}
+                      className="justify-center gap-2"
+                    >
+                      <Square className="h-4 w-4" />
+                      Stop
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!selectedPartId || timerSaving || activeOnSelected || !submitDestinationOptions.length}
+                      onClick={openMoveDepartmentDialog}
+                      className="justify-center gap-2"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Submit to
+                    </Button>
                   </div>
+                ) : (
+                  <div className="grid gap-2 lg:grid-cols-[repeat(3,minmax(0,1fr))]">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!parts.length || timerSaving || kioskSessionLoading}
+                      onClick={() => openKioskTimerDialog('start')}
+                      className="justify-center gap-2"
+                    >
+                      <Play className="h-4 w-4" />
+                      Start timer
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!activeEntry || timerSaving || kioskSessionLoading}
+                      onClick={() => void handleKioskAction('pause')}
+                      className="justify-center gap-2"
+                    >
+                      <PauseCircle className="h-4 w-4" />
+                      Pause
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={!activeEntry || timerSaving || kioskSessionLoading}
+                      onClick={() => void handleKioskAction('finish')}
+                      className="justify-center gap-2"
+                    >
+                      <Square className="h-4 w-4" />
+                      Stop
+                    </Button>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                  {canUseTimerControls ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={!selectedPartId || timerSaving || !canMarkPartComplete}
+                      onClick={handleCompleteSelectedPart}
+                      className="gap-2"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Complete in Shipping
+                    </Button>
+                  ) : (
+                    <span className="text-muted-foreground">{timerReadOnlyMessage}</span>
+                  )}
                   <Button
                     type="button"
                     size="sm"
-                    variant="secondary"
-                    disabled={!selectedPartId || timerSaving || !canMarkPartComplete}
-                    onClick={handleCompleteSelectedPart}
-                    className="gap-2"
+                    variant="ghost"
+                    onClick={() => setShowTimerDetails((prev) => !prev)}
+                    className="h-7 px-2 text-xs"
                   >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Complete in Shipping
+                    {showTimerDetails ? 'Hide details' : 'Show details'}
                   </Button>
                 </div>
 
@@ -2091,21 +2726,27 @@ export default function OrderDetailPage() {
                     {timerError}
                   </div>
                 ) : null}
-                {selectedPartId ? (
+                {showTimerDetails && (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
+                      <div className="flex items-start gap-2">
+                        <ArrowRightLeft className="mt-0.5 h-3.5 w-3.5" />
+                        <span>{canUseTimerControls ? startHelperLabel : kioskHelperLabel}</span>
+                      </div>
+                      {!canUseTimerControls ? (
+                        <span className="font-medium text-foreground">
+                          {kioskSession
+                            ? `${kioskSession.worker?.name || kioskSession.worker?.email || 'Kiosk user'} unlocked`
+                            : 'PIN required for kiosk timing'}
+                        </span>
+                      ) : null}
+                    </div>
+                    {selectedPartId ? (
                   <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
                     <div><span className="font-medium text-foreground">Total time:</span> {formatDuration(selectedPartStoredSeconds)}</div>
                     <div>Timer time: {formatDuration(selectedPartTimerSeconds)}</div>
                     <div className="flex items-center justify-between gap-3">
                       <span>Manual added time: {formatDuration(selectedPartManualSeconds)}</span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setShowTimerDetails((prev) => !prev)}
-                        className="h-7 px-2 text-xs"
-                      >
-                        {showTimerDetails ? 'Hide details' : 'Show details'}
-                      </Button>
                     </div>
                     {showTimerDetails && partManualAdjustments.length ? (
                       <div className="mt-2 space-y-1">
@@ -2154,6 +2795,8 @@ export default function OrderDetailPage() {
                     <span>Last action: none yet for this part.</span>
                   )}
                 </div>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-md bg-muted/20 p-1">
