@@ -1,3 +1,60 @@
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: Order-detail layout shift for part-heavy orders
+- Goal: Give the full left rail to the parts list, move timer/submit controls into the top of the right-side detail area, and remove the admin order-status block from this screen.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current gap in `src/app/orders/[id]/page.tsx`:
+  - the left rail still dedicated a large sticky area to the work dock instead of maximizing part-list visibility,
+  - the right header still used space for admin-only order-status override controls,
+  - long part lists did not have a dedicated scroll area optimized for 30-50 part orders.
+
+## Plan First
+- [x] Remove the left-rail work dock and make that column a dedicated parts-only panel with its own scrollable list.
+- [x] Move timer/submit/complete controls into the right-side top summary area where the status override block lived.
+- [x] Remove the admin order-status override UI/state from this page.
+- [x] Run focused verification and update continuity docs.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+## Review + Results
+- The left rail on `/orders/[id]` is now reserved for the parts list, with a dedicated scroll area sized for long orders.
+- The timer department picker, timer controls, submit action, complete-in-shipping action, and timer summary now live at the top of the right-side detail card.
+- Removed the admin order-status override block and its client-side state from this page so the right side stays focused on the selected part.
+
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: Mission-brief accept flow + quote-note sourcing
+- Goal: Keep the mission-brief modal acknowledge action usable, and make quote-created orders feed meaningful required-read instructions into the part-level mission brief instead of leaving it empty.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current issue in code:
+  - the mission-brief modal still posts an acknowledgement even when a part has no `workInstructions`, which triggers the backend error `This part has no required instructions.`,
+  - quote conversion currently fills general order `notes` and part `notes`, but does not populate part `workInstructions`, so the acknowledgement flow often has nothing real to read.
+
+## Plan First
+- [x] Patch the order-detail mission-brief modal so the primary action behaves cleanly when there are no required instructions.
+- [x] Patch quote-to-order prefill so quote requirements/notes seed the part-level `workInstructions` field used by the mission brief.
+- [x] Run focused verification on the touched UI files.
+- [x] Update continuity docs with evidence and the clarified note-source behavior.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx" "src/app/orders/new/page.tsx"`
+
+## Review + Results
+- Fixed the mission-brief gating bug on `/orders/[id]`:
+  - empty `workInstructions` now short-circuit as "nothing required" instead of reopening the modal and failing the acknowledgement POST,
+  - manual brief acknowledgement no longer crashes when the dialog was opened without a pending gated action.
+- Quote conversion prefill on `/orders/new?quoteId=...` now seeds each part's `workInstructions` from:
+  - quote-level `Requirements / process notes`,
+  - that part's quote `Part notes`.
+- Added a small conversion-mode hint in the order-create review UI so the source of mission-brief text is visible during launch.
+
 ## Repeat Orders + Operator Accountability v1 - Final Integration
 - [x] Prisma/data model changes landed for repeat templates, part assignments, instruction receipts, checklist performer attribution, and part work instructions.
 - [x] Repeat-order backend/API landed: snapshot from order, list/fetch templates, create order from template.
