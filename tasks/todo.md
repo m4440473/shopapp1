@@ -1,4 +1,116 @@
 ## Session Metadata
+- Date: 2026-04-13
+- Agent: Codex GPT-5
+- Task ID: Timer tile layout follow-up (dept + user + PIN flow)
+- Goal: Reshape the order-detail timer tile to match the requested department/user-first flow, fix the department dropdown reset bug, remove pause from the main tile, rename `Submit to` to `Move Dept.`, and restyle `Complete in Shipping` as a checkbox-style control.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current gaps in code:
+  - the timer tile still split behavior between logged-in direct timer controls and kiosk/PIN controls,
+  - the department dropdown effect kept snapping back to the part's current department, which made manual department selection feel dead,
+  - the main tile still exposed `Pause` even though the requested flow only needs start/stop from the tile,
+  - `Submit to` and the shipping-complete control did not match the requested labels/presentation.
+
+## Plan First
+- [x] Stop the department selector from auto-overwriting a valid user choice.
+- [x] Add a worker selector to the timer tile and route main start/stop actions through the existing worker+PIN dialog.
+- [x] Remove pause from the main tile, rename the move action, and restyle `Complete in Shipping` as a checkbox-style control.
+- [x] Run focused verification and update continuity docs with evidence.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+## Review + Results
+- Updated the timer tile on `/orders/[id]` to use a department selector plus user selector before the main actions.
+- Fixed the department dropdown bug so a valid department selection now sticks instead of snapping back to the part's current department.
+- Main tile actions now use the PIN dialog for `Start timer` and `Stop`, with `Pause` removed from the main button row.
+- Renamed `Submit to` to `Move Dept.` and changed `Complete in Shipping` to a checkbox-style control that stays greyed out unless the selected part is currently in Shipping.
+
+## Session Metadata
+- Date: 2026-04-13
+- Agent: Codex GPT-5
+- Task ID: Order-detail part active-timer chips + PIN stop access
+- Goal: Show all active timers for the selected part directly in the timer tile and let any viewer stop the correct worker’s timer from that row by entering that worker’s PIN.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated current timer behavior in code:
+  - `/orders/[id]` already loads `partActivity` from `/api/timer/active`, which includes all active timers per part, not just the current user.
+  - the timer tile currently only surfaces the current user’s `activeEntries`, so viewers cannot see who else is timing the selected part.
+  - the order-detail page already has a worker+PIN kiosk stop dialog that can stop the selected worker’s single active timer without requiring that worker to be the logged-in browser user.
+
+## Plan First
+- [x] Update the order-detail timer tile to derive selected-part active timers from `partActivity` instead of only the current user’s active timer state.
+- [x] Render compact active-timer chips showing worker, department, and live elapsed time for the selected part.
+- [x] Reuse the existing kiosk PIN dialog so clicking a chip opens a stop flow prefilled for that worker.
+- [x] Run focused verification and update continuity docs with evidence.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+## Review + Results
+- Added a selected-part `Active timers` row directly in the timer tile on `/orders/[id]`.
+- The row now shows every active timer on that specific part, with compact chips formatted as worker + department + live elapsed time.
+- Clicking a chip opens the existing worker+PIN kiosk stop dialog prefilled for that worker, so anyone viewing the part can stop the correct timer as long as they know that worker’s PIN.
+- The selected-part elapsed readout now includes all live timers on that part instead of only the current browser user’s running timer.
+
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: Default material catalog expansion
+- Goal: Seed a stronger default material catalog with common shop metals and plastics so fresh installs have practical dropdown options without manual setup.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated current material population paths:
+  - real installs seed materials through `prisma/seed-basic.js`, `prisma/seed.js`, and `prisma/seed.ts`,
+  - mock/test-mode dropdown data comes from `src/repos/mock/seed.ts`,
+  - current defaults are too sparse for a typical machine shop (`1018`, `6061`, `304SS`, with only a few extra items in demo seed).
+
+## Plan First
+- [x] Expand the default seed material list with common metals and plastics only.
+- [x] Keep the real seed scripts and mock seed list aligned so fresh installs, demo installs, and mock/test flows present the same practical baseline.
+- [x] Run focused verification and update continuity docs with the seeded catalog change.
+
+## Verification Checklist
+- [x] `npm run lint`
+- [x] `node -` seed-source presence check across `prisma/seed-basic.js`, `prisma/seed.js`, `prisma/seed.ts`, and `src/repos/mock/seed.ts`
+- [x] `node -` targeted Prisma material upsert into the current local database
+
+## Review + Results
+- Expanded the default material catalog across the basic seed, demo seed, TypeScript seed source, and mock seed with a practical baseline of common shop metals and plastics.
+- Added common steels, alloy steels, tool steels, aluminum grades, stainless grades, brass/copper, and machining plastics while intentionally excluding wood.
+- Applied the same list to the current local database with a targeted Prisma upsert so the new material options are available in this workspace immediately without rerunning the full demo seed.
+- Current local DB note: an older existing `304SS` row was already present, so the resulting catalog now includes both legacy `304SS` and the new spaced `304 SS` entry; this change did not rewrite or delete pre-existing material rows.
+
+## Session Metadata
+- Date: 2026-04-10
+- Agent: Codex GPT-5
+- Task ID: Order-detail part work-instructions edit exposure
+- Goal: Expose `workInstructions` on the existing order-detail part edit form so admins can edit the same required-reading / mission-brief text that the backend already stores and enforces.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current gap in code:
+  - order creation already supports per-part `workInstructions`,
+  - quote conversion seeds `workInstructions` from quote requirements + part notes,
+  - order-detail edit mode only loads/saves `notes`, so existing parts have no in-place edit path for required-read content even though the PATCH schema/service already support it.
+
+## Plan First
+- [x] Add `workInstructions` to the order-detail part draft state and selected-part sync.
+- [x] Expose a `Work instructions` textarea in the order-detail part edit form and include it in the save payload.
+- [x] Run focused verification and update continuity docs with the clarified behavior.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+## Review + Results
+- Added `workInstructions` to the order-detail part edit draft so the existing part editor now loads the same required-reading / mission-brief text shown elsewhere on the order page.
+- Updated the order-detail part save payload to send `workInstructions`, reusing the existing PATCH schema/service path that already handles instruction-version bumps when the text changes.
+- Added a `Work instructions` textarea next to `Part notes` in the admin part editor on `/orders/[id]`, which closes the previous gap where only order creation could edit the required-read content.
+
+## Session Metadata
 - Date: 2026-04-10
 - Agent: Codex GPT-5
 - Task ID: Order-detail embedded kiosk timing follow-up

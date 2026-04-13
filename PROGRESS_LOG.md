@@ -1,3 +1,65 @@
+### 2026-04-13 - Timer tile now uses department + user selection before PIN start/stop
+- Updated `src/app/orders/[id]/page.tsx` so the main timer tile now presents:
+  - department selector,
+  - user selector,
+  - `Start timer`,
+  - `Stop`,
+  - `Move Dept.`,
+  - checkbox-style `Complete in Shipping`.
+- Fixed the timer department selector behavior so it no longer snaps back to the part's current department while the user is trying to choose another department.
+- Removed `Pause` from the main timer button row; the tile now uses a simpler start/stop flow, while pause remains only in switch-conflict handling.
+- Wired the main `Start timer` and `Stop` actions through the existing worker+PIN dialog so the selected worker must enter their PIN before the action executes.
+- Restyled `Complete in Shipping` as a checkbox-style control and kept it greyed out unless the selected part's current department is Shipping.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+Verification note:
+- Targeted ESLint passed.
+
+### 2026-04-13 - Order-detail timer tile now shows per-part active timer chips with PIN stop access
+- Updated `src/app/orders/[id]/page.tsx` so the timer tile now uses the existing `partActivity` payload from `/api/timer/active` to show all active timers on the currently selected part, not just the logged-in viewer's own timer.
+- Added compact active-timer chips in the tile displaying worker, department, and live elapsed time for each active timer on that part.
+- Clicking a chip now opens the existing worker+PIN kiosk stop dialog prefilled for that timer's worker, which lets any viewer stop the correct timer by entering that worker's PIN.
+- Updated the selected-part elapsed summary so it now includes all live active-timer seconds on that part instead of only the current browser user's active timer.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+Verification note:
+- Targeted ESLint passed.
+
+### 2026-04-10 - Default material catalog expanded for common metals and plastics
+- Expanded the default material seed lists in `prisma/seed-basic.js`, `prisma/seed.js`, `prisma/seed.ts`, and `src/repos/mock/seed.ts` so fresh installs, demo installs, and mock/test flows all start with a broader practical material catalog.
+- Added common machine-shop metals and plastics, including:
+  - steels/alloy steels/tool steels (`1018 CRS`, `1020 HRS`, `1045`, `12L14`, `4140`, `4130`, `A36 Plate`, `A2`, `D2`, `O1`),
+  - aluminum grades (`6061-T6`, `7075-T6`, `2024-T351`, `5052-H32`, `MIC-6`),
+  - stainless/brass/copper (`304 SS`, `316 SS`, `17-4 PH`, `Brass 360`, `C110 Copper`),
+  - plastics (`Acetal / Delrin`, `Nylon 6/6`, `UHMW`, `HDPE`, `PVC`, `Polycarbonate`, `ABS`, `PTFE / Teflon`, `PEEK`).
+- Applied the same list to the current local database with a targeted Prisma upsert so the material dropdowns in this workspace have the new options immediately.
+- Existing-data note: the local database already had a legacy `304SS` material row, so both `304SS` and `304 SS` now exist; I left that untouched rather than silently mutating existing data.
+
+Commands run:
+- `npm run lint`
+- `node -` seed-source presence check across seed files
+- `node -` targeted Prisma material upsert + material inventory check
+
+Verification note:
+- Lint passed with no ESLint warnings/errors.
+- Seed-source verification confirmed the new catalog names are present in all four seed sources.
+- Targeted local Prisma upsert completed successfully; current local DB material count is `30`.
+
+### 2026-04-10 - Order-detail part editor now exposes work instructions
+- Updated `src/app/orders/[id]/page.tsx` so the admin part-edit form now loads, edits, and saves `workInstructions` in addition to standard part notes.
+- This closes the gap where the mission-brief / required-reading text already existed in the backend and order-create flow, but could not be edited from the existing order-detail part editor.
+- The order-detail PATCH payload now includes `workInstructions`, reusing the existing backend behavior that bumps `instructionsVersion` when the text changes.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+Verification note:
+- Targeted ESLint passed.
+
 ### 2026-04-10 - Order-detail kiosk timing follow-up: embedded PIN + part picker on `/orders/[id]`
 - Reworked the kiosk-only timer experience on `src/app/orders/[id]/page.tsx` so kiosk-enabled machinists no longer have to leave the order-detail page to start or manage time.
 - Replaced the old `Open kiosk` fallback with in-page kiosk controls in the existing timer area:
