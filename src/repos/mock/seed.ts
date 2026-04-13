@@ -298,8 +298,35 @@ export function createMockSeedState(): MockSeedState {
   ];
 
   const materials: MockMaterial[] = [
-    { id: 'material_test_001', name: '6061 Aluminum' },
-    { id: 'material_test_002', name: '4140 Steel' },
+    { id: 'material_test_001', name: '1018 CRS' },
+    { id: 'material_test_002', name: '1020 HRS' },
+    { id: 'material_test_003', name: '1045' },
+    { id: 'material_test_004', name: '12L14' },
+    { id: 'material_test_005', name: '4140' },
+    { id: 'material_test_006', name: '4130' },
+    { id: 'material_test_007', name: 'A36 Plate' },
+    { id: 'material_test_008', name: 'A2' },
+    { id: 'material_test_009', name: 'D2' },
+    { id: 'material_test_010', name: 'O1' },
+    { id: 'material_test_011', name: '6061-T6' },
+    { id: 'material_test_012', name: '7075-T6' },
+    { id: 'material_test_013', name: '2024-T351' },
+    { id: 'material_test_014', name: '5052-H32' },
+    { id: 'material_test_015', name: 'MIC-6' },
+    { id: 'material_test_016', name: '304 SS' },
+    { id: 'material_test_017', name: '316 SS' },
+    { id: 'material_test_018', name: '17-4 PH' },
+    { id: 'material_test_019', name: 'Brass 360' },
+    { id: 'material_test_020', name: 'C110 Copper' },
+    { id: 'material_test_021', name: 'Acetal / Delrin' },
+    { id: 'material_test_022', name: 'Nylon 6/6' },
+    { id: 'material_test_023', name: 'UHMW' },
+    { id: 'material_test_024', name: 'HDPE' },
+    { id: 'material_test_025', name: 'PVC' },
+    { id: 'material_test_026', name: 'Polycarbonate' },
+    { id: 'material_test_027', name: 'ABS' },
+    { id: 'material_test_028', name: 'PTFE / Teflon' },
+    { id: 'material_test_029', name: 'PEEK' },
   ];
 
   const orders: MockOrder[] = [

@@ -105,6 +105,11 @@ type KioskTimerDialogState = {
   partId: string;
   loading: boolean;
   error: string | null;
+  targetTimer: {
+    userName: string;
+    departmentName: string | null;
+    partLabel: string | null;
+  } | null;
   conflict: {
     activeEntry: any | null;
     activeOrder: any | null;
@@ -153,7 +158,9 @@ export default function OrderDetailPage() {
   const [activeEntry, setActiveEntry] = useState<any | null>(null);
   const [activeEntries, setActiveEntries] = useState<any[]>([]);
   const [activePart, setActivePart] = useState<any | null>(null);
+  const [partActivity, setPartActivity] = useState<Record<string, { activeTimers: any[]; timeByUser: any[]; totalSeconds: number }>>({});
   const [selectedTimerDepartmentId, setSelectedTimerDepartmentId] = useState<string>('');
+  const [selectedTimerWorkerId, setSelectedTimerWorkerId] = useState<string>('');
   const [partTotals, setPartTotals] = useState<Record<string, number>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [conflictState, setConflictState] = useState<ConflictState>({
@@ -199,6 +206,7 @@ export default function OrderDetailPage() {
     stockSize: '',
     cutLength: '',
     notes: '',
+    workInstructions: '',
   });
   const [customers, setCustomers] = useState<SelectOption[]>([]);
   const [vendors, setVendors] = useState<SelectOption[]>([]);
@@ -251,6 +259,7 @@ export default function OrderDetailPage() {
     partId: '',
     loading: false,
     error: null,
+    targetTimer: null,
     conflict: null,
   });
 
@@ -317,10 +326,15 @@ export default function OrderDetailPage() {
     () => performerUsers.filter((user) => !assignedWorkerIds.has(user.id)),
     [assignedWorkerIds, performerUsers],
   );
+  const timerWorkerOptions = useMemo(() => performerUsers, [performerUsers]);
   const kioskWorkers = useMemo(() => activeTeamUsers, [activeTeamUsers]);
   const selectedKioskWorker = useMemo(
     () => kioskWorkers.find((user) => user.id === kioskTimerDialog.workerId) ?? null,
     [kioskTimerDialog.workerId, kioskWorkers],
+  );
+  const selectedTimerWorker = useMemo(
+    () => timerWorkerOptions.find((user) => user.id === selectedTimerWorkerId) ?? null,
+    [selectedTimerWorkerId, timerWorkerOptions],
   );
   const selectedChecklist = useMemo(() => {
     if (!selectedPartId) return [];
@@ -519,9 +533,11 @@ export default function OrderDetailPage() {
       setActiveEntries(Array.isArray(data.activeEntries) ? data.activeEntries : []);
       setActivePart(data.activePart ?? null);
       setPartTotals(data.totalsSeconds ?? {});
+      setPartActivity(data.partActivity ?? {});
       setTimerError(null);
     } catch {
       setTimerError('Failed to load timer status.');
+      setPartActivity({});
     } finally {
       setTimerLoading(false);
     }
@@ -644,6 +660,7 @@ export default function OrderDetailPage() {
       stockSize: selectedPart.stockSize ?? '',
       cutLength: selectedPart.cutLength ?? '',
       notes: selectedPart.notes ?? '',
+      workInstructions: selectedPart.workInstructions ?? '',
     });
   }, [selectedPart]);
 
@@ -659,18 +676,24 @@ export default function OrderDetailPage() {
       return;
     }
 
-    const selectedPartDepartmentId = selectedPart?.currentDepartmentId ?? '';
-    if (selectedPartDepartmentId && timerDepartments.some((department) => department.id === selectedPartDepartmentId)) {
-      setSelectedTimerDepartmentId((prev) => (prev === selectedPartDepartmentId ? prev : selectedPartDepartmentId));
-      return;
-    }
-
     if (selectedTimerDepartmentId && timerDepartments.some((department) => department.id === selectedTimerDepartmentId)) {
       return;
     }
 
-    setSelectedTimerDepartmentId(timerDepartments[0]?.id ?? '');
+    const selectedPartDepartmentId = selectedPart?.currentDepartmentId ?? '';
+    const nextDepartmentId =
+      selectedPartDepartmentId && timerDepartments.some((department) => department.id === selectedPartDepartmentId)
+        ? selectedPartDepartmentId
+        : timerDepartments[0]?.id ?? '';
+    setSelectedTimerDepartmentId(nextDepartmentId);
   }, [selectedPart?.currentDepartmentId, selectedTimerDepartmentId, timerDepartments]);
+
+  useEffect(() => {
+    if (selectedTimerWorkerId && timerWorkerOptions.some((user) => user.id === selectedTimerWorkerId)) {
+      return;
+    }
+    setSelectedTimerWorkerId(currentUserId || timerWorkerOptions[0]?.id || '');
+  }, [currentUserId, selectedTimerWorkerId, timerWorkerOptions]);
 
   useEffect(() => {
     if (!canEditParts) return;
@@ -935,17 +958,31 @@ export default function OrderDetailPage() {
       partId: '',
       loading: false,
       error: null,
+      targetTimer: null,
       conflict: null,
     });
   };
 
-  const openKioskTimerDialog = (mode: KioskTimerDialogMode) => {
-    const defaultWorkerId = kioskSession?.worker?.id ?? currentUserId ?? kioskWorkers[0]?.id ?? '';
+  const openKioskTimerDialog = (
+    mode: KioskTimerDialogMode,
+    options?: {
+      workerId?: string;
+      departmentId?: string;
+      partId?: string;
+      targetTimer?: {
+        userName: string;
+        departmentName: string | null;
+        partLabel: string | null;
+      } | null;
+    },
+  ) => {
+    const defaultWorkerId = options?.workerId ?? kioskSession?.worker?.id ?? currentUserId ?? kioskWorkers[0]?.id ?? '';
     const defaultWorker =
       kioskWorkers.find((user) => user.id === defaultWorkerId) ??
       kioskWorkers[0] ??
       null;
     const defaultDepartmentId =
+      options?.departmentId ??
       defaultWorker?.primaryDepartmentId ??
       selectedTimerDepartmentId ??
       timerDepartments[0]?.id ??
@@ -956,9 +993,10 @@ export default function OrderDetailPage() {
       workerId: defaultWorkerId,
       departmentId: defaultDepartmentId,
       pin: '',
-      partId: selectedPartId ?? parts[0]?.id ?? '',
+      partId: options?.partId ?? selectedPartId ?? parts[0]?.id ?? '',
       loading: false,
       error: null,
+      targetTimer: options?.targetTimer ?? null,
       conflict: null,
     });
   };
@@ -1228,6 +1266,69 @@ export default function OrderDetailPage() {
     return runKioskTimerAction(action);
   };
 
+  const handleOpenActiveTimerChip = (entry: any) => {
+    const workerName =
+      entry?.user?.name?.trim() ||
+      entry?.user?.email?.trim() ||
+      entry?.userId ||
+      'Worker';
+    const departmentName =
+      typeof entry?.departmentName === 'string' && entry.departmentName.trim().length
+        ? entry.departmentName.trim()
+        : typeof entry?.departmentId === 'string' && entry.departmentId.trim().length
+          ? entry.departmentId.trim()
+          : null;
+    const partLabel = selectedPart?.partNumber || (selectedPartId ? 'Selected part' : null);
+
+    openKioskTimerDialog('finish', {
+      workerId: entry?.userId ?? '',
+      departmentId: entry?.departmentId ?? '',
+      partId: entry?.partId ?? selectedPartId ?? '',
+      targetTimer: {
+        userName: workerName,
+        departmentName,
+        partLabel,
+      },
+    });
+  };
+
+  const handleOpenTimerStartDialog = () => {
+    if (!selectedPartId) {
+      setTimerError('Choose a part first.');
+      return;
+    }
+    if (!selectedTimerDepartmentId) {
+      setTimerError('Choose a department first.');
+      return;
+    }
+    if (!selectedTimerWorkerId) {
+      setTimerError('Choose a user first.');
+      return;
+    }
+    setTimerError(null);
+    openKioskTimerDialog('start', {
+      workerId: selectedTimerWorkerId,
+      departmentId: selectedTimerDepartmentId,
+      partId: selectedPartId,
+      targetTimer: {
+        userName: selectedTimerWorker?.name || 'Worker',
+        departmentName:
+          timerDepartments.find((department) => department.id === selectedTimerDepartmentId)?.name ??
+          selectedTimerDepartmentId,
+        partLabel: selectedPart?.partNumber || 'Selected part',
+      },
+    });
+  };
+
+  const handleOpenSelectedTimerStopDialog = () => {
+    if (!selectedWorkerPartActiveTimer) {
+      setTimerError('The selected user does not have an active timer on this part for that department.');
+      return;
+    }
+    setTimerError(null);
+    handleOpenActiveTimerChip(selectedWorkerPartActiveTimer);
+  };
+
   const openMoveDepartmentDialog = () => {
     if (!selectedPartId) return;
     const defaultDepartmentId =
@@ -1475,6 +1576,7 @@ export default function OrderDetailPage() {
         stockSize: partDraft.stockSize || null,
         cutLength: partDraft.cutLength || null,
         notes: partDraft.notes || null,
+        workInstructions: partDraft.workInstructions || null,
       };
       const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}`, {
         method: 'PATCH',
@@ -1852,14 +1954,26 @@ export default function OrderDetailPage() {
         .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
         .join(' ')
     : 'Unknown';
-  const activeOnSelected = Boolean(selectedActiveEntry);
+  const selectedPartActivity = selectedPartId ? partActivity[selectedPartId] ?? null : null;
+  const selectedPartActiveTimers = Array.isArray(selectedPartActivity?.activeTimers)
+    ? selectedPartActivity.activeTimers
+    : [];
+  const activeOnSelected = selectedPartActiveTimers.length > 0;
+  const selectedWorkerPartActiveTimer =
+    selectedPartActiveTimers.find((entry: any) => {
+      if (!selectedTimerWorkerId || entry?.userId !== selectedTimerWorkerId) return false;
+      if (!selectedTimerDepartmentId) return true;
+      return entry?.departmentId === selectedTimerDepartmentId;
+    }) ?? null;
   const selectedPartTimerSeconds = selectedPartId ? partTotals[selectedPartId] ?? 0 : 0;
   const selectedPartManualSeconds = selectedPartId ? manualPartTotals[selectedPartId] ?? 0 : 0;
   const selectedPartStoredSeconds = selectedPartTimerSeconds + selectedPartManualSeconds;
-  const selectedActiveElapsedSeconds = selectedActiveEntry?.startedAt
-    ? Math.max(0, Math.floor((nowMs - new Date(selectedActiveEntry.startedAt).getTime()) / 1000))
-    : 0;
-  const selectedPartElapsedSeconds = activeOnSelected ? selectedPartStoredSeconds + selectedActiveElapsedSeconds : selectedPartStoredSeconds;
+  const selectedPartLiveSeconds = selectedPartActiveTimers.reduce((sum: number, entry: any) => {
+    const startedAtMs = entry?.startedAt ? new Date(entry.startedAt).getTime() : Number.NaN;
+    if (!Number.isFinite(startedAtMs)) return sum;
+    return sum + Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
+  }, 0);
+  const selectedPartElapsedSeconds = selectedPartStoredSeconds + selectedPartLiveSeconds;
   const hasActiveEntry = activeEntries.length > 0;
   const activeElsewhereEntries = activeEntries.filter((entry: any) => {
     const samePart = entry?.partId === selectedPartId;
@@ -1886,10 +2000,10 @@ export default function OrderDetailPage() {
     (department) => department.id === moveDepartmentDialog.destinationDepartmentId
   ) ?? null;
   const moveActionLabel = selectedMoveDestination
-    ? `Submit to ${selectedMoveDestination.name}`
-    : 'Move part to department';
+    ? `Move Dept. to ${selectedMoveDestination.name}`
+    : 'Move Dept.';
   const canMarkPartComplete = (selectedCurrentDepartment?.name ?? '').trim().toLowerCase() === 'shipping';
-  const timerReadOnlyMessage = 'Use your PIN to start, pause, stop, or switch timers for floor work on this order.';
+  const timerReadOnlyMessage = 'Choose a department and worker, then use a PIN to start or stop timers for this part.';
 
   return (
     <div className="space-y-6">
@@ -1948,83 +2062,22 @@ export default function OrderDetailPage() {
           <DialogHeader>
             <DialogTitle>
               {kioskTimerDialog.mode === 'start'
-                ? 'Start kiosk timer'
+                ? 'Start timer'
                 : kioskTimerDialog.mode === 'pause'
-                  ? 'Pause kiosk timer'
-                  : 'Stop kiosk timer'}
+                  ? 'Pause timer'
+                  : 'Stop timer'}
             </DialogTitle>
             <DialogDescription>
               {kioskTimerDialog.mode === 'start'
-                ? 'Choose the worker, department, and part for this order, then enter that worker\'s PIN to start timing without leaving this page.'
-                : 'Choose the worker and department, then enter that worker\'s PIN to confirm the timer action.'}
+                ? 'Enter the selected worker\'s PIN to start the timer.'
+                : 'Enter the selected worker\'s PIN to confirm the timer action.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="kiosk-order-worker">Worker</Label>
-              <Select
-                value={kioskTimerDialog.workerId || '__none__'}
-                onValueChange={(value) => {
-                  const nextWorkerId = value === '__none__' ? '' : value;
-                  const nextWorker =
-                    kioskWorkers.find((user) => user.id === nextWorkerId) ?? null;
-                  setKioskTimerDialog((prev) => ({
-                    ...prev,
-                    workerId: nextWorkerId,
-                    departmentId:
-                      nextWorker?.primaryDepartmentId ??
-                      prev.departmentId ??
-                      timerDepartments[0]?.id ??
-                      '',
-                    error: null,
-                    conflict: null,
-                  }));
-                }}
-              >
-                <SelectTrigger id="kiosk-order-worker">
-                  <SelectValue placeholder="Choose worker" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Choose worker</SelectItem>
-                  {kioskWorkers.map((worker) => (
-                    <SelectItem key={worker.id} value={worker.id}>
-                      {worker.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="kiosk-order-department">Department</Label>
-              <Select
-                value={kioskTimerDialog.departmentId || '__none__'}
-                onValueChange={(value) =>
-                  setKioskTimerDialog((prev) => ({
-                    ...prev,
-                    departmentId: value === '__none__' ? '' : value,
-                    error: null,
-                    conflict: null,
-                  }))
-                }
-              >
-                <SelectTrigger id="kiosk-order-department">
-                  <SelectValue placeholder="Choose department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Choose department</SelectItem>
-                  {timerDepartments.map((department) => (
-                    <SelectItem key={department.id} value={department.id}>
-                      {department.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedKioskWorker?.primaryDepartment?.name ? (
-                <div className="text-xs text-muted-foreground">
-                  Default for {selectedKioskWorker.name}: {selectedKioskWorker.primaryDepartment.name}
-                </div>
-              ) : null}
+            <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-3 text-sm text-foreground">
+              <div><span className="font-medium text-muted-foreground">Worker:</span> {selectedKioskWorker?.name || kioskTimerDialog.targetTimer?.userName || 'Unassigned'}</div>
+              <div><span className="font-medium text-muted-foreground">Department:</span> {timerDepartments.find((department) => department.id === kioskTimerDialog.departmentId)?.name || kioskTimerDialog.targetTimer?.departmentName || 'Unassigned'}</div>
+              <div><span className="font-medium text-muted-foreground">Part:</span> {selectedPart?.partNumber || kioskTimerDialog.targetTimer?.partLabel || 'Unassigned'}</div>
             </div>
 
             <div className="grid gap-2">
@@ -2046,7 +2099,7 @@ export default function OrderDetailPage() {
               />
             </div>
 
-            {kioskTimerDialog.mode === 'start' ? (
+            {false ? (
               <div className="grid gap-2">
                 <Label htmlFor="kiosk-order-part">Part on this order</Label>
                 <Select
@@ -2089,6 +2142,14 @@ export default function OrderDetailPage() {
                 <div className="mt-1 text-muted-foreground">
                   Choose whether to pause or stop that timer before switching to this order.
                 </div>
+              </div>
+            ) : null}
+
+            {kioskTimerDialog.mode !== 'start' && kioskTimerDialog.targetTimer ? (
+              <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-3 text-sm text-foreground">
+                Stop timer for {kioskTimerDialog.targetTimer.userName}
+                {kioskTimerDialog.targetTimer.departmentName ? ` in ${kioskTimerDialog.targetTimer.departmentName}` : ''}
+                {kioskTimerDialog.targetTimer.partLabel ? ` on ${kioskTimerDialog.targetTimer.partLabel}` : ''}.
               </div>
             ) : null}
 
@@ -2599,117 +2660,136 @@ export default function OrderDetailPage() {
                   )}
                 </div>
 
-                {canUseTimerControls ? (
-                  <div className="grid gap-2 lg:grid-cols-[220px_repeat(4,minmax(0,1fr))]">
-                    <Select value={selectedTimerDepartmentId} onValueChange={setSelectedTimerDepartmentId}>
-                      <SelectTrigger className="h-9 border-border/60 bg-background/80">
-                        <SelectValue placeholder="Choose timer department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {timerDepartments.map((department) => (
-                          <SelectItem key={department.id} value={department.id}>
-                            {department.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={!selectedPartId || timerSaving || activeOnSelected || !selectedTimerDepartmentId}
-                      onClick={handleActivateSelectedPart}
-                      className="justify-center gap-2"
-                    >
-                      <Play className="h-4 w-4" />
-                      Start timer
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={!selectedActiveEntry || timerSaving}
-                      onClick={() => void handlePause(selectedActiveEntry?.id)}
-                      className="justify-center gap-2"
-                    >
-                      <PauseCircle className="h-4 w-4" />
-                      Pause
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={!selectedActiveEntry || timerSaving}
-                      onClick={() => void handleFinish(selectedActiveEntry?.id)}
-                      className="justify-center gap-2"
-                    >
-                      <Square className="h-4 w-4" />
-                      Stop
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={!selectedPartId || timerSaving || activeOnSelected || !submitDestinationOptions.length}
-                      onClick={openMoveDepartmentDialog}
-                      className="justify-center gap-2"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      Submit to
-                    </Button>
+                {selectedPartId ? (
+                  <div className="rounded-md border border-border/60 bg-muted/10 p-3">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">Active timers:</span>
+                      {selectedPartActiveTimers.length ? (
+                        selectedPartActiveTimers.map((entry: any) => {
+                          const workerName =
+                            entry?.user?.name?.trim() ||
+                            entry?.user?.email?.trim() ||
+                            entry?.userId ||
+                            'Worker';
+                          const departmentName =
+                            typeof entry?.departmentName === 'string' && entry.departmentName.trim().length
+                              ? entry.departmentName.trim()
+                              : typeof entry?.departmentId === 'string' && entry.departmentId.trim().length
+                                ? entry.departmentId.trim()
+                                : 'Unknown dept';
+                          const startedAtMs = entry?.startedAt ? new Date(entry.startedAt).getTime() : Number.NaN;
+                          const elapsedSeconds = Number.isFinite(startedAtMs)
+                            ? Math.max(0, Math.floor((nowMs - startedAtMs) / 1000))
+                            : 0;
+
+                          return (
+                            <Button
+                              key={entry?.id ?? `${entry?.userId ?? workerName}-${entry?.departmentId ?? departmentName}`}
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 border-emerald-500/30 bg-emerald-500/10 px-2 text-[11px] text-emerald-100 hover:bg-emerald-500/20 hover:text-emerald-50"
+                              onClick={() => handleOpenActiveTimerChip(entry)}
+                            >
+                              {workerName}, {departmentName}, {formatDuration(elapsedSeconds)}
+                            </Button>
+                          );
+                        })
+                      ) : (
+                        <span>No active timers on this part.</span>
+                      )}
+                    </div>
+                    {selectedPartActiveTimers.length ? (
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        Click a timer to stop it with that worker&apos;s PIN.
+                      </div>
+                    ) : null}
                   </div>
-                ) : (
-                  <div className="grid gap-2 lg:grid-cols-[repeat(3,minmax(0,1fr))]">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={!parts.length || timerSaving || kioskSessionLoading}
-                      onClick={() => openKioskTimerDialog('start')}
-                      className="justify-center gap-2"
-                    >
-                      <Play className="h-4 w-4" />
-                      Start timer
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={!activeEntry || timerSaving || kioskSessionLoading}
-                      onClick={() => void handleKioskAction('pause')}
-                      className="justify-center gap-2"
-                    >
-                      <PauseCircle className="h-4 w-4" />
-                      Pause
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={!activeEntry || timerSaving || kioskSessionLoading}
-                      onClick={() => void handleKioskAction('finish')}
-                      className="justify-center gap-2"
-                    >
-                      <Square className="h-4 w-4" />
-                      Stop
-                    </Button>
-                  </div>
-                )}
+                ) : null}
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <Select value={selectedTimerDepartmentId} onValueChange={setSelectedTimerDepartmentId}>
+                    <SelectTrigger className="h-10 border-border/60 bg-background/80">
+                      <SelectValue placeholder="Choose timer department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timerDepartments.map((department) => (
+                        <SelectItem key={department.id} value={department.id}>
+                          {department.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={selectedTimerWorkerId || '__none__'} onValueChange={(value) => setSelectedTimerWorkerId(value === '__none__' ? '' : value)}>
+                    <SelectTrigger className="h-10 border-border/60 bg-background/80">
+                      <SelectValue placeholder="Select user" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Select user</SelectItem>
+                      {timerWorkerOptions.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_220px]">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!selectedPartId || timerSaving || kioskSessionLoading || !selectedTimerDepartmentId || !selectedTimerWorkerId}
+                    onClick={handleOpenTimerStartDialog}
+                    className="justify-center gap-2"
+                  >
+                    <Play className="h-4 w-4" />
+                    Start timer
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={!selectedWorkerPartActiveTimer || timerSaving || kioskSessionLoading}
+                    onClick={handleOpenSelectedTimerStopDialog}
+                    className="justify-center gap-2"
+                  >
+                    <Square className="h-4 w-4" />
+                    Stop
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!selectedPartId || timerSaving || !submitDestinationOptions.length}
+                    onClick={openMoveDepartmentDialog}
+                    className="justify-center gap-2"
+                  >
+                    <ArrowRightLeft className="h-4 w-4" />
+                    Move Dept.
+                  </Button>
+                  <label
+                    className={`flex h-10 items-center gap-3 rounded-md border px-3 text-sm ${
+                      !selectedPartId || timerSaving || !canMarkPartComplete
+                        ? 'cursor-not-allowed border-border/40 bg-muted/30 text-muted-foreground'
+                        : 'cursor-pointer border-border/60 bg-background/80 text-foreground hover:bg-muted/20'
+                    }`}
+                  >
+                    <Checkbox
+                      checked={false}
+                      disabled={!selectedPartId || timerSaving || !canMarkPartComplete}
+                      onCheckedChange={(checked) => {
+                        if (checked === true && selectedPartId && !timerSaving && canMarkPartComplete) {
+                          void handleCompleteSelectedPart();
+                        }
+                      }}
+                    />
+                    <span>Complete in Shipping</span>
+                  </label>
+                </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-                  {canUseTimerControls ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={!selectedPartId || timerSaving || !canMarkPartComplete}
-                      onClick={handleCompleteSelectedPart}
-                      className="gap-2"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      Complete in Shipping
-                    </Button>
-                  ) : (
-                    <span className="text-muted-foreground">{timerReadOnlyMessage}</span>
-                  )}
+                  <span className="text-muted-foreground">{timerReadOnlyMessage}</span>
                   <Button
                     type="button"
                     size="sm"
@@ -3143,6 +3223,15 @@ export default function OrderDetailPage() {
                           <div className="grid gap-2 md:col-span-2">
                             <Label>Part notes</Label>
                             <Textarea rows={3} value={partDraft.notes} onChange={(e) => setPartDraft((prev) => ({ ...prev, notes: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2 md:col-span-2">
+                            <Label>Work instructions</Label>
+                            <Textarea
+                              rows={4}
+                              value={partDraft.workInstructions}
+                              onChange={(e) => setPartDraft((prev) => ({ ...prev, workInstructions: e.target.value }))}
+                              placeholder="Must-read floor instructions for this part."
+                            />
                           </div>
                         </div>
                       </div>

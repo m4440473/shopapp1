@@ -1,3 +1,141 @@
+## Session Handoff - 2026-04-13 (Timer tile layout follow-up: dept + user + PIN flow)
+
+Goal (1 sentence): Match the requested timer-tile layout by making department and user selection happen in the tile, moving start/stop onto the PIN popup flow, fixing the department dropdown reset bug, renaming `Submit to` to `Move Dept.`, and restyling `Complete in Shipping` as a checkbox-style control.
+
+### What changed
+- Updated [page.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/orders/[id]/page.tsx)
+  - Added `selectedTimerWorkerId` state and a user dropdown in the main timer tile.
+  - Changed the department dropdown effect so it no longer overwrites a valid manual selection.
+  - Replaced the old direct-action main row with:
+    - department selector,
+    - user selector,
+    - `Start timer`,
+    - `Stop`,
+    - `Move Dept.`,
+    - checkbox-style `Complete in Shipping`.
+  - Routed the main `Start timer` and `Stop` buttons through the existing worker+PIN dialog.
+  - Removed `Pause` from the main tile button row; pause remains only in switch-conflict handling.
+  - Updated move-action labeling from `Submit to` to `Move Dept.`.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+### Verification evidence
+- Targeted ESLint passed.
+
+### Behavior note for the next agent
+- The timer tile now assumes department and worker are chosen on the page before opening the PIN dialog.
+- The department dropdown bug was fixed by only defaulting the department when the current selection is invalid, rather than always snapping back to the part's current department.
+- `Stop` in the main row targets the selected worker's active timer on the selected part for the selected department; if the user needs to stop a different active timer on the part, they should click that timer's chip directly.
+
+## Session Handoff - 2026-04-13 (Order-detail part active-timer chips + PIN stop access)
+
+Goal (1 sentence): Surface all active timers for the selected part directly in the order-detail timer tile and let any viewer stop the correct worker’s timer from that row by entering that worker’s PIN.
+
+### What changed
+- Updated [page.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/orders/[id]/page.tsx)
+  - Added local `partActivity` state fed from `/api/timer/active`.
+  - Derived selected-part active timers from `partActivity[selectedPartId].activeTimers`.
+  - Added compact active-timer chips in the timer tile showing:
+    - worker,
+    - department,
+    - live elapsed time.
+  - Clicking a chip now opens the existing kiosk stop dialog prefilled with that timer's worker and department.
+  - Added dialog copy clarifying which worker/department timer is about to be stopped.
+  - Updated selected-part elapsed math so it includes all live timers on the selected part.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+### Verification evidence
+- Targeted ESLint passed.
+
+### Behavior note for the next agent
+- The active-timer chips intentionally use `partActivity` from `/api/timer/active`, because that payload includes all-user active timers for the selected part.
+- Clicking a chip does not bypass timer ownership; it reuses the existing worker+PIN kiosk flow and stops that worker’s single active timer only after a successful PIN unlock for that worker.
+- This keeps the stop flow usable from a shared/admin screen without relying on the currently logged-in browser identity.
+
+## Session Handoff - 2026-04-10 (Default material catalog expansion)
+
+Goal (1 sentence): Seed a more practical default material list so fresh installs and the current local workspace have common metals and plastics available without manual admin setup.
+
+### What changed
+- Updated seed sources:
+  - [seed-basic.js](C:/Users/user/Documents/GitHub/shopapp1/prisma/seed-basic.js)
+  - [seed.js](C:/Users/user/Documents/GitHub/shopapp1/prisma/seed.js)
+  - [seed.ts](C:/Users/user/Documents/GitHub/shopapp1/prisma/seed.ts)
+  - [seed.ts](C:/Users/user/Documents/GitHub/shopapp1/src/repos/mock/seed.ts)
+- Expanded the default material catalog with common:
+  - steels / alloy steels / tool steels,
+  - aluminum grades,
+  - stainless grades,
+  - brass / copper,
+  - machining plastics.
+- Applied the same material list directly to the current local database with a targeted Prisma upsert so the new options are available immediately in this workspace.
+
+### Files touched
+- `prisma/seed-basic.js`
+- `prisma/seed.js`
+- `prisma/seed.ts`
+- `src/repos/mock/seed.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run lint`
+- `node -` seed-source presence check across `prisma/seed-basic.js`, `prisma/seed.js`, `prisma/seed.ts`, and `src/repos/mock/seed.ts`
+- `node -` targeted Prisma material upsert + inventory printout
+
+### Verification evidence
+- Lint passed with no ESLint warnings/errors.
+- Seed-source verification confirmed representative material names exist in all seed sources.
+- Local Prisma upsert completed successfully and reported `30` material rows in the local DB afterward.
+
+### Behavior note for the next agent
+- This change intentionally adds defaults and upserts the current local DB, but does not normalize or delete any pre-existing material names.
+- The local DB already had a legacy `304SS` row, so the current workspace now contains both `304SS` and `304 SS`.
+- If the owner wants the material list cleaned up further, do that as a deliberate follow-up data-normalization task rather than as part of future seed-only changes.
+
+## Session Handoff - 2026-04-10 (Order-detail part work-instructions edit exposure)
+
+Goal (1 sentence): Let admins edit part-level `workInstructions` from the existing order-detail part editor so mission-brief / required-reading text is not stranded after order creation.
+
+### What changed
+- Updated [page.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/orders/[id]/page.tsx)
+  - Added `workInstructions` to the part edit draft state populated from the selected part.
+  - Added `workInstructions` to the order-detail part PATCH payload.
+  - Added a `Work instructions` textarea to the admin part edit form next to `Part notes`.
+
+### Files touched
+- `src/app/orders/[id]/page.tsx`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+### Verification evidence
+- Targeted ESLint passed.
+
+### Behavior note for the next agent
+- The mission-brief / required-reading flow still reads from `OrderPart.workInstructions`.
+- Order creation already exposed this field; this follow-up only adds the missing edit path on existing orders.
+- The backend PATCH path already increments `instructionsVersion` when `workInstructions` changes, so the new UI path should continue to invalidate old acknowledgement receipts automatically.
+
 ## Session Handoff - 2026-04-10 (Order-detail embedded kiosk timing follow-up)
 
 Goal (1 sentence): Keep kiosk timing rules intact, but let kiosk-enabled machinists start and manage timers directly from the order-detail timer area instead of bouncing out to a separate kiosk page.
