@@ -6,8 +6,12 @@ import { prisma } from '@/lib/prisma';
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  const items = await prisma.vendor.findMany({ orderBy: { id: 'asc' }, take: 20 });
-  const initial = { items, nextCursor: null };
+  const pageSize = 20;
+  const [items, totalCount] = await Promise.all([
+    prisma.vendor.findMany({ orderBy: { id: 'asc' }, take: pageSize }),
+    prisma.vendor.count(),
+  ]);
+  const initial = { items, totalCount, page: 1, pageSize };
   return (
     <div className="p-4 text-neutral-100">
       <NavTabs />

@@ -47,6 +47,17 @@ export type DepartmentFeedPart = {
   checklistTotalCount: number;
 };
 
+export type DepartmentFeedActiveTimer = {
+  id: string;
+  userId: string | null;
+  userName: string;
+  elapsedSeconds: number;
+  departmentId?: string | null;
+  departmentName?: string | null;
+  partId?: string | null;
+  partNumber?: string | null;
+};
+
 export type DepartmentFeedOrder = {
   orderId: string;
   orderNumber: string;
@@ -58,5 +69,7 @@ export type DepartmentFeedOrder = {
   openChecklistCount: number;
   flaggedCount: number;
   latestActivityAt: Date | string | null;
+  activeTimerCount: number;
+  activeTimers: DepartmentFeedActiveTimer[];
   parts: DepartmentFeedPart[];
 };

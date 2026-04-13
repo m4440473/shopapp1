@@ -86,6 +86,8 @@ type InstructionGateDialogState = {
   loading: boolean;
   error: string | null;
   pendingAction: InstructionGatePendingAction | null;
+  workerId: string;
+  pin: string;
 };
 type ChecklistPerformerDialogState = {
   open: boolean;
@@ -132,6 +134,50 @@ const statusBadgeStyles: Record<string, string> = {
   COMPLETE: 'bg-emerald-500/15 text-emerald-200',
   IN_PROGRESS: 'bg-blue-500/15 text-blue-200',
   CLOSED: 'bg-slate-500/20 text-slate-200',
+};
+
+type InstructionSection = {
+  heading: string | null;
+  items: string[];
+};
+
+const parseInstructionSections = (instructions: string): InstructionSection[] => {
+  const blocks = instructions
+    .split(/\r?\n\s*\r?\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  const sections = blocks
+    .map((block) => {
+      const rawLines = block
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (!rawLines.length) return null;
+
+      const firstLine = rawLines[0];
+      const hasHeading = firstLine.endsWith(':');
+      const heading = hasHeading ? firstLine.slice(0, -1).trim() || null : null;
+      const itemSource = hasHeading ? rawLines.slice(1) : rawLines;
+      const items = itemSource
+        .map((line) => line.replace(/^[-*•]\s*/, '').trim())
+        .filter(Boolean);
+
+      if (!items.length && heading) {
+        return { heading, items: ['No details provided.'] };
+      }
+      if (!items.length) return null;
+
+      return {
+        heading,
+        items,
+      };
+    })
+    .filter(Boolean) as InstructionSection[];
+
+  if (sections.length) return sections;
+  const fallback = instructions.trim();
+  return fallback ? [{ heading: null, items: [fallback] }] : [];
 };
 
 export default function OrderDetailPage() {
@@ -234,6 +280,8 @@ export default function OrderDetailPage() {
     loading: false,
     error: null,
     pendingAction: null,
+    workerId: '',
+    pin: '',
   });
   const [checklistPerformerDialog, setChecklistPerformerDialog] = useState<ChecklistPerformerDialogState>({
     open: false,
@@ -282,20 +330,28 @@ export default function OrderDetailPage() {
     currentUserId ||
     'Current user';
   const selectedPartInstructions = String(selectedPart?.workInstructions ?? '').trim();
+  const selectedPartInstructionSections = useMemo(
+    () => parseInstructionSections(selectedPartInstructions),
+    [selectedPartInstructions],
+  );
   const selectedPartInstructionsVersion = Math.max(1, Number(selectedPart?.instructionsVersion ?? 1));
   const selectedPartCurrentDepartmentId = selectedPart?.currentDepartmentId ?? null;
-  const selectedPartInstructionReceipt = useMemo(() => {
-    if (!selectedPartId || !currentUserId || !selectedPartCurrentDepartmentId) return null;
+  const getInstructionReceiptForUserDepartment = (userId?: string | null, departmentId?: string | null) => {
+    if (!selectedPartId || !userId || !departmentId) return null;
     const receipts = Array.isArray(selectedPart?.instructionReceipts) ? selectedPart.instructionReceipts : [];
     return (
       receipts.find(
         (receipt: any) =>
-          receipt.userId === currentUserId &&
-          receipt.departmentId === selectedPartCurrentDepartmentId &&
+          receipt.userId === userId &&
+          receipt.departmentId === departmentId &&
           Math.max(1, Number(receipt.instructionsVersion ?? 1)) === selectedPartInstructionsVersion,
       ) ?? null
     );
-  }, [currentUserId, selectedPart, selectedPartCurrentDepartmentId, selectedPartId, selectedPartInstructionsVersion]);
+  };
+  const selectedPartInstructionReceipt = getInstructionReceiptForUserDepartment(
+    currentUserId,
+    selectedPartCurrentDepartmentId,
+  );
   const selectedPartRequiresInstructionGate = Boolean(selectedPartInstructions && selectedPartCurrentDepartmentId && !selectedPartInstructionReceipt);
   const selectedPartAssignments = useMemo(() => (Array.isArray(selectedPart?.assignments) ? selectedPart.assignments : []), [selectedPart?.assignments]);
   const assignedWorkerIds = useMemo(() => new Set(selectedPartAssignments.map((assignment: any) => assignment.userId)), [selectedPartAssignments]);
@@ -336,6 +392,10 @@ export default function OrderDetailPage() {
     () => timerWorkerOptions.find((user) => user.id === selectedTimerWorkerId) ?? null,
     [selectedTimerWorkerId, timerWorkerOptions],
   );
+  const selectedInstructionGateWorker = useMemo(
+    () => timerWorkerOptions.find((user) => user.id === instructionGateDialog.workerId) ?? null,
+    [instructionGateDialog.workerId, timerWorkerOptions],
+  );
   const selectedChecklist = useMemo(() => {
     if (!selectedPartId) return [];
     const items = Array.isArray(item?.checklist) ? item.checklist : [];
@@ -363,10 +423,29 @@ export default function OrderDetailPage() {
 
   const manualMoveDepartments = useMemo(() => departments, [departments]);
   const selectedCurrentDepartment = manualMoveDepartments.find((department) => department.id === selectedPart?.currentDepartmentId) ?? null;
+  const instructionGateSupportsWorkerSelection =
+    !instructionGateDialog.pendingAction || instructionGateDialog.pendingAction.kind === 'timer-start';
+  const instructionGateDepartmentId = !instructionGateDialog.pendingAction
+    ? selectedPartCurrentDepartmentId
+    : instructionGateDialog.pendingAction.kind === 'timer-start'
+      ? selectedTimerDepartmentId || selectedPartCurrentDepartmentId
+      : instructionGateDialog.pendingAction.kind === 'checklist-toggle'
+        ? instructionGateDialog.pendingAction.entry?.departmentId ?? selectedPartCurrentDepartmentId
+        : selectedPartCurrentDepartmentId;
+  const instructionGateDepartment = manualMoveDepartments.find((department) => department.id === instructionGateDepartmentId) ?? null;
   const submitDestinationOptions = useMemo(
     () => manualMoveDepartments.filter((department) => department.id !== selectedPart?.currentDepartmentId),
     [manualMoveDepartments, selectedPart?.currentDepartmentId]
   );
+  const selectedPartAcknowledgedReceipts = useMemo(() => {
+    const receipts = Array.isArray(selectedPart?.instructionReceipts) ? selectedPart.instructionReceipts : [];
+    if (!selectedPartCurrentDepartmentId) return [];
+    return receipts.filter(
+      (receipt: any) =>
+        receipt?.departmentId === selectedPartCurrentDepartmentId &&
+        Math.max(1, Number(receipt?.instructionsVersion ?? 1)) === selectedPartInstructionsVersion,
+    );
+  }, [selectedPart?.instructionReceipts, selectedPartCurrentDepartmentId, selectedPartInstructionsVersion]);
 
   const selectedPartDepartmentHistory = useMemo(() => {
     if (!selectedPartId) return [];
@@ -444,6 +523,11 @@ export default function OrderDetailPage() {
     () => PART_TABS.filter((tab) => (tab === 'full-files' ? canEditParts : true)),
     [canEditParts]
   );
+  const selectedPartActiveTimerCount = selectedPartId
+    ? Array.isArray(partActivity[selectedPartId]?.activeTimers)
+      ? partActivity[selectedPartId].activeTimers.length
+      : 0
+    : 0;
 
   const selectedActiveEntry = useMemo(
     () =>
@@ -461,11 +545,11 @@ export default function OrderDetailPage() {
   }, [partEvents]);
 
   useEffect(() => {
-    const interval = activeEntries.length ? window.setInterval(() => setNowMs(Date.now()), 1000) : null;
+    const interval = selectedPartActiveTimerCount ? window.setInterval(() => setNowMs(Date.now()), 1000) : null;
     return () => {
       if (interval) window.clearInterval(interval);
     };
-  }, [activeEntries.length]);
+  }, [selectedPartActiveTimerCount]);
 
   const load = React.useCallback(async () => {
     if (!id) return null;
@@ -737,15 +821,15 @@ export default function OrderDetailPage() {
   }, [loadPartEvents]);
 
   const isInstructionAcknowledgedForDepartment = (departmentId?: string | null) => {
+    return isInstructionAcknowledgedForUserDepartment(currentUserId, departmentId);
+  };
+
+  const isInstructionAcknowledgedForUserDepartment = (
+    userId?: string | null,
+    departmentId?: string | null,
+  ) => {
     if (!selectedPartInstructions) return true;
-    if (!selectedPartId || !departmentId || !currentUserId) return !selectedPartInstructions;
-    const receipts = Array.isArray(selectedPart?.instructionReceipts) ? selectedPart.instructionReceipts : [];
-    return receipts.some(
-      (receipt: any) =>
-        receipt.userId === currentUserId &&
-        receipt.departmentId === departmentId &&
-        Math.max(1, Number(receipt.instructionsVersion ?? 1)) === selectedPartInstructionsVersion,
-    );
+    return Boolean(getInstructionReceiptForUserDepartment(userId, departmentId));
   };
 
   const buildInstructionGateAction = (pendingAction: InstructionGatePendingAction) => {
@@ -755,6 +839,28 @@ export default function OrderDetailPage() {
       loading: false,
       error: null,
       pendingAction,
+      workerId:
+        pendingAction.kind === 'timer-start'
+          ? selectedTimerWorkerId || currentUserId || timerWorkerOptions[0]?.id || ''
+          : currentUserId || timerWorkerOptions[0]?.id || '',
+      pin: '',
+    });
+  };
+
+  const continueTimerStartAfterInstructionGate = ({ workerId, pin = '' }: { workerId: string; pin?: string }) => {
+    if (!selectedPartId || !selectedTimerDepartmentId) return;
+    openKioskTimerDialog('start', {
+      workerId,
+      departmentId: selectedTimerDepartmentId,
+      partId: selectedPartId,
+      pin,
+      targetTimer: {
+        userName: timerWorkerOptions.find((user) => user.id === workerId)?.name || 'Worker',
+        departmentName:
+          timerDepartments.find((department) => department.id === selectedTimerDepartmentId)?.name ??
+          selectedTimerDepartmentId,
+        partLabel: selectedPart?.partNumber || 'Selected part',
+      },
     });
   };
 
@@ -783,9 +889,14 @@ export default function OrderDetailPage() {
         loading: false,
         error: null,
         pendingAction: null,
+        workerId: '',
+        pin: '',
       });
       if (pendingAction?.kind === 'timer-start') {
-        await handleStart({ skipInstructionGate: true });
+        continueTimerStartAfterInstructionGate({
+          workerId: instructionGateDialog.workerId || selectedTimerWorkerId,
+          pin: instructionGateDialog.pin,
+        });
       } else if (pendingAction?.kind === 'checklist-toggle') {
         setChecklistPerformerDialog({
           open: true,
@@ -806,6 +917,28 @@ export default function OrderDetailPage() {
       return;
     }
 
+    const timerStartWorkerId =
+      pendingAction?.kind === 'timer-start'
+        ? instructionGateDialog.workerId.trim() || selectedTimerWorkerId
+        : '';
+    const timerStartPin = pendingAction?.kind === 'timer-start' ? instructionGateDialog.pin.trim() : '';
+    const manualAckWorkerId = !pendingAction ? instructionGateDialog.workerId.trim() : '';
+    const manualAckPin = !pendingAction ? instructionGateDialog.pin.trim() : '';
+    const acknowledgementWorkerId = timerStartWorkerId || manualAckWorkerId;
+    const acknowledgementPin = timerStartPin || manualAckPin;
+    if (pendingAction?.kind === 'timer-start' && !timerStartWorkerId) {
+      setInstructionGateDialog((prev) => ({ ...prev, error: 'Choose the worker who read these instructions.' }));
+      return;
+    }
+    if (pendingAction?.kind === 'timer-start' && !timerStartPin) {
+      setInstructionGateDialog((prev) => ({ ...prev, error: "Enter that worker's PIN to confirm the acknowledgement." }));
+      return;
+    }
+    if (!pendingAction && acknowledgementWorkerId && acknowledgementWorkerId !== currentUserId && !acknowledgementPin) {
+      setInstructionGateDialog((prev) => ({ ...prev, error: "Enter that worker's PIN to confirm the acknowledgement." }));
+      return;
+    }
+
     setInstructionGateDialog((prev) => ({ ...prev, loading: true, error: null }));
     try {
       const dismissKey = selectedPartId && selectedPartCurrentDepartmentId
@@ -817,6 +950,8 @@ export default function OrderDetailPage() {
         credentials: 'include',
         body: JSON.stringify({
           departmentId,
+          workerId: acknowledgementWorkerId || undefined,
+          pin: acknowledgementPin || undefined,
         }),
       });
       if (!res.ok) {
@@ -829,12 +964,17 @@ export default function OrderDetailPage() {
         loading: false,
         error: null,
         pendingAction: null,
+        workerId: '',
+        pin: '',
       });
       setDismissedInstructionGateKey(dismissKey);
       toast.push('Instructions acknowledged.', 'success');
 
       if (pendingAction?.kind === 'timer-start') {
-        await handleStart({ skipInstructionGate: true });
+        continueTimerStartAfterInstructionGate({
+          workerId: timerStartWorkerId,
+          pin: timerStartPin,
+        });
       } else if (pendingAction?.kind === 'checklist-toggle') {
         setChecklistPerformerDialog({
           open: true,
@@ -969,6 +1109,7 @@ export default function OrderDetailPage() {
       workerId?: string;
       departmentId?: string;
       partId?: string;
+      pin?: string;
       targetTimer?: {
         userName: string;
         departmentName: string | null;
@@ -992,7 +1133,7 @@ export default function OrderDetailPage() {
       mode,
       workerId: defaultWorkerId,
       departmentId: defaultDepartmentId,
-      pin: '',
+      pin: options?.pin ?? '',
       partId: options?.partId ?? selectedPartId ?? parts[0]?.id ?? '',
       loading: false,
       error: null,
@@ -1305,6 +1446,10 @@ export default function OrderDetailPage() {
       setTimerError('Choose a user first.');
       return;
     }
+    if (!isInstructionAcknowledgedForUserDepartment(selectedTimerWorkerId, selectedTimerDepartmentId)) {
+      buildInstructionGateAction({ kind: 'timer-start' });
+      return;
+    }
     setTimerError(null);
     openKioskTimerDialog('start', {
       workerId: selectedTimerWorkerId,
@@ -1318,15 +1463,6 @@ export default function OrderDetailPage() {
         partLabel: selectedPart?.partNumber || 'Selected part',
       },
     });
-  };
-
-  const handleOpenSelectedTimerStopDialog = () => {
-    if (!selectedWorkerPartActiveTimer) {
-      setTimerError('The selected user does not have an active timer on this part for that department.');
-      return;
-    }
-    setTimerError(null);
-    handleOpenActiveTimerChip(selectedWorkerPartActiveTimer);
   };
 
   const openMoveDepartmentDialog = () => {
@@ -1847,8 +1983,11 @@ export default function OrderDetailPage() {
       loading: false,
       error: null,
       pendingAction: null,
+      workerId: currentUserId || timerWorkerOptions[0]?.id || '',
+      pin: '',
     });
   }, [
+    currentUserId,
     checklistPerformerDialog.open,
     dismissedInstructionGateKey,
     instructionGateDialog.open,
@@ -1858,6 +1997,7 @@ export default function OrderDetailPage() {
     selectedPartInstructions,
     selectedPartInstructionsVersion,
     submitConfirmDialog.open,
+    timerWorkerOptions,
   ]);
 
   useEffect(() => {
@@ -1959,12 +2099,6 @@ export default function OrderDetailPage() {
     ? selectedPartActivity.activeTimers
     : [];
   const activeOnSelected = selectedPartActiveTimers.length > 0;
-  const selectedWorkerPartActiveTimer =
-    selectedPartActiveTimers.find((entry: any) => {
-      if (!selectedTimerWorkerId || entry?.userId !== selectedTimerWorkerId) return false;
-      if (!selectedTimerDepartmentId) return true;
-      return entry?.departmentId === selectedTimerDepartmentId;
-    }) ?? null;
   const selectedPartTimerSeconds = selectedPartId ? partTotals[selectedPartId] ?? 0 : 0;
   const selectedPartManualSeconds = selectedPartId ? manualPartTotals[selectedPartId] ?? 0 : 0;
   const selectedPartStoredSeconds = selectedPartTimerSeconds + selectedPartManualSeconds;
@@ -2354,6 +2488,8 @@ export default function OrderDetailPage() {
                   loading: false,
                   error: null,
                   pendingAction: null,
+                  workerId: '',
+                  pin: '',
                 },
           );
         }}
@@ -2369,15 +2505,85 @@ export default function OrderDetailPage() {
             <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground">
               Read this before you start work, check a checklist item, or submit the part forward. Your acknowledgement is recorded for this part and department.
             </div>
-            <div className="max-h-64 overflow-auto rounded-md border border-border/60 bg-muted/10 p-3 text-sm whitespace-pre-wrap text-foreground">
-              {selectedPartInstructions || 'No part-specific instructions were found for this part.'}
+            <div className="max-h-72 overflow-auto rounded-md border border-border/60 bg-muted/10 p-3 text-sm text-foreground">
+              {selectedPartInstructionSections.length ? (
+                <div className="space-y-4">
+                  {selectedPartInstructionSections.map((section, index) => (
+                    <div key={`${section.heading ?? 'notes'}-${index}`} className="space-y-2">
+                      {section.heading ? (
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                          {section.heading}
+                        </div>
+                      ) : null}
+                      <ul className="list-disc space-y-1 pl-5">
+                        {section.items.map((item, itemIndex) => (
+                          <li key={`${index}-${itemIndex}`} className="leading-6 text-foreground">
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                'No part-specific instructions were found for this part.'
+              )}
             </div>
+            {instructionGateSupportsWorkerSelection ? (
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="space-y-2">
+                  <Label htmlFor="instruction-gate-worker">Worker confirming this brief</Label>
+                  <Select
+                    value={instructionGateDialog.workerId || '__none__'}
+                    onValueChange={(value) =>
+                      setInstructionGateDialog((prev) => ({
+                        ...prev,
+                        workerId: value === '__none__' ? '' : value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger id="instruction-gate-worker" className="h-10 border-border/60 bg-background/80">
+                      <SelectValue placeholder="Select user" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Select user</SelectItem>
+                      {timerWorkerOptions.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="instruction-gate-pin">Worker PIN</Label>
+                  <Input
+                    id="instruction-gate-pin"
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={instructionGateDialog.pin}
+                    onChange={(e) =>
+                      setInstructionGateDialog((prev) => ({
+                        ...prev,
+                        pin: e.target.value.replace(/\D+/g, '').slice(0, 12),
+                      }))
+                    }
+                    placeholder={
+                      selectedInstructionGateWorker
+                        ? `Enter ${selectedInstructionGateWorker.name}'s PIN`
+                        : 'Enter worker PIN'
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-foreground">
                 Part: {selectedPart?.partNumber || 'Selected part'}
               </span>
               <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-foreground">
-                Department: {selectedCurrentDepartment?.name ?? 'Current department'}
+                Department: {instructionGateDepartment?.name ?? 'Current department'}
               </span>
               <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-foreground">
                 Instruction version: {selectedPartInstructionsVersion}
@@ -2399,6 +2605,8 @@ export default function OrderDetailPage() {
                   loading: false,
                   error: null,
                   pendingAction: null,
+                  workerId: '',
+                  pin: '',
                 });
                 if (selectedPartId && selectedPartCurrentDepartmentId) {
                   setDismissedInstructionGateKey(
@@ -2691,7 +2899,8 @@ export default function OrderDetailPage() {
                               className="h-8 border-emerald-500/30 bg-emerald-500/10 px-2 text-[11px] text-emerald-100 hover:bg-emerald-500/20 hover:text-emerald-50"
                               onClick={() => handleOpenActiveTimerChip(entry)}
                             >
-                              {workerName}, {departmentName}, {formatDuration(elapsedSeconds)}
+                              <span>{workerName}, {departmentName}, {formatDuration(elapsedSeconds)}</span>
+                              <Square className="ml-2 h-3.5 w-3.5 opacity-80" />
                             </Button>
                           );
                         })
@@ -2704,8 +2913,8 @@ export default function OrderDetailPage() {
                         Click a timer to stop it with that worker&apos;s PIN.
                       </div>
                     ) : null}
-                  </div>
-                ) : null}
+                      </div>
+                    ) : null}
 
                 <div className="grid gap-2 md:grid-cols-2">
                   <Select value={selectedTimerDepartmentId} onValueChange={setSelectedTimerDepartmentId}>
@@ -2735,7 +2944,7 @@ export default function OrderDetailPage() {
                   </Select>
                 </div>
 
-                <div className="grid gap-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_220px]">
+                <div className="grid gap-2 lg:grid-cols-[repeat(2,minmax(0,1fr))_220px]">
                   <Button
                     type="button"
                     size="sm"
@@ -2749,17 +2958,6 @@ export default function OrderDetailPage() {
                   <Button
                     type="button"
                     size="sm"
-                    variant="secondary"
-                    disabled={!selectedWorkerPartActiveTimer || timerSaving || kioskSessionLoading}
-                    onClick={handleOpenSelectedTimerStopDialog}
-                    className="justify-center gap-2"
-                  >
-                    <Square className="h-4 w-4" />
-                    Stop
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
                     variant="outline"
                     disabled={!selectedPartId || timerSaving || !submitDestinationOptions.length}
                     onClick={openMoveDepartmentDialog}
@@ -2768,24 +2966,21 @@ export default function OrderDetailPage() {
                     <ArrowRightLeft className="h-4 w-4" />
                     Move Dept.
                   </Button>
-                  <label
-                    className={`flex h-10 items-center gap-3 rounded-md border px-3 text-sm ${
-                      !selectedPartId || timerSaving || !canMarkPartComplete
-                        ? 'cursor-not-allowed border-border/40 bg-muted/30 text-muted-foreground'
-                        : 'cursor-pointer border-border/60 bg-background/80 text-foreground hover:bg-muted/20'
-                    }`}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!selectedPartId || timerSaving || !canMarkPartComplete}
+                    onClick={() => {
+                      if (selectedPartId && !timerSaving && canMarkPartComplete) {
+                        void handleCompleteSelectedPart();
+                      }
+                    }}
+                    className="justify-center gap-2"
                   >
-                    <Checkbox
-                      checked={false}
-                      disabled={!selectedPartId || timerSaving || !canMarkPartComplete}
-                      onCheckedChange={(checked) => {
-                        if (checked === true && selectedPartId && !timerSaving && canMarkPartComplete) {
-                          void handleCompleteSelectedPart();
-                        }
-                      }}
-                    />
-                    <span>Complete in Shipping</span>
-                  </label>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Mark Shipped</span>
+                  </Button>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
@@ -2822,13 +3017,13 @@ export default function OrderDetailPage() {
                       ) : null}
                     </div>
                     {selectedPartId ? (
-                  <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+                      <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
                     <div><span className="font-medium text-foreground">Total time:</span> {formatDuration(selectedPartStoredSeconds)}</div>
                     <div>Timer time: {formatDuration(selectedPartTimerSeconds)}</div>
                     <div className="flex items-center justify-between gap-3">
                       <span>Manual added time: {formatDuration(selectedPartManualSeconds)}</span>
                     </div>
-                    {showTimerDetails && partManualAdjustments.length ? (
+                        {partManualAdjustments.length ? (
                       <div className="mt-2 space-y-1">
                         {partManualAdjustments.map((adjustment: any) => (
                           <div key={adjustment.id}>
@@ -2837,7 +3032,7 @@ export default function OrderDetailPage() {
                         ))}
                       </div>
                     ) : null}
-                    {showTimerDetails && selectedPartDepartmentHistory.length ? (
+                        {selectedPartDepartmentHistory.length ? (
                       <div className="mt-3 space-y-2">
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Department history totals</div>
                         <div className="grid gap-2 md:grid-cols-2">
@@ -2865,16 +3060,16 @@ export default function OrderDetailPage() {
                     ) : null}
                   </div>
                 ) : null}
-                <div className="text-xs text-muted-foreground">
-                  {lastPartEvent ? (
-                    <span>
+                    <div className="text-xs text-muted-foreground">
+                      {lastPartEvent ? (
+                        <span>
                       Last action: <span className="font-medium text-foreground">{lastPartEvent.message}</span> ·{' '}
-                      {new Date(lastPartEvent.createdAt).toLocaleString()}
-                    </span>
-                  ) : (
-                    <span>Last action: none yet for this part.</span>
-                  )}
-                </div>
+                          {new Date(lastPartEvent.createdAt).toLocaleString()}
+                        </span>
+                      ) : (
+                        <span>Last action: none yet for this part.</span>
+                      )}
+                    </div>
                   </>
                 )}
               </div>
@@ -2980,14 +3175,61 @@ export default function OrderDetailPage() {
                       </span>
                     </div>
                     {selectedPartInstructions ? (
-                      <div className="rounded-md border border-border/60 bg-background/70 p-3 text-sm whitespace-pre-wrap text-foreground">
-                        {selectedPartInstructions}
+                      <div className="rounded-md border border-border/60 bg-background/70 p-3 text-sm text-foreground">
+                        <div className="space-y-4">
+                          {selectedPartInstructionSections.map((section, index) => (
+                            <div key={`${section.heading ?? 'notes'}-${index}`} className="space-y-2">
+                              {section.heading ? (
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                  {section.heading}
+                                </div>
+                              ) : null}
+                              <ul className="list-disc space-y-1 pl-5">
+                                {section.items.map((item, itemIndex) => (
+                                  <li key={`${index}-${itemIndex}`} className="leading-6 text-foreground">
+                                    {item}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : (
                       <div className="rounded-md border border-dashed border-border/70 bg-background/60 p-3 text-sm text-muted-foreground">
                         No part-specific instructions were entered for this job.
                       </div>
                     )}
+                    <div className="space-y-2 rounded-md border border-border/60 bg-background/60 p-3">
+                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Already read by</div>
+                      {selectedPartAcknowledgedReceipts.length ? (
+                        <div className="space-y-2">
+                          {selectedPartAcknowledgedReceipts.map((receipt: any) => {
+                            const workerName =
+                              receipt?.user?.name?.trim() ||
+                              receipt?.user?.email?.trim() ||
+                              receipt?.userId ||
+                              'Worker';
+                            const acknowledgedAtLabel = receipt?.acknowledgedAt
+                              ? new Date(receipt.acknowledgedAt).toLocaleString()
+                              : 'Time unavailable';
+                            return (
+                              <div
+                                key={receipt?.id ?? `${receipt?.userId ?? workerName}-${receipt?.acknowledgedAt ?? ''}`}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/10 px-3 py-2 text-sm"
+                              >
+                                <span className="font-medium text-foreground">{workerName}</span>
+                                <span className="text-xs text-muted-foreground">{acknowledgedAtLabel}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">
+                          Nobody has acknowledged this version for {selectedCurrentDepartment?.name ?? 'this department'} yet.
+                        </div>
+                      )}
+                    </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
                         type="button"
@@ -2999,6 +3241,8 @@ export default function OrderDetailPage() {
                             loading: false,
                             error: null,
                             pendingAction: null,
+                            workerId: currentUserId || timerWorkerOptions[0]?.id || '',
+                            pin: '',
                           })
                         }
                         disabled={!selectedPartInstructions || !selectedPartCurrentDepartmentId}

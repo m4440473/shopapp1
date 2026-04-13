@@ -1,6 +1,161 @@
 ## Session Metadata
 - Date: 2026-04-13
 - Agent: Codex GPT-5
+- Task ID: Queue priority + timer chips + Vendors pagination + completed department ownership
+- Goal: Make department queue cards prioritize active work, show active timers on the tile, preserve department ownership for completed/shipped parts, and add real pagination to the Vendors page.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the follow-up gaps in code:
+  - department queue ordering did not prioritize active timers,
+  - work-queue tiles did not surface active timers,
+  - completed/shipped parts were clearing `currentDepartmentId` and reading as unassigned,
+  - Vendors used one-way `Load more` instead of explicit pagination.
+
+## Plan First
+- [x] Enrich department feed orders with active timer data and sort active-timer orders first.
+- [x] Surface active timer chips on department queue cards.
+- [x] Preserve final department ownership when parts reach `COMPLETE` so `Show completed items` can surface them.
+- [x] Convert Vendors to page-based pagination with total count and prev/next controls.
+- [x] Run focused verification and update continuity docs plus lessons.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/components/ShopFloorLayouts.tsx" "src/components/work-queue/WorkQueueOrderCard.tsx" "src/modules/orders/orders.service.ts" "src/modules/orders/orders.types.ts" "src/app/admin/vendors/client.tsx" "src/app/admin/vendors/page.tsx" "src/app/api/admin/vendors/route.ts"`
+
+## Review + Results
+- Department work queue cards now put active-timer orders first and show small green active timer chips on the order tile.
+- Completed and shipped parts now keep their final department ownership instead of dropping into an unassigned/null department state, which lets `Show completed items` surface them in the dashboard.
+- Vendors now uses explicit page-based navigation with total counts instead of a one-way load-more flow.
+
+## Session Metadata
+- Date: 2026-04-13
+- Agent: Codex GPT-5
+- Task ID: Mark Shipped button parity fix
+- Goal: Make `Mark Shipped` use the same real button layout as the other timer-row actions.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the follow-up UI gap in code:
+  - the shipping action label had been renamed,
+  - but the control was still a custom checkbox wrapper rather than a peer button, so it did not visually match `Start timer` and `Move Dept.`.
+
+## Plan First
+- [x] Replace the shipping control wrapper with the same button component pattern used by the neighboring actions.
+- [x] Preserve the Shipping-only enable/disable guard and click behavior.
+- [x] Run focused verification and update continuity docs.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+## Review + Results
+- `Mark Shipped` now renders as a real outline button with the same sizing and layout pattern as the other timer-row actions.
+- The action keeps the same Shipping-only availability logic while looking visually consistent with the rest of the row.
+
+## Session Metadata
+- Date: 2026-04-13
+- Agent: Codex GPT-5
+- Task ID: Shipping action label + alignment polish
+- Goal: Rename the shipping completion control to `Mark Shipped` and align it visually with the rest of the timer action row.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current UI issue in code:
+  - the shipping action still used the longer `Complete in Shipping` label,
+  - its wrapper styling was visually less aligned with the neighboring action buttons.
+
+## Plan First
+- [x] Rename the shipping action label to `Mark Shipped`.
+- [x] Adjust the control wrapper to center and align visually with the rest of the timer row.
+- [x] Run focused verification and update continuity docs.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+## Review + Results
+- The shipping-only completion action now reads `Mark Shipped`.
+- The wrapper styling now centers the checkbox/label content so the control sits more cleanly in line with the neighboring timer-row actions.
+
+## Session Metadata
+- Date: 2026-04-13
+- Agent: Codex GPT-5
+- Task ID: Active timer chip stop affordance
+- Goal: Add a stop icon to each active timer chip and remove the duplicate standalone stop button so chip-click is the clear stop path.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current UI state in code:
+  - active timer chips already open the worker-specific stop/PIN flow,
+  - the main action row still exposed a separate generic `Stop` button,
+  - that made the stop affordance feel duplicated and less worker-specific than the chip flow itself.
+
+## Plan First
+- [x] Add a small stop glyph to each active timer chip.
+- [x] Remove the main-row `Stop` button so the chip list is the single stop affordance.
+- [x] Run focused verification and update continuity docs.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+## Review + Results
+- Active timer chips now display a stop icon at the end of the chip so the action reads more clearly.
+- The standalone `Stop` button was removed from the main timer row; stopping now happens by clicking the specific active timer chip for the worker you want to stop.
+
+## Session Metadata
+- Date: 2026-04-13
+- Agent: Codex GPT-5
+- Task ID: Live timer chips + instruction acknowledgement roster
+- Goal: Keep selected-part active timer chips ticking live on shared views and show who has already acknowledged the current Read Me First instruction version.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the follow-up issue in code:
+  - active timer chip elapsed labels were driven by a 1-second interval that only ran when `activeEntries.length > 0`,
+  - the chip list itself is driven by `selectedPartActivity.activeTimers`, so other-worker timers could freeze on screen,
+  - the `Read me first` panel already had receipt data available via `instructionReceipts` but did not surface the reader roster.
+
+## Plan First
+- [x] Move the live clock interval trigger to the selected part's active timer list.
+- [x] Add an acknowledgement roster for the current part/department/instruction version in the Read Me First panel.
+- [x] Run focused verification and update continuity docs.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+## Review + Results
+- Active timer chips on `/orders/[id]` now tick live for the selected part even when the logged-in viewer does not personally have an active timer.
+- The Read Me First area now shows who has already acknowledged the current instruction version for the selected part's current department, along with acknowledgement timestamps.
+
+## Session Metadata
+- Date: 2026-04-13
+- Agent: Codex GPT-5
+- Task ID: Mission brief worker PIN follow-up + quote-note bulletin formatting
+- Goal: Make mission-brief acknowledgement follow the selected timer worker during timer start, and present quote-derived required-reading notes as headed bullet sections instead of a flat block.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the prior timer-tile follow-up behavior in code:
+  - timer start already used selected worker + PIN through the kiosk dialog,
+  - mission-brief acknowledgement still posted as the logged-in browser user,
+  - quote-to-order `workInstructions` still only carried a subset of quote note content and rendered as one flat text block on order detail.
+
+## Plan First
+- [x] Check required-reading status against the selected timer worker instead of only the current browser session user.
+- [x] Add worker selection + PIN confirmation to the timer-start mission-brief gate and route the acknowledgement through a verified selected-worker path.
+- [x] Reformat quote-derived `workInstructions` into headed bullet sections and render that structure in the order-detail brief UI.
+- [x] Run focused verification and update continuity docs plus lessons.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx" "src/app/orders/new/page.tsx" "src/app/api/orders/[id]/parts/[partId]/acknowledge-instructions/route.ts"`
+
+## Review + Results
+- Timer start on `/orders/[id]` now opens the mission brief only when the selected worker still needs acknowledgement for the selected department, not just because the logged-in browser user has no receipt.
+- The timer-start mission-brief gate now lets the operator choose the worker and requires that worker's PIN before the acknowledgement is recorded for that worker.
+- The follow-up keeps checklist/submit acknowledgement behavior unchanged while making timer ownership and read receipts line up on shared floor stations.
+- Quote-derived required-reading text is now seeded from all original quote note-style fields and renders in order detail as heading + bullet sections for easier scanning.
+
+## Session Metadata
+- Date: 2026-04-13
+- Agent: Codex GPT-5
 - Task ID: Timer tile layout follow-up (dept + user + PIN flow)
 - Goal: Reshape the order-detail timer tile to match the requested department/user-first flow, fix the department dropdown reset bug, remove pause from the main tile, rename `Submit to` to `Move Dept.`, and restyle `Complete in Shipping` as a checkbox-style control.
 

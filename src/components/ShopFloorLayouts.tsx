@@ -415,7 +415,7 @@ export function ShopFloorLayouts({
             </div>
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <Checkbox checked={includeCompleted} onCheckedChange={(value) => setIncludeCompleted(value === true)} />
-              Include completed work in this department
+              Show completed items
             </label>
           </div>
           <div className="flex flex-wrap gap-2">
