@@ -60,6 +60,14 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-04-13 - Completed parts keep their final department for queue visibility; department queue prioritizes active timers
+Decision: When a part reaches `COMPLETE`, preserve its final `currentDepartmentId` instead of clearing it to null, and have the department work queue sort orders with active timers ahead of the rest while showing order-level active timer chips on the card.
+Reason: Nulling the department makes completed/shipped work look unassigned and prevents the existing `Show completed items` filter from surfacing finished parts in the queue operators expect. Active timers are the hottest work on the floor, so they should rise to the top of department cards without changing the rest of the queue model.
+
+### 2026-04-13 - Mission-brief acknowledgement follows the selected timer worker; quote-derived instructions are sectioned bullet notes
+Decision: Keep checklist/submit acknowledgement browser-user based, but when the order-detail timer flow is starting work for a selected worker, require mission-brief acknowledgement against that selected worker and verify it with that worker's PIN; seed quote-derived `workInstructions` as headed bullet sections covering all original quote note-style fields.
+Reason: Shared floor stations can have one browser login while a different worker is actually starting the timer, so the acknowledgement receipt must belong to the worker who will own the timer. Structuring quote-derived instructions makes the required-reading popup scan like a real shop bulletin instead of a flat text wall.
+
 ### 2026-04-10 - Order detail is now the primary kiosk-timing entry for floor users
 Decision: Keep the kiosk session/PIN/timer APIs and `/kiosk` route, but move the primary worker-facing kiosk timing flow back into `/orders/[id]` by opening an in-page PIN + part-picker dialog from the order-detail timer area for kiosk-enabled machinists.
 Reason: Floor users already live in order detail while reviewing notes/files/checklists, so sending them to a separate kiosk page for the same timer action adds friction without changing the timer enforcement model.

@@ -151,11 +151,25 @@ const buildConversionNote = (quote: any) => {
 };
 
 const buildConversionWorkInstructions = (quote: any, part: any) => {
-  const sections: string[] = [];
-  const quoteRequirements = typeof quote?.requirements === 'string' ? quote.requirements.trim() : '';
-  const partSpecificNote = typeof part?.notes === 'string' ? part.notes.trim() : '';
-  if (quoteRequirements) sections.push(`Quote requirements:\n${quoteRequirements}`);
-  if (partSpecificNote) sections.push(`Part-specific note:\n${partSpecificNote}`);
+  const toBulletLines = (value: unknown) =>
+    String(value ?? '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => `- ${line}`);
+  const buildSection = (heading: string, value: unknown) => {
+    const items = toBulletLines(value);
+    if (!items.length) return '';
+    return `${heading}:\n${items.join('\n')}`;
+  };
+
+  const sections = [
+    buildSection('Quote requirements', quote?.requirements),
+    buildSection('Quote notes', quote?.notes),
+    buildSection('Materials', quote?.materialSummary),
+    buildSection('Purchase items', quote?.purchaseItems),
+    buildSection('Part-specific notes', part?.notes),
+  ].filter(Boolean);
   return sections.join('\n\n').trim();
 };
 

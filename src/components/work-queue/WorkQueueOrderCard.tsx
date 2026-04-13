@@ -4,6 +4,15 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/Card';
 import type { DepartmentFeedOrder } from '@/modules/orders/orders.types';
 
+function formatDuration(seconds: number) {
+  const clamped = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(clamped / 3600);
+  const minutes = Math.floor((clamped % 3600) / 60);
+  const secs = clamped % 60;
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
+}
+
 export function WorkQueueOrderCard({
   order,
   selectedDepartmentName,
@@ -37,6 +46,24 @@ export function WorkQueueOrderCard({
           <div>Due {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : 'TBD'}</div>
           <div>{order.assignedMachinistName ?? 'Unassigned'}</div>
         </div>
+
+        {order.activeTimers.length ? (
+          <div className="flex flex-wrap gap-2">
+            {order.activeTimers.map((timer) => (
+              <span
+                key={timer.id}
+                className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-100"
+                title={
+                  timer.partNumber
+                    ? `${timer.userName} on ${timer.partNumber}${timer.departmentName ? ` in ${timer.departmentName}` : ''}`
+                    : `${timer.userName}${timer.departmentName ? ` in ${timer.departmentName}` : ''}`
+                }
+              >
+                {timer.userName}, {formatDuration(timer.elapsedSeconds)}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="rounded-lg border border-border/50 bg-muted/10 px-3 py-2">Parts here: {order.partsInDeptCount}</div>

@@ -1,3 +1,86 @@
+### 2026-04-13 - Department queue now prioritizes active timers, shows timer chips, preserves completed department ownership, and Vendors has pagination
+- Updated `src/modules/orders/orders.service.ts` and `src/components/work-queue/WorkQueueOrderCard.tsx` so department work-queue cards now:
+  - sort orders with active timers to the top before the existing flagged/due-date ordering,
+  - display small green active-timer chips on each order tile showing worker + elapsed time.
+- Updated completion routing in `src/modules/orders/orders.service.ts` so completed/shipped parts keep their final department ownership instead of falling back to an unassigned/null department:
+  - manual `Mark Shipped` completion now preserves `Shipping`,
+  - department-submit completion now preserves the last department when the part reaches `COMPLETE`.
+- Updated `src/components/ShopFloorLayouts.tsx` so the existing checkbox label now reads `Show completed items`, matching the completed-item visibility behavior for department feeds.
+- Updated the Vendors admin list in:
+  - `src/app/admin/vendors/page.tsx`,
+  - `src/app/admin/vendors/client.tsx`,
+  - `src/app/api/admin/vendors/route.ts`
+  so it now uses page-based pagination with `Previous` / `Next` controls and total-count awareness instead of a one-way `Load more` flow.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/components/ShopFloorLayouts.tsx" "src/components/work-queue/WorkQueueOrderCard.tsx" "src/modules/orders/orders.service.ts" "src/modules/orders/orders.types.ts" "src/app/admin/vendors/client.tsx" "src/app/admin/vendors/page.tsx" "src/app/api/admin/vendors/route.ts"`
+
+Verification note:
+- Targeted ESLint passed on all touched files.
+
+### 2026-04-13 - Mark Shipped now uses the same button layout as the timer actions
+- Updated `src/app/orders/[id]/page.tsx` so `Mark Shipped` is now a real outline button with the same size/layout treatment as `Start timer` and `Move Dept.` instead of a custom checkbox wrapper.
+- Added a small shipped-state icon and kept the same Shipping-only enable/disable behavior.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+Verification note:
+- Targeted ESLint passed.
+
+### 2026-04-13 - Shipping completion control renamed and aligned
+- Updated `src/app/orders/[id]/page.tsx` so the shipping-only completion control now reads `Mark Shipped` instead of `Complete in Shipping`.
+- Tightened the control wrapper so it uses the same centered, button-like alignment as the rest of the timer action row.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+Verification note:
+- Targeted ESLint passed.
+
+### 2026-04-13 - Active timer chips now own the stop action
+- Updated `src/app/orders/[id]/page.tsx` so each active timer chip now shows a small stop icon at the end of the chip.
+- Removed the separate `Stop` button from the main timer action row; stopping a timer from the part controls now happens by clicking the specific active timer chip for that worker.
+- This keeps the start action as the single main-row button and makes the stop affordance match the worker-specific timer chips.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+Verification note:
+- Targeted ESLint passed.
+
+### 2026-04-13 - Active timer chips now tick live and Read Me First shows acknowledgement roster
+- Updated `src/app/orders/[id]/page.tsx` so the active timer chip clock now refreshes from the selected part's `activeTimers` data instead of only from the logged-in user's `activeEntries`.
+- This fixes the shared-view case where another worker's timer chip stayed frozen until a full page refresh.
+- Added an `Already read by` list to the `Read me first` card that shows which users have acknowledged the current instruction version for the selected part's current department, along with acknowledgement timestamps.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx"`
+
+Verification note:
+- Targeted ESLint passed.
+
+### 2026-04-13 - Mission brief now supports selected-worker PIN acknowledgement and structured quote-note bullets
+- Updated `src/app/orders/[id]/page.tsx` so the mission-brief / required-reading flow now checks acknowledgement against the selected timer worker before opening the timer PIN dialog.
+- When that selected worker has not acknowledged the current part/department instructions yet, the mission-brief popup now:
+  - lets the operator choose the worker in the popup,
+  - requires that worker's PIN before recording the acknowledgement,
+  - carries the selected worker + PIN forward into the existing timer start dialog so the operator does not have to change identities in the browser session first.
+- Reworked mission-brief rendering on order detail so `workInstructions` now display as headed bullet sections instead of one flat text block wherever possible.
+- Updated quote-to-order instruction seeding in `src/app/orders/new/page.tsx` so newly converted orders now carry all of the original quote note-style fields into `workInstructions` as structured sections:
+  - `Quote requirements`,
+  - `Quote notes`,
+  - `Materials`,
+  - `Purchase items`,
+  - `Part-specific notes`.
+- Updated `src/app/api/orders/[id]/parts/[partId]/acknowledge-instructions/route.ts` so acknowledgement can be recorded for a selected worker after that worker's PIN is verified, instead of always forcing the logged-in browser user as the receipt owner.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/orders/[id]/page.tsx" "src/app/orders/new/page.tsx" "src/app/api/orders/[id]/parts/[partId]/acknowledge-instructions/route.ts"`
+
+Verification note:
+- Targeted ESLint passed on all touched files.
+
 ### 2026-04-13 - Timer tile now uses department + user selection before PIN start/stop
 - Updated `src/app/orders/[id]/page.tsx` so the main timer tile now presents:
   - department selector,

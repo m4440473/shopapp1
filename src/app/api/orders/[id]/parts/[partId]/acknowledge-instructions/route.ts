@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessMachinist } from '@/lib/rbac';
+import { unlockKioskByWorkerPin } from '@/modules/kiosk/kiosk.service';
 import { acknowledgePartInstructions, getPartInstructionStatus } from '@/modules/orders/orders.service';
 
 export async function GET(
@@ -39,15 +40,32 @@ export async function POST(
   const { id, partId } = await params;
   const body = await req.json().catch(() => null);
   const departmentId = typeof body?.departmentId === 'string' ? body.departmentId.trim() : '';
+  const requestedWorkerId = typeof body?.workerId === 'string' ? body.workerId.trim() : '';
+  const workerPin = typeof body?.pin === 'string' ? body.pin.trim() : '';
   if (!departmentId) {
     return NextResponse.json({ error: 'departmentId is required.' }, { status: 400 });
+  }
+
+  let acknowledgementUserId = (session.user as any)?.id as string;
+  if (requestedWorkerId) {
+    if (!workerPin) {
+      return NextResponse.json({ error: 'pin is required when workerId is provided.' }, { status: 400 });
+    }
+    const unlockResult = await unlockKioskByWorkerPin({
+      userId: requestedWorkerId,
+      pin: workerPin,
+    });
+    if (unlockResult.ok === false) {
+      return NextResponse.json({ error: unlockResult.error }, { status: unlockResult.status });
+    }
+    acknowledgementUserId = requestedWorkerId;
   }
 
   const result = await acknowledgePartInstructions({
     orderId: id,
     partId,
     departmentId,
-    userId: (session.user as any)?.id as string,
+    userId: acknowledgementUserId,
   });
   if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });

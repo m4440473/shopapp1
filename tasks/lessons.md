@@ -58,3 +58,14 @@ Record lessons after user corrections or process failures.
 ## 2026-02-23 — Tooling correction: patch workflow
 - When editing files, use the dedicated patch workflow/tool instead of invoking `apply_patch` through a generic shell execution command.
 - Before running patch operations, sanity-check that command/tool usage follows the repository interaction rules for this environment.
+## 2026-04-13 - Queue ownership and completion visibility must stay operator-visible
+- Trigger: User called out that active work should float to the top of department sorts, completed/shipped parts should not fall into an unassigned department state, and Vendors needed real pagination instead of endless load-more.
+- Mistake pattern: I left dashboard queue ordering too passive, let completion clear visible department ownership, and accepted a one-way list browsing pattern in admin where page navigation was expected.
+- Preventive rule: For floor queues, prioritize active work visually and preserve final ownership context for completed items; for admin tables that can grow, default to explicit pagination controls rather than assuming `Load more` is good enough.
+- Applied in next session where: 2026-04-13 queue priority + timer chips + Vendors pagination + completed department ownership.
+
+## 2026-04-13 - Timer/read-gate ownership must follow the selected worker, not the browser login
+- Trigger: User clarified that the required-reading popup was still effectively tied to the logged-in browser identity, which breaks shared-station timing when Bill starts work while Matt is logged in.
+- Mistake pattern: I reused the browser-session acknowledgement path for a worker-owned timer flow and only seeded a narrow subset of quote notes into the required-reading text.
+- Preventive rule: For shared-station timer flows, audit every read/acknowledgement step against the actual worker who will own the timer, and when quote content feeds required-reading text, include all original quote note-style fields in a structured, scannable format.
+- Applied in next session where: 2026-04-13 mission-brief worker PIN follow-up + quote-note bulletin formatting.

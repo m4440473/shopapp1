@@ -77,9 +77,11 @@ const EMPTY_IMPORT_MAPPING = {
   duplicateMode: 'skip' as 'skip' | 'update',
 };
 
-export default function Client({ initial }: { initial: { items?: Item[]; nextCursor?: string | null } }) {
+export default function Client({ initial }: { initial: { items?: Item[]; totalCount?: number; page?: number; pageSize?: number } }) {
   const [items, setItems] = useState<Item[]>(initial.items ?? []);
-  const [nextCursor, setNextCursor] = useState<string | null>(initial.nextCursor ?? null);
+  const [page, setPage] = useState<number>((initial as any).page ?? 1);
+  const [pageSize] = useState<number>((initial as any).pageSize ?? 20);
+  const [totalCount, setTotalCount] = useState<number>((initial as any).totalCount ?? (initial.items?.length ?? 0));
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<DialogState>(null);
   const [form, setForm] = useState({
@@ -146,13 +148,17 @@ export default function Client({ initial }: { initial: { items?: Item[]; nextCur
     }));
   }, [importPreview]);
 
-  async function refresh(cursor?: string) {
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  async function refresh(nextPage = page) {
     const qs = new URLSearchParams();
     if (query) qs.set('q', query);
-    if (cursor) qs.set('cursor', cursor);
-    const data = await fetchJson<{ items?: Item[]; nextCursor?: string | null }>('/api/admin/vendors?' + qs.toString());
-    setItems(cursor ? [...items, ...(data.items ?? [])] : data.items ?? []);
-    setNextCursor(data.nextCursor ?? null);
+    qs.set('page', String(nextPage));
+    qs.set('take', String(pageSize));
+    const data = await fetchJson<{ items?: Item[]; totalCount?: number; page?: number; pageSize?: number }>('/api/admin/vendors?' + qs.toString());
+    setItems(data.items ?? []);
+    setTotalCount(typeof data.totalCount === 'number' ? data.totalCount : 0);
+    setPage(typeof data.page === 'number' ? data.page : nextPage);
   }
 
   async function save() {
@@ -175,12 +181,12 @@ export default function Client({ initial }: { initial: { items?: Item[]; nextCur
         setItems(items.map((i) => (i.id === dialog.data?.id ? res.item : i)));
         toast.push('Vendor updated', 'success');
       } else {
-        const res = await fetchJson<{ item: Item }>('/api/admin/vendors', {
+        await fetchJson<{ item: Item }>('/api/admin/vendors', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        setItems([res.item, ...items]);
+        await refresh(1);
         toast.push('Vendor created', 'success');
       }
       setDialog(null);
@@ -191,7 +197,8 @@ export default function Client({ initial }: { initial: { items?: Item[]; nextCur
 
   async function remove(row: Item) {
     await fetchJson('/api/admin/vendors/' + row.id, { method: 'DELETE' });
-    setItems(items.filter((i) => i.id !== row.id));
+    const nextPage = Math.max(1, page);
+    await refresh(nextPage);
     toast.push('Vendor deleted', 'success');
   }
 
@@ -247,7 +254,7 @@ export default function Client({ initial }: { initial: { items?: Item[]; nextCur
         setImportResult(null);
       } else {
         setImportResult(body as ImportResult);
-        await refresh();
+        await refresh(1);
         toast.push('Vendor import complete', 'success');
       }
     } catch (error: any) {
@@ -648,7 +655,7 @@ export default function Client({ initial }: { initial: { items?: Item[]; nextCur
             placeholder="Search"
             className="w-full max-w-xs"
           />
-          <Button variant="outline" onClick={() => refresh()}>
+          <Button variant="outline" onClick={() => void refresh(1)}>
             Search
           </Button>
           <div className="flex-1" />
@@ -663,13 +670,19 @@ export default function Client({ initial }: { initial: { items?: Item[]; nextCur
           actionsEnabled={isAdmin}
         />
 
-        {nextCursor && (
-          <div className="flex justify-center">
-            <Button variant="outline" onClick={() => refresh(nextCursor)}>
-              Load more
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+          <span>
+            Page {page} of {totalPages} · {totalCount} vendor{totalCount === 1 ? '' : 's'}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" disabled={page <= 1} onClick={() => void refresh(page - 1)}>
+              Previous
+            </Button>
+            <Button variant="outline" disabled={page >= totalPages} onClick={() => void refresh(page + 1)}>
+              Next
             </Button>
           </div>
-        )}
+        </div>
       </div>
 
       <Dialog open={dialog !== null} onOpenChange={(open) => !open && setDialog(null)}>

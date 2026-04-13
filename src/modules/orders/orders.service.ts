@@ -764,7 +764,7 @@ export async function getOrderDetails(
         const isComplete = part.status === 'COMPLETE';
         const fallbackDepartmentId =
           isComplete
-            ? null
+            ? part.currentDepartmentId ?? null
             : part.currentDepartmentId ?? departments[0]?.id ?? null;
         return {
           ...part,
@@ -1992,7 +1992,7 @@ export async function submitDepartmentComplete({
       return { currentDepartmentId: nextDepartmentId, status: 'IN_PROGRESS' as const };
     }
 
-    await updatePartCurrentDepartment(partId, null, tx);
+    await updatePartCurrentDepartment(partId, currentDepartmentId, tx);
     await recordPartEvent({
       orderId,
       partId,
@@ -2001,13 +2001,13 @@ export async function submitDepartmentComplete({
       message: 'All departments submitted complete. Part marked complete.',
       meta: {
         fromDepartmentId: currentDepartmentId,
-        toDepartmentId: null,
+        toDepartmentId: currentDepartmentId,
         transitionType: 'manual_submit',
         additionalSeconds: additionalSeconds ?? 0,
         adjustmentNote: adjustmentNote?.trim() || null,
       },
     }, tx);
-    return { currentDepartmentId: null, status: 'COMPLETE' as const };
+    return { currentDepartmentId, status: 'COMPLETE' as const };
   });
 
   await syncOrderWorkflowStatus(orderId, { userId: userId ?? null });
@@ -2050,7 +2050,7 @@ export async function completeOrderPart({
     return fail(409, 'Part can only be manually completed from Shipping.');
   }
 
-  const updated = await updateOrderPart(partId, { status: 'COMPLETE', currentDepartmentId: null });
+  const updated = await updateOrderPart(partId, { status: 'COMPLETE', currentDepartmentId });
 
   await recordPartEvent({
     orderId,
@@ -2170,11 +2170,16 @@ export async function getOrderDepartmentFeed(
 ): Promise<ServiceResult<{ items: DepartmentFeedOrder[] }>> {
   if (!departmentId) return fail(400, 'Department is required');
   const readyParts = await listReadyOrderPartsForDepartment(departmentId, includeCompleted);
+  const readyPartIds = readyParts.map((part: any) => part.id).filter(Boolean);
+  const partActivityById = readyPartIds.length
+    ? buildPartActivityByPart(readyPartIds, await listTimeEntriesForPartsDetailed(readyPartIds))
+    : {};
   const orders = new Map<string, DepartmentFeedOrder>();
 
   readyParts.forEach((part: any) => {
     const order = part.order;
     if (!order) return;
+    const partActivity = partActivityById[part.id] ?? { activeTimers: [], timeByUser: [], totalSeconds: 0 };
 
     const parsedEvents = (part.partEvents ?? []).map((event: any) => {
       if (typeof event.meta === 'string') {
@@ -2204,6 +2209,8 @@ export async function getOrderDepartmentFeed(
         openChecklistCount: 0,
         flaggedCount: 0,
         latestActivityAt: null,
+        activeTimerCount: 0,
+        activeTimers: [],
         parts: [],
       };
 
@@ -2221,6 +2228,23 @@ export async function getOrderDepartmentFeed(
     existing.partsInDeptCount += 1;
     existing.openChecklistCount += Math.max(checklistTotalCount - checklistDoneCount, 0);
     if (flaggedEvent) existing.flaggedCount += 1;
+    const activeTimers = Array.isArray(partActivity.activeTimers) ? partActivity.activeTimers : [];
+    activeTimers.forEach((timer: any) => {
+      existing.activeTimers.push({
+        id: String(timer?.id ?? `${part.id}-${timer?.userId ?? 'worker'}`),
+        userId: typeof timer?.userId === 'string' ? timer.userId : null,
+        userName: getUserLabel(timer?.user ?? null),
+        elapsedSeconds: Number(timer?.elapsedSeconds ?? 0),
+        departmentId: typeof timer?.departmentId === 'string' ? timer.departmentId : null,
+        departmentName:
+          typeof timer?.departmentName === 'string' && timer.departmentName.trim().length
+            ? timer.departmentName
+            : part.currentDepartment?.name ?? null,
+        partId: part.id,
+        partNumber: part.partNumber ?? null,
+      });
+      existing.activeTimerCount += 1;
+    });
 
     const eventAt = flaggedEvent?.createdAt ? new Date(flaggedEvent.createdAt) : null;
     if (eventAt && !Number.isNaN(eventAt.getTime())) {
@@ -2235,6 +2259,7 @@ export async function getOrderDepartmentFeed(
 
   const items = Array.from(orders.values())
     .sort((a, b) => {
+      if (a.activeTimerCount !== b.activeTimerCount) return b.activeTimerCount - a.activeTimerCount;
       if (a.flaggedCount !== b.flaggedCount) return b.flaggedCount - a.flaggedCount;
       const aDue = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
       const bDue = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
@@ -2243,6 +2268,12 @@ export async function getOrderDepartmentFeed(
     })
     .map((order) => ({
       ...order,
+      activeTimers: [...order.activeTimers]
+        .sort((a, b) => {
+          if (b.elapsedSeconds !== a.elapsedSeconds) return b.elapsedSeconds - a.elapsedSeconds;
+          return a.userName.localeCompare(b.userName, undefined, { sensitivity: 'base' });
+        })
+        .slice(0, 6),
       parts: [...order.parts].sort((a, b) => {
         if (a.flagged !== b.flagged) return a.flagged ? -1 : 1;
         return (a.partNumber ?? '').localeCompare((b.partNumber ?? ''), undefined, { numeric: true, sensitivity: 'base' });

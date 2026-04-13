@@ -28,8 +28,9 @@ export async function GET(req: NextRequest) {
   if (guard) return guard;
   const { searchParams } = new URL(req.url);
   const q = searchParams.get('q') || undefined;
-  const cursor = searchParams.get('cursor');
-  const take = Number(searchParams.get('take') || '20');
+  const page = Math.max(1, Number(searchParams.get('page') || '1'));
+  const take = Math.min(100, Math.max(1, Number(searchParams.get('take') || '20')));
+  const skip = (page - 1) * take;
 
   const where = q
     ? ({
@@ -43,15 +44,16 @@ export async function GET(req: NextRequest) {
         ],
       } as any)
     : undefined;
-  const items = await prisma.vendor.findMany({
-    where,
-    orderBy: { id: 'asc' },
-    take: take + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-  });
-  const nextCursor = items.length > take ? (items[take] as any).id : null;
-  if (nextCursor) items.pop();
-  return NextResponse.json({ items, nextCursor });
+  const [items, totalCount] = await Promise.all([
+    prisma.vendor.findMany({
+      where,
+      orderBy: { id: 'asc' },
+      skip,
+      take,
+    }),
+    prisma.vendor.count({ where }),
+  ]);
+  return NextResponse.json({ items, totalCount, page, pageSize: take });
 }
 
 export async function POST(req: NextRequest) {
