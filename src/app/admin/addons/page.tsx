@@ -27,7 +27,7 @@ export default async function Page() {
       <NavTabs />
       <h1 className="text-xl font-semibold mb-3">Add-ons</h1>
       <p className="text-sm text-muted-foreground mb-6">
-        Configure hourly or flat-rate services that can be attached to quotes and orders. Rates are only visible to admins.
+        Configure hourly, per-foot, or flat-rate services that can be attached to quotes and orders. Rates are only visible to admins.
       </p>
       <ToastProvider>
         <Client initial={initial} />

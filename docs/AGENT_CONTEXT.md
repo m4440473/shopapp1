@@ -60,6 +60,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-04-14 - Quote origin department/custom amounts live in quote metadata; add-on rate types now include per-foot
+Decision: Extend quote workflow persistence by storing `originDepartmentId` and titled `customAmounts` in quote metadata, keep add-on/quote selection rate types string-based while adding `PER_FOOT`, and have quote conversion map custom amounts into non-checklist `CUSTOM` order charges using the quote origin department (or first active department fallback) while seeding converted parts to that same starting department.
+Reason: The owner needs quote-specific routing/pricing behavior without widening the Prisma quote schema unnecessarily, and the existing metadata + string snapshot contracts already provide a stable extension point. Mapping conversion through the saved origin department lets Paint-origin quotes start in Paint instead of defaulting to Machining, while custom amounts still satisfy the all-charges-are-per-part order model.
+
 ### 2026-04-13 - Completed parts keep their final department for queue visibility; department queue prioritizes active timers
 Decision: When a part reaches `COMPLETE`, preserve its final `currentDepartmentId` instead of clearing it to null, and have the department work queue sort orders with active timers ahead of the rest while showing order-level active timer chips on the card.
 Reason: Nulling the department makes completed/shipped work look unassigned and prevents the existing `Show completed items` filter from surfacing finished parts in the queue operators expect. Active timers are the hottest work on the floor, so they should rise to the top of department cards without changing the rest of the queue model.

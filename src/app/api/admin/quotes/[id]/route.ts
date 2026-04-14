@@ -97,17 +97,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const existingMetadata = parseQuoteMetadata(existing.metadata) ?? DEFAULT_QUOTE_METADATA;
-  const nextMetadata = parsed.data.partPricing
-    ? {
-        ...existingMetadata,
-        partPricing: parsed.data.partPricing.map((entry) => ({
+  const nextMetadata = {
+    ...existingMetadata,
+    originDepartmentId: parsed.data.originDepartmentId ?? null,
+    partPricing: parsed.data.partPricing
+      ? parsed.data.partPricing.map((entry) => ({
           name: entry.name ?? null,
           partNumber: entry.partNumber ?? null,
           priceCents: entry.priceCents ?? 0,
           pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
-        })),
-      }
-    : existingMetadata;
+        }))
+      : existingMetadata.partPricing,
+    customAmounts: parsed.data.customAmounts
+      ? parsed.data.customAmounts.map((entry) => ({
+          title: entry.title,
+          amountCents: entry.amountCents ?? 0,
+        }))
+      : existingMetadata.customAmounts,
+  };
 
   const customFieldValues = parsed.data.customFieldValues ?? [];
   const validCustomFieldValues = customFieldValues.length

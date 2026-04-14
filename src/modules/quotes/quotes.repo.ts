@@ -12,6 +12,7 @@ import {
   type QuoteApprovalMetadata,
 } from '@/lib/quote-metadata';
 import { buildChecklistEntriesFromQuoteSelections } from './quote-work-items';
+import { buildOrderChargeEntriesFromQuoteData } from './quote-work-items';
 
 export async function listQuotes({
   where,
@@ -112,11 +113,16 @@ export async function createQuoteWithDetails({
         totalCents: prepared.totalCents,
         metadata: stringifyQuoteMetadata({
           ...DEFAULT_QUOTE_METADATA,
+          originDepartmentId: data.originDepartmentId ?? null,
           partPricing: data.partPricing?.map((entry: any) => ({
             name: entry.name ?? null,
             partNumber: entry.partNumber ?? null,
             priceCents: entry.priceCents ?? 0,
             pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
+          })),
+          customAmounts: data.customAmounts?.map((entry: any) => ({
+            title: entry.title?.trim() ?? '',
+            amountCents: entry.amountCents ?? 0,
           })),
         }),
         createdById: userId,
@@ -601,6 +607,19 @@ async function generateNextOrderNumberInTx(tx: any, business: BusinessCode) {
   return `${prefix}-${maxValue + 1}`;
 }
 
+async function resolveQuoteOriginDepartmentId(tx: any, preferredDepartmentId: string | null | undefined) {
+  const departments = await tx.department.findMany({
+    where: { isActive: true },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    select: { id: true },
+  });
+  if (!departments.length) return null;
+  if (preferredDepartmentId && departments.some((department: { id: string }) => department.id === preferredDepartmentId)) {
+    return preferredDepartmentId;
+  }
+  return departments[0]?.id ?? null;
+}
+
 export async function convertQuoteToOrder({
   quote,
   metadata,
@@ -650,6 +669,10 @@ export async function convertQuoteToOrder({
 }) {
   return prisma.$transaction(async (tx) => {
     const orderNumber = await generateNextOrderNumberInTx(tx, quote.business as BusinessCode);
+    const originDepartmentId = await resolveQuoteOriginDepartmentId(
+      tx,
+      typeof metadata?.originDepartmentId === 'string' ? metadata.originDepartmentId : null
+    );
 
     const order = await tx.order.create({
       data: {
@@ -688,6 +711,7 @@ export async function convertQuoteToOrder({
             partNumber: part.partNumber,
             quantity: part.quantity,
             materialId: part.materialId,
+            currentDepartmentId: originDepartmentId,
             stockSize: part.stockSize ?? null,
             cutLength: part.cutLength ?? null,
             notes: part.notes ?? undefined,
@@ -748,28 +772,29 @@ export async function convertQuoteToOrder({
         })) ?? [];
 
     const allSelections = [...quotePartSelections, ...legacySelections];
-    const chargeSelections = allSelections.filter(
-      (entry: any) =>
-        entry.orderPartId &&
-        entry.selection.addon?.departmentId &&
-        entry.selection.addon?.affectsPrice !== false
-    );
+    const chargeData = buildOrderChargeEntriesFromQuoteData({
+      orderId: order.id,
+      selections: allSelections,
+      customAmounts: metadata?.customAmounts,
+      customAmountPartId: orderParts[0]?.id ?? null,
+      fallbackDepartmentId: originDepartmentId,
+    });
 
-    if (chargeSelections.length) {
+    if (chargeData.length) {
       await Promise.all(
-        chargeSelections.map(({ selection, orderPartId }: any, index: number) =>
+        chargeData.map((charge) =>
           tx.orderCharge.create({
             data: {
-              orderId: order.id,
-              partId: orderPartId!,
-              departmentId: selection.addon?.departmentId ?? '',
-              addonId: selection.addonId,
-              kind: 'ADDON',
-              name: selection.addon?.name ?? 'Add-on',
-              description: selection.notes ?? null,
-              quantity: new Prisma.Decimal(selection.units ?? 0),
-              unitPrice: new Prisma.Decimal(selection.rateCents ?? 0),
-              sortOrder: index,
+              orderId: charge.orderId,
+              partId: charge.partId,
+              departmentId: charge.departmentId,
+              addonId: charge.addonId,
+              kind: charge.kind,
+              name: charge.name,
+              description: charge.description,
+              quantity: new Prisma.Decimal(charge.quantity),
+              unitPrice: new Prisma.Decimal(charge.unitPriceCents),
+              sortOrder: charge.sortOrder,
             },
           })
         )

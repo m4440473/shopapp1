@@ -2736,3 +2736,41 @@ Commands run:
 - Next if we continue here: fix the repo-wide type-check baseline or split the remaining UI polish into smaller validation-targeted passes.
 
 
+# tasks/todo.md - Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-14
+- Agent: Codex GPT-5
+- Task ID: Quote origin department + per-foot pricing + custom quote amount
+- Goal: Let admins assign a quote origin/default department, support per-foot pricing for paint add-ons/labor/checklist items, and add titled custom quote amounts that flow through quote review and quote-to-order/invoice-related charge generation.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated the current gap in code:
+  - quote review totals already compute part-pricing overrides in the client, but quote prep/conversion still only persist the older pricing fields,
+  - add-on pricing currently assumes only `HOURLY` or `FLAT`,
+  - quote conversion currently stamps order charges directly from quote add-on selections and add-on department/rate snapshots, so new quote pricing fields must survive conversion rather than staying UI-only.
+
+## Plan First
+- [x] Extend the quote/add-on persistence contracts for origin department, per-foot pricing metadata, and titled custom quote amounts with minimal schema changes.
+- [x] Update shared quote/pricing helpers and quote-to-order conversion so saved quote data maps cleanly into order charges and downstream print/invoice data.
+- [x] Update the quote editor UI/review step to expose origin department, per-foot unit entry, and titled custom amount rows.
+- [x] Run targeted verification and refresh continuity docs plus any lesson learned if needed.
+
+## Verification Checklist
+- [x] No Prisma migration required: reused existing string-based add-on rate fields plus quote metadata for origin department and custom amount persistence.
+- [x] `npx eslint --ext .ts,.tsx -- "src/app/admin/addons/client.tsx" "src/app/admin/addons/page.tsx" "src/app/admin/quotes/QuoteEditor.tsx" "src/app/admin/quotes/[id]/page.tsx" "src/app/admin/quotes/[id]/print/page.tsx" "src/app/orders/new/page.tsx" "src/components/AvailableItemsLibrary.tsx" "src/components/AssignedItemsPanel.tsx" "src/lib/zod.ts" "src/lib/quote-metadata.ts" "src/modules/pricing/work-item-pricing.ts" "src/modules/pricing/__tests__/work-item-pricing.test.ts" "src/modules/quotes/quotes.schema.ts" "src/modules/quotes/quotes.service.ts" "src/modules/quotes/quotes.repo.ts" "src/modules/quotes/quote-work-items.ts" "src/modules/quotes/__tests__/quote-work-items.test.ts" "src/modules/quotes/__tests__/quote-totals.test.ts" "src/app/api/admin/quotes/[id]/route.ts"`
+- [x] `npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts src/modules/quotes/__tests__/quote-work-items.test.ts src/modules/quotes/__tests__/quote-totals.test.ts` *(outside-sandbox rerun after Windows `spawn EPERM` from sandboxed esbuild startup)*
+
+## Review + Results
+- Add-ons now support `PER_FOOT` alongside `HOURLY` and `FLAT`, and the shared pricing/UI helpers now label rates and units consistently as hours, feet, or quantity.
+- Quote review now exposes:
+  - an optional origin/default department for conversion,
+  - titled custom amount rows,
+  - updated totals that include custom amounts and preserve part-pricing override behavior.
+- Quote persistence now stores origin department and custom amounts in quote metadata without introducing a new DB schema surface.
+- Quote detail/print views now include custom amount totals and clearer unit labels for quoted add-ons.
+- Quote conversion now:
+  - starts converted order parts in the quote origin department when one is set,
+  - converts custom quote amounts into non-checklist `CUSTOM` order charges on the first part using the origin/fallback department,
+  - keeps the existing add-on/checklist conversion flow intact.

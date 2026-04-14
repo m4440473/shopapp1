@@ -47,7 +47,10 @@ import { hasCustomFieldValue } from '@/lib/custom-field-values';
 import {
   calculateAssignmentTotalCents,
   calculateWorkItemsSubtotalCents,
+  formatWorkItemRateLabel,
+  getWorkItemUnitsLabel,
   getWorkItemPricingSemantic,
+  type WorkItemRateType,
 } from '@/modules/pricing/work-item-pricing';
 import { calculatePartLotTotal, type PartPricingMode } from '@/modules/pricing/part-pricing';
 import type { RepeatOrderTemplateDetail } from '@/modules/repeat-orders/repeat-orders.types';
@@ -71,7 +74,7 @@ type AddonOption = {
   id: string;
   name: string;
   description?: string | null;
-  rateType?: 'HOURLY' | 'FLAT';
+  rateType?: WorkItemRateType;
   rateCents?: number;
   active?: boolean;
   affectsPrice?: boolean;
@@ -1659,7 +1662,8 @@ function NewOrderForm() {
                           const totalCents = calculateAssignmentTotalCents({ item, units });
                           return (
                             <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
-                              {formatCurrency(item.rateCents)} x {units.toFixed(2)} = {formatCurrency(totalCents)}
+                              {formatWorkItemRateLabel(item)} x {units.toFixed(2)} {getWorkItemUnitsLabel(item.rateType, 'short')} ={' '}
+                              {formatCurrency(totalCents)}
                             </div>
                           );
                         }}

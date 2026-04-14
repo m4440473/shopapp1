@@ -51,7 +51,10 @@ import {
   calculateAssignmentTotalCents,
   calculatePartPricingSummaryTotalsCents,
   calculateWorkItemsSubtotalCents,
+  formatWorkItemRateLabel,
+  getWorkItemUnitsLabel,
   getWorkItemPricingSemantic,
+  type WorkItemRateType,
 } from '@/modules/pricing/work-item-pricing';
 import { calculatePartLotTotal, calculatePartUnitPrice, type PartPricingMode } from '@/modules/pricing/part-pricing';
 import {
@@ -61,6 +64,7 @@ import {
   type QuoteAddonPreset,
   type QuoteAddonPresetItem,
 } from '@/modules/quotes/quote-addon-bulk';
+import { sumQuoteCustomAmountsCents, type QuoteCustomAmountEntry } from '@/lib/quote-metadata';
 
 import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
 
@@ -78,13 +82,20 @@ type Option = {
 type AddonOption = {
   id: string;
   name: string;
-  rateType: 'HOURLY' | 'FLAT';
+  rateType: WorkItemRateType;
   rateCents: number;
   active: boolean;
   affectsPrice: boolean;
   isChecklistItem: boolean;
   description?: string | null;
   department?: { id: string; name: string } | null;
+};
+
+type DepartmentOption = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
 };
 
 type QuotePartState = {
@@ -117,6 +128,12 @@ type QuoteAddonState = {
   addonId: string;
   units: string;
   notes: string;
+};
+
+type QuoteCustomAmountState = {
+  key: string;
+  title: string;
+  amount: string;
 };
 
 const QUOTE_ADDON_PRESETS_STORAGE_KEY = 'quote-addon-presets-v1';
@@ -216,12 +233,14 @@ type QuoteDetail = {
     value: unknown;
   }>;
   metadata?: {
+    originDepartmentId?: string | null;
     partPricing?: Array<{
       name?: string | null;
       partNumber?: string | null;
       priceCents: number;
       pricingMode?: PartPricingMode;
     }>;
+    customAmounts?: QuoteCustomAmountEntry[];
   } | null;
 };
 
@@ -265,6 +284,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addons, setAddons] = useState<AddonOption[]>([]);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [vendors, setVendors] = useState<Option[]>([]);
   const [customers, setCustomers] = useState<Option[]>([]);
   const [materials, setMaterials] = useState<Option[]>([]);
@@ -428,6 +448,14 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [selectedPresetId, setSelectedPresetId] = useState('');
   const [presetName, setPresetName] = useState('');
   const [copyTargetPartKey, setCopyTargetPartKey] = useState<'ALL' | string>('ALL');
+  const [originDepartmentId, setOriginDepartmentId] = useState(initialQuote?.metadata?.originDepartmentId ?? '');
+  const [customAmounts, setCustomAmounts] = useState<QuoteCustomAmountState[]>(
+    (initialQuote?.metadata?.customAmounts ?? []).map((entry, index) => ({
+      key: `${initialQuote?.id ?? 'quote'}-custom-${index}`,
+      title: entry.title ?? '',
+      amount: ((entry.amountCents ?? 0) / 100).toFixed(2),
+    }))
+  );
 
   const steps = [
     { key: 'info', label: 'Quote info' },
@@ -603,6 +631,11 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       })
       .catch(() => setAddons([]));
 
+    fetch('/api/admin/departments', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => setDepartments(data.items ?? []))
+      .catch(() => setDepartments([]));
+
     fetch('/api/admin/vendors?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
@@ -710,6 +743,20 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         notes: '',
       },
     ]);
+  }
+
+  function addCustomAmount() {
+    setCustomAmounts((prev) => [...prev, { key: createKey(), title: '', amount: '0.00' }]);
+  }
+
+  function updateCustomAmount(customAmountKey: string, patch: Partial<QuoteCustomAmountState>) {
+    setCustomAmounts((prev) =>
+      prev.map((item) => (item.key === customAmountKey ? { ...item, ...patch } : item))
+    );
+  }
+
+  function removeCustomAmount(customAmountKey: string) {
+    setCustomAmounts((prev) => prev.filter((item) => item.key !== customAmountKey));
   }
 
   function addAddonSelection(partKey: string, addonId = '') {
@@ -1012,6 +1059,21 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     () => parts.find((part) => part.key === activePartKey) ?? parts[0],
     [activePartKey, parts]
   );
+  const selectedOriginDepartment = useMemo(
+    () => departments.find((department) => department.id === originDepartmentId) ?? null,
+    [departments, originDepartmentId]
+  );
+  const normalizedCustomAmounts = useMemo(
+    () =>
+      customAmounts
+        .map((item) => ({
+          key: item.key,
+          title: item.title.trim(),
+          amountCents: centsFromString(item.amount),
+        }))
+        .filter((item) => item.title.length > 0 || item.amountCents > 0),
+    [customAmounts]
+  );
 
   const vendorTotalsCents = vendorItems.reduce((sum, item) => {
     const base = centsFromString(item.basePrice);
@@ -1050,7 +1112,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   });
   const addonsTotalsCents = pricingSummaryTotals.addonsAndLaborCents;
   const partPricingTotalCents = pricingSummaryTotals.partPricingCents;
-  const totalCents = basePriceCents + vendorTotalsCents + addonsTotalsCents + partPricingTotalCents;
+  const customAmountsTotalCents = sumQuoteCustomAmountsCents(normalizedCustomAmounts);
+  const totalCents =
+    basePriceCents + vendorTotalsCents + addonsTotalsCents + partPricingTotalCents + customAmountsTotalCents;
 
   const buildPayload = (): QuoteCreateInput => ({
     business: form.business,
@@ -1114,6 +1178,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         })(),
         mimeType: attachment.mimeType || undefined,
       })),
+    originDepartmentId: originDepartmentId || undefined,
     partPricing: parts.map((part) => {
       const entry = partPricing.find((candidate) => candidate.partKey === part.key);
       const quantity = Number.parseInt(part.quantity || '1', 10) || 1;
@@ -1125,6 +1190,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         pricingMode,
       };
     }),
+    customAmounts: normalizedCustomAmounts
+      .filter((item) => item.title.length > 0 && item.amountCents > 0)
+      .map((item) => ({
+        title: item.title,
+        amountCents: item.amountCents,
+      })),
     customFieldValues: customFields
       .map((field) => ({ fieldId: field.id, value: customFieldValues[field.id] }))
       .filter((entry) => hasCustomFieldValue(entry.value)),
@@ -1696,7 +1767,8 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                         const totalCents = calculateAssignmentTotalCents({ item: addon, units });
                         return (
                           <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
-                            {formatCurrency(addon.rateCents)} x {units.toFixed(2)} = {formatCurrency(totalCents)}
+                            {formatWorkItemRateLabel(addon)} x {units.toFixed(2)} {getWorkItemUnitsLabel(addon.rateType, 'short')} ={' '}
+                            {formatCurrency(totalCents)}
                           </div>
                         );
                       }}
@@ -2028,6 +2100,46 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         <>
           <Card>
             <CardHeader>
+              <CardTitle>Quote routing</CardTitle>
+              <CardDescription>
+                Choose the department this quote should start from when it converts to an order.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-[minmax(0,320px)_1fr] md:items-start">
+              <div className="grid gap-2">
+                <Label>Origin / default department</Label>
+                <Select value={originDepartmentId || '__auto__'} onValueChange={(value) => setOriginDepartmentId(value === '__auto__' ? '' : value)}>
+                  <SelectTrigger className="border border-border bg-background px-3 py-2 text-sm">
+                    <SelectValue placeholder="Use first active department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__auto__">Use first active department</SelectItem>
+                    {departments
+                      .filter((department) => department.isActive)
+                      .map((department) => (
+                        <SelectItem key={department.id} value={department.id}>
+                          {department.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="rounded border border-border/60 bg-background/60 p-3 text-sm text-muted-foreground">
+                {selectedOriginDepartment ? (
+                  <p>
+                    Converted orders from this quote will start in <span className="font-medium text-foreground">{selectedOriginDepartment.name}</span> unless a later workflow move changes them.
+                  </p>
+                ) : (
+                  <p>
+                    Leaving this blank keeps the current standard behavior: the order starts in the first active department.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Purchased items</CardTitle>
               <CardDescription>
                 Track vendor-sourced hardware or kits. Suggest markup percentages below to keep estimates consistent.
@@ -2276,6 +2388,52 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
 
           <Card>
             <CardHeader>
+              <CardTitle>Custom amounts</CardTitle>
+              <CardDescription>
+                Add manual one-off quote amounts with a title. These flow into the final estimate and convert into order charges using the quote origin department.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {customAmounts.length ? (
+                customAmounts.map((item) => (
+                  <div key={item.key} className="grid gap-3 rounded border border-border/60 bg-background/60 p-3 md:grid-cols-[1.4fr_180px_auto] md:items-end">
+                    <div className="grid gap-2">
+                      <Label>Title</Label>
+                      <Input
+                        value={item.title}
+                        onChange={(event) => updateCustomAmount(item.key, { title: event.target.value })}
+                        placeholder="Rush setup"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Amount (USD)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={item.amount}
+                        onChange={(event) => updateCustomAmount(item.key, { amount: event.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <Button type="button" variant="ghost" onClick={() => removeCustomAmount(item.key)}>
+                      Remove
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded border border-dashed border-border/60 bg-background/40 p-3 text-sm text-muted-foreground">
+                  No manual custom amounts added.
+                </div>
+              )}
+              <Button type="button" variant="outline" onClick={addCustomAmount}>
+                Add custom amount
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Summary</CardTitle>
               <CardDescription>Totals update automatically as you edit the quote.</CardDescription>
             </CardHeader>
@@ -2295,6 +2453,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               <div className="flex items-center justify-between text-sm">
                 <span>Part pricing (basis-adjusted)</span>
                 <span className="font-medium">{formatCurrency(partPricingTotalCents)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span>Custom amounts</span>
+                <span className="font-medium">{formatCurrency(customAmountsTotalCents)}</span>
               </div>
               <div className="border-t border-border/60 pt-3 text-sm font-semibold">
                 <div className="flex items-center justify-between">

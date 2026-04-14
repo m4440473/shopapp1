@@ -1,10 +1,43 @@
 export type WorkItemPricingInput = {
+  rateType?: string | null;
   rateCents?: number | null;
   affectsPrice?: boolean | null;
   isChecklistItem?: boolean | null;
 };
 
 export type WorkItemPricingSemantic = 'PRICED_WORK' | 'CHECKLIST_ONLY';
+export type WorkItemRateType = 'HOURLY' | 'FLAT' | 'PER_FOOT';
+
+export const normalizeWorkItemRateType = (rateType?: string | null): WorkItemRateType => {
+  if (rateType === 'FLAT') return 'FLAT';
+  if (rateType === 'PER_FOOT') return 'PER_FOOT';
+  return 'HOURLY';
+};
+
+export const getWorkItemUnitsLabel = (
+  rateType?: string | null,
+  variant: 'long' | 'short' = 'long'
+) => {
+  const normalized = normalizeWorkItemRateType(rateType);
+  if (normalized === 'HOURLY') return variant === 'short' ? 'hrs' : 'Hours';
+  if (normalized === 'PER_FOOT') return variant === 'short' ? 'ft' : 'Feet';
+  return variant === 'short' ? 'qty' : 'Quantity';
+};
+
+export const formatWorkItemRateLabel = ({
+  rateCents,
+  rateType,
+}: {
+  rateCents?: number | null;
+  rateType?: string | null;
+}) => {
+  if (typeof rateCents !== 'number') return null;
+  const formatted = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(rateCents / 100);
+  const normalized = normalizeWorkItemRateType(rateType);
+  if (normalized === 'HOURLY') return `${formatted}/hr`;
+  if (normalized === 'PER_FOOT') return `${formatted}/ft`;
+  return formatted;
+};
 
 export const getWorkItemPricingSemantic = (item: WorkItemPricingInput): WorkItemPricingSemantic => {
   if (item.affectsPrice === false) return 'CHECKLIST_ONLY';

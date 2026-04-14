@@ -56,7 +56,7 @@ export const VendorUpsert = z.object({
 export const VendorPatch = VendorUpsert.partial();
 
 /** ADDONS */
-export const AddonRateType = z.enum(['HOURLY', 'FLAT']);
+export const AddonRateType = z.enum(['HOURLY', 'FLAT', 'PER_FOOT']);
 export const AddonUpsert = z.object({
   name: z.string().trim().min(2).max(120),
   description: z.string().trim().max(1000).optional(),

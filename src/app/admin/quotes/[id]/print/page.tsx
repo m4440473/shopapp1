@@ -6,9 +6,12 @@ import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessAdmin } from '@/lib/rbac';
 import { normalizeTemplateLayout } from '@/lib/document-template-layout';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
-import { mergeQuoteMetadata, parseQuoteMetadata } from '@/lib/quote-metadata';
+import { mergeQuoteMetadata, parseQuoteMetadata, sumQuoteCustomAmountsCents } from '@/lib/quote-metadata';
 import { calculatePartLotTotal, calculatePartUnitPrice } from '@/modules/pricing/part-pricing';
-import { calculatePartPricingSummaryTotalsCents } from '@/modules/pricing/work-item-pricing';
+import {
+  calculatePartPricingSummaryTotalsCents,
+  getWorkItemUnitsLabel,
+} from '@/modules/pricing/work-item-pricing';
 import {
   buildQuoteRenderBlocks,
   DEFAULT_QUOTE_ADDONS_OPTIONS,
@@ -121,7 +124,8 @@ export default async function QuotePrintPage({
     pricingSummaryTotals.addonsAndLaborCents +
     legacyAddonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const partPricingTotal = pricingSummaryTotals.partPricingCents;
-  const total = quote.basePriceCents + addonTotal + vendorTotal + partPricingTotal;
+  const customAmountsTotal = sumQuoteCustomAmountsCents(metadata.customAmounts);
+  const total = quote.basePriceCents + addonTotal + vendorTotal + partPricingTotal + customAmountsTotal;
   const addonSelections = quote.addonSelections.filter((selection) => selection.addon);
   const hasAddons = addonSelections.length > 0;
   const hasVendorItems = quote.vendorItems.length > 0;
@@ -174,6 +178,10 @@ export default async function QuotePrintPage({
         <div>
           <p className="text-xs uppercase text-neutral-500">Part pricing</p>
           <p className="font-semibold">{formatCurrency(partPricingTotal)}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase text-neutral-500">Custom amounts</p>
+          <p className="font-semibold">{formatCurrency(customAmountsTotal)}</p>
         </div>
         <div className="col-span-2 border-t border-black pt-2 text-right text-base font-semibold">
           Total: {formatCurrency(total)}
@@ -309,6 +317,7 @@ export default async function QuotePrintPage({
     const showPartContext = addonsOptions.showPartContext === true;
     const showVendorItems = addonsOptions.showVendorItems !== false;
     const hasVisibleVendorItems = showVendorItems && hasVendorItems;
+    const customAmounts = metadata.customAmounts ?? [];
 
     return (
       <section className="border border-black">
@@ -331,7 +340,11 @@ export default async function QuotePrintPage({
                           {selection.partNumber ? ` (${selection.partNumber})` : ''}
                         </div>
                       ) : null}
-                      {showUnits ? <div className={`${metaClass} text-neutral-500`}>Units: {selection.units}</div> : null}
+                      {showUnits ? (
+                        <div className={`${metaClass} text-neutral-500`}>
+                          {getWorkItemUnitsLabel(selection.rateTypeSnapshot)}: {selection.units}
+                        </div>
+                      ) : null}
                       {showNotes && selection.notes ? <div className={`${metaClass} whitespace-pre-wrap text-neutral-500`}>{selection.notes}</div> : null}
                     </div>
                     {showPrices ? <span className="font-semibold">{formatCurrency(selection.totalCents)}</span> : null}
@@ -352,6 +365,19 @@ export default async function QuotePrintPage({
                       {showNotes && item.notes ? <div className={`${metaClass} whitespace-pre-wrap text-neutral-500`}>{item.notes}</div> : null}
                     </div>
                     {showPrices ? <span className="font-semibold">{formatCurrency(item.finalPriceCents)}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {customAmounts.length > 0 && (
+            <div className={hasAddons || hasVisibleVendorItems ? 'mt-3' : ''}>
+              <p className={`${metaClass} uppercase text-neutral-500`}>Custom amounts</p>
+              <ul className="mt-1 space-y-1">
+                {customAmounts.map((entry) => (
+                  <li key={`${entry.title}-${entry.amountCents}`} className="flex items-start justify-between gap-4">
+                    <div>{entry.title}</div>
+                    {showPrices ? <span className="font-semibold">{formatCurrency(entry.amountCents)}</span> : null}
                   </li>
                 ))}
               </ul>
