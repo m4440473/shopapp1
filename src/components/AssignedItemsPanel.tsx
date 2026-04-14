@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import type { AvailableItem } from '@/components/AvailableItemsLibrary';
+import { getWorkItemUnitsLabel } from '@/modules/pricing/work-item-pricing';
 
 export type AssignedItem = {
   key: string;
@@ -37,12 +38,6 @@ const parseDroppedItem = (event: React.DragEvent<HTMLDivElement>) => {
     return null;
   }
   return null;
-};
-
-const getUnitsLabel = (item?: AvailableItem) => {
-  if (item?.rateType === 'HOURLY') return 'Hours';
-  if (item?.rateType === 'FLAT') return 'Quantity';
-  return 'Units';
 };
 
 export function AssignedItemsPanel({
@@ -132,7 +127,9 @@ export function AssignedItemsPanel({
                 </div>
                 <div className="mt-3 grid gap-3 md:grid-cols-3">
                   <div className="grid gap-2">
-                    <label className="text-xs font-medium text-muted-foreground">{getUnitsLabel(item)}</label>
+                    <label className="text-xs font-medium text-muted-foreground">
+                      {getWorkItemUnitsLabel(item?.rateType)}
+                    </label>
                     <Input
                       type="number"
                       min="0"

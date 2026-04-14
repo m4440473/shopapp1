@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildChecklistEntriesFromQuoteSelections } from '../quote-work-items';
+import {
+  buildChecklistEntriesFromQuoteSelections,
+  buildOrderChargeEntriesFromQuoteData,
+} from '../quote-work-items';
 
 describe('buildChecklistEntriesFromQuoteSelections', () => {
   it('creates per-part checklist entries from quote selections', () => {
@@ -45,6 +48,58 @@ describe('buildChecklistEntriesFromQuoteSelections', () => {
         departmentId: 'dept-1',
         completed: false,
         isActive: true,
+      },
+    ]);
+  });
+
+  it('builds priced order charges and falls back custom amounts to the origin department', () => {
+    const charges = buildOrderChargeEntriesFromQuoteData({
+      orderId: 'order-1',
+      selections: [
+        {
+          orderPartId: 'part-1',
+          selection: {
+            addonId: 'addon-1',
+            units: 12,
+            notes: 'Paint both sides',
+            addon: {
+              name: 'Wet Paint',
+              departmentId: 'paint',
+              affectsPrice: true,
+              rateCents: 450,
+            },
+          },
+        },
+      ],
+      customAmounts: [{ title: 'Rush paint setup', amountCents: 17500 }],
+      customAmountPartId: 'part-1',
+      fallbackDepartmentId: 'paint',
+    });
+
+    expect(charges).toEqual([
+      {
+        orderId: 'order-1',
+        partId: 'part-1',
+        departmentId: 'paint',
+        addonId: 'addon-1',
+        kind: 'ADDON',
+        name: 'Wet Paint',
+        description: 'Paint both sides',
+        quantity: 12,
+        unitPriceCents: 450,
+        sortOrder: 0,
+      },
+      {
+        orderId: 'order-1',
+        partId: 'part-1',
+        departmentId: 'paint',
+        addonId: null,
+        kind: 'CUSTOM',
+        name: 'Rush paint setup',
+        description: null,
+        quantity: 1,
+        unitPriceCents: 17500,
+        sortOrder: 1,
       },
     ]);
   });

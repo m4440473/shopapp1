@@ -1,8 +1,11 @@
 import 'server-only';
 
 import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
+import { sumQuoteCustomAmountsCents } from '@/lib/quote-metadata';
 import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
 import type { QuoteApprovalMetadata } from '@/lib/quote-metadata';
+import { calculatePartLotTotal } from '@/modules/pricing/part-pricing';
+import { calculatePartPricingSummaryTotalsCents, calculateWorkItemsSubtotalCents } from '@/modules/pricing/work-item-pricing';
 import {
   createQuoteWithDetails,
   deleteQuoteById,
@@ -96,6 +99,57 @@ export function calculatePricedAddonTotal(
   }, 0);
 }
 
+export function calculateQuoteEstimateTotalCents({
+  basePriceCents,
+  vendorTotalCents,
+  parts,
+  partPricing,
+  addonMap,
+  customAmountsCents,
+}: {
+  basePriceCents: number;
+  vendorTotalCents: number;
+  parts: QuoteCreateInput['parts'];
+  partPricing: QuoteCreateInput['partPricing'];
+  addonMap: Map<string, { rateCents: number; affectsPrice: boolean }>;
+  customAmountsCents: number;
+}) {
+  const pricingSummaryTotals = calculatePartPricingSummaryTotalsCents({
+    parts: (parts ?? []).map((part, index) => {
+      const workItemsSubtotalCents = calculateWorkItemsSubtotalCents({
+        selections: (part.addonSelections ?? []).map((selection) => ({
+          addonId: selection.addonId,
+          units: selection.units ?? 0,
+        })),
+        itemsById: addonMap,
+      });
+      const pricingEntry = partPricing?.[index];
+      const enteredPriceCents = Math.max(0, pricingEntry?.priceCents ?? 0);
+      const quantity = Math.max(1, part.quantity ?? 1);
+      return {
+        workItemsSubtotalCents,
+        partPricingSubtotalCents:
+          enteredPriceCents > 0
+            ? calculatePartLotTotal({
+                enteredPriceCents,
+                quantity,
+                pricingMode: pricingEntry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
+              })
+            : 0,
+        hasPartPricingOverride: enteredPriceCents > 0,
+      };
+    }),
+  });
+
+  return (
+    basePriceCents +
+    vendorTotalCents +
+    pricingSummaryTotals.addonsAndLaborCents +
+    pricingSummaryTotals.partPricingCents +
+    customAmountsCents
+  );
+}
+
 export async function prepareQuoteComponents(
   input: QuoteCreateInput,
   options?: { existingQuoteNumber?: string }
@@ -150,17 +204,6 @@ export async function prepareQuoteComponents(
     addonSelectionsByPart.set(selection.partIndex, [...existing, entry]);
   }
 
-  const addonsTotalCents = calculatePricedAddonTotal(
-    addonSelectionsInput.map(({ item }) => {
-      const addon = addonMap.get(item.addonId)!;
-      return {
-        units: typeof item.units === 'number' ? item.units : 0,
-        rateCents: addon.rateCents,
-        affectsPrice: addon.affectsPrice,
-      };
-    })
-  );
-
   const vendorItems = vendorItemsInput.map((item) => {
     const vendor = item.vendorId ? vendorMap.get(item.vendorId) : undefined;
     const basePriceCents = item.basePriceCents ?? 0;
@@ -181,7 +224,40 @@ export async function prepareQuoteComponents(
 
   const vendorTotalCents = vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
   const basePriceCents = input.basePriceCents ?? 0;
-  const totalCents = basePriceCents + vendorTotalCents + addonsTotalCents;
+  const customAmountsCents = sumQuoteCustomAmountsCents(input.customAmounts);
+  const addonsTotalCents = calculatePartPricingSummaryTotalsCents({
+    parts: parts.map((part, index) => {
+      const workItemsSubtotalCents = calculateWorkItemsSubtotalCents({
+        selections: (part.addonSelections ?? []).map((selection) => ({
+          addonId: selection.addonId,
+          units: selection.units ?? 0,
+        })),
+        itemsById: addonMap,
+      });
+      const partPricingEntry = input.partPricing?.[index];
+      const enteredPriceCents = Math.max(0, partPricingEntry?.priceCents ?? 0);
+      return {
+        workItemsSubtotalCents,
+        partPricingSubtotalCents:
+          enteredPriceCents > 0
+            ? calculatePartLotTotal({
+                enteredPriceCents,
+                quantity: Math.max(1, part.quantity ?? 1),
+                pricingMode: partPricingEntry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
+              })
+            : 0,
+        hasPartPricingOverride: enteredPriceCents > 0,
+      };
+    }),
+  }).addonsAndLaborCents;
+  const totalCents = calculateQuoteEstimateTotalCents({
+    basePriceCents,
+    vendorTotalCents,
+    parts,
+    partPricing: input.partPricing,
+    addonMap,
+    customAmountsCents,
+  });
 
   const providedQuoteNumber = input.quoteNumber?.trim();
   let quoteNumber: string;

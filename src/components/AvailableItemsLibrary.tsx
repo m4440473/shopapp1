@@ -5,12 +5,13 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { formatWorkItemRateLabel, type WorkItemRateType } from '@/modules/pricing/work-item-pricing';
 
 export type AvailableItem = {
   id: string;
   name: string;
   description?: string | null;
-  rateType?: 'HOURLY' | 'FLAT';
+  rateType?: WorkItemRateType;
   rateCents?: number;
   departmentName?: string | null;
   affectsPrice: boolean;
@@ -24,13 +25,6 @@ type AvailableItemsLibraryProps = {
   onAddItem: (item: AvailableItem) => void;
   disabled?: boolean;
 };
-
-function formatRate(item: AvailableItem) {
-  if (typeof item.rateCents !== 'number') return null;
-  const amount = item.rateCents / 100;
-  const formatted = amount.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-  return item.rateType === 'HOURLY' ? `${formatted}/hr` : formatted;
-}
 
 function groupItems(items: AvailableItem[]) {
   const grouped = new Map<string, AvailableItem[]>();
@@ -116,12 +110,18 @@ export function AvailableItemsLibrary({
                       )}
                       {item.rateType ? (
                         <Badge variant="secondary" className="text-[10px] uppercase">
-                          {item.rateType === 'HOURLY' ? 'Labor' : 'Flat'}
+                          {item.rateType === 'HOURLY'
+                            ? 'Labor'
+                            : item.rateType === 'PER_FOOT'
+                              ? 'Per foot'
+                              : 'Flat'}
                         </Badge>
                       ) : null}
                     </div>
                     {item.affectsPrice && typeof item.rateCents === 'number' ? (
-                      <div className="text-xs font-medium text-foreground">{formatRate(item)}</div>
+                      <div className="text-xs font-medium text-foreground">
+                        {formatWorkItemRateLabel(item)}
+                      </div>
                     ) : null}
                   </div>
                   <Button

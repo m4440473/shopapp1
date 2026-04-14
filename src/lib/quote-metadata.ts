@@ -20,11 +20,18 @@ export type QuotePartPricingEntry = {
   pricingMode?: 'PER_UNIT' | 'LOT_TOTAL';
 };
 
+export type QuoteCustomAmountEntry = {
+  title: string;
+  amountCents: number;
+};
+
 export type QuoteMetadata = Record<string, unknown> & {
   markupSuggestions?: number[];
   approval?: QuoteApprovalMetadata;
   conversion?: QuoteConversionMetadata;
   partPricing?: QuotePartPricingEntry[];
+  originDepartmentId?: string | null;
+  customAmounts?: QuoteCustomAmountEntry[];
 };
 
 const DEFAULT_APPROVAL: QuoteApprovalMetadata = {
@@ -61,6 +68,20 @@ function clonePartPricing(values: QuotePartPricingEntry[] | undefined): QuotePar
   }));
 }
 
+function cloneCustomAmounts(values: QuoteCustomAmountEntry[] | undefined): QuoteCustomAmountEntry[] | undefined {
+  if (!values) return undefined;
+  return values
+    .map((entry) => ({
+      title: String(entry.title ?? '').trim(),
+      amountCents: Math.max(0, Math.round(Number(entry.amountCents ?? 0) || 0)),
+    }))
+    .filter((entry) => entry.title.length > 0 && entry.amountCents > 0);
+}
+
+export function sumQuoteCustomAmountsCents(values: QuoteCustomAmountEntry[] | undefined): number {
+  return (values ?? []).reduce((sum, entry) => sum + Math.max(0, Number(entry.amountCents ?? 0) || 0), 0);
+}
+
 export function mergeQuoteMetadata(metadata: QuoteMetadata | null | undefined): QuoteMetadata {
   const base = metadata && typeof metadata === 'object' ? metadata : {};
   const approval =
@@ -80,6 +101,11 @@ export function mergeQuoteMetadata(metadata: QuoteMetadata | null | undefined): 
     approval,
     conversion,
     partPricing: Array.isArray(base.partPricing) ? clonePartPricing(base.partPricing) : undefined,
+    originDepartmentId:
+      typeof base.originDepartmentId === 'string' && base.originDepartmentId.trim().length > 0
+        ? base.originDepartmentId
+        : null,
+    customAmounts: Array.isArray(base.customAmounts) ? cloneCustomAmounts(base.customAmounts) : undefined,
   } satisfies QuoteMetadata;
 }
 

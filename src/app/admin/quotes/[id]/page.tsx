@@ -15,9 +15,13 @@ import {
 import AdminPricingGate from '@/components/Admin/AdminPricingGate';
 import { BUSINESS_OPTIONS, businessNameFromCode } from '@/lib/businesses';
 import { getPartPricingEntries } from '@/lib/quote-part-pricing';
-import { mergeQuoteMetadata } from '@/lib/quote-metadata';
+import { mergeQuoteMetadata, sumQuoteCustomAmountsCents } from '@/lib/quote-metadata';
 import { calculatePartLotTotal, calculatePartUnitPrice } from '@/modules/pricing/part-pricing';
-import { calculatePartPricingSummaryTotalsCents } from '@/modules/pricing/work-item-pricing';
+import {
+  calculatePartPricingSummaryTotalsCents,
+  formatWorkItemRateLabel,
+  getWorkItemUnitsLabel,
+} from '@/modules/pricing/work-item-pricing';
 import QuoteWorkflowControls from '../QuoteWorkflowControls';
 import QuoteQuickConvertDialog from '@/components/Admin/QuoteQuickConvertDialog';
 import { canAccessAdmin } from '@/lib/rbac';
@@ -135,8 +139,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     pricingSummaryTotals.addonsAndLaborCents +
     legacyAddonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const partPricingTotal = pricingSummaryTotals.partPricingCents;
+  const customAmountsTotal = sumQuoteCustomAmountsCents(metadata.customAmounts);
   const partPricingByPartId = new Map(partPricingRows.map((row) => [row.part.id, row]));
-  const totalCents = quote.basePriceCents + addonTotal + vendorTotal + partPricingTotal;
+  const totalCents = quote.basePriceCents + addonTotal + vendorTotal + partPricingTotal + customAmountsTotal;
   const attachmentLinks = quote.attachments
     .map((attachment) => {
       if (attachment.url) {
@@ -337,6 +342,10 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                     <span className="text-muted-foreground">Part pricing (basis-adjusted)</span>
                     <span className="font-medium">{formatCurrency(partPricingTotal)}</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Custom amounts</span>
+                    <span className="font-medium">{formatCurrency(customAmountsTotal)}</span>
+                  </div>
                   <div className="border-t border-border/60 pt-2 flex justify-between text-base font-semibold">
                     <span>Total estimate</span>
                     <span className="text-primary">{formatCurrency(totalCents)}</span>
@@ -404,7 +413,24 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               <p className="whitespace-pre-wrap text-muted-foreground">{quote.notes}</p>
             </div>
           )}
-          {!quote.materialSummary && !quote.purchaseItems && !quote.requirements && !quote.notes && (
+                  {metadata.customAmounts?.length ? (
+                    <div>
+                      <h3 className="font-medium mb-1">Custom amounts</h3>
+                      <div className="space-y-2">
+                        {metadata.customAmounts.map((entry) => (
+                          <div key={`${entry.title}-${entry.amountCents}`} className="flex items-center justify-between rounded border border-border/40 bg-card/30 px-3 py-2 text-xs">
+                            <span>{entry.title}</span>
+                            <span className="font-medium text-foreground">{formatCurrency(entry.amountCents)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+          {!quote.materialSummary &&
+            !quote.purchaseItems &&
+            !quote.requirements &&
+            !quote.notes &&
+            !(metadata.customAmounts?.length) && (
             <p className="text-muted-foreground">No additional notes recorded.</p>
           )}
         </CardContent>
@@ -466,11 +492,11 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                           <div>
                             <p className="font-medium">{selection.addon?.name ?? 'Add-on removed'}</p>
                             <p className="text-xs text-muted-foreground">
-                              {selection.units} {selection.rateTypeSnapshot === 'FLAT' ? 'qty' : 'hrs'} •{' '}
+                              {selection.units} {getWorkItemUnitsLabel(selection.rateTypeSnapshot, 'short')} •{' '}
                               <AdminPricingGate
                                 initialRole={initialRole}
                                 initialAdmin={isAdmin}
-                                admin={isAdmin ? <span>Rate {formatCurrency(selection.rateCents)}</span> : null}
+                                admin={isAdmin ? <span>Rate {formatWorkItemRateLabel({ rateCents: selection.rateCents, rateType: selection.rateTypeSnapshot })}</span> : null}
                                 fallback={<span>Rate hidden</span>}
                               />
                             </p>
@@ -504,11 +530,11 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                       <div>
                         <p className="font-medium">{selection.addon?.name ?? 'Add-on removed'}</p>
                         <p className="text-xs text-muted-foreground">
-                          {selection.units} {selection.rateTypeSnapshot === 'FLAT' ? 'qty' : 'hrs'} •{' '}
+                          {selection.units} {getWorkItemUnitsLabel(selection.rateTypeSnapshot, 'short')} •{' '}
                           <AdminPricingGate
                             initialRole={initialRole}
                             initialAdmin={isAdmin}
-                            admin={isAdmin ? <span>Rate {formatCurrency(selection.rateCents)}</span> : null}
+                            admin={isAdmin ? <span>Rate {formatWorkItemRateLabel({ rateCents: selection.rateCents, rateType: selection.rateTypeSnapshot })}</span> : null}
                             fallback={<span>Rate hidden</span>}
                           />
                         </p>

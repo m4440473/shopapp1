@@ -21,6 +21,7 @@ import { fetchJson } from '@/lib/fetchJson';
 import { canAccessAdmin } from '@/lib/rbac';
 import { useCurrentUser } from '@/lib/use-current-user';
 import { AddonUpsert } from '@/lib/zod';
+import { formatWorkItemRateLabel, type WorkItemRateType } from '@/modules/pricing/work-item-pricing';
 
 interface Department {
   id: string;
@@ -33,7 +34,7 @@ interface Item {
   id: string;
   name: string;
   description?: string | null;
-  rateType: 'HOURLY' | 'FLAT';
+  rateType: WorkItemRateType;
   rateCents: number;
   active: boolean;
   affectsPrice: boolean;
@@ -48,12 +49,10 @@ interface ClientProps {
 
 type DialogState = { mode: 'create' | 'edit'; data?: Item } | null;
 
-const formatCurrency = (cents: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format((cents || 0) / 100);
-
 const RATE_LABEL: Record<Item['rateType'], string> = {
   HOURLY: 'Hourly',
   FLAT: 'Flat rate',
+  PER_FOOT: 'Per foot',
 };
 
 export default function Client({ initial }: ClientProps) {
@@ -119,8 +118,7 @@ export default function Client({ initial }: ClientProps) {
       {
         key: 'rateCents',
         header: 'Rate',
-        render: (_: number, row: Item) =>
-          `${formatCurrency(row.rateCents)}${row.rateType === 'HOURLY' ? ' / hr' : ''}`,
+        render: (_: number, row: Item) => formatWorkItemRateLabel(row),
       },
       {
         key: 'isChecklistItem',
@@ -263,7 +261,7 @@ export default function Client({ initial }: ClientProps) {
           <DialogHeader>
             <DialogTitle>{dialog?.mode === 'edit' ? 'Edit add-on' : 'New add-on'}</DialogTitle>
             <DialogDescription>
-              Hourly or fixed-rate services are available to admins while quoting and appear on order checklists.
+              Hourly, per-foot, or fixed-rate services are available to admins while quoting and appear on order checklists.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -293,6 +291,7 @@ export default function Client({ initial }: ClientProps) {
                 className="rounded border border-border bg-background px-3 py-2 text-sm"
               >
                 <option value="HOURLY">Hourly</option>
+                <option value="PER_FOOT">Per foot</option>
                 <option value="FLAT">Flat rate</option>
               </select>
             </div>

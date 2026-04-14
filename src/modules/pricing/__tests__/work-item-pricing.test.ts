@@ -3,7 +3,10 @@ import {
   calculateAssignmentTotalCents,
   calculatePartPricingSummaryTotalsCents,
   calculateWorkItemsSubtotalCents,
+  formatWorkItemRateLabel,
+  getWorkItemUnitsLabel,
   getWorkItemPricingSemantic,
+  normalizeWorkItemRateType,
 } from '@/modules/pricing/work-item-pricing';
 
 describe('work-item-pricing', () => {
@@ -30,6 +33,13 @@ describe('work-item-pricing', () => {
     });
 
     expect(subtotal).toBe(2000);
+  });
+
+  it('supports per-foot rate labels and unit labels', () => {
+    expect(normalizeWorkItemRateType('PER_FOOT')).toBe('PER_FOOT');
+    expect(getWorkItemUnitsLabel('PER_FOOT')).toBe('Feet');
+    expect(getWorkItemUnitsLabel('PER_FOOT', 'short')).toBe('ft');
+    expect(formatWorkItemRateLabel({ rateCents: 425, rateType: 'PER_FOOT' })).toBe('$4.25/ft');
   });
 
   it('replaces raw work-item subtotal with basis-adjusted part pricing when override is present', () => {

@@ -64,6 +64,7 @@ export const QuoteCreate = z.object({
   parts: z.array(QuotePartInput).default([]),
   vendorItems: z.array(QuoteVendorItemInput).default([]),
   attachments: z.array(QuoteAttachmentInput).default([]),
+  originDepartmentId: z.string().trim().min(1).max(100).optional(),
   partPricing: z
     .array(
       z.object({
@@ -71,6 +72,14 @@ export const QuoteCreate = z.object({
         partNumber: z.string().trim().max(200).optional(),
         priceCents: z.coerce.number().int().min(0),
         pricingMode: PricingMode.default('LOT_TOTAL'),
+      })
+    )
+    .optional(),
+  customAmounts: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1).max(200),
+        amountCents: z.coerce.number().int().min(0),
       })
     )
     .optional(),

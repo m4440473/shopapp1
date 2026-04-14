@@ -1,3 +1,79 @@
+## Session Handoff - 2026-04-14 (Quote origin department + per-foot pricing + custom quote amounts)
+
+Goal (1 sentence): Let admins route quotes from a non-default origin department, quote paint/add-on work by the foot, and add titled manual quote amounts that survive quote save, print, and quote-to-order conversion.
+
+### What changed
+- Updated shared pricing + add-on contracts:
+  - [work-item-pricing.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/pricing/work-item-pricing.ts)
+  - [zod.ts](C:/Users/user/Documents/GitHub/shopapp1/src/lib/zod.ts)
+  - [AvailableItemsLibrary.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/components/AvailableItemsLibrary.tsx)
+  - [AssignedItemsPanel.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/components/AssignedItemsPanel.tsx)
+  - [client.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/admin/addons/client.tsx)
+  - [page.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/admin/addons/page.tsx)
+  - Add-ons now support `PER_FOOT` in addition to `HOURLY` and `FLAT`, and shared UI labels now render hours/feet/quantity consistently.
+- Updated quote metadata + totals handling:
+  - [quote-metadata.ts](C:/Users/user/Documents/GitHub/shopapp1/src/lib/quote-metadata.ts)
+  - [quotes.schema.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/quotes/quotes.schema.ts)
+  - [quotes.service.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/quotes/quotes.service.ts)
+  - [quotes.repo.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/quotes/quotes.repo.ts)
+  - [route.ts](C:/Users/user/Documents/GitHub/shopapp1/src/app/api/admin/quotes/[id]/route.ts)
+  - Quotes now persist `originDepartmentId` and titled `customAmounts` in metadata, and the saved quote `totalCents` now matches the review estimate including part-pricing overrides and custom amounts.
+- Updated quote UI and print/detail surfaces:
+  - [QuoteEditor.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/admin/quotes/QuoteEditor.tsx)
+  - [page.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/admin/quotes/[id]/page.tsx)
+  - [page.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/admin/quotes/[id]/print/page.tsx)
+  - Quote review now includes:
+    - origin/default department selector,
+    - titled custom amount rows,
+    - summary totals that include custom amounts.
+  - Quote detail/print now show custom amount totals and updated add-on unit labels.
+- Updated quote conversion helpers:
+  - [quote-work-items.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/quotes/quote-work-items.ts)
+  - [route.ts](C:/Users/user/Documents/GitHub/shopapp1/src/app/api/admin/quotes/[id]/convert/route.ts)
+  - Converted order parts now start in the quote origin department when set.
+  - Custom quote amounts now convert into non-checklist `CUSTOM` order charges on the first part using the origin/fallback department.
+- Compatibility touch-up:
+  - [page.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/orders/new/page.tsx)
+  - Order-create’s shared add-on review display now understands `PER_FOOT` too, so the shared item components stay compile/runtime-safe.
+
+### Files touched
+- `src/modules/pricing/work-item-pricing.ts`
+- `src/modules/pricing/__tests__/work-item-pricing.test.ts`
+- `src/components/AvailableItemsLibrary.tsx`
+- `src/components/AssignedItemsPanel.tsx`
+- `src/lib/zod.ts`
+- `src/lib/quote-metadata.ts`
+- `src/modules/quotes/quotes.schema.ts`
+- `src/modules/quotes/quotes.service.ts`
+- `src/modules/quotes/quotes.repo.ts`
+- `src/modules/quotes/quote-work-items.ts`
+- `src/modules/quotes/__tests__/quote-work-items.test.ts`
+- `src/modules/quotes/__tests__/quote-totals.test.ts`
+- `src/app/admin/addons/client.tsx`
+- `src/app/admin/addons/page.tsx`
+- `src/app/admin/quotes/QuoteEditor.tsx`
+- `src/app/admin/quotes/[id]/page.tsx`
+- `src/app/admin/quotes/[id]/print/page.tsx`
+- `src/app/orders/new/page.tsx`
+- `src/app/api/admin/quotes/[id]/route.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+- `docs/AGENT_CONTEXT.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx -- "src/app/admin/addons/client.tsx" "src/app/admin/addons/page.tsx" "src/app/admin/quotes/QuoteEditor.tsx" "src/app/admin/quotes/[id]/page.tsx" "src/app/admin/quotes/[id]/print/page.tsx" "src/app/orders/new/page.tsx" "src/components/AvailableItemsLibrary.tsx" "src/components/AssignedItemsPanel.tsx" "src/lib/zod.ts" "src/lib/quote-metadata.ts" "src/modules/pricing/work-item-pricing.ts" "src/modules/pricing/__tests__/work-item-pricing.test.ts" "src/modules/quotes/quotes.schema.ts" "src/modules/quotes/quotes.service.ts" "src/modules/quotes/quotes.repo.ts" "src/modules/quotes/quote-work-items.ts" "src/modules/quotes/__tests__/quote-work-items.test.ts" "src/modules/quotes/__tests__/quote-totals.test.ts" "src/app/api/admin/quotes/[id]/route.ts"`
+- `npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts src/modules/quotes/__tests__/quote-work-items.test.ts src/modules/quotes/__tests__/quote-totals.test.ts`
+
+### Verification evidence
+- Targeted ESLint passed.
+- Focused quote/pricing tests passed (`9/9`) after an outside-sandbox rerun because the sandboxed Vitest/esbuild startup hit Windows `spawn EPERM`.
+
+### Behavior note for the next agent
+- Quote origin department is intentionally stored in metadata instead of a new `Quote` DB column; conversion resolves it against active departments and falls back to the first active department if the saved department is missing/inactive.
+- Custom quote amounts are quote-level UI rows, but the order domain still requires per-part charges, so conversion maps them onto the first converted part as `CUSTOM` charges using the origin/fallback department.
+- Existing quotes do not gain custom amounts or origin departments retroactively; they behave as before until saved with the new UI.
+
 ## Session Handoff - 2026-04-13 (Queue priority + timer chips + Vendors pagination + completed department ownership)
 
 Goal (1 sentence): Surface active work more clearly on the dashboard, preserve finished parts under a visible department owner, and give the Vendors page real pagination controls.

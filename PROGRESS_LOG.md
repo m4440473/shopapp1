@@ -1,3 +1,29 @@
+### 2026-04-14 - Quotes now support origin department, per-foot add-ons, and custom quote amounts
+- Updated quote workflow contracts and UI so admins can:
+  - assign an optional quote origin/default department,
+  - use `PER_FOOT` add-on pricing alongside `HOURLY` and `FLAT`,
+  - add titled custom quote amounts in review.
+- Updated shared pricing helpers and shared item components so rate/unit labeling now consistently reflects:
+  - hours for hourly,
+  - feet for per-foot,
+  - quantity for flat-rate items.
+- Updated quote persistence so origin department and custom amounts are stored in quote metadata, while the saved quote `totalCents` now matches the review estimate math including:
+  - part-pricing overrides,
+  - custom amounts.
+- Updated quote detail and quote print views to include custom-amount totals and clearer add-on unit labels.
+- Updated quote conversion so:
+  - converted order parts start in the quote origin department when one is set,
+  - custom quote amounts convert into non-checklist `CUSTOM` order charges using the origin/fallback department,
+  - existing add-on/checklist conversion behavior remains intact.
+
+Commands run:
+- `npx eslint --ext .ts,.tsx -- "src/app/admin/addons/client.tsx" "src/app/admin/addons/page.tsx" "src/app/admin/quotes/QuoteEditor.tsx" "src/app/admin/quotes/[id]/page.tsx" "src/app/admin/quotes/[id]/print/page.tsx" "src/app/orders/new/page.tsx" "src/components/AvailableItemsLibrary.tsx" "src/components/AssignedItemsPanel.tsx" "src/lib/zod.ts" "src/lib/quote-metadata.ts" "src/modules/pricing/work-item-pricing.ts" "src/modules/pricing/__tests__/work-item-pricing.test.ts" "src/modules/quotes/quotes.schema.ts" "src/modules/quotes/quotes.service.ts" "src/modules/quotes/quotes.repo.ts" "src/modules/quotes/quote-work-items.ts" "src/modules/quotes/__tests__/quote-work-items.test.ts" "src/modules/quotes/__tests__/quote-totals.test.ts" "src/app/api/admin/quotes/[id]/route.ts"`
+- `npm run test -- src/modules/pricing/__tests__/work-item-pricing.test.ts src/modules/quotes/__tests__/quote-work-items.test.ts src/modules/quotes/__tests__/quote-totals.test.ts`
+
+Verification note:
+- Targeted ESLint passed on all touched files.
+- Focused pricing/quote tests passed (`9/9`) after an outside-sandbox rerun because the sandboxed Vitest/esbuild startup hit Windows `spawn EPERM`.
+
 ### 2026-04-13 - Department queue now prioritizes active timers, shows timer chips, preserves completed department ownership, and Vendors has pagination
 - Updated `src/modules/orders/orders.service.ts` and `src/components/work-queue/WorkQueueOrderCard.tsx` so department work-queue cards now:
   - sort orders with active timers to the top before the existing flagged/due-date ordering,
