@@ -1,3 +1,161 @@
+# tasks/todo.md - Session Plan + Verification
+
+## Session Metadata
+- Date: 2026-04-16
+- Agent: Codex GPT-5
+- Task ID: Feeds and Speeds parity audit + FSWizard comparison test
+- Goal: Audit the current feeds-and-speeds calculator against the provided `C:\\Users\\user\\Downloads\\this.go`, fix any verified parity gap in the local endmill logic, and add a repeatable comparison test set the owner can run in FSWizard.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Reviewed the provided `C:\\Users\\user\\Downloads\\this.go` and confirmed the current local calculator already ports only part of the FSWizard endmill path.
+- [x] Validated the current feeds-and-speeds module has no dedicated regression tests yet, so parity gaps can slip through without evidence.
+
+## Plan First
+- [x] Compare the current `src/modules/feeds-speeds/feeds-speeds.ts` endmill math against the exact `this.go` helpers and identify one or more concrete divergence points that explain the suspicious logic.
+- [x] Patch only the verified calculator logic gaps needed for this parity pass, keeping the existing result shape and UI contract intact.
+- [x] Add focused automated regression coverage plus a small owner-facing FSWizard comparison matrix/checklist that can be run manually in FSWizard to validate parity.
+- [x] Run targeted verification and update continuity docs with the parity findings, test cases, and evidence.
+
+## Verification Checklist
+- [x] `npm run test -- src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts` *(outside-sandbox rerun after Windows sandbox `spawn EPERM` on Vitest/esbuild startup)*
+- [x] `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts" "src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts"`
+
+## Review + Results
+- Identified two concrete parity drifts from the provided `this.go` default path:
+  - the local calculator was auto-applying chip thinning even though the FSWizard default path only does so when the tool data explicitly enables it,
+  - the local calculator skipped the FSWizard `fswizard_mat_doc_adjust()` material/flute DOC-load adjustment entirely.
+- Corrected the local calculator to:
+  - keep chip thinning off unless `default_chip_thinning` is enabled in the source tool data,
+  - stop auto-forcing slotting mode from `WOC ~= diameter`,
+  - apply the FSWizard material/flute DOC-load adjustment to the load budget,
+  - honor `default_len` / `default_flute_len` when resolving default tool geometry.
+- Added both repo-side and owner-facing parity artifacts:
+  - automated coverage in `src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts`,
+  - snapshot baselines in `src/modules/feeds-speeds/__tests__/__snapshots__/feeds-speeds.test.ts.snap`,
+  - manual FSWizard checklist in `docs/FSWIZARD_FEEDS_SPEEDS_PARITY.md`.
+- Stable parity-case outputs after this pass:
+  - `DOC 0.25 / WOC 0.10` -> `SFM 340.16`, `RPM 2599`, `IPT 0.0034`, `Feed 35.39`
+  - `DOC 0.25 / WOC 0.25` -> `SFM 320.72`, `RPM 2450`, `IPT 0.0032`, `Feed 31.46`
+  - `DOC 0.10 / WOC 0.10` -> same capped-load result as the baseline case in the current source path
+
+## Session Metadata
+- Date: 2026-04-16
+- Agent: Codex GPT-5
+- Task ID: Feeds and Speeds FSWizard formula port
+- Goal: Use the provided `this.go` FSWizard logic to wire real endmill DOC/WOC engagement math into the calculator instead of leaving DOC/WOC as warning-only inputs.
+
+## Dependency Validation
+- [x] Reviewed the provided `C:\\Users\\user\\Downloads\\this.go` and confirmed it contains the actual FSWizard calculator path for:
+  - `factorReduce(...)`
+  - `getForumaSFM()`
+  - `getFormulaChipload()`
+  - `fs_wizard_calc_endmill()`
+- [x] Matched the decompiled logic against fields already present in `fswizard-db.json`, including:
+  - `slot_doc`
+  - `side_doc`
+  - `side_woc`
+  - `slot_ipt_factor`
+  - `slot_sfm_factor`
+  - `material_ipt_reduction`
+  - `max_ipt`
+
+## Plan First
+- [x] Port the exact FSWizard-style factor reduction and formula-chipload structure into the local calculator module.
+- [x] Wire planned `DOC` and `WOC` into endmill-style calculations through engagement diameter, radial/axial thinning, slot-factor interpolation, and load-factor scaling.
+- [x] Preserve existing exports/result shape and verify that changing `DOC/WOC` now changes the calculated output.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts"`
+- [x] Direct formula smoke check against `fswizard-db.json` showed:
+  - base case (`DOC 0.25`, `WOC 0.1`) -> `feed 44.24`
+  - changed WOC (`DOC 0.25`, `WOC 0.25`) -> `feed 31.46`
+  - changed DOC (`DOC 0.5`, `WOC 0.1`) stays on the same underload cap in this specific case, which matches the capped load-factor branch from `this.go`
+
+## Review + Results
+- `this.go` did provide the missing FSWizard logic needed to wire endmill engagement math properly.
+- Ported FSWizard-derived pieces now active in the local module:
+  - exact `factorReduce()` behavior,
+  - exact `getFormulaChipload()` structure,
+  - helix factor,
+  - radial and axial chip thinning,
+  - slotting vs side engagement scaling using `slot_ipt_factor` / `slot_sfm_factor`,
+  - DOC×WOC load-factor scaling on programmed feed.
+- Planned `WOC` now changes both feed and SFM in the endmill path instead of only triggering warnings.
+- Planned `DOC` now participates in effective diameter / axial thinning / load-factor math; depending on the selected cut, the FSWizard cap logic can still flatten small underloaded changes, which is consistent with the source formula branch.
+
+## Session Metadata
+- Date: 2026-04-16
+- Agent: Codex GPT-5
+- Task ID: Feeds and Speeds math correction
+- Goal: Fix the calculator math in `src/modules/feeds-speeds/feeds-speeds.ts` so chipload/feed use material IPT plus diameter scaling instead of multiplying two baselines together.
+
+## Dependency Validation
+- [x] Reviewed the current calculator implementation and preserved the existing UI wiring/result shape.
+- [x] Validated the reported failure case against the bundled FSWizard data:
+  - `Solid End Mill`
+  - `Carbide`
+  - `AlTiN`
+  - `4140PH Alloy Steel 300 HB`
+  - `diameter 0.5`
+  - `flutes 4`
+
+## Plan First
+- [x] Replace the chipload math so diameter-table values act as a scaling factor instead of a second chipload baseline.
+- [x] Update SFM math to use factor reduction for material/coating reductions.
+- [x] Add sanity warnings for unrealistic low chipload/feed and invalid diameter/flute inputs.
+- [x] Run focused verification plus the exact acceptance-case check and update continuity docs.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts"`
+- [x] Acceptance-case math check against bundled `fswizard-db.json` returned:
+  - `SFM 340.16031`
+  - `RPM 2598.633349448231`
+  - `chipLoadPerTooth 0.002724`
+  - `feedRate 28.314708975587923`
+
+## Review + Results
+- Fixed the root bug in `computeChipOrIpr()` by removing the old `diameterChipload * materialChipload` double-baseline multiplication.
+- The calculator now uses:
+  - material IPT as the base chipload,
+  - chipload-table interpolation only as a diameter scaling factor relative to the 1/2-inch reference,
+  - factor-reduced tool-material/coating multipliers for SFM and IPT.
+- The reported 4140 / carbide / AlTiN / 1/2-inch endmill case no longer collapses to near-zero chipload/feed; it now lands in a believable machining range while keeping RPM in the same general range.
+
+## Session Metadata
+- Date: 2026-04-16
+- Agent: Codex GPT-5
+- Task ID: Feeds and Speeds calculator v1
+- Goal: Add a logged-in feeds-and-speeds calculator page that follows the existing ShopApp UI style while using the provided FSWizard materials/tool data for full-scope calculator coverage.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Validated current app-shell and utility-route patterns in:
+  - `src/app/layout.tsx`
+  - `src/components/AppNav.tsx`
+  - `src/app/private/print-analyzer/page.tsx`
+- [x] Validated the provided FSWizard datasets contain:
+  - full tool-family coverage via `tool_type`,
+  - FSWizard material values via `material`,
+  - supporting chipload/tool-material/tool-coating data for calculator recommendations.
+
+## Plan First
+- [x] Inspect current route/nav patterns and model the FSWizard data needed for a full-scope calculator.
+- [x] Add the session plan and verification checklist before implementation.
+- [x] Bring the provided FSWizard dataset into the repo in a stable app-owned location and add typed calculator helpers for tool/material lookup and output math.
+- [x] Build a logged-in feeds-and-speeds page that fits the current ShopApp visual language while flowing like a calculator utility rather than an admin CRUD screen.
+- [x] Add an app-nav tab so the calculator is accessible to any logged-in user.
+- [x] Run focused verification and refresh continuity docs with behavior notes and evidence.
+
+## Verification Checklist
+- [x] `npx eslint --ext .ts,.tsx -- "src/components/AppNav.tsx" "src/app/tools/feeds-speeds/page.tsx" "src/app/tools/feeds-speeds/FeedsSpeedsCalculator.tsx" "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts"`
+
+## Review + Results
+- Added a new logged-in route at `/tools/feeds-speeds` and surfaced it in the shared app nav as `Feeds & Speeds`, so the calculator is now a first-class workspace tab instead of a hidden utility page.
+- Added a dedicated `src/modules/feeds-speeds/` module and copied the provided FSWizard bundle into an app-owned JSON asset so the page can use the attached material/tool/coating/chipload data directly.
+- Built a calculator UI that follows the current ShopApp card/tabs/select language while supporting the full attached tool-family list with conditional output for milling, drilling, reaming, tapping, thread milling, chamfering, and turning-style tools.
+- Calculator math now combines FSWizard material SFM, tool-family factors, tool-material factors, coating factors, and chipload interpolation to produce RPM, feed rate, chipload/IPR, ramp/plunge guidance, default DOC/WOC, peck, pilot, and warnings.
+
 ## Session Metadata
 - Date: 2026-04-13
 - Agent: Codex GPT-5

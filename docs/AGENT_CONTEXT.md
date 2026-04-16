@@ -60,6 +60,14 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-04-16 - Feeds-and-speeds parity defaults now follow FSWizard's default-off chip-thinning path and use a repo-backed parity checklist
+Decision: For the current feeds-and-speeds parity pass, keep chip thinning disabled unless the FSWizard tool dataset explicitly enables it, stop auto-forcing slotting mode from `WOC ~= diameter`, fold the FSWizard material/flute DOC-load adjustment back into the load-factor budget, and keep both automated and manual parity cases in-repo.
+Reason: The prior local port was still applying chip thinning and slotting behavior more aggressively than the provided `this.go` default path, which pushed feed recommendations away from what the owner is checking in FSWizard. A small repo-backed parity checklist makes future logic changes auditable instead of relying on memory or ad hoc spot checks.
+
+### 2026-04-16 - Feeds-and-speeds calculator is a logged-in app tool backed by an app-owned FSWizard data module
+Decision: Add the new feeds-and-speeds utility as a normal logged-in route (`/tools/feeds-speeds`) surfaced in the shared app navigation, and keep its calculation data in an app-owned `src/modules/feeds-speeds/` module that imports the provided FSWizard embedded dataset directly.
+Reason: The owner wants this calculator accessible to all logged-in users as a first-class shop tool, not hidden under admin or private-only routes, and the provided FSWizard bundle is the source of truth for materials/tool factors in v1 so it must live in-repo instead of remaining an external local file dependency.
+
 ### 2026-04-14 - Quote origin department/custom amounts live in quote metadata; add-on rate types now include per-foot
 Decision: Extend quote workflow persistence by storing `originDepartmentId` and titled `customAmounts` in quote metadata, keep add-on/quote selection rate types string-based while adding `PER_FOOT`, and have quote conversion map custom amounts into non-checklist `CUSTOM` order charges using the quote origin department (or first active department fallback) while seeding converted parts to that same starting department.
 Reason: The owner needs quote-specific routing/pricing behavior without widening the Prisma quote schema unnecessarily, and the existing metadata + string snapshot contracts already provide a stable extension point. Mapping conversion through the saved origin department lets Paint-origin quotes start in Paint instead of defaulting to Machining, while custom amounts still satisfy the all-charges-are-per-part order model.

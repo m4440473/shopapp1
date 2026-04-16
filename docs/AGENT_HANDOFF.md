@@ -1,3 +1,208 @@
+## Session Handoff - 2026-04-16 (Feeds and Speeds FSWizard parity audit + comparison checklist)
+
+Goal (1 sentence): Tighten the local feeds-and-speeds endmill logic against the provided `this.go` FSWizard default path and add a repeatable comparison set the owner can run manually in FSWizard.
+
+### What changed
+- Updated [feeds-speeds.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/feeds-speeds.ts)
+  - Corrected a few remaining source-parity gaps in the local endmill path:
+    - chip thinning now stays off unless the FSWizard tool data explicitly enables it,
+    - slotting mode is no longer auto-forced just because `WOC` is close to tool diameter,
+    - the skipped FSWizard `fswizard_mat_doc_adjust()` material/flute DOC-load factor is now applied to the load-budget area,
+    - default stickout/flute length resolution now honors `default_len` and `default_flute_len`.
+  - Added internal `xYDelta()` and `getFswizardMaterialDocAdjust()` helpers based directly on the provided `this.go` behavior.
+- Updated [feeds-speeds.types.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/feeds-speeds.types.ts)
+  - Added the typed FSWizard fields needed by the parity pass, including `kp` and `default_chip_thinning`.
+- Added automated parity coverage:
+  - [feeds-speeds.test.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts)
+  - [feeds-speeds.test.ts.snap](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/__tests__/__snapshots__/feeds-speeds.test.ts.snap)
+  - Tests now cover:
+    - stable baseline range for the reported 4140 / carbide / AlTiN / solid-endmill case,
+    - heavier-WOC feed reduction,
+    - stable parity snapshots for three manual comparison cases.
+- Added owner-facing manual comparison instructions:
+  - [FSWIZARD_FEEDS_SPEEDS_PARITY.md](C:/Users/user/Documents/GitHub/shopapp1/docs/FSWIZARD_FEEDS_SPEEDS_PARITY.md)
+  - This gives the exact FSWizard setup defaults plus three concrete cases and expected ShopApp outputs for SFM/RPM/IPT/feed comparison.
+
+### Files touched
+- `src/modules/feeds-speeds/feeds-speeds.ts`
+- `src/modules/feeds-speeds/feeds-speeds.types.ts`
+- `src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts`
+- `src/modules/feeds-speeds/__tests__/__snapshots__/feeds-speeds.test.ts.snap`
+- `docs/FSWIZARD_FEEDS_SPEEDS_PARITY.md`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+- `docs/AGENT_CONTEXT.md`
+
+### Commands run
+- `npm run test -- src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts`
+- `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts" "src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts"`
+
+### Verification evidence
+- Focused feeds-speeds parity tests passed (`3/3`) after an outside-sandbox rerun because sandboxed Vitest/esbuild startup hit Windows `spawn EPERM`.
+- Targeted ESLint passed.
+- Current manual parity checklist values are:
+  - baseline `DOC 0.25 / WOC 0.10` -> `SFM 340.16`, `RPM 2599`, `IPT 0.0034`, `Feed 35.39`
+  - heavier WOC `DOC 0.25 / WOC 0.25` -> `SFM 320.72`, `RPM 2450`, `IPT 0.0032`, `Feed 31.46`
+  - shallower DOC `DOC 0.10 / WOC 0.10` -> same capped-load result as the baseline case in the current source path
+
+### Behavior note for the next agent
+- The new parity checklist is meant to be the first stop before changing feeds-speeds math again; if a future formula tweak breaks those three cases, compare against `docs/FSWIZARD_FEEDS_SPEEDS_PARITY.md` and the snapshot file first.
+- The local calculator still does not model every advanced FSWizard branch (`HSM`, full machine rigidity inputs, circle/threadmill geometry, all `qe.*` helpers), so keep future parity work scoped and source-backed rather than assuming every missing toggle should be approximated.
+
+## Session Handoff - 2026-04-16 (FSWizard `this.go` formula port)
+
+Goal (1 sentence): Use the provided `this.go` FSWizard logic to wire real endmill DOC/WOC engagement formulas into the calculator instead of leaving those inputs as warning-only fields.
+
+### What changed
+- Updated [feeds-speeds.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/feeds-speeds.ts)
+  - Replaced the earlier approximate reduction math with the exact FSWizard `factorReduce()` behavior found in `this.go`.
+  - Ported the FSWizard `getFormulaChipload()` structure so chipload now follows:
+    - interpolated tool chipload,
+    - material IPT / carbide IPT,
+    - helix factor,
+    - tool IPT factor,
+    - material IPT reduction,
+    - `0.5`-diameter normalization.
+  - Added endmill-style engagement math derived from `fs_wizard_calc_endmill()`:
+    - ideal side/slot DOC/WOC,
+    - effective cutting diameter,
+    - radial chip thinning,
+    - axial chip thinning,
+    - slot-factor interpolation using `slot_ipt_factor` and `slot_sfm_factor`,
+    - DOC×WOC load-factor scaling.
+  - This makes planned `DOC/WOC` participate in the actual recommendation math instead of only influencing warnings.
+- Updated [feeds-speeds.types.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/feeds-speeds.types.ts)
+  - Added the FSWizard fields now used by the ported logic, including `slot_ipt_factor`, `slot_sfm_factor`, `corner_radius`, `default_len`, `default_flute_len`, and `max_ipt`.
+
+### Files touched
+- `src/modules/feeds-speeds/feeds-speeds.ts`
+- `src/modules/feeds-speeds/feeds-speeds.types.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts"`
+- `node -` smoke-check script against `src/modules/feeds-speeds/data/fswizard-db.json`
+
+### Verification evidence
+- Targeted ESLint passed.
+- Smoke-check confirmed the same Solid End Mill / Carbide / AlTiN / 4140PH case now changes when `WOC` changes:
+  - `DOC 0.25 / WOC 0.1` -> feed about `44.24`
+  - `DOC 0.25 / WOC 0.25` -> feed about `31.46`
+
+### Behavior note for the next agent
+- `this.go` gives enough to port the major endmill path accurately, but some helper functions referenced there (`qe.*`, `me.e.X_Y_Delta`, `fswizard_mat_doc_adjust`) are still only partially reconstructed locally.
+- The current port is strongest for standard endmill-style calculations and the owner’s reported case. It now uses FSWizard-derived engagement logic rather than a generic approximation.
+- Not every DOC change will visibly move feed in every case because the FSWizard load branch clamps underloaded cuts; this is source-consistent behavior, not the old bug.
+
+## Session Handoff - 2026-04-16 (Feeds and Speeds math correction)
+
+Goal (1 sentence): Fix the calculator math so feeds and chipload are based on material IPT plus diameter scaling instead of double-counting chipload baselines.
+
+### What changed
+- Updated [feeds-speeds.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/feeds-speeds.ts)
+  - Added `factorReduce(value, reduction)` and switched SFM computation to:
+    - `material.sfm`
+    - `* tool.sfm`
+    - `* factorReduce(toolMaterial.sfm, material.material_reduction)`
+    - `* factorReduce(coating.sfm, material.coating_reduction)`
+  - Fixed `computeChipOrIpr()` so it now:
+    - uses material IPT (`ipt` or `ipt_carbide`) as the chipload base,
+    - uses the chipload table only as a diameter scaling factor relative to the `0.5` reference,
+    - applies tool/tool-material/coating IPT factors without multiplying two baseline chiploads together.
+  - Added low-value sanity warnings for invalid diameter/flute counts and unrealistic low chipload/feed outcomes.
+  - Tightened chipload/IPR rounding so tiny-but-positive values no longer silently display as `0`.
+- Updated [feeds-speeds.types.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/feeds-speeds.types.ts)
+  - Added optional `material_ipt_reduction` to the material type so the corrected IPT reduction math is typed cleanly against the bundled FSWizard data.
+
+### Files touched
+- `src/modules/feeds-speeds/feeds-speeds.ts`
+- `src/modules/feeds-speeds/feeds-speeds.types.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts"`
+- `node -` acceptance-case math check against `src/modules/feeds-speeds/data/fswizard-db.json`
+
+### Verification evidence
+- Targeted ESLint passed.
+- Exact acceptance case now evaluates to approximately:
+  - `SFM 340.16`
+  - `RPM 2598.63`
+  - `chipLoadPerTooth 0.002724`
+  - `feedRate 28.31`
+- This preserves RPM in the same general range while eliminating the earlier near-zero chipload/feed failure.
+
+### Behavior note for the next agent
+- The chipload table is now intentionally treated as a diameter-scaling reference, not as a second chipload baseline.
+- Material IPT remains the true chipload base in v1, with carbide-like tooling preferring `ipt_carbide` when present.
+- If a future pass tries to mirror more of FSWizard’s advanced machine rigidity / holder / operation branches, build that on top of the current factor-based baseline instead of reintroducing chipload double-counting.
+
+## Session Handoff - 2026-04-16 (Feeds and Speeds calculator v1)
+
+Goal (1 sentence): Add a first-class logged-in feeds-and-speeds calculator page that stays in the existing ShopApp visual language while using the provided FSWizard materials and tool-factor dataset directly.
+
+### What changed
+- Added a new logged-in tool route:
+  - [page.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/tools/feeds-speeds/page.tsx)
+  - The route redirects unauthenticated users through the existing sign-in flow and presents the calculator as a normal app workspace page instead of an admin-only surface.
+- Added the interactive calculator UI:
+  - [FeedsSpeedsCalculator.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/app/tools/feeds-speeds/FeedsSpeedsCalculator.tsx)
+  - Uses existing ShopApp UI primitives (`Card`, `Select`, `Tabs`, `Button`, `Badge`, `Input`) so it visually matches the rest of the app.
+  - Supports the attached full tool-family set in one screen with conditional outputs for:
+    - milling,
+    - drilling,
+    - reaming,
+    - tapping,
+    - thread milling,
+    - chamfer/corner-rounding,
+    - turning/grooving/boring/facing style tools.
+- Added the feeds-and-speeds domain module:
+  - [feeds-speeds.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/feeds-speeds.ts)
+  - [feeds-speeds.types.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/feeds-speeds.types.ts)
+  - Calculation helpers now:
+    - import the provided FSWizard embedded dataset,
+    - sort/look up tool families, materials, coatings, and tool materials,
+    - interpolate chipload by diameter,
+    - combine material/tool/tool-material/coating factors into SFM and feed outputs,
+    - derive secondary guidance like ramp feed, plunge feed, DOC/WOC defaults, peck depth, pilot size, and warning copy.
+- Added the in-repo data source:
+  - [fswizard-db.json](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/data/fswizard-db.json)
+  - This is a copied app-owned version of the provided FSWizard embedded dataset so the feature no longer depends on a local Downloads-file path.
+- Updated shared navigation:
+  - [AppNav.tsx](C:/Users/user/Documents/GitHub/shopapp1/src/components/AppNav.tsx)
+  - Added `Feeds & Speeds` as a standard app nav tab for signed-in users.
+
+### Files touched
+- `src/components/AppNav.tsx`
+- `src/app/tools/feeds-speeds/page.tsx`
+- `src/app/tools/feeds-speeds/FeedsSpeedsCalculator.tsx`
+- `src/modules/feeds-speeds/feeds-speeds.ts`
+- `src/modules/feeds-speeds/feeds-speeds.types.ts`
+- `src/modules/feeds-speeds/data/fswizard-db.json`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+- `docs/AGENT_CONTEXT.md`
+
+### Commands run
+- `npx eslint --ext .ts,.tsx -- "src/components/AppNav.tsx" "src/app/tools/feeds-speeds/page.tsx" "src/app/tools/feeds-speeds/FeedsSpeedsCalculator.tsx" "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts"`
+
+### Verification evidence
+- Targeted ESLint passed on all new calculator/nav files.
+
+### Behavior note for the next agent
+- V1 intentionally uses the provided FSWizard embedded dataset directly rather than mapping into the existing admin materials table; the calculator's material list is independent from `admin/materials`.
+- The calculator is intentionally calculator-only in v1: there is no persistence, no presets, and no order/quote write-back.
+- Threading support is intentionally lightweight for now:
+  - taps use the entered thread lead (`in/rev`) for feed,
+  - thread mills still use chipload-driven feed with thread lead shown as a comparison/sanity input rather than a fully modeled thread geometry engine.
+- The current math is factor-based from the attached FSWizard dataset and should be treated as a practical v1 recommendation engine, not a byte-for-byte clone of every FSWizard advanced option or machine-model branch.
+
 ## Session Handoff - 2026-04-14 (Quote origin department + per-foot pricing + custom quote amounts)
 
 Goal (1 sentence): Let admins route quotes from a non-default origin department, quote paint/add-on work by the foot, and add titled manual quote amounts that survive quote save, print, and quote-to-order conversion.

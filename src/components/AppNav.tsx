@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BadgeCheck,
+  Calculator,
   LayoutDashboard,
   Menu,
   Search,
@@ -33,6 +34,7 @@ import { useCurrentUser } from "@/lib/use-current-user";
 const baseLinks = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/customers", label: "Customers", icon: Users },
+  { href: "/tools/feeds-speeds", label: "Feeds & Speeds", icon: Calculator },
 ];
 
 type AppNavProps = {
