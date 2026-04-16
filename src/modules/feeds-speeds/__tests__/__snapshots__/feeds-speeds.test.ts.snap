@@ -1,0 +1,31 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`feeds-speeds FSWizard parity cases > keeps manual parity-case outputs stable 1`] = `
+{
+  "chipLoadPerTooth": 0.0034,
+  "feedRate": 35.39,
+  "name": "4140 baseline",
+  "rpm": 2599,
+  "sfm": 340.16,
+}
+`;
+
+exports[`feeds-speeds FSWizard parity cases > keeps manual parity-case outputs stable 2`] = `
+{
+  "chipLoadPerTooth": 0.0032,
+  "feedRate": 31.46,
+  "name": "4140 heavier WOC",
+  "rpm": 2450,
+  "sfm": 320.72,
+}
+`;
+
+exports[`feeds-speeds FSWizard parity cases > keeps manual parity-case outputs stable 3`] = `
+{
+  "chipLoadPerTooth": 0.0034,
+  "feedRate": 35.39,
+  "name": "4140 shallow DOC",
+  "rpm": 2599,
+  "sfm": 340.16,
+}
+`;
