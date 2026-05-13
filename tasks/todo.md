@@ -1,6 +1,70 @@
 # tasks/todo.md - Session Plan + Verification
 
 ## Session Metadata
+- Date: 2026-05-13
+- Agent: Codex GPT-5
+- Task ID: Sync feeds-and-speeds parity branch
+- Goal: Verify pending local feeds-and-speeds parity changes, commit the intended source/docs updates, and push the branch so local and remote are aligned.
+
+## Dependency Validation
+- [x] Reviewed required continuity docs before acting.
+- [x] Confirmed current branch is `codex/feeds-speeds-fswizard-parity`.
+- [x] Fetched origin and confirmed branch tip matched the remote before preparing a new commit.
+
+## Plan First
+- [x] Inspect pending changes and separate intentional source/docs changes from local runtime DB state.
+- [x] Re-run focused verification for the changed feeds-and-speeds area.
+- [x] Stage only intended source/docs changes, commit, and push the branch.
+- [x] Confirm final branch/working-tree sync status.
+
+## Verification Checklist
+- [x] `npm run test -- src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts` *(sandboxed run hit Windows Vitest/esbuild `spawn EPERM`; outside-sandbox rerun passed)*
+- [x] `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts" "src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts"`
+
+## Review + Results
+- Pending source/docs changes match the deeper FSWizard parity work and pass focused verification.
+- `prisma/prisma/dev.db` is intentionally excluded from the sync commit as local runtime DB state.
+
+## Session Metadata
+- Date: 2026-04-20
+- Agent: Codex GPT-5
+- Task ID: Feeds and Speeds deeper FSWizard parity audit
+- Goal: Audit more of the current feeds-and-speeds logic against the provided `C:\\Users\\user\\Downloads\\this.go`, patch only the verified source-backed parity gaps that materially affect calculator outputs, and prove the affected cases with focused tests.
+
+## Dependency Validation
+- [x] Reviewed `AGENTS.md`, `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, `tasks/lessons.md`, and `docs/AGENT_TASK_BOARD.md` before implementation.
+- [x] Reviewed the provided `C:\\Users\\user\\Downloads\\this.go` again and confirmed the current repo already ports some FSWizard logic, but still simplifies several branch-specific calculator paths.
+- [x] Validated the prior parity task quality: the existing endmill regression tests and checklist are useful, but current coverage is still narrow and does not protect several source-backed feed/speed branches.
+
+## Plan First
+- [x] Compare the current calculator logic to the provided source across the next most impactful branches and choose only the fixes that are both source-backed and practical to ship in one pass.
+- [x] Patch the verified calculator logic gaps while preserving the existing UI/result contract.
+- [x] Add focused automated coverage for the affected parity cases so future changes can be checked against the same source behavior.
+- [x] Run the relevant verification commands and refresh continuity docs with findings, evidence, and any remaining known gaps.
+
+## Verification Checklist
+- [x] `npm run test -- src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts` *(outside-sandbox rerun after the Windows sandbox hit the same Vitest/esbuild `spawn EPERM` startup failure as prior sessions)*
+- [x] `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts" "src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts"`
+
+## Review + Results
+- Audited the current calculator against the provided `this.go` across more than the prior baseline endmill case and landed the source-backed gaps that were practical without widening the current UI contract.
+- Updated `src/modules/feeds-speeds/feeds-speeds.ts` so the current calculator now:
+  - uses the exact Carbide-only `ipt_carbide` branch instead of treating diamond/ceramic tooling as the same source path,
+  - applies branch-specific helix-factor behavior for endmills, drills/reamers, taps, and corner-rounding tools instead of one generic milling-style factor,
+  - treats taps as pitch-driven using the existing `threadLead` input for both displayed `IPR` and feed output,
+  - treats drill/ream `IPR` as true per-revolution output so feed now matches the FSWizard-style `per tooth × flute count` branch,
+  - resolves DOC-only/WOC-only endmill geometry more like the FSWizard source before load scaling instead of leaving omitted engagement values on a flatter approximation path.
+- Expanded `src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts` so parity coverage now includes:
+  - the earlier 4140 carbide endmill baseline cases,
+  - a pitch-driven tap case,
+  - a drill helix/IPR/feed case,
+  - DOC-only endmill snapshots when WOC is left at the default-off path.
+- Current known gaps after this pass:
+  - exact tap parity still needs FSWizard-style thread form/size database inputs instead of only freeform `threadLead`,
+  - exact turn/groove parity still needs the reference branch's deflection/load model and a machine/max-RPM contract,
+  - exact corner-rounding/threadmill parity still needs more of the source-specific geometry helpers than are currently exposed in this UI/module.
+
+## Session Metadata
 - Date: 2026-04-16
 - Agent: Codex GPT-5
 - Task ID: Feeds and Speeds parity audit + FSWizard comparison test

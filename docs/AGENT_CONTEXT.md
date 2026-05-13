@@ -60,6 +60,10 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-04-20 - Feeds-and-speeds parity now uses branch-specific helix/IPR behavior and treats threadLead as the tap pitch proxy
+Decision: For the current parity pass, keep the existing calculator UI contract but tighten the FSWizard-backed math by using branch-specific helix behavior, exact Carbide-only `ipt_carbide` selection, pitch-driven tap feed from the existing `threadLead` input, and a closer endmill DOC/WOC ideal-geometry solver when one engagement dimension is left at the default-off path.
+Reason: The provided `this.go` shows that the previous single-helix-factor / generic-IPR path was still flattening real drill/tap/endmill behavior away from FSWizard, but exact tap thread-table parity, turn/groove deflection parity, and corner-rounding/threadmill geometry parity would require new inputs/helpers beyond this session's safe scope.
+
 ### 2026-04-16 - Feeds-and-speeds parity defaults now follow FSWizard's default-off chip-thinning path and use a repo-backed parity checklist
 Decision: For the current feeds-and-speeds parity pass, keep chip thinning disabled unless the FSWizard tool dataset explicitly enables it, stop auto-forcing slotting mode from `WOC ~= diameter`, fold the FSWizard material/flute DOC-load adjustment back into the load-factor budget, and keep both automated and manual parity cases in-repo.
 Reason: The prior local port was still applying chip thinning and slotting behavior more aggressively than the provided `this.go` default path, which pushed feed recommendations away from what the owner is checking in FSWizard. A small repo-backed parity checklist makes future logic changes auditable instead of relying on memory or ad hoc spot checks.

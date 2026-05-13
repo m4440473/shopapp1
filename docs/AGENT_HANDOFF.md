@@ -1,3 +1,84 @@
+## Session Handoff - 2026-05-13 (Branch sync)
+
+Goal (1 sentence): Get the local feeds-and-speeds parity branch verified and synced with the remote.
+
+### What changed
+- Verified the current branch `codex/feeds-speeds-fswizard-parity` is aligned with `origin/codex/feeds-speeds-fswizard-parity` before committing pending work.
+- Re-ran focused feeds-and-speeds verification.
+- Kept `prisma/prisma/dev.db` out of the sync commit because it is local DB state and unrelated to the feeds-and-speeds code/docs changes.
+
+### Files touched
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+- `tasks/todo.md`
+
+### Commands run
+- `git fetch origin`
+- `git status --short --branch`
+- `npm run test -- src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts`
+- `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts" "src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts"`
+
+### Verification evidence
+- Focused feeds-speeds Vitest tests passed (`6/6`) after outside-sandbox rerun due to Windows sandbox `spawn EPERM`.
+- Targeted ESLint passed.
+
+### Behavior note for the next agent
+- A local tracked SQLite DB file may still show as modified if the running local app changes it. Treat it as local runtime state unless the user explicitly asks to preserve DB fixture changes.
+
+## Session Handoff - 2026-04-20 (Feeds and Speeds deeper FSWizard parity audit)
+
+Goal (1 sentence): Tighten more of the current feeds-and-speeds calculator against the provided `this.go` source by covering additional source-backed drill/tap/endmill parity gaps without widening the current UI contract.
+
+### What changed
+- Updated [feeds-speeds.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/feeds-speeds.ts)
+  - Narrowed the `ipt_carbide` calculation path to exact `Carbide` material selection, matching the source branch instead of treating diamond/ceramic as the same rule.
+  - Reworked helix-factor handling so it now follows branch-specific behavior from the source:
+    - endmills/threadmills/chamfer-style tools use the endmill-style `sin(helix) - sin(30)` path,
+    - drills/reamers use the drill-style `0.75 * (sin(helix) - sin(15))` path,
+    - taps use the tap-style `sin(helix) - sin(15)` path,
+    - corner-rounding tools use `1`.
+  - Updated the tap path so the existing `threadLead` input now acts as the current pitch proxy for both displayed `IPR` and feed output.
+  - Corrected drill/ream `IPR` handling so the result now reflects true per-revolution output and feed follows the source's `per tooth × flute count` math.
+  - Added a closer endmill DOC-only/WOC-only ideal-geometry solver so leaving one engagement dimension at `0` now follows the FSWizard-style default-off geometry/load path more closely before load scaling.
+- Updated automated parity coverage:
+  - [feeds-speeds.test.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts)
+  - [feeds-speeds.test.ts.snap](C:/Users/user/Documents/GitHub/shopapp1/src/modules/feeds-speeds/__tests__/__snapshots__/feeds-speeds.test.ts.snap)
+  - Tests now cover:
+    - the prior 4140 carbide endmill baseline cases,
+    - a pitch-driven tap case,
+    - a drill helix/IPR/feed case,
+    - DOC-only endmill snapshots when WOC is left on the default-off path.
+- Updated continuity artifacts:
+  - [tasks/todo.md](C:/Users/user/Documents/GitHub/shopapp1/tasks/todo.md)
+  - [PROGRESS_LOG.md](C:/Users/user/Documents/GitHub/shopapp1/PROGRESS_LOG.md)
+  - [AGENT_CONTEXT.md](C:/Users/user/Documents/GitHub/shopapp1/docs/AGENT_CONTEXT.md)
+
+### Files touched
+- `src/modules/feeds-speeds/feeds-speeds.ts`
+- `src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts`
+- `src/modules/feeds-speeds/__tests__/__snapshots__/feeds-speeds.test.ts.snap`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+- `docs/AGENT_CONTEXT.md`
+
+### Commands run
+- `npm run test -- src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts`
+- `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts" "src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts"`
+
+### Verification evidence
+- Focused feeds-speeds parity tests passed (`6/6`) after an outside-sandbox rerun because the sandboxed Vitest/esbuild startup hit Windows `spawn EPERM`.
+- Targeted ESLint passed on the calculator module, types, and updated parity tests.
+- New snapshot-backed parity outputs now include:
+  - DOC-only shallow endmill (`DOC 0.10 / WOC 0`) -> `SFM 272.13`, `RPM 2079`, `IPT 0.0027`, `Feed 22.65`
+  - DOC-only deeper endmill (`DOC 0.25 / WOC 0`) -> `SFM 298.92`, `RPM 2284`, `IPT 0.0020`, `Feed 18.22`
+
+### Behavior note for the next agent
+- The current parity pass now covers more realistic drill/tap/default-off endmill behavior, but three exact-source gaps are still intentionally open because the current UI/module does not expose all of the required source inputs/helpers:
+  - tap thread-table parity still needs thread form/size modeling rather than only `threadLead`,
+  - turn/groove parity still needs the source branch's deflection/load model plus a machine max-RPM contract,
+  - corner-rounding/threadmill parity still needs more of the source-specific geometry helpers (`qe.*`, `We.*`) than are presently ported.
+
 ## Session Handoff - 2026-04-16 (Feeds and Speeds FSWizard parity audit + comparison checklist)
 
 Goal (1 sentence): Tighten the local feeds-and-speeds endmill logic against the provided `this.go` FSWizard default path and add a repeatable comparison set the owner can run manually in FSWizard.

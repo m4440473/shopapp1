@@ -1,5 +1,25 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`feeds-speeds FSWizard parity cases > keeps DOC-only endmill cases stable when WOC is left at default-off 1`] = `
+{
+  "chipLoadPerTooth": 0.0027,
+  "feedRate": 22.65,
+  "name": "4140 doc only shallow",
+  "rpm": 2079,
+  "sfm": 272.13,
+}
+`;
+
+exports[`feeds-speeds FSWizard parity cases > keeps DOC-only endmill cases stable when WOC is left at default-off 2`] = `
+{
+  "chipLoadPerTooth": 0.002,
+  "feedRate": 18.22,
+  "name": "4140 doc only deeper",
+  "rpm": 2284,
+  "sfm": 298.92,
+}
+`;
+
 exports[`feeds-speeds FSWizard parity cases > keeps manual parity-case outputs stable 1`] = `
 {
   "chipLoadPerTooth": 0.0034,

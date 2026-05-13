@@ -1,3 +1,46 @@
+### 2026-05-13 - Synced feeds-and-speeds parity branch
+- Checked `codex/feeds-speeds-fswizard-parity` against `origin/codex/feeds-speeds-fswizard-parity`; the branch tip was already aligned after fetch.
+- Re-verified the pending feeds-and-speeds parity changes before preparing them for commit/push.
+- Left the local tracked SQLite dev DB change out of the sync commit because it appears to be runtime/local state rather than part of the feeds-and-speeds feature.
+
+Commands run:
+- `git fetch origin`
+- `npm run test -- src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts` *(sandboxed run hit Windows Vitest/esbuild `spawn EPERM`; outside-sandbox rerun passed)*
+- `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts" "src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts"`
+
+Verification note:
+- Focused feeds-speeds Vitest tests passed (`6/6`).
+- Targeted ESLint passed on the calculator module, types, and parity test.
+
+### 2026-04-20 - Expanded FSWizard parity coverage across taps, drills, and DOC-only endmill behavior
+- Audited more of `src/modules/feeds-speeds/feeds-speeds.ts` against the provided `C:\\Users\\user\\Downloads\\this.go` beyond the prior single endmill baseline and tightened the source-backed gaps that were practical without widening the current UI contract.
+- Updated the calculator math in `src/modules/feeds-speeds/feeds-speeds.ts` so it now:
+  - uses exact Carbide-only `ipt_carbide` behavior for the calculation path instead of treating diamond/ceramic tools as the same branch,
+  - applies branch-specific helix-factor behavior for endmills, drills/reamers, taps, and corner-rounding tools,
+  - treats taps as pitch-driven from the existing `threadLead` input for both displayed `IPR` and feed,
+  - treats drill/ream `IPR` as true per-revolution output so feed matches the FSWizard-style `per tooth × flute count` path,
+  - resolves omitted DOC/WOC endmill geometry more like the source before load scaling instead of leaving the missing engagement dimension on the flatter approximation path.
+- Expanded focused regression coverage in `src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts` and refreshed `src/modules/feeds-speeds/__tests__/__snapshots__/feeds-speeds.test.ts.snap` so parity checks now cover:
+  - the earlier 4140 carbide endmill cases,
+  - a pitch-driven tap case,
+  - a drill helix/IPR/feed case,
+  - DOC-only endmill snapshots when WOC is left at the default-off path.
+
+Commands run:
+- `npm run test -- src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts` *(outside-sandbox rerun after the Windows sandbox hit Vitest/esbuild `spawn EPERM` on startup)*
+- `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts" "src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts"`
+
+Verification note:
+- Focused feeds-speeds Vitest parity tests passed (`6/6`).
+- Targeted ESLint passed on the calculator module, types, and updated parity tests.
+- New snapshot-backed parity values now include:
+  - DOC-only shallow endmill case (`DOC 0.10 / WOC 0`) -> `SFM 272.13`, `RPM 2079`, `IPT 0.0027`, `Feed 22.65`
+  - DOC-only deeper endmill case (`DOC 0.25 / WOC 0`) -> `SFM 298.92`, `RPM 2284`, `IPT 0.0020`, `Feed 18.22`
+- Remaining known parity gaps after this pass:
+  - exact tap parity still needs FSWizard-style thread-form/thread-size inputs instead of only freeform `threadLead`,
+  - exact turn/groove parity still needs the source branch's deflection/load model plus a machine max-RPM contract,
+  - exact corner-rounding and full threadmill parity still need more source-specific geometry helpers than the current module exposes.
+
 ### 2026-04-16 - Added FSWizard parity checks and corrected default-path feeds-and-speeds assumptions
 - Audited the current `src/modules/feeds-speeds/feeds-speeds.ts` endmill path against the provided `C:\\Users\\user\\Downloads\\this.go` and corrected a few remaining source-parity gaps:
   - chip thinning is no longer auto-applied unless the FSWizard tool data explicitly enables it,
