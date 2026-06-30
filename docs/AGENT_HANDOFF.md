@@ -1,3 +1,67 @@
+## Session Handoff - 2026-05-13 (Quote-to-order machinist workflow QA)
+
+Goal (1 sentence): Deep-test and audit the create-quote through converted-order machinist workflow, including multi-part orders, department movement, checklist completion, and timer behavior.
+
+### What changed
+- Added a session plan/checklist in [tasks/todo.md](C:/Users/user/Documents/GitHub/shopapp1/tasks/todo.md).
+- Fixed [quotes.service.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/quotes/quotes.service.ts)
+  - Normalizes blank optional quote-part `materialId` values to `null` before creating quote parts.
+- Fixed [convert route](C:/Users/user/Documents/GitHub/shopapp1/src/app/api/admin/quotes/[id]/convert/route.ts)
+  - Normalizes blank optional material IDs on quote conversion overrides/defaults before order creation.
+- Fixed [orders.service.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/orders/orders.service.ts)
+  - Normalizes blank optional order-part `materialId` values to `null` on direct order creation.
+  - Preserves the final department when checklist completion marks a part complete.
+- Updated [orders.service.test.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/orders/__tests__/orders.service.test.ts)
+  - Added regression coverage for blank material normalization and final-department preservation.
+
+### Runtime QA Performed
+- Browser Use was attempted twice after loading the Browser skill and again after the user explicitly selected the plugin, but no Codex IAB backend was discoverable. Runtime testing used authenticated requests against the live Next server instead.
+- Created and converted three multi-part quote-originated QA orders:
+  - `CRM-1001` / 2 parts,
+  - `CRM-1002` / 2 parts,
+  - `CRM-1003` / 3 parts.
+- Exercised:
+  - quote creation and conversion,
+  - order detail retrieval,
+  - timer start/active/conflict/finish,
+  - manual department transition,
+  - checklist-driven department advancement,
+  - completed-part final department ownership.
+
+### Findings Left For Follow-Up
+- P1: Converted quote requirements/notes are not seeded into `OrderPart.workInstructions`, so the Read Me First acknowledgement gate is absent on converted parts.
+- P1: Manual department movement can bypass open checklist items.
+- P1: Timer service still allows only one active timer per user, not one per `(user, department)` as documented.
+- P2: Quote-converted checklist rows are not linked to their matching charges, so checklist completion leaves `OrderCharge.completedAt` null.
+- P2: Parts can be moved into a department with no checklist items and then cannot submit that department complete.
+- P3: Order detail/timer endpoints duplicate time-entry fetching and may become expensive on timer-heavy orders.
+
+### Files touched
+- `src/app/api/admin/quotes/[id]/convert/route.ts`
+- `src/modules/orders/__tests__/orders.service.test.ts`
+- `src/modules/orders/orders.service.ts`
+- `src/modules/quotes/quotes.service.ts`
+- `tasks/todo.md`
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+
+### Commands run
+- `npm run dev -- --hostname 0.0.0.0 --port 3001`
+- `npm run dev -- --hostname 0.0.0.0 --port 3002`
+- Authenticated runtime requests against `http://127.0.0.1:3002`
+- `npx eslint --ext .ts,.tsx -- "src/modules/quotes/quotes.service.ts" "src/modules/orders/orders.service.ts" "src/app/api/admin/quotes/[id]/convert/route.ts" "src/modules/orders/__tests__/orders.service.test.ts"`
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+
+### Verification evidence
+- Targeted ESLint passed.
+- Focused Orders service tests passed (`13/13`) after outside-sandbox rerun because the sandboxed Vitest/esbuild startup hit Windows `spawn EPERM`.
+- Live quote create initially reproduced Prisma `P2003` from `materialId = ""`; after the fix, three quote create/convert flows succeeded.
+- Live checklist completion initially showed completed Shipping parts clearing to `null`; after the fix, a fresh part completed with `currentDepartmentId = dept_shipping`.
+
+### Behavior note for the next agent
+- The local tracked SQLite DB (`prisma/prisma/dev.db`) is modified because runtime QA created/updated test orders. Treat it as local runtime state unless the user asks to preserve DB fixture changes.
+- Temporary QA dev servers on ports `3001` and `3002` were stopped before handoff.
+
 ## Session Handoff - 2026-05-13 (Branch sync)
 
 Goal (1 sentence): Get the local feeds-and-speeds parity branch verified and synced with the remote.

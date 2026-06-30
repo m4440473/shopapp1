@@ -3,6 +3,37 @@
 ## Session Metadata
 - Date: 2026-05-13
 - Agent: Codex GPT-5
+- Task ID: Quote-to-order machinist workflow QA deep dive
+- Goal: Audit quote creation through order conversion, department/checklist progression, and time tracking by combining code review, browser/runtime testing, and parallel agent review; document bugs/performance risks with evidence before making any scoped fixes.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `tasks/todo.md`, and `tasks/lessons.md` before implementation/testing.
+- [x] Checked working tree status before starting; only existing local runtime DB state is modified (`prisma/prisma/dev.db`).
+- [x] Validated the app can run locally with demo credentials for an end-to-end quote/order/timer workflow.
+
+## Plan First
+- [x] Map the relevant code paths for quote creation/conversion, order details, department movement, checklist completion, and time tracking.
+- [x] Use parallel agents to review likely logic/performance fault lines in quote/order routing and timer/checklist behavior.
+- [x] Start the local app and use the browser/API runtime to create 2-3 quote-originated orders with multiple parts, then exercise machinist-style checklist, department movement, and timer actions.
+- [x] Confirm findings against source code/API behavior, distinguishing reproducible bugs from design gaps or environment limitations.
+- [x] Apply narrowly scoped fixes only if they are clear, low-risk, and directly supported by the test evidence; otherwise log issues and recommended next steps.
+- [x] Run focused verification for any touched code and update `PROGRESS_LOG.md` plus `docs/AGENT_HANDOFF.md` before stopping.
+
+## Verification Checklist
+- [x] Runtime workflow: quote create -> order conversion -> order detail -> part/checklist/timer/department flow.
+- [x] Targeted tests/lint for changed files.
+- [x] Continuity docs updated with findings, commands, and unresolved risks.
+
+## Review + Results
+- Browser Use could not connect to a Codex IAB backend in this session, so visible browser automation was unavailable; authenticated live-server route/API requests were used for runtime verification.
+- Created/converted three multi-part quote-originated orders: `CRM-1001`, `CRM-1002`, and `CRM-1003`.
+- Fixed reproduced blank optional-material FK failures and final-department clearing on checklist-driven completion.
+- Verified targeted ESLint and focused Orders service tests.
+- Logged follow-up findings in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
+
+## Session Metadata
+- Date: 2026-05-13
+- Agent: Codex GPT-5
 - Task ID: Sync feeds-and-speeds parity branch
 - Goal: Verify pending local feeds-and-speeds parity changes, commit the intended source/docs updates, and push the branch so local and remote are aligned.
 

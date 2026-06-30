@@ -131,6 +131,70 @@ describe('orders.service completion gating', () => {
     expect(payload.item.parts[0]?.currentDepartmentId).toBe(payload.departments[0]?.id);
   });
 
+  it('normalizes blank optional material IDs on order create', async () => {
+    const { createOrderFromPayload, getOrderDetails } = await import('../orders.service');
+
+    const created = await createOrderFromPayload({
+      business: 'STD',
+      customerId: 'customer_test_001',
+      receivedDate: '2026-02-01',
+      dueDate: '2026-02-10',
+      priority: 'NORMAL',
+      materialNeeded: false,
+      materialOrdered: false,
+      modelIncluded: false,
+      vendorId: undefined,
+      poNumber: undefined,
+      assignedMachinistId: undefined,
+      notes: '',
+      attachments: [],
+      addonIds: [],
+      customFieldValues: [],
+      parts: [
+        {
+          partNumber: 'NEW-BLANK-MATERIAL',
+          quantity: 1,
+          materialId: '',
+          stockSize: undefined,
+          cutLength: undefined,
+          notes: undefined,
+          addonSelections: [],
+        },
+      ],
+    });
+
+    expect(created.ok).toBe(true);
+
+    const orderId = (created as { ok: true; data: { id: string } }).data.id;
+    const details = await getOrderDetails(orderId, true);
+    expect(details.ok).toBe(true);
+
+    const payload = (details as { ok: true; data: { item: { parts: Array<{ materialId: string | null }> } } }).data;
+    expect(payload.item.parts[0]?.materialId).toBeNull();
+  });
+
+  it('keeps the final department visible when checklist completion finishes a part', async () => {
+    const { completeChecklistAndAdvance, getOrderDetails } = await import('../orders.service');
+
+    const result = await completeChecklistAndAdvance({
+      orderId: 'order_test_001',
+      partId: 'part_test_002',
+      checklistId: 'checklist_test_001',
+      actorUserId: 'user_test_machinist',
+    });
+
+    expect(result.ok).toBe(true);
+    const payload = (result as { ok: true; data: { part: { currentDepartmentId: string | null } } }).data;
+    expect(payload.part.currentDepartmentId).toBe('dept_test_002');
+
+    const details = await getOrderDetails('order_test_001', true);
+    expect(details.ok).toBe(true);
+    const part = (details as { ok: true; data: { item: { parts: Array<{ id: string; status: string | null; currentDepartmentId: string | null }> } } }).data.item.parts
+      .find((entry) => entry.id === 'part_test_002');
+    expect(part?.status).toBe('COMPLETE');
+    expect(part?.currentDepartmentId).toBe('dept_test_002');
+  });
+
   it('does not visually auto-advance a null-owned part to the next department after checklist completion', async () => {
     const { getOrderDetails, toggleChecklistItem } = await import('../orders.service');
     const { updateOrderPart } = await import('@/repos/orders');

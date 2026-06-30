@@ -281,10 +281,15 @@ export async function prepareQuoteComponents(
       ? input.multiPiece
       : parts.some((part) => (part.pieceCount ?? 1) > 1);
 
+  const optionalId = (value: string | null | undefined) => {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : null;
+  };
+
   const partsData = parts.map((part, index) => ({
     name: part.name,
     partNumber: part.partNumber ?? null,
-    materialId: part.materialId ?? null,
+    materialId: optionalId(part.materialId),
     stockSize: part.stockSize ?? null,
     cutLength: part.cutLength ?? null,
     description: part.description ?? null,

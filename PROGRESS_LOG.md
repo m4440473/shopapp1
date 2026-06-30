@@ -1,3 +1,34 @@
+### 2026-05-13 - QA deep dive: quote-to-order machinist workflow
+- Audited the quote -> order -> department/checklist/timer workflow with source review, two parallel review agents, and authenticated live-server runtime requests.
+- Browser Use was explicitly attempted but the in-app browser backend was not discoverable in this session, so runtime verification used the same live Next routes/API calls instead of visible browser automation.
+- Created and converted three fresh quote-originated QA orders with multiple parts:
+  - `CRM-1001` from `CRM-QA-1778688724794-Q1` with 2 parts,
+  - `CRM-1002` from `CRM-QA-1778688724794-Q2` with 2 parts,
+  - `CRM-1003` from `CRM-QA-1778688724794-Q3` with 3 parts.
+- Fixed two narrow, reproduced defects:
+  - blank optional `materialId` values from quote/order forms now normalize to `null` before writes, avoiding Prisma FK failures when "No material" is selected,
+  - checklist-driven part completion now preserves the final department ownership instead of clearing `currentDepartmentId` to `null`.
+- Runtime findings confirmed for follow-up:
+  - quote-converted parts are missing `workInstructions`, so quote requirements/notes do not trigger the expected Read Me First acknowledgement gate,
+  - manual department transition can move a part out of its current department while checklist items remain open,
+  - starting a second active timer in another department for the same worker returns `409`, despite the documented department-scoped timer model,
+  - quote-converted checklist rows have `chargeId: null`, so checking them off does not update matching `OrderCharge.completedAt`,
+  - parts can be manually moved into a department with no checklist items and then cannot submit that department complete,
+  - order detail/time endpoints still duplicate some time-entry fetching and can grow expensive on timer-heavy orders.
+
+Commands run:
+- `npm run dev -- --hostname 0.0.0.0 --port 3001` *(outside-sandbox attempt used to bypass Windows `spawn EPERM`; port was already occupied by the timed run)*
+- `npm run dev -- --hostname 0.0.0.0 --port 3002`
+- Authenticated runtime flow requests against `http://127.0.0.1:3002`
+- `npx eslint --ext .ts,.tsx -- "src/modules/quotes/quotes.service.ts" "src/modules/orders/orders.service.ts" "src/app/api/admin/quotes/[id]/convert/route.ts" "src/modules/orders/__tests__/orders.service.test.ts"`
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts` *(sandboxed run hit Windows Vitest/esbuild `spawn EPERM`; outside-sandbox rerun passed)*
+
+Verification note:
+- Targeted ESLint passed on touched source/test files.
+- Focused Orders service tests passed (`13/13`).
+- Live runtime repro proved blank quote material caused `P2003` before the fix, then quote creation/conversion succeeded after the fix.
+- Live runtime repro proved final checklist completion now leaves completed parts in `dept_shipping`.
+
 ### 2026-05-13 - Synced feeds-and-speeds parity branch
 - Checked `codex/feeds-speeds-fswizard-parity` against `origin/codex/feeds-speeds-fswizard-parity`; the branch tip was already aligned after fetch.
 - Re-verified the pending feeds-and-speeds parity changes before preparing them for commit/push.

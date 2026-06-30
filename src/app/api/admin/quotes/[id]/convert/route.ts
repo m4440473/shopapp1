@@ -67,6 +67,11 @@ const ConversionOverrides = z.object({
     .optional(),
 });
 
+function optionalId(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 function buildPartNotes(part: {
   description: string | null;
   notes: string | null;
@@ -257,7 +262,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     quote.parts.map((part) => ({
       partNumber: part.partNumber ?? part.name,
       quantity: part.quantity ?? 1,
-      materialId: part.materialId ?? null,
+      materialId: optionalId(part.materialId),
       stockSize: part.stockSize ?? null,
       cutLength: part.cutLength ?? null,
       notes: buildPartNotes({
@@ -267,9 +272,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         stockSize: part.stockSize ?? null,
         cutLength: part.cutLength ?? null,
       }),
-    }))).map((part) => ({
+  }))).map((part) => ({
     ...part,
-    materialId: part.materialId ?? null,
+    materialId: optionalId(part.materialId),
     stockSize: part.stockSize ?? null,
     cutLength: part.cutLength ?? null,
     notes: part.notes ?? null,

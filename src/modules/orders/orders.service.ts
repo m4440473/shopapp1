@@ -155,6 +155,11 @@ function parseDate(value: string | Date | null | undefined) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function optionalId(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 type DepartmentSortEntry = { id: string; name?: string | null; sortOrder: number };
 
 export function selectDepartmentForPart(
@@ -543,7 +548,7 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
           create: body.parts.map((p) => ({
             partNumber: p.partNumber,
             quantity: p.quantity,
-            materialId: p.materialId ?? null,
+            materialId: optionalId(p.materialId),
             stockSize: p.stockSize ?? null,
             cutLength: p.cutLength ?? null,
             notes: p.notes ?? null,
@@ -1087,7 +1092,18 @@ export async function recomputePartDepartment(
     return fail(400, 'Reason is required for rework/backward/manual department transitions.');
   }
 
-  await updatePartCurrentDepartment(partId, toDepartmentId, tx);
+  if (toDepartmentId) {
+    await updatePartCurrentDepartment(partId, toDepartmentId, tx);
+  } else {
+    if (tx?.orderPart) {
+      await tx.orderPart.update({
+        where: { id: partId },
+        data: { status: 'COMPLETE' },
+      });
+    } else {
+      await updateOrderPart(partId, { status: 'COMPLETE' });
+    }
+  }
 
   let type = 'DEPARTMENT_ADVANCED';
   if (manual) type = 'DEPARTMENT_SET_MANUAL';
@@ -1113,7 +1129,7 @@ export async function recomputePartDepartment(
     },
   }, tx);
 
-  return ok({ partId, orderId: part.orderId, currentDepartmentId: toDepartmentId, changed: true, flagged });
+  return ok({ partId, orderId: part.orderId, currentDepartmentId: toDepartmentId ?? fromDepartmentId, changed: true, flagged });
 }
 
 export async function previewChecklistComplete({ orderId, partId, checklistId }: { orderId: string; partId: string; checklistId: string }) {
