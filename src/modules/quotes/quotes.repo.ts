@@ -11,8 +11,11 @@ import {
   stringifyQuoteMetadata,
   type QuoteApprovalMetadata,
 } from '@/lib/quote-metadata';
-import { buildChecklistEntriesFromQuoteSelections } from './quote-work-items';
-import { buildOrderChargeEntriesFromQuoteData } from './quote-work-items';
+import {
+  buildChecklistEntriesFromQuoteSelections,
+  buildOrderChargeEntriesFromQuoteData,
+  buildQuoteSelectionKey,
+} from './quote-work-items';
 
 export async function listQuotes({
   where,
@@ -656,6 +659,7 @@ export async function convertQuoteToOrder({
     stockSize?: string | null;
     cutLength?: string | null;
     notes?: string | null;
+    workInstructions?: string | null;
   }>;
   orderAttachments: Array<{
     url: string | null;
@@ -715,6 +719,7 @@ export async function convertQuoteToOrder({
             stockSize: part.stockSize ?? null,
             cutLength: part.cutLength ?? null,
             notes: part.notes ?? undefined,
+            workInstructions: part.workInstructions ?? null,
           },
           select: { id: true },
         })
@@ -781,7 +786,7 @@ export async function convertQuoteToOrder({
     });
 
     if (chargeData.length) {
-      await Promise.all(
+      const createdCharges = await Promise.all(
         chargeData.map((charge) =>
           tx.orderCharge.create({
             data: {
@@ -796,14 +801,27 @@ export async function convertQuoteToOrder({
               unitPrice: new Prisma.Decimal(charge.unitPriceCents),
               sortOrder: charge.sortOrder,
             },
+            select: { id: true },
           })
         )
       );
-    }
 
-    const checklistData = buildChecklistEntriesFromQuoteSelections(order.id, allSelections);
-    if (checklistData.length) {
-      await tx.orderChecklist.createMany({ data: checklistData });
+      const chargeIdsByPartAddon = new Map<string, string>();
+      createdCharges.forEach((created, index) => {
+        const charge = chargeData[index];
+        if (!charge?.partId || !charge.addonId) return;
+        chargeIdsByPartAddon.set(buildQuoteSelectionKey(charge.partId, charge.addonId), created.id);
+      });
+
+      const checklistData = buildChecklistEntriesFromQuoteSelections(order.id, allSelections, chargeIdsByPartAddon);
+      if (checklistData.length) {
+        await tx.orderChecklist.createMany({ data: checklistData });
+      }
+    } else {
+      const checklistData = buildChecklistEntriesFromQuoteSelections(order.id, allSelections);
+      if (checklistData.length) {
+        await tx.orderChecklist.createMany({ data: checklistData });
+      }
     }
 
     const updatedMetadata = mergeQuoteMetadata({

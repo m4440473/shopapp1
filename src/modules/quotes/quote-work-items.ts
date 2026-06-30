@@ -9,15 +9,21 @@ export type QuoteChecklistSelection = {
 export type ChecklistEntryInput = {
   orderId: string;
   partId: string;
+  chargeId: string | null;
   addonId: string;
   departmentId: string | null;
   completed: boolean;
   isActive: boolean;
 };
 
+export function buildQuoteSelectionKey(partId: string, addonId: string) {
+  return `${partId}:${addonId}`;
+}
+
 export function buildChecklistEntriesFromQuoteSelections(
   orderId: string,
   selections: QuoteChecklistSelection[],
+  chargeIdsByPartAddon?: ReadonlyMap<string, string>,
 ): ChecklistEntryInput[] {
   const seen = new Set<string>();
   const entries: ChecklistEntryInput[] = [];
@@ -27,12 +33,13 @@ export function buildChecklistEntriesFromQuoteSelections(
     const addonId = entry.selection.addonId;
     if (!addonId) continue;
     if (!entry.selection.addon?.isChecklistItem) continue;
-    const key = `${entry.orderPartId}:${addonId}`;
+    const key = buildQuoteSelectionKey(entry.orderPartId, addonId);
     if (seen.has(key)) continue;
     seen.add(key);
     entries.push({
       orderId,
       partId: entry.orderPartId,
+      chargeId: chargeIdsByPartAddon?.get(key) ?? null,
       addonId,
       departmentId: entry.selection.addon?.departmentId ?? null,
       completed: false,

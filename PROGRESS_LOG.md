@@ -1,3 +1,32 @@
+### 2026-06-30 - Known bug burn-down 1: quote-converted order execution integrity
+- Synced the current local source/docs checkpoint to GitHub before new work:
+  - verified the existing quote/order QA fixes with targeted ESLint and focused Orders service tests,
+  - committed `ad2be7b` (`Fix quote order material and completion edge cases`),
+  - pushed `codex/feeds-speeds-fswizard-parity`,
+  - opened draft PR #178 (`https://github.com/m4440473/shopapp1/pull/178`).
+- Fixed two follow-up defects in direct quote conversion:
+  - quote-converted parts now seed `OrderPart.workInstructions` from quote requirements, quote notes, material summary, purchase items, part description, and part-specific notes so the existing Read Me First gate can trigger on converted work,
+  - quote-converted checklist rows now link to the matching newly created `OrderCharge` when a checklist add-on also creates a priced charge, allowing checklist completion to sync `OrderCharge.completedAt` through the existing checklist flow.
+- Kept scope intentionally narrow; manual department movement guards, no-checklist department dead ends, timer active-entry behavior, and time-entry query duplication remain follow-up items.
+
+Commands run:
+- `gh --version`
+- `gh auth status`
+- `git fetch origin`
+- `npx eslint --ext .ts,.tsx -- "src/modules/quotes/quotes.service.ts" "src/modules/orders/orders.service.ts" "src/app/api/admin/quotes/[id]/convert/route.ts" "src/modules/orders/__tests__/orders.service.test.ts"`
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- `git commit -m "Fix quote order material and completion edge cases"`
+- `git push -u origin codex/feeds-speeds-fswizard-parity`
+- `gh pr create --draft --base main --head codex/feeds-speeds-fswizard-parity --title "[codex] Sync local feeds parity and quote workflow fixes" ...`
+- `npx eslint --ext .ts,.tsx -- "src/modules/quotes/quote-work-items.ts" "src/modules/quotes/__tests__/quote-work-items.test.ts" "src/modules/quotes/quotes.repo.ts" "src/app/api/admin/quotes/[id]/convert/route.ts" "src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts"`
+- `npm run test -- src/modules/quotes/__tests__/quote-work-items.test.ts src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+
+Verification note:
+- Existing local QA fixes passed targeted ESLint and focused Orders service tests (`13/13`) before sync.
+- New quote-conversion regression tests passed (`7/7` across route conversion and quote work-item helper tests).
+- Targeted ESLint passed on all newly touched quote conversion files/tests.
+- Local runtime artifacts remain intentionally uncommitted: `prisma/prisma/dev.db` and `tmp-dev-3000.pid`.
+
 ### 2026-05-13 - QA deep dive: quote-to-order machinist workflow
 - Audited the quote -> order -> department/checklist/timer workflow with source review, two parallel review agents, and authenticated live-server runtime requests.
 - Browser Use was explicitly attempted but the in-app browser backend was not discoverable in this session, so runtime verification used the same live Next routes/API calls instead of visible browser automation.

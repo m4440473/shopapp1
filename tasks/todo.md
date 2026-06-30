@@ -1,6 +1,39 @@
 # tasks/todo.md - Session Plan + Verification
 
 ## Session Metadata
+- Date: 2026-06-30
+- Agent: Codex GPT-5
+- Task ID: Known bug burn-down 1 - quote-converted order execution integrity
+- Goal: Sync the current local source with GitHub, then fix the highest-leverage quote-converted order defects around required work instructions and checklist-to-charge linkage without widening the scope into unrelated timer/routing refactors.
+
+## Dependency Validation
+- [x] Reviewed `docs/AGENT_CONTEXT.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, `CANON.md`, `ROADMAP.md`, `tasks/todo.md`, and `tasks/lessons.md` before implementation.
+- [x] Verified the current local QA fixes with targeted ESLint and focused Orders service tests before publishing.
+- [x] Committed and pushed the existing local source/docs checkpoint to GitHub as `ad2be7b` and opened draft PR #178.
+- [x] Confirmed remaining uncommitted files after sync are local runtime artifacts only: `prisma/prisma/dev.db` and `tmp-dev-3000.pid`.
+
+## Plan First
+- [x] Inspect quote conversion, order part creation, checklist generation, and charge generation paths.
+- [x] Seed `OrderPart.workInstructions` during direct quote conversion from quote requirements/notes/material/purchase fields plus part-specific quote notes.
+- [x] Link quote-converted checklist rows to their matching newly created `OrderCharge` where a priced/checklist add-on creates both records.
+- [x] Add focused regression coverage for work-instruction seeding and checklist charge IDs.
+- [x] Run targeted verification, update continuity docs, then commit/push the bug-burn-down changes to GitHub.
+
+## Verification Checklist
+- [x] Route/unit tests for quote conversion work-instruction payload.
+- [x] Quote work-item helper tests for checklist charge linkage.
+- [x] Targeted ESLint on touched quote conversion files/tests.
+- [x] Final git status confirms only expected runtime artifacts remain uncommitted.
+
+## Review + Results
+- Synced the pre-existing local QA fix checkpoint to GitHub as commit `ad2be7b` and opened draft PR #178.
+- Direct quote conversion now seeds `OrderPart.workInstructions` from sectioned quote requirements, quote notes, material summary, purchase items, part description, and part-specific notes.
+- Quote-converted checklist rows now receive the matching `OrderCharge.id` when a checklist add-on also creates a priced charge, so checklist completion can update charge completion state through the existing order checklist flow.
+- Verification passed:
+  - `npx eslint --ext .ts,.tsx -- "src/modules/quotes/quote-work-items.ts" "src/modules/quotes/__tests__/quote-work-items.test.ts" "src/modules/quotes/quotes.repo.ts" "src/app/api/admin/quotes/[id]/convert/route.ts" "src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts"`
+  - `npm run test -- src/modules/quotes/__tests__/quote-work-items.test.ts src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+
+## Session Metadata
 - Date: 2026-05-13
 - Agent: Codex GPT-5
 - Task ID: Quote-to-order machinist workflow QA deep dive

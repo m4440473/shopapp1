@@ -1,3 +1,64 @@
+## Session Handoff - 2026-06-30 (Known bug burn-down 1: quote-converted order execution integrity)
+
+Goal (1 sentence): Sync the current local code with GitHub, then fix the highest-leverage quote-converted order defects around required work instructions and checklist-to-charge linkage.
+
+### What changed
+- Synced the existing local QA checkpoint to GitHub:
+  - committed `ad2be7b` (`Fix quote order material and completion edge cases`),
+  - pushed `codex/feeds-speeds-fswizard-parity`,
+  - opened draft PR #178: `https://github.com/m4440473/shopapp1/pull/178`.
+- Updated [convert route](C:/Users/user/Documents/GitHub/shopapp1/src/app/api/admin/quotes/[id]/convert/route.ts)
+  - Direct quote conversion now builds sectioned `workInstructions` from quote requirements, quote notes, materials, purchase items, part description, and part-specific notes.
+  - Override-provided work instructions are normalized to `null` when blank.
+- Updated [quotes.repo.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/quotes/quotes.repo.ts)
+  - Persists `workInstructions` when creating converted order parts.
+  - Captures newly created order charge IDs by `(partId, addonId)` and passes them into checklist generation.
+- Updated [quote-work-items.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/quotes/quote-work-items.ts)
+  - Checklist entry generation can now include the matching `chargeId`.
+  - Added a shared key helper for quote selection part/add-on matching.
+- Updated tests:
+  - [quote-work-items.test.ts](C:/Users/user/Documents/GitHub/shopapp1/src/modules/quotes/__tests__/quote-work-items.test.ts)
+  - [route.test.ts](C:/Users/user/Documents/GitHub/shopapp1/src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts)
+
+### Files touched
+- `PROGRESS_LOG.md`
+- `docs/AGENT_HANDOFF.md`
+- `tasks/todo.md`
+- `src/app/api/admin/quotes/[id]/convert/route.ts`
+- `src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+- `src/modules/quotes/quote-work-items.ts`
+- `src/modules/quotes/__tests__/quote-work-items.test.ts`
+- `src/modules/quotes/quotes.repo.ts`
+
+### Commands run
+- `gh --version`
+- `gh auth status`
+- `git fetch origin`
+- `npx eslint --ext .ts,.tsx -- "src/modules/quotes/quotes.service.ts" "src/modules/orders/orders.service.ts" "src/app/api/admin/quotes/[id]/convert/route.ts" "src/modules/orders/__tests__/orders.service.test.ts"`
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- `git commit -m "Fix quote order material and completion edge cases"`
+- `git push -u origin codex/feeds-speeds-fswizard-parity`
+- `gh pr view --json number,title,state,isDraft,url,baseRefName,headRefName`
+- `gh pr create --draft --base main --head codex/feeds-speeds-fswizard-parity --title "[codex] Sync local feeds parity and quote workflow fixes" ...`
+- `npx eslint --ext .ts,.tsx -- "src/modules/quotes/quote-work-items.ts" "src/modules/quotes/__tests__/quote-work-items.test.ts" "src/modules/quotes/quotes.repo.ts" "src/app/api/admin/quotes/[id]/convert/route.ts" "src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts"`
+- `npm run test -- src/modules/quotes/__tests__/quote-work-items.test.ts src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+
+### Verification evidence
+- Existing local QA fixes passed targeted ESLint.
+- Focused Orders service tests passed (`13/13`) before the sync commit.
+- New quote-conversion tests passed (`7/7`) across route conversion and quote work-item helper tests.
+- Targeted ESLint passed on all newly touched quote conversion files/tests.
+
+### Remaining follow-ups
+- Manual department movement can still bypass open checklist items.
+- Parts can still be moved into a department with no checklist items and then cannot submit that department complete.
+- Timer behavior should be reconciled against canon: current canon says one active operation per user, while older decision-log notes mention department-scoped active timers.
+- Order detail/time endpoints still duplicate some time-entry fetching and should be profiled/refactored in a focused pass.
+
+### Behavior note for the next agent
+- `prisma/prisma/dev.db` remains modified from local runtime QA data and should be treated as local state unless the owner explicitly asks to preserve DB fixture changes.
+- `tmp-dev-3000.pid` remains an untracked local runtime artifact.
+
 ## Session Handoff - 2026-05-13 (Quote-to-order machinist workflow QA)
 
 Goal (1 sentence): Deep-test and audit the create-quote through converted-order machinist workflow, including multi-part orders, department movement, checklist completion, and timer behavior.

@@ -6,6 +6,7 @@ const mockFindQuoteForConversion = vi.fn();
 const mockFindActiveOrderCustomFields = vi.fn();
 const mockConvertQuoteToOrder = vi.fn();
 const mockSyncChecklistForOrder = vi.fn();
+const mockInitializeCurrentDepartmentForOrder = vi.fn();
 const mockEnsureOrderFilesInCanonicalStorage = vi.fn();
 
 vi.mock('@/lib/auth-session', () => ({
@@ -28,6 +29,7 @@ vi.mock('@/modules/quotes/quotes.service', () => ({
 
 vi.mock('@/modules/orders/orders.service', () => ({
   syncChecklistForOrder: mockSyncChecklistForOrder,
+  initializeCurrentDepartmentForOrder: mockInitializeCurrentDepartmentForOrder,
   ensureOrderFilesInCanonicalStorage: mockEnsureOrderFilesInCanonicalStorage,
 }));
 
@@ -129,12 +131,25 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
       business: 'STD',
       customerId: 'c1',
       companyName: 'Acme',
-      materialSummary: null,
-      purchaseItems: null,
-      requirements: null,
-      notes: null,
+      materialSummary: '4140 prehard',
+      purchaseItems: 'Order black oxide plugs',
+      requirements: 'Hold bore within .001',
+      notes: 'Deburr before paint',
       metadata: JSON.stringify({ approval: { attachmentId: 'att-1' } }),
-      parts: [{ id: 'qp1', name: 'Part A', quantity: 2, materialId: null, stockSize: null, cutLength: null, description: null, notes: null, pieceCount: 1, partNumber: 'A-1' }],
+      parts: [
+        {
+          id: 'qp1',
+          name: 'Part A',
+          quantity: 2,
+          materialId: null,
+          stockSize: null,
+          cutLength: null,
+          description: 'Lathe then mill flats',
+          notes: 'Use soft jaws',
+          pieceCount: 1,
+          partNumber: 'A-1',
+        },
+      ],
       attachments: [],
       customer: { name: 'Acme' },
       multiPiece: false,
@@ -161,7 +176,12 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
     expect(mockConvertQuoteToOrder).toHaveBeenCalledTimes(1);
     const args = mockConvertQuoteToOrder.mock.calls[0][0];
     expect(args.normalizedCustomFieldValues).toEqual([{ fieldId: 'cf-allowed', value: '"yes"' }]);
+    expect(args.partsData[0].workInstructions).toContain('Quote requirements:');
+    expect(args.partsData[0].workInstructions).toContain('- Hold bore within .001');
+    expect(args.partsData[0].workInstructions).toContain('Part-specific notes:');
+    expect(args.partsData[0].workInstructions).toContain('- Use soft jaws');
     expect(mockSyncChecklistForOrder).toHaveBeenCalledWith('o1');
+    expect(mockInitializeCurrentDepartmentForOrder).toHaveBeenCalledWith('o1');
     expect(mockEnsureOrderFilesInCanonicalStorage).toHaveBeenCalledWith('o1');
   });
 });

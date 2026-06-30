@@ -99,6 +99,33 @@ function buildPartNotes(part: {
   return combined.length ? combined : null;
 }
 
+function buildConversionWorkInstructions(quote: any, part: any): string | null {
+  const toBulletLines = (value: unknown) =>
+    String(value ?? '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => `- ${line}`);
+
+  const buildSection = (heading: string, value: unknown) => {
+    const items = toBulletLines(value);
+    if (!items.length) return '';
+    return `${heading}:\n${items.join('\n')}`;
+  };
+
+  const sections = [
+    buildSection('Quote requirements', quote?.requirements),
+    buildSection('Quote notes', quote?.notes),
+    buildSection('Materials', quote?.materialSummary),
+    buildSection('Purchase items', quote?.purchaseItems),
+    buildSection('Part description', part?.description),
+    buildSection('Part-specific notes', part?.notes),
+  ].filter(Boolean);
+
+  const content = sections.join('\n\n').trim();
+  return content.length ? content : null;
+}
+
 function buildConversionNote(quote: any, now: Date): string | null {
   const sections: string[] = [`Converted from quote ${quote.quoteNumber} on ${now.toLocaleString()}.`];
   if (quote.materialSummary) {
@@ -272,12 +299,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         stockSize: part.stockSize ?? null,
         cutLength: part.cutLength ?? null,
       }),
+      workInstructions: buildConversionWorkInstructions(quote, part),
   }))).map((part) => ({
     ...part,
     materialId: optionalId(part.materialId),
     stockSize: part.stockSize ?? null,
     cutLength: part.cutLength ?? null,
     notes: part.notes ?? null,
+    workInstructions: part.workInstructions?.trim() ? part.workInstructions.trim() : null,
   }));
 
   if (partsData.length === 0) {
