@@ -54,9 +54,16 @@ import {
   formatWorkItemRateLabel,
   getWorkItemUnitsLabel,
   getWorkItemPricingSemantic,
+  normalizeWorkItemRateType,
   type WorkItemRateType,
 } from '@/modules/pricing/work-item-pricing';
-import { calculatePartLotTotal, calculatePartUnitPrice, type PartPricingMode } from '@/modules/pricing/part-pricing';
+import {
+  calculatePartLotTotal,
+  calculatePartUnitPrice,
+  calculateProcurementTotalCents,
+  calculateSuggestedPartUnitPriceCents,
+  type PartPricingMode,
+} from '@/modules/pricing/part-pricing';
 import {
   buildPresetFromSelections,
   dedupePresetItems,
@@ -65,6 +72,7 @@ import {
   type QuoteAddonPresetItem,
 } from '@/modules/quotes/quote-addon-bulk';
 import { sumQuoteCustomAmountsCents, type QuoteCustomAmountEntry } from '@/lib/quote-metadata';
+import { DrawingImportPanel, type ReviewedDrawingPart } from '@/components/orders/DrawingImportPanel';
 
 import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
 
@@ -100,16 +108,34 @@ type DepartmentOption = {
 
 type QuotePartState = {
   key: string;
+  persistedId?: string;
   name: string;
   partNumber: string;
   materialId: string;
+  drawingMaterialText: string;
+  drawingFinishText: string;
+  finish: string;
   stockSize: string;
   cutLength: string;
+  materialStatus: 'UNREVIEWED' | 'IN_STOCK' | 'NEED_TO_ORDER' | 'NOT_REQUIRED';
+  inventoryLocation: string;
+  materialNotes: string;
+  procurementVendorId: string;
+  procurementCost: string;
+  procurementMarkupPercent: string;
   description: string;
   quantity: string;
   pieceCount: string;
   notes: string;
   addonSelections: QuoteAddonState[];
+  attachments: Array<{
+    id?: string;
+    kind: 'DWG' | 'STEP' | 'PDF' | 'PRINT' | 'IMAGE' | 'OTHER';
+    url: string;
+    storagePath: string;
+    label: string;
+    mimeType: string;
+  }>;
 };
 
 type QuoteVendorItemState = {
@@ -128,6 +154,11 @@ type QuoteAddonState = {
   addonId: string;
   units: string;
   notes: string;
+  nameSnapshot?: string;
+  rateTypeSnapshot?: WorkItemRateType;
+  rateCentsSnapshot?: number;
+  affectsPriceSnapshot?: boolean;
+  isChecklistItemSnapshot?: boolean;
 };
 
 type QuoteCustomAmountState = {
@@ -143,11 +174,13 @@ type PartPricingState = {
   partKey: string;
   price: string;
   pricingMode: PartPricingMode;
-  isManual: boolean;
+  priceSource: 'CALCULATED' | 'MANUAL';
+  suggestedUnitPriceCents: number;
 };
 
 type AttachmentState = {
   key: string;
+  persistedId?: string;
   url: string;
   storagePath: string;
   label: string;
@@ -166,6 +199,8 @@ type QuoteDetail = {
   contactPhone?: string | null;
   customerId?: string | null;
   status: string;
+  workflowStep?: number;
+  updatedAt?: string;
   materialSummary?: string | null;
   purchaseItems?: string | null;
   requirements?: string | null;
@@ -183,10 +218,28 @@ type QuoteDetail = {
     material?: { id: string; name: string; spec?: string | null } | null;
     stockSize?: string | null;
     cutLength?: string | null;
+    drawingMaterialText?: string | null;
+    drawingFinishText?: string | null;
+    finish?: string | null;
+    materialStatus?: 'UNREVIEWED' | 'IN_STOCK' | 'NEED_TO_ORDER' | 'NOT_REQUIRED';
+    inventoryLocation?: string | null;
+    materialNotes?: string | null;
+    procurementVendorId?: string | null;
+    procurementCostCents?: number | null;
+    procurementMarkupPercent?: number | null;
+    sortOrder?: number;
     description?: string | null;
     quantity: number;
     pieceCount: number;
     notes?: string | null;
+    attachments?: Array<{
+      id: string;
+      kind: 'DWG' | 'STEP' | 'PDF' | 'PRINT' | 'IMAGE' | 'OTHER';
+      url?: string | null;
+      storagePath?: string | null;
+      label?: string | null;
+      mimeType?: string | null;
+    }>;
     addonSelections?: Array<{
       id: string;
       quotePartId?: string | null;
@@ -195,6 +248,9 @@ type QuoteDetail = {
       rateTypeSnapshot: string;
       rateCents: number;
       totalCents: number;
+      nameSnapshot?: string | null;
+      affectsPriceSnapshot?: boolean;
+      isChecklistItemSnapshot?: boolean;
       notes?: string | null;
       addon?: { id: string; name: string; rateType: string; rateCents: number } | null;
     }>;
@@ -218,6 +274,9 @@ type QuoteDetail = {
     rateTypeSnapshot: string;
     rateCents: number;
     totalCents: number;
+    nameSnapshot?: string | null;
+    affectsPriceSnapshot?: boolean;
+    isChecklistItemSnapshot?: boolean;
     notes?: string | null;
     addon?: { id: string; name: string; rateType: string; rateCents: number } | null;
   }>;
@@ -235,10 +294,13 @@ type QuoteDetail = {
   metadata?: {
     originDepartmentId?: string | null;
     partPricing?: Array<{
+      quotePartId?: string | null;
       name?: string | null;
       partNumber?: string | null;
       priceCents: number;
       pricingMode?: PartPricingMode;
+      priceSource?: 'CALCULATED' | 'MANUAL';
+      suggestedUnitPriceCents?: number;
     }>;
     customAmounts?: QuoteCustomAmountEntry[];
   } | null;
@@ -248,13 +310,6 @@ interface QuoteEditorProps {
   mode: 'create' | 'edit';
   initialQuote?: QuoteDetail;
 }
-
-const STATUS_OPTIONS = [
-  { value: 'DRAFT', label: 'Draft' },
-  { value: 'SENT', label: 'Sent' },
-  { value: 'APPROVED', label: 'Approved' },
-  { value: 'EXPIRED', label: 'Expired' },
-];
 
 const MARKUP_SUGGESTIONS = [10, 15, 20];
 
@@ -321,13 +376,23 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         name: '',
         partNumber: '',
         materialId: '',
+        drawingMaterialText: '',
+        drawingFinishText: '',
+        finish: '',
         stockSize: '',
         cutLength: '',
+        materialStatus: 'UNREVIEWED',
+        inventoryLocation: '',
+        materialNotes: '',
+        procurementVendorId: '',
+        procurementCost: '',
+        procurementMarkupPercent: '20',
         description: '',
         quantity: '1',
         pieceCount: '1',
         notes: '',
         addonSelections: [],
+        attachments: [],
       }) satisfies QuotePartState,
     []
   );
@@ -346,20 +411,43 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                 : [];
             return {
               key: part.id,
+              persistedId: part.id,
               name: part.name,
               partNumber: part.partNumber ?? '',
               materialId: part.materialId ?? '',
+              drawingMaterialText: part.drawingMaterialText ?? '',
+              drawingFinishText: part.drawingFinishText ?? '',
+              finish: part.finish ?? '',
               stockSize: part.stockSize ?? '',
               cutLength: part.cutLength ?? '',
+              materialStatus: part.materialStatus ?? 'UNREVIEWED',
+              inventoryLocation: part.inventoryLocation ?? '',
+              materialNotes: part.materialNotes ?? '',
+              procurementVendorId: part.procurementVendorId ?? '',
+              procurementCost: part.procurementCostCents ? (part.procurementCostCents / 100).toFixed(2) : '',
+              procurementMarkupPercent: String(part.procurementMarkupPercent ?? 20),
               description: part.description ?? '',
               quantity: String(part.quantity ?? 1),
               pieceCount: String(part.pieceCount ?? 1),
               notes: part.notes ?? '',
+              attachments: (part.attachments ?? []).map((attachment) => ({
+                id: attachment.id,
+                kind: attachment.kind,
+                url: attachment.url ?? '',
+                storagePath: attachment.storagePath ?? '',
+                label: attachment.label ?? '',
+                mimeType: attachment.mimeType ?? '',
+              })),
               addonSelections: selections.map((selection) => ({
                 key: selection.id,
                 addonId: selection.addonId,
                 units: String(selection.units ?? 0),
                 notes: selection.notes ?? '',
+                nameSnapshot: selection.nameSnapshot ?? selection.addon?.name ?? undefined,
+                rateTypeSnapshot: normalizeWorkItemRateType(selection.rateTypeSnapshot),
+                rateCentsSnapshot: selection.rateCents,
+                affectsPriceSnapshot: selection.affectsPriceSnapshot,
+                isChecklistItemSnapshot: selection.isChecklistItemSnapshot,
               })),
             };
           });
@@ -404,6 +492,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [attachments, setAttachments] = useState<AttachmentState[]>(
     (initialQuote?.attachments ?? []).map((attachment) => ({
       key: attachment.id,
+      persistedId: attachment.id,
       url: attachment.url ?? (attachment.storagePath ? `/attachments/${attachment.storagePath}` : ''),
       storagePath: attachment.storagePath ?? '',
       label: attachment.label ?? '',
@@ -420,29 +509,45 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     });
     return map;
   });
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStep, setCurrentStep] = useState(() => Math.min(4, Math.max(0, initialQuote?.workflowStep ?? 0)));
+  const [furthestStep, setFurthestStep] = useState(() => Math.min(4, Math.max(0, initialQuote?.workflowStep ?? 0)));
+  const [savedAt, setSavedAt] = useState<string | null>(initialQuote?.updatedAt ?? null);
+  const [partEntryMode, setPartEntryMode] = useState<'manual' | 'drawing' | null>(() =>
+    (initialQuote?.parts?.length ?? 0) > 0 ? 'manual' : null
+  );
 
   const [partPricing, setPartPricing] = useState<PartPricingState[]>(() => {
     const initialPartPricing = getPartPricingEntries({
       parts: (initialQuote?.parts ?? []).map((part) => ({
+        id: part.id,
         name: part.name,
         partNumber: part.partNumber ?? null,
+        quantity: part.quantity,
         addonSelections: (part.addonSelections ?? []).map((selection) => ({ totalCents: selection.totalCents ?? 0 })),
       })),
       metadata: initialQuote?.metadata,
     });
-    const hasStoredPartPricing = Array.isArray(initialQuote?.metadata?.partPricing) && initialQuote.metadata.partPricing.length > 0;
-
     return parts.map((part, index) => {
       const entry = initialPartPricing[index];
+      const quantity = Math.max(1, Number.parseInt(part.quantity || '1', 10) || 1);
+      const enteredUnitPriceCents =
+        entry?.pricingMode === 'LOT_TOTAL'
+          ? calculatePartUnitPrice({
+              enteredPriceCents: entry?.priceCents ?? 0,
+              quantity,
+              pricingMode: 'LOT_TOTAL',
+            })
+          : entry?.priceCents ?? 0;
       return {
         partKey: part.key,
-        price: ((entry?.priceCents ?? 0) / 100).toFixed(2),
-        pricingMode: entry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
-        isManual: hasStoredPartPricing,
+        price: (enteredUnitPriceCents / 100).toFixed(2),
+        pricingMode: 'PER_UNIT',
+        priceSource: entry?.priceSource === 'MANUAL' ? 'MANUAL' : 'CALCULATED',
+        suggestedUnitPriceCents: entry?.suggestedUnitPriceCents ?? enteredUnitPriceCents,
       } satisfies PartPricingState;
     });
   });
+  const [expandedPartPricingKeys, setExpandedPartPricingKeys] = useState<Set<string>>(() => new Set());
   const [selectedAssignmentKeys, setSelectedAssignmentKeys] = useState<string[]>([]);
   const [savedPresets, setSavedPresets] = useState<QuoteAddonPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState('');
@@ -458,10 +563,11 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   );
 
   const steps = [
-    { key: 'info', label: 'Quote info' },
-    { key: 'parts', label: 'Parts' },
-    { key: 'build', label: 'Build parts' },
-    { key: 'review', label: 'Review & pricing' },
+    { key: 'customer', label: 'Customer' },
+    { key: 'parts', label: 'Drawings & parts' },
+    { key: 'material', label: 'Material check' },
+    { key: 'build', label: 'Work details' },
+    { key: 'review', label: 'Pricing & finish' },
   ];
 
   const intakeCustomFields = useMemo(
@@ -530,29 +636,46 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   useEffect(() => {
     setPartPricing((prev) => {
       const byPartKey = new Map(prev.map((entry) => [entry.partKey, entry]));
-      const addonItemsById = new Map(addons.map((addon) => [addon.id, addon]));
       return parts.map((part) => {
         const existing = byPartKey.get(part.key);
-        const autoPrice = (
-          calculateWorkItemsSubtotalCents({
-            selections: part.addonSelections.map((selection) => ({
-              addonId: selection.addonId,
-              units: numberFromString(selection.units),
-            })),
-            itemsById: addonItemsById,
-          }) / 100
-        ).toFixed(2);
+        const workStepsLineCents = part.addonSelections.reduce((sum, selection) => {
+          const current = addons.find((addon) => addon.id === selection.addonId);
+          return sum + calculateAssignmentTotalCents({
+            item: {
+              rateType: selection.rateTypeSnapshot ?? current?.rateType,
+              rateCents: selection.rateCentsSnapshot ?? current?.rateCents ?? 0,
+              affectsPrice: selection.affectsPriceSnapshot ?? current?.affectsPrice ?? true,
+            },
+            units: numberFromString(selection.units),
+          });
+        }, 0);
+        const quantity = Math.max(1, Number.parseInt(part.quantity || '1', 10) || 1);
+        const procurementTotalCents = part.materialStatus === 'NEED_TO_ORDER'
+          ? calculateProcurementTotalCents({
+              baseCostCents: centsFromString(part.procurementCost),
+              markupPercent: Number.parseFloat(part.procurementMarkupPercent || '0'),
+            })
+          : 0;
+        const suggestedUnitPriceCents = calculateSuggestedPartUnitPriceCents({
+          workItemsSubtotalCents: workStepsLineCents,
+          procurementTotalCents,
+          quantity,
+        });
+        const autoPrice = (suggestedUnitPriceCents / 100).toFixed(2);
 
         if (!existing) {
           return {
             partKey: part.key,
             price: autoPrice,
-            pricingMode: 'LOT_TOTAL' as PartPricingMode,
-            isManual: false,
+            pricingMode: 'PER_UNIT' as PartPricingMode,
+            priceSource: 'CALCULATED' as const,
+            suggestedUnitPriceCents,
           };
         }
 
-        return existing.isManual ? existing : { ...existing, price: autoPrice };
+        return existing.priceSource === 'MANUAL'
+          ? { ...existing, suggestedUnitPriceCents }
+          : { ...existing, price: autoPrice, pricingMode: 'PER_UNIT', suggestedUnitPriceCents };
       });
     });
   }, [addons, parts]);
@@ -719,6 +842,54 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     setParts((prev) => [...prev, buildEmptyPart()]);
   }
 
+  function useImportedDrawings(importedParts: ReviewedDrawingPart[], quoteFiles: ReviewedDrawingPart['source'][]) {
+    const nextParts: QuotePartState[] = importedParts.map((part, index) => ({
+      key: part.key,
+      name: part.partName || part.partNumber || `Part ${index + 1}`,
+      partNumber: part.partNumber,
+      materialId: part.materialId,
+      drawingMaterialText: part.drawingMaterialText,
+      drawingFinishText: part.drawingFinishText,
+      finish: part.finish,
+      stockSize: part.stockSize,
+      cutLength: part.cutLength,
+      materialStatus: 'UNREVIEWED',
+      inventoryLocation: '',
+      materialNotes: '',
+      procurementVendorId: '',
+      procurementCost: '',
+      procurementMarkupPercent: '20',
+      description: '',
+      quantity: String(part.quantity || 1),
+      pieceCount: '1',
+      notes: part.finish ? `Finish: ${part.finish}` : '',
+      addonSelections: [],
+      attachments: [{
+        kind: 'DWG',
+        url: '',
+        storagePath: part.source.storagePath,
+        label: part.source.label,
+        mimeType: part.source.mimeType,
+      }],
+    }));
+    setParts(nextParts);
+    setActivePartKey(nextParts[0]?.key ?? createKey());
+    setAttachments((current) => [
+      ...current,
+      ...quoteFiles.map((file) => ({
+        key: createKey(),
+        url: '',
+        storagePath: file.storagePath,
+        label: file.label,
+        mimeType: file.mimeType,
+        isPrintForBom: false,
+        uploading: false,
+      })),
+    ]);
+    setPartEntryMode('manual');
+    toast.push(`${nextParts.length} drawing part${nextParts.length === 1 ? '' : 's'} added to this quote.`, 'success');
+  }
+
   function updatePart(partKey: string, patch: Partial<QuotePartState>) {
     setParts((prev) =>
       prev.map((item) => (item.key === partKey ? { ...item, ...patch } : item))
@@ -760,6 +931,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   }
 
   function addAddonSelection(partKey: string, addonId = '') {
+    const selectedAddon = addons.find((addon) => addon.id === addonId);
+    const targetPart = parts.find((part) => part.key === partKey);
+    if (addonId && targetPart?.addonSelections.some((selection) => selection.addonId === addonId)) {
+      toast.push('That work step is already on this part.', 'info');
+      return;
+    }
     setParts((prev) =>
       prev.map((part) =>
         part.key === partKey
@@ -767,7 +944,16 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               ...part,
               addonSelections: [
                 ...part.addonSelections,
-                { key: createKey(), addonId, units: '1.0', notes: '' },
+                {
+                  key: createKey(),
+                  addonId,
+                  units: '1.0',
+                  notes: '',
+                  rateTypeSnapshot: selectedAddon?.rateType,
+                  rateCentsSnapshot: selectedAddon?.rateCents,
+                  affectsPriceSnapshot: selectedAddon?.affectsPrice,
+                  isChecklistItemSnapshot: selectedAddon?.isChecklistItem,
+                },
               ],
             }
           : part
@@ -1081,32 +1267,40 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     const final = Math.round(base * (1 + (Number.isNaN(markup) ? 0 : markup / 100)));
     return sum + (final > 0 ? final : 0);
   }, 0);
-
   const basePriceCents = centsFromString(form.basePrice);
   const pricingSummaryTotals = calculatePartPricingSummaryTotalsCents({
     parts: parts.map((part) => {
-      const rawWorkItemsSubtotalCents = calculateWorkItemsSubtotalCents({
-        selections: part.addonSelections.map((selection) => ({
-          addonId: selection.addonId,
+      const rawWorkItemsSubtotalCents = part.addonSelections.reduce((sum, selection) => {
+        const current = addonMap.get(selection.addonId);
+        return sum + calculateAssignmentTotalCents({
+          item: {
+            rateType: selection.rateTypeSnapshot ?? current?.rateType,
+            rateCents: selection.rateCentsSnapshot ?? current?.rateCents ?? 0,
+            affectsPrice: selection.affectsPriceSnapshot ?? current?.affectsPrice ?? true,
+          },
           units: numberFromString(selection.units),
-        })),
-        itemsById: addonMap,
-      });
+        });
+      }, 0);
       const entry = partPricing.find((candidate) => candidate.partKey === part.key);
       const enteredPriceCents = centsFromString(entry?.price || '0');
       const quantity = Number.parseInt(part.quantity || '1', 10) || 1;
+      const procurementTotalCents = part.materialStatus === 'NEED_TO_ORDER'
+        ? calculateProcurementTotalCents({
+            baseCostCents: centsFromString(part.procurementCost),
+            markupPercent: Number.parseFloat(part.procurementMarkupPercent || '0'),
+          })
+        : 0;
+      const suggestedUnitPriceCents = calculateSuggestedPartUnitPriceCents({
+        workItemsSubtotalCents: rawWorkItemsSubtotalCents,
+        procurementTotalCents,
+        quantity,
+      });
 
       return {
         workItemsSubtotalCents: rawWorkItemsSubtotalCents,
         partPricingSubtotalCents:
-          enteredPriceCents > 0
-            ? calculatePartLotTotal({
-                enteredPriceCents,
-                quantity,
-                pricingMode: entry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
-              })
-            : 0,
-        hasPartPricingOverride: enteredPriceCents > 0,
+          (entry?.priceSource === 'MANUAL' ? enteredPriceCents : suggestedUnitPriceCents) * Math.max(1, quantity),
+        hasPartPricingOverride: true,
       };
     }),
   });
@@ -1116,7 +1310,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const totalCents =
     basePriceCents + vendorTotalsCents + addonsTotalsCents + partPricingTotalCents + customAmountsTotalCents;
 
-  const buildPayload = (): QuoteCreateInput => ({
+  const buildPayload = (workflowStep = currentStep): QuoteCreateInput => ({
     business: form.business,
     quoteNumber: form.quoteNumber || undefined,
     companyName: form.companyName,
@@ -1125,24 +1319,48 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     contactPhone: form.contactPhone || undefined,
     customerId: form.customerId || undefined,
     status: form.status || 'DRAFT',
+    workflowStep,
     materialSummary: form.materialSummary || undefined,
     purchaseItems: form.purchaseItems || undefined,
     requirements: form.requirements || undefined,
     notes: form.notes || undefined,
     basePriceCents,
-    multiPiece: form.multiPiece,
+    multiPiece: form.multiPiece || parts.some((part) => (Number.parseInt(part.pieceCount || '1', 10) || 1) > 1),
     parts: parts
       .filter((part) => part.name.trim())
-      .map((part) => ({
+      .map((part, index) => ({
+        id: part.persistedId,
         name: part.name,
         partNumber: part.partNumber || undefined,
         materialId: part.materialId || undefined,
+        drawingMaterialText: part.drawingMaterialText || undefined,
+        drawingFinishText: part.drawingFinishText || undefined,
+        finish: part.finish || undefined,
         stockSize: part.stockSize || undefined,
         cutLength: part.cutLength || undefined,
+        materialStatus: part.materialStatus,
+        inventoryLocation: part.inventoryLocation || undefined,
+        materialNotes: part.materialNotes || undefined,
+        procurementVendorId: part.procurementVendorId || undefined,
+        procurementCostCents: part.procurementCost.trim() ? centsFromString(part.procurementCost) : undefined,
+        procurementMarkupPercent: part.procurementMarkupPercent.trim()
+          ? Number.parseFloat(part.procurementMarkupPercent) || 0
+          : undefined,
+        sortOrder: index,
         description: part.description || undefined,
         quantity: Number.parseInt(part.quantity || '1', 10) || 1,
         pieceCount: Number.parseInt(part.pieceCount || '1', 10) || 1,
         notes: part.notes || undefined,
+        attachments: part.attachments
+          .filter((attachment) => attachment.url.trim() || attachment.storagePath.trim())
+          .map((attachment) => ({
+            id: attachment.id,
+            kind: attachment.kind,
+            url: attachment.url.trim() || undefined,
+            storagePath: attachment.storagePath.trim() || undefined,
+            label: attachment.label.trim() || undefined,
+            mimeType: attachment.mimeType.trim() || undefined,
+          })),
         addonSelections: part.addonSelections
           .filter((selection) => selection.addonId)
           .map((selection) => ({
@@ -1166,6 +1384,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     attachments: attachments
       .filter((attachment) => attachment.url.trim().length > 0 || attachment.storagePath.trim().length > 0)
       .map((attachment) => ({
+        id: attachment.persistedId,
         url: attachment.url.trim() ? attachment.url.trim() : undefined,
         storagePath: attachment.storagePath.trim() ? attachment.storagePath.trim() : undefined,
         label: (() => {
@@ -1179,15 +1398,16 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         mimeType: attachment.mimeType || undefined,
       })),
     originDepartmentId: originDepartmentId || undefined,
-    partPricing: parts.map((part) => {
+    partPricing: parts.filter((part) => part.name.trim()).map((part) => {
       const entry = partPricing.find((candidate) => candidate.partKey === part.key);
-      const quantity = Number.parseInt(part.quantity || '1', 10) || 1;
-      const pricingMode = entry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL';
       return {
+        quotePartId: part.persistedId,
         name: part.name || undefined,
         partNumber: part.partNumber || undefined,
         priceCents: centsFromString(entry?.price || '0'),
-        pricingMode,
+        pricingMode: 'PER_UNIT' as const,
+        priceSource: entry?.priceSource ?? 'CALCULATED',
+        suggestedUnitPriceCents: entry?.suggestedUnitPriceCents ?? 0,
       };
     }),
     customAmounts: normalizedCustomAmounts
@@ -1201,10 +1421,50 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       .filter((entry) => hasCustomFieldValue(entry.value)),
   });
 
-  const submitQuote = async () => {
+  function validateCheckpoint(step: number) {
+    if (step === 0 && (!form.customerId || !form.companyName.trim())) {
+      return 'Choose a customer before continuing.';
+    }
+    if (step === 1 && !parts.some((part) => part.name.trim() && part.partNumber.trim())) {
+      return 'Add at least one part with a part name and part number before continuing.';
+    }
+    if (step === 2) {
+      const realParts = parts.filter((part) => part.name.trim());
+      const unreviewed = realParts.filter((part) => part.materialStatus === 'UNREVIEWED');
+      if (unreviewed.length) return `Finish the material decision for ${unreviewed.length} part${unreviewed.length === 1 ? '' : 's'}.`;
+      const missingVendor = realParts.filter(
+        (part) => part.materialStatus === 'NEED_TO_ORDER' && !part.procurementVendorId,
+      );
+      if (missingVendor.length) return `Choose a vendor for ${missingVendor.length} part${missingVendor.length === 1 ? '' : 's'} that need material ordered.`;
+    }
+    return null;
+  }
+
+  function applySavedIdentity(item: QuoteDetail) {
+    const savedParts = [...(item.parts ?? [])];
+    setParts((current) => current.map((part) => {
+      if (!part.name.trim()) return part;
+      const matchIndex = savedParts.findIndex((saved) =>
+        (part.persistedId && saved.id === part.persistedId) ||
+        (!part.persistedId && saved.partNumber === part.partNumber && saved.name === part.name),
+      );
+      const match = matchIndex >= 0 ? savedParts.splice(matchIndex, 1)[0] : savedParts.shift();
+      return match ? { ...part, persistedId: match.id } : part;
+    }));
+    const savedAttachments = [...(item.attachments ?? [])];
+    setAttachments((current) => current.map((attachment) => {
+      const match = savedAttachments.find((saved) =>
+        (attachment.persistedId && saved.id === attachment.persistedId) ||
+        (!attachment.persistedId && Boolean(attachment.storagePath) && saved.storagePath === attachment.storagePath),
+      );
+      return match ? { ...attachment, persistedId: match.id } : attachment;
+    }));
+  }
+
+  const saveQuote = async ({ nextStep = currentStep, finish = false }: { nextStep?: number; finish?: boolean } = {}) => {
     setLoading(true);
     setError(null);
-    const payload = buildPayload();
+    const payload = buildPayload(nextStep);
     try {
       const response =
         mode === 'edit' && initialQuote
@@ -1219,14 +1479,45 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               body: JSON.stringify(payload),
             });
 
-      toast.push(mode === 'edit' ? 'Quote updated' : 'Quote created', 'success');
-      router.push(`/admin/quotes/${response.item.id}`);
+      applySavedIdentity(response.item);
+      setSavedAt(response.item.updatedAt ?? new Date().toISOString());
+      setFurthestStep((current) => Math.max(current, nextStep));
+      toast.push(finish ? 'Quote saved' : 'Progress saved', 'success');
+      if (finish) {
+        router.push(`/admin/quotes/${response.item.id}`);
+      } else if (mode === 'create') {
+        router.replace(`/admin/quotes/${response.item.id}/edit`);
+      } else {
+        setCurrentStep(nextStep);
+      }
+      return true;
     } catch (err: any) {
       setError(err?.body?.error || err.message || 'Failed to save quote');
+      return false;
     } finally {
       setLoading(false);
     }
   };
+
+  async function saveAndContinue() {
+    const validationError = validateCheckpoint(currentStep);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    await saveQuote({ nextStep: Math.min(currentStep + 1, steps.length - 1) });
+  }
+
+  async function printMaterialWalkdown() {
+    if (!initialQuote?.id) {
+      setError('Save the customer and parts first so the printout has a quote number.');
+      return;
+    }
+    const saved = await saveQuote({ nextStep: currentStep });
+    if (saved) {
+      window.open(`/admin/quotes/${initialQuote.id}/material-check/print`, '_blank', 'noopener,noreferrer');
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1237,7 +1528,15 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       setError(`Fill in required custom fields: ${missingFields.map((field) => field.name).join(', ')}.`);
       return;
     }
-    await submitQuote();
+    const validationError = [0, 1, 2]
+      .slice(0, Math.min(currentStep, 2) + 1)
+      .map((step) => validateCheckpoint(step))
+      .find((message): message is string => Boolean(message));
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    await saveQuote({ nextStep: currentStep, finish: true });
   }
 
   return (
@@ -1249,6 +1548,15 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       )}
 
       <div className="rounded border border-border/60 bg-card/60 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold">Quote progress</p>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span>{savedAt ? `Saved ${new Date(savedAt).toLocaleString()}` : 'Not saved yet'}</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => void saveQuote()} disabled={loading || !form.companyName.trim() || !form.customerId}>
+              {loading ? 'Saving…' : 'Save progress'}
+            </Button>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2">
           {steps.map((step, index) => (
             <Button
@@ -1256,14 +1564,17 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setCurrentStep(index)}
+              onClick={() => { if (index <= furthestStep) setCurrentStep(index); }}
+              disabled={index > furthestStep || loading}
               className={`rounded-full border px-4 py-2 text-sm ${
                 index === currentStep
                   ? 'border-primary bg-primary/10 text-primary'
+                  : index < furthestStep
+                    ? 'border-[#0b1f3a] bg-[#0b1f3a] text-white'
                   : 'border-border/60 text-muted-foreground hover:text-foreground'
               }`}
             >
-              <span className="mr-2 text-xs text-muted-foreground">{index + 1}</span>
+              <span className="mr-2 text-xs">{index < furthestStep ? '✓' : index + 1}</span>
               {step.label}
             </Button>
           ))}
@@ -1386,22 +1697,22 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            <Input
-              id="quoteCompanyName"
-              value={form.companyName}
-              onChange={(event) => setForm((prev) => ({ ...prev, companyName: event.target.value }))}
-              placeholder="Company name"
-              required
-            />
+            <div className="rounded-lg border border-border/60 bg-background/60 p-3 text-sm">
+              {form.customerId ? (
+                <>
+                  <p className="font-semibold text-foreground">{form.companyName}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Customer record selected. Contact details below apply only to this quote.</p>
+                </>
+              ) : (
+                <p className="text-muted-foreground">Choose a customer above to continue.</p>
+              )}
+            </div>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="quoteNumber">Quote #</Label>
-            <Input
-              id="quoteNumber"
-              value={form.quoteNumber}
-              onChange={(event) => setForm((prev) => ({ ...prev, quoteNumber: event.target.value }))}
-              placeholder="Auto-generated if blank"
-            />
+            <Label>Quote number</Label>
+            <div className="rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-muted-foreground">
+              {form.quoteNumber || 'Assigned automatically when this draft is saved'}
+            </div>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="quoteContact">Contact / Engineer</Label>
@@ -1428,42 +1739,6 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               onChange={(event) => setForm((prev) => ({ ...prev, contactPhone: event.target.value }))}
             />
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="quoteStatus">Status</Label>
-            <Select value={form.status} onValueChange={(value) => setForm((prev) => ({ ...prev, status: value }))}>
-              <SelectTrigger id="quoteStatus" className="border border-border bg-background px-3 py-2 text-sm">
-                <SelectValue placeholder="Select status" />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="quoteBasePrice">Base fabrication price (USD)</Label>
-            <Input
-              id="quoteBasePrice"
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.basePrice}
-              onChange={(event) => setForm((prev) => ({ ...prev, basePrice: event.target.value }))}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="quoteMultiPiece"
-              checked={form.multiPiece}
-              onCheckedChange={(checked) => setForm((prev) => ({ ...prev, multiPiece: Boolean(checked) }))}
-            />
-            <Label htmlFor="quoteMultiPiece" className="text-sm font-normal">
-              Multi-piece assemblies included
-            </Label>
-          </div>
         </CardContent>
         <CardContent className="grid gap-4">
             </CardContent>
@@ -1488,13 +1763,50 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       )}
 
       {currentStep === 1 && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>How would you like to add the parts?</CardTitle>
+              <CardDescription>Let the drawings do the typing, or enter the list yourself.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setPartEntryMode('drawing')}
+                className={`rounded-xl border-2 p-5 text-left transition ${partEntryMode === 'drawing' ? 'border-[#ff5a00] bg-[#ff5a00]/10' : 'border-border/60 hover:border-[#ff5a00]/70'}`}
+              >
+                <span className="block text-lg font-semibold">Read drawings for me</span>
+                <span className="mt-1 block text-sm text-muted-foreground">Upload one drawing or a ZIP and confirm only highlighted details.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPartEntryMode('manual')}
+                className={`rounded-xl border-2 p-5 text-left transition ${partEntryMode === 'manual' ? 'border-[#0b1f3a] bg-[#0b1f3a] text-white' : 'border-border/60 hover:border-[#0b1f3a]'}`}
+              >
+                <span className="block text-lg font-semibold">Type parts myself</span>
+                <span className={`mt-1 block text-sm ${partEntryMode === 'manual' ? 'text-white/75' : 'text-muted-foreground'}`}>Use the familiar manual part form.</span>
+              </button>
+            </CardContent>
+          </Card>
+
+          {partEntryMode === 'drawing' ? (
+            <DrawingImportPanel
+              business={getBusinessOptionByCode(form.business)?.name ?? BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die'}
+              customerName={form.companyName}
+              draftReference={form.quoteNumber || initialQuote?.quoteNumber || draftReference}
+              materials={materials}
+              destinationLabel="quote"
+              onContinue={useImportedDrawings}
+              onSwitchToManual={() => setPartEntryMode('manual')}
+            />
+          ) : partEntryMode === 'manual' ? (
         <Card>
           <CardHeader>
             <CardTitle>Parts</CardTitle>
             <CardDescription>Define the core part list before you add labor or files.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 lg:grid-cols-[280px_1fr]">
-            <div className="space-y-3 rounded border border-border/60 bg-muted/10 p-3">
+          <CardContent className="grid gap-4 lg:grid-cols-[minmax(320px,360px)_minmax(0,1fr)]">
+            <div className="min-w-0 space-y-3 rounded border border-border/60 bg-muted/10 p-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Parts list</p>
                 <Button
@@ -1518,21 +1830,27 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                     variant="outline"
                     size="sm"
                     onClick={() => setActivePartKey(part.key)}
-                    className={`w-full rounded border px-3 py-2 text-left text-sm ${
+                    className={`h-auto min-w-0 w-full max-w-full flex-col items-stretch justify-start gap-1 whitespace-normal rounded border px-3 py-2 text-left text-sm ${
                       part.key === activePartKey
                         ? 'border-primary bg-primary/10 text-primary'
                         : 'border-border/60 text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    <div className="font-medium">{part.name || `Part ${index + 1}`}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {part.partNumber || 'No part number'} • Qty {part.quantity || '1'}
+                    <div className="min-w-0 break-words font-medium leading-snug [overflow-wrap:anywhere]">
+                      {part.name || `Part ${index + 1}`}
+                    </div>
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-1 text-xs leading-snug text-muted-foreground">
+                      <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                        {part.partNumber || 'No part number'}
+                      </span>
+                      <span aria-hidden="true">•</span>
+                      <span className="shrink-0">Qty {part.quantity || '1'}</span>
                     </div>
                   </Button>
                 ))}
               </div>
             </div>
-            <div className="space-y-4">
+            <div className="min-w-0 space-y-4">
               {activePart ? (
                 <div className="rounded border border-border/60 bg-card/60 p-4">
                   <div className="flex items-center justify-between">
@@ -1549,6 +1867,21 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                       Remove
                     </Button>
                   </div>
+                  {activePart.attachments.length ? (
+                    <div className="mt-3 flex flex-wrap gap-3 rounded-lg border border-border/60 bg-background/60 p-3 text-sm">
+                      {activePart.attachments.map((attachment, index) => (
+                        <a
+                          key={`${attachment.storagePath}-${index}`}
+                          href={`/api/orders/drawing-import/preview?path=${encodeURIComponent(attachment.storagePath)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-primary underline"
+                        >
+                          Open drawing{activePart.attachments.length > 1 ? ` ${index + 1}` : ''}
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <div className="grid gap-2">
                       <Label>Part name *</Label>
@@ -1623,6 +1956,22 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                         placeholder='e.g. "6.5 in"'
                       />
                     </div>
+                    <div className="grid gap-2">
+                      <Label>Finish</Label>
+                      <Input
+                        value={activePart.finish}
+                        onChange={(event) => updatePart(activePart.key, { finish: event.target.value })}
+                        placeholder="e.g. zinc plate, anodize, paint"
+                      />
+                      {activePart.drawingFinishText ? <span className="text-xs text-muted-foreground">Drawing says: {activePart.drawingFinishText}</span> : null}
+                    </div>
+                    {activePart.drawingMaterialText ? (
+                      <div className="grid gap-2 rounded-lg border border-[#ff5a00]/50 bg-[#ff5a00]/5 p-3">
+                        <Label>Exact material text from drawing</Label>
+                        <p className="text-sm font-semibold">{activePart.drawingMaterialText}</p>
+                        <p className="text-xs text-muted-foreground">The match can be corrected without losing the print wording.</p>
+                      </div>
+                    ) : null}
                     <div className="grid gap-2 md:col-span-2">
                       <Label>Description</Label>
                       <Textarea
@@ -1639,20 +1988,131 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             </div>
           </CardContent>
         </Card>
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="p-6 text-center text-sm text-muted-foreground">Choose one of the two large options above to continue.</CardContent>
+            </Card>
+          )}
+        </>
       )}
 
       {currentStep === 2 && (
+        <div className="space-y-5">
+          <Card className="border-[#ff5a00]/40">
+            <CardHeader>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Material check</CardTitle>
+                  <CardDescription>Review this list on screen, print it for the shop walk, then enter what you found.</CardDescription>
+                </div>
+                <Button type="button" variant="outline" onClick={() => void printMaterialWalkdown()} disabled={loading || !initialQuote?.id}>
+                  Print shop walkdown sheet
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border border-[#0b1f3a]/25 bg-white p-4 text-sm text-[#0b1f3a] dark:bg-[#0b1f3a] dark:text-white">
+                Use the large choices on every part. <strong>Need to order</strong> will require a vendor before you can continue. An in-stock location is helpful but will not block you.
+              </div>
+            </CardContent>
+          </Card>
+
+          {parts.filter((part) => part.name.trim()).map((part, index) => {
+            const materialName = materials.find((material) => material.id === part.materialId)?.name || 'Not matched';
+            const materialResolved = part.materialStatus !== 'UNREVIEWED'
+              && (part.materialStatus !== 'NEED_TO_ORDER' || Boolean(part.procurementVendorId));
+            return (
+              <Card key={part.key} className={!materialResolved ? 'border-2 border-[#ff5a00] shadow-[0_0_0_3px_rgba(255,90,0,0.12)]' : 'border-[#0b1f3a]/25'}>
+                <CardHeader>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Part {index + 1}</p>
+                      <CardTitle>{part.partNumber || 'No part number'} — {part.name}</CardTitle>
+                      <CardDescription>Qty {part.quantity || '1'} · {materialName} · Stock {part.stockSize || 'not shown'} · Cut {part.cutLength || 'not shown'}</CardDescription>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${materialResolved ? 'border-[#0b1f3a] bg-[#0b1f3a] text-white' : 'border-[#ff5a00] bg-[#ff5a00]/10 text-[#ff5a00]'}`}>
+                        {materialResolved ? '✓ Material decision resolved' : 'Needs confirmation'}
+                      </span>
+                      {part.attachments.map((attachment, attachmentIndex) => (
+                        <a key={`${attachment.storagePath}-${attachmentIndex}`} href={`/api/orders/drawing-import/preview?path=${encodeURIComponent(attachment.storagePath)}`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-border px-3 py-2 text-sm font-semibold text-primary hover:bg-muted">
+                          Open drawing{part.attachments.length > 1 ? ` ${attachmentIndex + 1}` : ''}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Drawing says</p>
+                      <p className="mt-1 font-medium">Material: {part.drawingMaterialText || 'Not shown'}</p>
+                      <p className="mt-1 font-medium">Finish: {part.drawingFinishText || part.finish || 'Not shown'}</p>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Stock check / purchasing note</Label>
+                      <Textarea value={part.materialNotes} onChange={(event) => updatePart(part.key, { materialNotes: event.target.value })} placeholder="Where to look, supplier details, lead time, or anything the stock checker should know" />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {([
+                      ['IN_STOCK', '✓ In stock', 'Material is already in the shop'],
+                      ['NEED_TO_ORDER', 'Order material', 'Choose a vendor below'],
+                      ['NOT_REQUIRED', 'Not required', 'No material purchase or stock check'],
+                    ] as const).map(([value, label, description]) => (
+                      <button key={value} type="button" onClick={() => updatePart(part.key, { materialStatus: value })} className={`rounded-xl border-2 p-4 text-left transition ${part.materialStatus === value ? value === 'NEED_TO_ORDER' ? 'border-[#ff5a00] bg-[#ff5a00] text-white' : 'border-[#0b1f3a] bg-[#0b1f3a] text-white' : 'border-border/60 bg-background hover:border-[#ff5a00]'}`}>
+                        <span className="block text-base font-semibold">{label}</span>
+                        <span className={`mt-1 block text-xs ${part.materialStatus === value ? 'text-white/80' : 'text-muted-foreground'}`}>{description}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {part.materialStatus === 'IN_STOCK' ? (
+                    <div className="grid gap-2 md:max-w-xl">
+                      <Label>Where did you find it?</Label>
+                      <Input value={part.inventoryLocation} onChange={(event) => updatePart(part.key, { inventoryLocation: event.target.value })} placeholder="Rack, shelf, bin, or area" />
+                    </div>
+                  ) : null}
+
+                  {part.materialStatus === 'NEED_TO_ORDER' ? (
+                    <div className={`grid gap-4 rounded-xl border-2 p-4 md:max-w-xl ${part.procurementVendorId ? 'border-[#0b1f3a]/60 bg-[#0b1f3a]/10' : 'border-[#ff5a00] bg-[#ff5a00]/5'}`}>
+                      <div className="grid gap-2">
+                        <Label>Order from *</Label>
+                        <Select value={part.procurementVendorId || '__choose_vendor__'} onValueChange={(value) => updatePart(part.key, { procurementVendorId: value === '__choose_vendor__' ? '' : value })}>
+                          <SelectTrigger className="border border-border bg-background px-3 py-2 text-sm"><SelectValue placeholder="Choose vendor" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__choose_vendor__">Choose a vendor</SelectItem>
+                            {vendors.map((vendor) => <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        {part.procurementVendorId ? (
+                          <p className="text-xs font-semibold text-[#0b1f3a] dark:text-white">✓ Vendor selected. Material decision resolved.</p>
+                        ) : (
+                          <p className="text-xs text-[#ff5a00]">Choose a vendor to resolve this part.</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {currentStep === 3 && (
         <>
           <Card>
             <CardHeader>
-              <CardTitle>Build parts</CardTitle>
-              <CardDescription>Add add-ons, labor notes, and attachments per part.</CardDescription>
+              <CardTitle>Work plan</CardTitle>
+              <CardDescription>Add the work steps, instructions, and files needed for each part.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 lg:grid-cols-[320px_1fr]">
               <div className="space-y-3">
                 <AvailableItemsLibrary
-                  title="Available items library"
-                  description="Drag items onto the selected part or click Add."
+                  title="Available work steps"
+                  description="Click Add to put a step on the selected part."
                   items={availableItems}
                   onAddItem={(item) => {
                     if (!activePart) return;
@@ -1661,9 +2121,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                 />
                 {addons.length === 0 && (
                   <p className="text-xs text-muted-foreground">
-                    Need more options? Configure add-ons in the{' '}
+                    Need another step? Configure it in{' '}
                     <Link href="/admin/addons" className="underline">
-                      Add-ons admin panel
+                      Work Steps
                     </Link>
                     .
                   </p>
@@ -1674,7 +2134,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-muted-foreground">Parts list</p>
-                      <p className="text-xs text-muted-foreground">Select a part to assign add-ons.</p>
+                      <p className="text-xs text-muted-foreground">Select a part to build its work plan.</p>
                     </div>
                     <Button
                       type="button"
@@ -1735,8 +2195,8 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                       </div>
                     </div>
                     <AssignedItemsPanel
-                      title="Assigned add-ons & labor"
-                      description="Drop items here or use Add from the library."
+                      title="Work steps for this part"
+                      description="These become the shop work plan. Pricing stays private to the admin."
                       assignments={activePart.addonSelections.map((selection) => ({
                         key: selection.key,
                         itemId: selection.addonId,
@@ -1754,12 +2214,22 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                       onRemoveAssignment={(key) => removeAddonSelection(activePart.key, key)}
                       onMoveAssignment={(key, direction) => moveAddonSelection(activePart.key, key, direction)}
                       renderMeta={(assignment) => {
-                        const addon = addonMap.get(assignment.itemId);
+                        const selected = activePart.addonSelections.find((selection) => selection.key === assignment.key);
+                        const current = addonMap.get(assignment.itemId);
+                        const addon = current
+                          ? {
+                              ...current,
+                              rateType: selected?.rateTypeSnapshot ?? current.rateType,
+                              rateCents: selected?.rateCentsSnapshot ?? current.rateCents,
+                              affectsPrice: selected?.affectsPriceSnapshot ?? current.affectsPrice,
+                              isChecklistItem: selected?.isChecklistItemSnapshot ?? current.isChecklistItem,
+                            }
+                          : null;
                         if (!addon) return null;
                         if (getWorkItemPricingSemantic(addon) === 'CHECKLIST_ONLY') {
                           return (
                             <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                              No charge (checklist only).
+                              Shop step only — it does not add to the suggested price.
                             </div>
                           );
                         }
@@ -1803,7 +2273,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                                   }
                                 />
                                 <span className="truncate">
-                                  {addon?.name ?? 'Unknown add-on'} · {selection.units || '0'} unit(s)
+                                  {addon?.name ?? 'Unknown work step'} · {selection.units || '0'} unit(s)
                                 </span>
                               </label>
                             );
@@ -1886,7 +2356,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                     </div>
                   </>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Select a part to add add-ons and notes.</p>
+                  <p className="text-sm text-muted-foreground">Select a part to add work steps and instructions.</p>
                 )}
               </div>
             </CardContent>
@@ -2096,7 +2566,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         </>
       )}
 
-      {currentStep === 3 && (
+      {currentStep === 4 && (
         <>
           <Card>
             <CardHeader>
@@ -2142,10 +2612,79 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             <CardHeader>
               <CardTitle>Purchased items</CardTitle>
               <CardDescription>
-                Track vendor-sourced hardware or kits. Suggest markup percentages below to keep estimates consistent.
+                Costs stay attached to the part that needs them. Vendors selected during material check are carried forward automatically.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {parts.filter((part) => part.name.trim() && part.materialStatus === 'NEED_TO_ORDER').map((part) => {
+                const vendorName = vendors.find((vendor) => vendor.id === part.procurementVendorId)?.name || 'Vendor not selected';
+                const baseCents = centsFromString(part.procurementCost);
+                const markup = Number.parseFloat(part.procurementMarkupPercent || '0') || 0;
+                const totalCents = calculateProcurementTotalCents({ baseCostCents: baseCents, markupPercent: markup });
+                const hasEnteredCost = part.procurementCost.trim().length > 0;
+                const isResolved = Boolean(part.procurementVendorId) && hasEnteredCost;
+                return (
+                  <div
+                    key={part.key}
+                    className={`rounded border p-4 ${
+                      isResolved
+                        ? 'border-[#0b1f3a] bg-[#0b1f3a]/20'
+                        : 'border-[#ff5a00]/60 bg-[#ff5a00]/5'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold">{part.partNumber || part.name}</p>
+                        <p className="text-xs text-muted-foreground">{part.name} · Vendor: {vendorName}</p>
+                      </div>
+                      <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${
+                        isResolved
+                          ? 'border-primary/50 bg-primary/15 text-primary'
+                          : 'border-[#ff5a00]/60 bg-[#ff5a00]/10 text-[#ff8a4c]'
+                      }`}>
+                        {isResolved ? 'Cost captured' : 'Enter cost'}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_140px_auto] sm:items-end">
+                      <div className="grid gap-2">
+                        <Label>Material cost (USD)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={part.procurementCost}
+                          onChange={(event) => updatePart(part.key, { procurementCost: event.target.value })}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Markup %</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={part.procurementMarkupPercent}
+                          onChange={(event) => updatePart(part.key, { procurementMarkupPercent: event.target.value })}
+                        />
+                      </div>
+                      <div className="rounded border border-border/60 bg-card p-3 text-sm">
+                        <span className="text-muted-foreground">Quoted total</span>
+                        <p className="font-semibold text-primary">{formatCurrency(totalCents)}</p>
+                      </div>
+                    </div>
+                    <p className={`mt-3 text-xs ${isResolved ? 'text-muted-foreground' : 'text-[#ff8a4c]'}`}>
+                      {isResolved
+                        ? 'This purchase is included in this part\'s calculated price below.'
+                        : 'Enter the material cost to finish pricing this part.'}
+                    </p>
+                  </div>
+                );
+              })}
+              {!parts.some((part) => part.name.trim() && part.materialStatus === 'NEED_TO_ORDER') ? (
+                <div className="rounded border border-dashed border-border/60 bg-background/40 p-3 text-sm text-muted-foreground">
+                  No part-specific purchased material has been marked for ordering.
+                </div>
+              ) : null}
               {vendorItems.map((item) => {
                 const markupValue = Number.parseFloat(item.markupPercent || '0') || 0;
                 const finalCents = Math.round(centsFromString(item.basePrice) * (1 + markupValue / 100));
@@ -2308,51 +2847,110 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
 
           <Card>
             <CardHeader>
-              <CardTitle>Per-part pricing basis</CardTitle>
-              <CardDescription>Set whether each entered price is per unit or lot total.</CardDescription>
+              <CardTitle>Final price for each part</CardTitle>
+              <CardDescription>
+                ShopApp suggests a unit price from the estimated work. Accept it, or enter the final price you want the customer to see.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {parts.map((part, index) => {
                 const entry = partPricing.find((candidate) => candidate.partKey === part.key) ?? {
                   partKey: part.key,
                   price: '0.00',
-                  pricingMode: 'LOT_TOTAL' as PartPricingMode,
+                  pricingMode: 'PER_UNIT' as PartPricingMode,
+                  priceSource: 'CALCULATED' as const,
+                  suggestedUnitPriceCents: 0,
                 };
                 const quantity = Number.parseInt(part.quantity || '1', 10) || 1;
-                const enteredPriceCents = centsFromString(entry.price);
-                const lotTotal = calculatePartLotTotal({
-                  enteredPriceCents,
-                  quantity,
-                  pricingMode: entry.pricingMode,
+                const unitPrice = entry.priceSource === 'MANUAL'
+                  ? centsFromString(entry.price)
+                  : entry.suggestedUnitPriceCents;
+                const lotTotal = unitPrice * quantity;
+                const workStepBreakdown = part.addonSelections.map((selection) => {
+                  const addon = addonMap.get(selection.addonId);
+                  const rateType = selection.rateTypeSnapshot ?? addon?.rateType ?? 'HOURLY';
+                  const rateCents = selection.rateCentsSnapshot ?? addon?.rateCents ?? 0;
+                  const affectsPrice = selection.affectsPriceSnapshot ?? addon?.affectsPrice ?? true;
+                  const units = numberFromString(selection.units);
+                  return {
+                    key: selection.key,
+                    name: selection.nameSnapshot ?? addon?.name ?? 'Work step',
+                    units,
+                    unitsLabel: getWorkItemUnitsLabel(rateType, 'short'),
+                    rateLabel: formatWorkItemRateLabel({ rateCents, rateType }) ?? formatCurrency(rateCents),
+                    affectsPrice,
+                    totalCents: calculateAssignmentTotalCents({
+                      item: { rateCents, rateType, affectsPrice },
+                      units,
+                    }),
+                  };
                 });
-                const unitPrice = calculatePartUnitPrice({
-                  enteredPriceCents,
-                  quantity,
-                  pricingMode: entry.pricingMode,
-                });
+                const workSubtotalCents = workStepBreakdown.reduce((sum, step) => sum + step.totalCents, 0);
+                const procurementCents = part.materialStatus === 'NEED_TO_ORDER'
+                  ? calculateProcurementTotalCents({
+                      baseCostCents: centsFromString(part.procurementCost),
+                      markupPercent: Number.parseFloat(part.procurementMarkupPercent || '0'),
+                    })
+                  : 0;
+                const isExpanded = expandedPartPricingKeys.has(part.key);
                 return (
-                  <div key={part.key} className="grid gap-3 rounded border border-border/60 bg-background/60 p-3 md:grid-cols-[1.5fr_160px_80px_120px_140px] md:items-center">
-                    <div>
+                  <div key={part.key} className="rounded-xl border border-border/60 bg-background/60 p-4">
+                    <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_auto] lg:items-center">
+                      <div>
                       <p className="text-sm font-medium">{part.partNumber || part.name || `Part ${index + 1}`}</p>
                       <p className="text-xs text-muted-foreground">{part.name || 'Unnamed part'}</p>
-                      <Label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Suggested unit price: <span className="font-semibold text-foreground">{formatCurrency(entry.suggestedUnitPriceCents)}</span>
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Includes {formatCurrency(workSubtotalCents)} in selected work steps
+                          {procurementCents > 0 ? (
+                            <> and {formatCurrency(procurementCents)} in purchased material</>
+                          ) : null}
+                          .
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="mt-2 h-auto px-0 text-xs text-primary hover:bg-transparent hover:text-primary/80"
+                          aria-expanded={isExpanded}
+                          onClick={() =>
+                            setExpandedPartPricingKeys((current) => {
+                              const next = new Set(current);
+                              if (next.has(part.key)) next.delete(part.key);
+                              else next.add(part.key);
+                              return next;
+                            })
+                          }
+                        >
+                          {isExpanded ? 'Hide price details' : 'View price details'}
+                        </Button>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2 text-sm font-normal">
                         <Checkbox
-                          checked={entry.pricingMode === 'PER_UNIT'}
+                            checked={entry.priceSource === 'MANUAL'}
                           onCheckedChange={(checked) =>
                             setPartPricing((prev) =>
                               prev.map((row) =>
                                 row.partKey === part.key
-                                  ? { ...row, pricingMode: checked ? 'PER_UNIT' : 'LOT_TOTAL' }
+                                    ? {
+                                        ...row,
+                                        priceSource: checked ? 'MANUAL' : 'CALCULATED',
+                                        price: checked ? row.price : (row.suggestedUnitPriceCents / 100).toFixed(2),
+                                        pricingMode: 'PER_UNIT',
+                                      }
                                   : row
                               )
                             )
                           }
                         />
-                        Mode: {entry.pricingMode}
+                          Use a different final price
                       </Label>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Entered price</Label>
+                        {entry.priceSource === 'MANUAL' ? (
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Final unit price</Label>
                       <Input
                         inputMode="decimal"
                         value={entry.price}
@@ -2360,26 +2958,64 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                           setPartPricing((prev) =>
                             prev.map((row) =>
                               row.partKey === part.key
-                                ? { ...row, price: event.target.value, isManual: true }
+                                      ? { ...row, price: event.target.value, priceSource: 'MANUAL', pricingMode: 'PER_UNIT' }
                                 : row
                             )
                           )
                         }
                         placeholder="0.00"
                       />
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">The suggestion will update if estimated hours or rates change.</p>
+                        )}
                     </div>
-                    <div className="text-sm">
-                      <p className="text-xs text-muted-foreground">Qty</p>
-                      <p className="font-medium">{quantity}</p>
+                      <div className="min-w-[170px] rounded-lg border border-border/60 bg-card p-3 text-sm">
+                        <div className="flex justify-between gap-4"><span className="text-muted-foreground">Qty</span><span>{quantity}</span></div>
+                        <div className="mt-1 flex justify-between gap-4"><span className="text-muted-foreground">Unit</span><span>{formatCurrency(unitPrice)}</span></div>
+                        <div className="mt-2 flex justify-between gap-4 border-t border-border/60 pt-2 font-semibold"><span>Part total</span><span>{formatCurrency(lotTotal)}</span></div>
+                      </div>
                     </div>
-                    <div className="text-sm">
-                      <p className="text-xs text-muted-foreground">Unit price</p>
-                      <p className="font-medium">{formatCurrency(unitPrice)}</p>
-                    </div>
-                    <div className="text-sm">
-                      <p className="text-xs text-muted-foreground">Line total</p>
-                      <p className="font-medium">{formatCurrency(lotTotal)}</p>
-                    </div>
+                    {isExpanded ? (
+                      <div className="mt-4 rounded-lg border border-border/60 bg-card/50 p-3 text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-medium">Price details</p>
+                          <span className="text-xs text-muted-foreground">
+                            {entry.priceSource === 'MANUAL' ? 'Manual final price selected' : 'Calculated from the items below'}
+                          </span>
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          {workStepBreakdown.length ? workStepBreakdown.map((step) => (
+                            <div key={step.key} className="flex items-start justify-between gap-4 text-xs">
+                              <div>
+                                <p className="font-medium text-foreground">{step.name}</p>
+                                <p className="text-muted-foreground">
+                                  {step.units} {step.unitsLabel} at {step.rateLabel}
+                                  {!step.affectsPrice ? ' (checklist only)' : ''}
+                                </p>
+                              </div>
+                              <span className="shrink-0 font-medium">{step.affectsPrice ? formatCurrency(step.totalCents) : 'Included'}</span>
+                            </div>
+                          )) : (
+                            <p className="text-xs text-muted-foreground">No work steps have been selected for this part.</p>
+                          )}
+                          {part.materialStatus === 'NEED_TO_ORDER' ? (
+                            <div className="flex items-start justify-between gap-4 border-t border-border/60 pt-2 text-xs">
+                              <div>
+                                <p className="font-medium text-foreground">Purchased material</p>
+                                <p className="text-muted-foreground">
+                                  {formatCurrency(centsFromString(part.procurementCost))}
+                                  {Number.parseFloat(part.procurementMarkupPercent || '0') > 0
+                                    ? ` + ${part.procurementMarkupPercent}% markup`
+                                    : ''}
+                                </p>
+                              </div>
+                              <span className="shrink-0 font-medium">{formatCurrency(procurementCents)}</span>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
@@ -2438,20 +3074,18 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               <CardDescription>Totals update automatically as you edit the quote.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
+              {basePriceCents > 0 ? (
+                <div className="flex items-center justify-between text-sm">
+                  <span>Legacy quote-level fabrication fee</span>
+                  <span className="font-medium">{formatCurrency(basePriceCents)}</span>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between text-sm">
-                <span>Base fabrication</span>
-                <span className="font-medium">{formatCurrency(basePriceCents)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span>Vendor purchases</span>
+                <span>Other purchased items / outside services</span>
                 <span className="font-medium">{formatCurrency(vendorTotalsCents)}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span>Add-ons and labor</span>
-                <span className="font-medium">{formatCurrency(addonsTotalsCents)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span>Part pricing (basis-adjusted)</span>
+                <span>Final part prices (includes part material)</span>
                 <span className="font-medium">{formatCurrency(partPricingTotalCents)}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
@@ -2467,14 +3101,14 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             </CardContent>
             <CardFooter className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
-                Add-on rates remain private—only admins can view hourly costs.
+                Work-step rates and internal costs remain visible only to admins.
               </p>
               <div className="flex gap-3">
                 <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={loading}>
-                  {loading ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create quote'}
+                  {loading ? 'Saving…' : 'Save quote and review'}
                 </Button>
               </div>
             </CardFooter>
@@ -2492,8 +3126,8 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           >
             Back
           </Button>
-          <Button type="button" onClick={() => setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1))}>
-            Next
+          <Button type="button" onClick={() => void saveAndContinue()} disabled={loading}>
+            {loading ? 'Saving…' : 'Save & continue'}
           </Button>
         </div>
       )}

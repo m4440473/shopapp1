@@ -37,6 +37,7 @@
   ],
   "exclude": [
     "node_modules",
+    "sterling-site",
     "prisma/seed.ts",
     "scripts/**/*.ts"
   ]

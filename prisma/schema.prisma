@@ -24,6 +24,7 @@ model User {
   notes                Note[]
   timeLogs             TimeLog[]
   timeEntries          TimeEntry[]
+  timeEntryActions     TimeEntryAction[]          @relation("TimeEntryActionActor")
   checklistToggles     OrderChecklist[]         @relation("ChecklistToggledBy")
   uploadedAttachments  Attachment[]             @relation("UserAttachments")
   statusHistories      StatusHistory[]          @relation("UserStatusHistory")
@@ -78,12 +79,16 @@ model Vendor {
   notes     String?
 
   orders               Order[]
+  orderPartProcurements OrderPart[] @relation("OrderPartProcurementVendor")
   quoteVendorItems     QuoteVendorItem[]
+  quotePartProcurements QuotePart[] @relation("QuotePartProcurementVendor")
   repeatOrderTemplates RepeatOrderTemplate[]
 }
 
 model Order {
   id                   String                @id @default(cuid())
+  sourceQuoteId        String?               @unique
+  sourceQuote          Quote?                @relation("ConvertedQuoteOrder", fields: [sourceQuoteId], references: [id], onDelete: SetNull)
   orderNumber          String                @unique
   business             String                @default("STD")
   customerId           String
@@ -120,9 +125,18 @@ model OrderPart {
   orderId             String
   order               Order                    @relation(fields: [orderId], references: [id])
   partNumber          String
+  partName            String?
   quantity            Int
   materialId          String?
   material            Material?                @relation(fields: [materialId], references: [id])
+  drawingMaterialText String?
+  drawingFinishText   String?
+  finish              String?
+  materialStatus      String                   @default("UNREVIEWED")
+  inventoryLocation   String?
+  materialNotes       String?
+  procurementVendorId String?
+  procurementVendor   Vendor?                  @relation("OrderPartProcurementVendor", fields: [procurementVendorId], references: [id], onDelete: SetNull)
   currentDepartmentId String?
   currentDepartment   Department?              @relation(fields: [currentDepartmentId], references: [id])
   notes               String?
@@ -205,11 +219,27 @@ model TimeEntry {
   endedAt      DateTime?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
+  actions      TimeEntryAction[]
 
   @@index([userId, endedAt])
   @@index([userId, departmentId, endedAt])
   @@index([orderId])
   @@index([partId])
+}
+
+model TimeEntryAction {
+  id          String    @id @default(cuid())
+  timeEntryId String
+  timeEntry   TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actor       User?     @relation("TimeEntryActionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  action      String
+  reason      String?
+  metadata    String?
+  createdAt   DateTime  @default(now())
+
+  @@index([timeEntryId, createdAt])
+  @@index([actorUserId])
 }
 
 model PartEvent {
@@ -446,6 +476,7 @@ model RepeatOrderTemplatePart {
   templateId          String
   template            RepeatOrderTemplate             @relation(fields: [templateId], references: [id], onDelete: Cascade)
   partNumber          String
+  partName            String?
   quantity            Int
   materialId          String?
   material            Material?                       @relation(fields: [materialId], references: [id], onDelete: SetNull)
@@ -525,6 +556,7 @@ model Quote {
   addonsTotalCents Int       @default(0)
   vendorTotalCents Int       @default(0)
   totalCents       Int       @default(0)
+  workflowStep     Int       @default(0)
   metadata         String?
 
   createdById String
@@ -534,6 +566,8 @@ model Quote {
   vendorItems     QuoteVendorItem[]
   addonSelections QuoteAddonSelection[]
   attachments     QuoteAttachment[]
+  partAttachments QuotePartAttachment[]
+  convertedOrder  Order?                  @relation("ConvertedQuoteOrder")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -555,9 +589,24 @@ model QuotePart {
   partNumber      String?
   materialId      String?
   material        Material?             @relation("QuotePartMaterial", fields: [materialId], references: [id])
+  drawingMaterialText String?
+  drawingFinishText   String?
+  finish              String?
   stockSize       String?
   cutLength       String?
+  materialStatus      String   @default("UNREVIEWED")
+  inventoryLocation   String?
+  materialNotes       String?
+  procurementVendorId String?
+  procurementVendor   Vendor?  @relation("QuotePartProcurementVendor", fields: [procurementVendorId], references: [id], onDelete: SetNull)
+  procurementCostCents Int?
+  procurementMarkupPercent Float?
+  sortOrder           Int      @default(0)
   addonSelections QuoteAddonSelection[]
+  attachments     QuotePartAttachment[]
+
+  @@index([quoteId, sortOrder])
+  @@index([procurementVendorId])
 }
 
 model QuoteVendorItem {
@@ -587,9 +636,14 @@ model QuoteAddonSelection {
   rateTypeSnapshot String
   rateCents        Int
   totalCents       Int
+  affectsPriceSnapshot    Boolean @default(true)
+  isChecklistItemSnapshot Boolean @default(true)
+  departmentIdSnapshot    String?
+  nameSnapshot            String?
   notes            String?
 
   @@index([quotePartId])
+  @@unique([quotePartId, addonId])
 }
 
 model QuoteAttachment {
@@ -602,6 +656,24 @@ model QuoteAttachment {
   mimeType    String?
   createdAt   DateTime @default(now())
 
+  @@index([storagePath])
+}
+
+model QuotePartAttachment {
+  id          String    @id @default(cuid())
+  quoteId     String
+  quote       Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quotePartId String
+  quotePart   QuotePart @relation(fields: [quotePartId], references: [id], onDelete: Cascade)
+  kind        String    @default("DWG")
+  url         String?
+  storagePath String?
+  label       String?
+  mimeType    String?
+  createdAt   DateTime  @default(now())
+
+  @@index([quoteId])
+  @@index([quotePartId])
   @@index([storagePath])
 }
 

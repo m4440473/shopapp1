@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
   ArrowRightLeft,
@@ -30,6 +30,7 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/Textarea';
 import { useToast } from '@/components/ui/Toast';
 import { PartBomTab } from './PartBomTab';
+import { PartLaborHistory } from '@/modules/time/PartLaborHistory';
 
 const PART_TABS = ['overview', 'notes', 'full-files', 'bom', 'checklist', 'log'] as const;
 const PART_ATTACHMENT_KINDS = ['DWG', 'STEP', 'PDF', 'PO', 'PRINT', 'IMAGE', 'OTHER'] as const;
@@ -87,7 +88,6 @@ type InstructionGateDialogState = {
   error: string | null;
   pendingAction: InstructionGatePendingAction | null;
   workerId: string;
-  pin: string;
 };
 type ChecklistPerformerDialogState = {
   open: boolean;
@@ -182,6 +182,7 @@ const parseInstructionSections = (instructions: string): InstructionSection[] =>
 
 export default function OrderDetailPage() {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const id = pathname?.split('/').pop() ?? '';
@@ -247,6 +248,7 @@ export default function OrderDetailPage() {
   });
   const [partDraft, setPartDraft] = useState({
     partNumber: '',
+    partName: '',
     quantity: 1,
     materialId: '',
     stockSize: '',
@@ -281,7 +283,6 @@ export default function OrderDetailPage() {
     error: null,
     pendingAction: null,
     workerId: '',
-    pin: '',
   });
   const [checklistPerformerDialog, setChecklistPerformerDialog] = useState<ChecklistPerformerDialogState>({
     open: false,
@@ -291,7 +292,6 @@ export default function OrderDetailPage() {
     checked: false,
     performerId: '',
   });
-  const [dismissedInstructionGateKey, setDismissedInstructionGateKey] = useState<string | null>(null);
   const [showTimerDetails, setShowTimerDetails] = useState(false);
   const [repeatTemplateDialogOpen, setRepeatTemplateDialogOpen] = useState(false);
   const [repeatTemplateName, setRepeatTemplateName] = useState('');
@@ -358,7 +358,7 @@ export default function OrderDetailPage() {
   const activeTeamUsers = useMemo(
     () =>
       teamUsers
-        .filter((user) => user.active !== false)
+        .filter((user) => user.active !== false && user.role !== 'VIEWER')
         .map((user) => ({
           ...user,
           name: user.name?.trim() || user.email?.trim() || user.id,
@@ -423,8 +423,6 @@ export default function OrderDetailPage() {
 
   const manualMoveDepartments = useMemo(() => departments, [departments]);
   const selectedCurrentDepartment = manualMoveDepartments.find((department) => department.id === selectedPart?.currentDepartmentId) ?? null;
-  const instructionGateSupportsWorkerSelection =
-    !instructionGateDialog.pendingAction || instructionGateDialog.pendingAction.kind === 'timer-start';
   const instructionGateDepartmentId = !instructionGateDialog.pendingAction
     ? selectedPartCurrentDepartmentId
     : instructionGateDialog.pendingAction.kind === 'timer-start'
@@ -469,6 +467,14 @@ export default function OrderDetailPage() {
     });
     return Array.from(grouped.values()).sort((a, b) => b.totalSeconds - a.totalSeconds);
   }, [item?.timeEntries, selectedPartId]);
+
+  const selectedPartLaborEntries = useMemo(
+    () =>
+      (Array.isArray(item?.timeEntries) ? item.timeEntries : []).filter(
+        (entry: any) => entry.partId === selectedPartId,
+      ),
+    [item?.timeEntries, selectedPartId],
+  );
 
   const partManualAdjustments = useMemo(() => {
     const all = Array.isArray((item as any)?.partTimeAdjustments) ? (item as any).partTimeAdjustments : [];
@@ -710,14 +716,23 @@ export default function OrderDetailPage() {
       return;
     }
     const requestedPartId = searchParams.get('part');
-    if (requestedPartId && parts.some((part: any) => part.id === requestedPartId)) {
-      setSelectedPartId((prev) => (prev === requestedPartId ? prev : requestedPartId));
-      return;
-    }
-    if (!selectedPartId || !parts.some((part: any) => part.id === selectedPartId)) {
-      setSelectedPartId(parts[0].id);
-    }
-  }, [parts, searchParams, selectedPartId]);
+    setSelectedPartId((previousPartId) => {
+      if (requestedPartId && parts.some((part: any) => part.id === requestedPartId)) {
+        return requestedPartId;
+      }
+      if (previousPartId && parts.some((part: any) => part.id === previousPartId)) {
+        return previousPartId;
+      }
+      return parts[0].id;
+    });
+  }, [parts, searchParams]);
+
+  const selectPart = (partId: string) => {
+    setSelectedPartId(partId);
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+    nextSearchParams.set('part', partId);
+    router.replace(`${pathname}?${nextSearchParams.toString()}`, { scroll: false });
+  };
 
   useEffect(() => {
     if (!item) return;
@@ -739,6 +754,7 @@ export default function OrderDetailPage() {
     if (!selectedPart) return;
     setPartDraft({
       partNumber: selectedPart.partNumber ?? '',
+      partName: selectedPart.partName ?? '',
       quantity: Number(selectedPart.quantity ?? 1),
       materialId: selectedPart.materialId ?? '',
       stockSize: selectedPart.stockSize ?? '',
@@ -833,7 +849,6 @@ export default function OrderDetailPage() {
   };
 
   const buildInstructionGateAction = (pendingAction: InstructionGatePendingAction) => {
-    setDismissedInstructionGateKey(null);
     setInstructionGateDialog({
       open: true,
       loading: false,
@@ -843,22 +858,21 @@ export default function OrderDetailPage() {
         pendingAction.kind === 'timer-start'
           ? selectedTimerWorkerId || currentUserId || timerWorkerOptions[0]?.id || ''
           : currentUserId || timerWorkerOptions[0]?.id || '',
-      pin: '',
     });
   };
 
-  const continueTimerStartAfterInstructionGate = ({ workerId, pin = '' }: { workerId: string; pin?: string }) => {
-    if (!selectedPartId || !selectedTimerDepartmentId) return;
+  const continueTimerStartAfterInstructionGate = ({ workerId }: { workerId: string }) => {
+    const departmentId = selectedTimerDepartmentId || selectedPartCurrentDepartmentId || '';
+    if (!selectedPartId || !departmentId) return;
     openKioskTimerDialog('start', {
       workerId,
-      departmentId: selectedTimerDepartmentId,
+      departmentId,
       partId: selectedPartId,
-      pin,
       targetTimer: {
         userName: timerWorkerOptions.find((user) => user.id === workerId)?.name || 'Worker',
         departmentName:
-          timerDepartments.find((department) => department.id === selectedTimerDepartmentId)?.name ??
-          selectedTimerDepartmentId,
+          timerDepartments.find((department) => department.id === departmentId)?.name ??
+          departmentId,
         partLabel: selectedPart?.partNumber || 'Selected part',
       },
     });
@@ -874,7 +888,7 @@ export default function OrderDetailPage() {
     const departmentId = !pendingAction
       ? selectedPartCurrentDepartmentId
       : pendingAction.kind === 'timer-start'
-        ? selectedTimerDepartmentId
+        ? selectedTimerDepartmentId || selectedPartCurrentDepartmentId
         : pendingAction.kind === 'checklist-toggle'
           ? pendingAction.entry?.departmentId ?? selectedPartCurrentDepartmentId
           : selectedPartCurrentDepartmentId;
@@ -890,12 +904,10 @@ export default function OrderDetailPage() {
         error: null,
         pendingAction: null,
         workerId: '',
-        pin: '',
       });
       if (pendingAction?.kind === 'timer-start') {
         continueTimerStartAfterInstructionGate({
           workerId: instructionGateDialog.workerId || selectedTimerWorkerId,
-          pin: instructionGateDialog.pin,
         });
       } else if (pendingAction?.kind === 'checklist-toggle') {
         setChecklistPerformerDialog({
@@ -921,29 +933,18 @@ export default function OrderDetailPage() {
       pendingAction?.kind === 'timer-start'
         ? instructionGateDialog.workerId.trim() || selectedTimerWorkerId
         : '';
-    const timerStartPin = pendingAction?.kind === 'timer-start' ? instructionGateDialog.pin.trim() : '';
-    const manualAckWorkerId = !pendingAction ? instructionGateDialog.workerId.trim() : '';
-    const manualAckPin = !pendingAction ? instructionGateDialog.pin.trim() : '';
-    const acknowledgementWorkerId = timerStartWorkerId || manualAckWorkerId;
-    const acknowledgementPin = timerStartPin || manualAckPin;
+    const acknowledgementWorkerId = timerStartWorkerId || currentUserId;
     if (pendingAction?.kind === 'timer-start' && !timerStartWorkerId) {
       setInstructionGateDialog((prev) => ({ ...prev, error: 'Choose the worker who read these instructions.' }));
       return;
     }
-    if (pendingAction?.kind === 'timer-start' && !timerStartPin) {
-      setInstructionGateDialog((prev) => ({ ...prev, error: "Enter that worker's PIN to confirm the acknowledgement." }));
-      return;
-    }
-    if (!pendingAction && acknowledgementWorkerId && acknowledgementWorkerId !== currentUserId && !acknowledgementPin) {
-      setInstructionGateDialog((prev) => ({ ...prev, error: "Enter that worker's PIN to confirm the acknowledgement." }));
+    if (!acknowledgementWorkerId) {
+      setInstructionGateDialog((prev) => ({ ...prev, error: 'Choose the employee acknowledging these instructions.' }));
       return;
     }
 
     setInstructionGateDialog((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      const dismissKey = selectedPartId && selectedPartCurrentDepartmentId
-        ? `${selectedPartId}:${selectedPartCurrentDepartmentId}:${selectedPartInstructionsVersion}`
-        : null;
       const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/acknowledge-instructions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -951,7 +952,7 @@ export default function OrderDetailPage() {
         body: JSON.stringify({
           departmentId,
           workerId: acknowledgementWorkerId || undefined,
-          pin: acknowledgementPin || undefined,
+          trustedConsole: pendingAction?.kind === 'timer-start',
         }),
       });
       if (!res.ok) {
@@ -965,15 +966,14 @@ export default function OrderDetailPage() {
         error: null,
         pendingAction: null,
         workerId: '',
-        pin: '',
       });
-      setDismissedInstructionGateKey(dismissKey);
       toast.push('Instructions acknowledged.', 'success');
+      await load();
+      await loadPartEvents();
 
       if (pendingAction?.kind === 'timer-start') {
-        continueTimerStartAfterInstructionGate({
+        await continueTimerStartAfterInstructionGate({
           workerId: timerStartWorkerId,
-          pin: timerStartPin,
         });
       } else if (pendingAction?.kind === 'checklist-toggle') {
         setChecklistPerformerDialog({
@@ -1109,7 +1109,6 @@ export default function OrderDetailPage() {
       workerId?: string;
       departmentId?: string;
       partId?: string;
-      pin?: string;
       targetTimer?: {
         userName: string;
         departmentName: string | null;
@@ -1133,7 +1132,7 @@ export default function OrderDetailPage() {
       mode,
       workerId: defaultWorkerId,
       departmentId: defaultDepartmentId,
-      pin: options?.pin ?? '',
+      pin: '',
       partId: options?.partId ?? selectedPartId ?? parts[0]?.id ?? '',
       loading: false,
       error: null,
@@ -1224,30 +1223,27 @@ export default function OrderDetailPage() {
     }
   };
 
-  const handleKioskDialogConfirm = async (): Promise<boolean> => {
+  const handleKioskDialogConfirm = async (
+    modeOverride?: KioskTimerDialogMode,
+  ): Promise<boolean> => {
     if (!id) return false;
-
+    const actionMode = modeOverride ?? kioskTimerDialog.mode;
     setKioskTimerDialog((prev) => ({
       ...prev,
       loading: true,
       error: null,
     }));
-
-    const sessionData = await ensureKioskSession({
-      workerId: kioskTimerDialog.workerId,
-      pin: kioskTimerDialog.pin,
-    });
-    if (!sessionData) {
+    const workerUserId = kioskTimerDialog.workerId.trim();
+    const partId = kioskTimerDialog.partId.trim();
+    if (!workerUserId) {
+      setKioskTimerDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Choose an employee first.',
+      }));
       return false;
     }
-
-    if (kioskTimerDialog.mode === 'pause' || kioskTimerDialog.mode === 'finish') {
-      closeKioskTimerDialog();
-      return runKioskTimerAction(kioskTimerDialog.mode);
-    }
-
-    const partId = kioskTimerDialog.partId.trim();
-    if (!partId) {
+    if (kioskTimerDialog.mode === 'start' && !partId) {
       setKioskTimerDialog((prev) => ({
         ...prev,
         loading: false,
@@ -1255,30 +1251,39 @@ export default function OrderDetailPage() {
       }));
       return false;
     }
-
-    const departmentId = kioskTimerDialog.departmentId.trim();
-    if (!departmentId) {
-      setKioskTimerDialog((prev) => ({
-        ...prev,
-        loading: false,
-        error: 'This kiosk user does not have a default department configured.',
-      }));
-      return false;
-    }
-
     try {
-      const res = await fetch('/api/kiosk/timer/start', {
+      const endpoint =
+        actionMode === 'start'
+          ? '/api/dispatch/timer/start'
+          : `/api/dispatch/timer/${actionMode}`;
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          orderId: id,
-          partId,
-          departmentId,
+          workerUserId,
+          entryId: selectedPartActiveTimers.find((entry: any) => entry.userId === workerUserId)?.id,
+          ...(actionMode === 'start'
+            ? {
+                orderId: id,
+                partId,
+              }
+            : {}),
         }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
+        if (res.status === 409 && data?.error?.requiredAction === 'instruction_confirmation') {
+          closeKioskTimerDialog();
+          setInstructionGateDialog({
+            open: true,
+            loading: false,
+            error: null,
+            pendingAction: { kind: 'timer-start' },
+            workerId: workerUserId,
+          });
+          return false;
+        }
         if (res.status === 409 && data?.error?.requiredAction === 'switch_confirmation') {
           setKioskTimerDialog((prev) => ({
             ...prev,
@@ -1293,9 +1298,6 @@ export default function OrderDetailPage() {
           }));
           return false;
         }
-        if (res.status === 401) {
-          setKioskSession(null);
-        }
         setKioskTimerDialog((prev) => ({
           ...prev,
           loading: false,
@@ -1304,28 +1306,28 @@ export default function OrderDetailPage() {
               ? data.error
               : typeof data?.error?.message === 'string'
                 ? data.error.message
-                : 'Failed to start timer.',
+                : `Failed to ${actionMode} timer.`,
         }));
         return false;
       }
 
-      setSelectedPartId(partId);
+      if (partId) setSelectedPartId(partId);
       closeKioskTimerDialog();
       await refreshTimerSummary();
+      await load();
       await loadPartEvents();
-      await refreshKioskSession();
       return true;
     } catch {
       setKioskTimerDialog((prev) => ({
         ...prev,
         loading: false,
-        error: 'Failed to start timer.',
+        error: `Failed to ${actionMode} timer.`,
       }));
       return false;
     }
   };
 
-  const handleKioskSwitch = async (stopMode: 'pause' | 'finish'): Promise<boolean> => {
+  const handleKioskSwitch = async (): Promise<boolean> => {
     if (!id) return false;
 
     setKioskTimerDialog((prev) => ({
@@ -1334,42 +1336,31 @@ export default function OrderDetailPage() {
       error: null,
     }));
 
-    const sessionData = await ensureKioskSession({
-      workerId: kioskTimerDialog.workerId,
-      pin: kioskTimerDialog.pin,
-    });
-    if (!sessionData) {
-      return false;
-    }
-
     const partId = kioskTimerDialog.partId.trim();
-    const departmentId = kioskTimerDialog.departmentId.trim();
-    if (!partId || !departmentId) {
+    const workerUserId = kioskTimerDialog.workerId.trim();
+    if (!partId || !workerUserId) {
       setKioskTimerDialog((prev) => ({
         ...prev,
         loading: false,
-        error: 'Choose a part and make sure your kiosk department is configured.',
+        error: 'Choose a part and employee.',
       }));
       return false;
     }
 
     try {
-      const res = await fetch('/api/kiosk/timer/switch', {
+      const res = await fetch('/api/dispatch/timer/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
+          workerUserId,
           orderId: id,
           partId,
-          departmentId,
-          stopMode,
+          confirmSwitch: true,
         }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        if (res.status === 401) {
-          setKioskSession(null);
-        }
         setKioskTimerDialog((prev) => ({
           ...prev,
           loading: false,
@@ -1386,8 +1377,8 @@ export default function OrderDetailPage() {
       setSelectedPartId(partId);
       closeKioskTimerDialog();
       await refreshTimerSummary();
+      await load();
       await loadPartEvents();
-      await refreshKioskSession();
       return true;
     } catch {
       setKioskTimerDialog((prev) => ({
@@ -1438,22 +1429,22 @@ export default function OrderDetailPage() {
       setTimerError('Choose a part first.');
       return;
     }
-    if (!selectedTimerDepartmentId) {
-      setTimerError('Choose a department first.');
-      return;
-    }
     if (!selectedTimerWorkerId) {
-      setTimerError('Choose a user first.');
-      return;
-    }
-    if (!isInstructionAcknowledgedForUserDepartment(selectedTimerWorkerId, selectedTimerDepartmentId)) {
-      buildInstructionGateAction({ kind: 'timer-start' });
+      setTimerError('Choose an employee first.');
       return;
     }
     setTimerError(null);
+    const departmentId = selectedPartCurrentDepartmentId || selectedTimerDepartmentId;
+    if (
+      selectedPartInstructions &&
+      !getInstructionReceiptForUserDepartment(selectedTimerWorkerId, departmentId)
+    ) {
+      buildInstructionGateAction({ kind: 'timer-start' });
+      return;
+    }
     openKioskTimerDialog('start', {
       workerId: selectedTimerWorkerId,
-      departmentId: selectedTimerDepartmentId,
+      departmentId: departmentId ?? '',
       partId: selectedPartId,
       targetTimer: {
         userName: selectedTimerWorker?.name || 'Worker',
@@ -1483,28 +1474,8 @@ export default function OrderDetailPage() {
     if (!id || !selectedPartId) return false;
 
     const currentDepartmentId = selectedPart?.currentDepartmentId ?? '';
-    const destinationDepartmentId = moveDepartmentDialog.destinationDepartmentId.trim();
-    if (!destinationDepartmentId) {
-      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'Destination department is required.' }));
-      return false;
-    }
-
-    const destinationDepartment = manualMoveDepartments.find((department) => department.id === destinationDepartmentId);
-    if (!destinationDepartment) {
-      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'Select a valid destination department.' }));
-      return false;
-    }
-
-    if (destinationDepartmentId === currentDepartmentId) {
-      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'Destination department must be different from current department.' }));
-      return false;
-    }
-
-    const moveNote = moveDepartmentDialog.note.trim();
-    if (!moveNote) {
-      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'A move note is required.' }));
-      return false;
-    }
+    const destinationDepartmentId = nextDepartmentOption?.id ?? currentDepartmentId;
+    const moveNote = `Submitted ${selectedCurrentDepartment?.name ?? 'department'} complete.`;
 
     if (!isInstructionAcknowledgedForDepartment(currentDepartmentId)) {
       buildInstructionGateAction({
@@ -1526,35 +1497,19 @@ export default function OrderDetailPage() {
 
   const handleSubmitDepartmentComplete = async (): Promise<boolean> => {
     if (!id || !selectedPartId) return false;
-    const destinationDepartmentId = submitConfirmDialog.destinationDepartmentId.trim();
-    const destinationDepartment = manualMoveDepartments.find((department) => department.id === destinationDepartmentId);
-    const moveNote = submitConfirmDialog.note.trim();
-    if (!destinationDepartmentId || !destinationDepartment) {
-      setSubmitConfirmDialog((prev) => ({ ...prev, error: 'Select a valid destination department.' }));
-      return false;
-    }
-    if (!moveNote) {
-      setSubmitConfirmDialog((prev) => ({ ...prev, error: 'A move note is required.' }));
-      return false;
-    }
 
     setTimerSaving(true);
     setTimerError(null);
     try {
-      const res = await fetch(`/api/orders/${id}/parts/assign-department`, {
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}/submit-department-complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          partId: selectedPartId,
-          departmentId: destinationDepartmentId,
-          reasonCode: 'MANUAL_MOVE',
-          reasonText: moveNote,
-        }),
+        body: JSON.stringify({}),
       });
+      const payload = await res.json().catch(() => null);
       if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to move part to department.');
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to submit department complete.');
       }
 
       await load();
@@ -1572,10 +1527,18 @@ export default function OrderDetailPage() {
         note: '',
         error: null,
       });
-      toast.push(`Part moved to ${destinationDepartment.name}.`, 'success');
+      const nextDepartment = manualMoveDepartments.find(
+        (department) => department.id === payload?.part?.currentDepartmentId,
+      );
+      toast.push(
+        payload?.part?.status === 'COMPLETE'
+          ? 'All department work is complete.'
+          : `Department complete. Part moved to ${nextDepartment?.name ?? 'the next department'}.`,
+        'success',
+      );
       return true;
     } catch (err: any) {
-      const message = err?.message || 'Failed to move part to department.';
+      const message = err?.message || 'Failed to submit department complete.';
       setSubmitConfirmDialog((prev) => ({ ...prev, error: message }));
       return false;
     } finally {
@@ -1707,6 +1670,7 @@ export default function OrderDetailPage() {
     try {
       const payload = {
         partNumber: partDraft.partNumber,
+        partName: partDraft.partName || null,
         quantity: Number(partDraft.quantity),
         materialId: partDraft.materialId || null,
         stockSize: partDraft.stockSize || null,
@@ -1970,38 +1934,6 @@ export default function OrderDetailPage() {
 
   useEffect(() => {
     if (!selectedPartId) return;
-    const dismissKey = `${selectedPartId}:${selectedPartCurrentDepartmentId ?? ''}:${selectedPartInstructionsVersion}`;
-    if (!selectedPartInstructions || !selectedPartCurrentDepartmentId || selectedPartInstructionReceipt) {
-      setDismissedInstructionGateKey(null);
-      return;
-    }
-    if (instructionGateDialog.open || checklistPerformerDialog.open || submitConfirmDialog.open) return;
-    if (dismissedInstructionGateKey === dismissKey) return;
-
-    setInstructionGateDialog({
-      open: true,
-      loading: false,
-      error: null,
-      pendingAction: null,
-      workerId: currentUserId || timerWorkerOptions[0]?.id || '',
-      pin: '',
-    });
-  }, [
-    currentUserId,
-    checklistPerformerDialog.open,
-    dismissedInstructionGateKey,
-    instructionGateDialog.open,
-    selectedPartCurrentDepartmentId,
-    selectedPartId,
-    selectedPartInstructionReceipt,
-    selectedPartInstructions,
-    selectedPartInstructionsVersion,
-    submitConfirmDialog.open,
-    timerWorkerOptions,
-  ]);
-
-  useEffect(() => {
-    if (!selectedPartId) return;
     setAssignmentUserId((prev) => {
       if (prev && performerUsers.some((user) => user.id === prev)) return prev;
       return currentUserId || performerUsers[0]?.id || '';
@@ -2101,7 +2033,7 @@ export default function OrderDetailPage() {
   const activeOnSelected = selectedPartActiveTimers.length > 0;
   const selectedPartTimerSeconds = selectedPartId ? partTotals[selectedPartId] ?? 0 : 0;
   const selectedPartManualSeconds = selectedPartId ? manualPartTotals[selectedPartId] ?? 0 : 0;
-  const selectedPartStoredSeconds = selectedPartTimerSeconds + selectedPartManualSeconds;
+  const selectedPartStoredSeconds = selectedPartTimerSeconds;
   const selectedPartLiveSeconds = selectedPartActiveTimers.reduce((sum: number, entry: any) => {
     const startedAtMs = entry?.startedAt ? new Date(entry.startedAt).getTime() : Number.NaN;
     if (!Number.isFinite(startedAtMs)) return sum;
@@ -2130,14 +2062,13 @@ export default function OrderDetailPage() {
     selectedCurrentDepartmentIndex >= 0
       ? manualMoveDepartments[selectedCurrentDepartmentIndex + 1] ?? null
       : manualMoveDepartments[0] ?? null;
-  const selectedMoveDestination = submitDestinationOptions.find(
-    (department) => department.id === moveDepartmentDialog.destinationDepartmentId
-  ) ?? null;
-  const moveActionLabel = selectedMoveDestination
-    ? `Move Dept. to ${selectedMoveDestination.name}`
-    : 'Move Dept.';
   const canMarkPartComplete = (selectedCurrentDepartment?.name ?? '').trim().toLowerCase() === 'shipping';
-  const timerReadOnlyMessage = 'Choose a department and worker, then use a PIN to start or stop timers for this part.';
+  const canStartSelectedPartTimer =
+    selectedPart?.status !== 'COMPLETE' &&
+    (selectedCurrentDepartment?.name ?? '').trim().toLowerCase() !== 'shipping';
+  const timerReadOnlyMessage = canStartSelectedPartTimer
+    ? 'Choose an employee. This trusted console records the employee and the signed-in operator separately.'
+    : 'New timers are unavailable after a part reaches Shipping or is complete. Existing timers can still be paused or finished above.';
 
   return (
     <div className="space-y-6">
@@ -2203,8 +2134,8 @@ export default function OrderDetailPage() {
             </DialogTitle>
             <DialogDescription>
               {kioskTimerDialog.mode === 'start'
-                ? 'Enter the selected worker\'s PIN to start the timer.'
-                : 'Enter the selected worker\'s PIN to confirm the timer action.'}
+                ? 'The signed-in shop console will record time for the selected employee.'
+                : 'The signed-in shop console will record who performed this timer action.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -2212,25 +2143,6 @@ export default function OrderDetailPage() {
               <div><span className="font-medium text-muted-foreground">Worker:</span> {selectedKioskWorker?.name || kioskTimerDialog.targetTimer?.userName || 'Unassigned'}</div>
               <div><span className="font-medium text-muted-foreground">Department:</span> {timerDepartments.find((department) => department.id === kioskTimerDialog.departmentId)?.name || kioskTimerDialog.targetTimer?.departmentName || 'Unassigned'}</div>
               <div><span className="font-medium text-muted-foreground">Part:</span> {selectedPart?.partNumber || kioskTimerDialog.targetTimer?.partLabel || 'Unassigned'}</div>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="kiosk-order-pin">PIN</Label>
-              <Input
-                id="kiosk-order-pin"
-                type="password"
-                inputMode="numeric"
-                value={kioskTimerDialog.pin}
-                onChange={(event) =>
-                  setKioskTimerDialog((prev) => ({
-                    ...prev,
-                    pin: event.target.value,
-                    error: null,
-                    conflict: null,
-                  }))
-                }
-                placeholder={selectedKioskWorker ? `Enter ${selectedKioskWorker.name}'s PIN` : 'Enter worker PIN'}
-              />
             </div>
 
             {false ? (
@@ -2253,7 +2165,7 @@ export default function OrderDetailPage() {
                     <SelectItem value="__none__">Choose part</SelectItem>
                     {parts.map((part: any, index: number) => (
                       <SelectItem key={part.id} value={part.id}>
-                        {part.partNumber || `Part ${index + 1}`} · Qty {part.quantity ?? 1}
+                        {part.partNumber || `Part ${index + 1}`}{part.partName ? ` — ${part.partName}` : ''} · Qty {part.quantity ?? 1}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -2274,14 +2186,14 @@ export default function OrderDetailPage() {
                   Elapsed {formatDuration(kioskTimerDialog.conflict.elapsedSeconds ?? 0)}.
                 </div>
                 <div className="mt-1 text-muted-foreground">
-                  Choose whether to pause or stop that timer before switching to this order.
+                  Pause that timer and start this part without losing the original assignment.
                 </div>
               </div>
             ) : null}
 
             {kioskTimerDialog.mode !== 'start' && kioskTimerDialog.targetTimer ? (
               <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-3 text-sm text-foreground">
-                Stop timer for {kioskTimerDialog.targetTimer.userName}
+                {kioskTimerDialog.mode === 'pause' ? 'Pause' : 'Finish'} timer for {kioskTimerDialog.targetTimer.userName}
                 {kioskTimerDialog.targetTimer.departmentName ? ` in ${kioskTimerDialog.targetTimer.departmentName}` : ''}
                 {kioskTimerDialog.targetTimer.partLabel ? ` on ${kioskTimerDialog.targetTimer.partLabel}` : ''}.
               </div>
@@ -2298,15 +2210,21 @@ export default function OrderDetailPage() {
               Cancel
             </Button>
             {kioskTimerDialog.conflict ? (
-              <>
-                <Button type="button" variant="secondary" onClick={() => void handleKioskSwitch('pause')} disabled={kioskTimerDialog.loading}>
-                  {kioskTimerDialog.loading ? 'Switching…' : 'Pause & switch'}
-                </Button>
-                <Button type="button" onClick={() => void handleKioskSwitch('finish')} disabled={kioskTimerDialog.loading}>
-                  {kioskTimerDialog.loading ? 'Switching…' : 'Stop & switch'}
-                </Button>
-              </>
+              <Button type="button" onClick={() => void handleKioskSwitch()} disabled={kioskTimerDialog.loading}>
+                {kioskTimerDialog.loading ? 'Switching…' : 'Pause & switch'}
+              </Button>
             ) : (
+              <>
+              {kioskTimerDialog.mode === 'finish' ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void handleKioskDialogConfirm('pause')}
+                  disabled={kioskTimerDialog.loading}
+                >
+                  Pause timer
+                </Button>
+              ) : null}
               <Button type="button" onClick={() => void handleKioskDialogConfirm()} disabled={kioskTimerDialog.loading}>
                 {kioskTimerDialog.loading
                   ? kioskTimerDialog.mode === 'start'
@@ -2314,18 +2232,13 @@ export default function OrderDetailPage() {
                     : kioskTimerDialog.mode === 'pause'
                       ? 'Pausing…'
                       : 'Stopping…'
-                  : kioskSession
-                    ? kioskTimerDialog.mode === 'start'
-                      ? 'Start timer'
-                      : kioskTimerDialog.mode === 'pause'
-                        ? 'Pause timer'
-                        : 'Stop timer'
-                    : kioskTimerDialog.mode === 'start'
-                      ? 'Unlock & start'
-                      : kioskTimerDialog.mode === 'pause'
-                        ? 'Unlock & pause'
-                        : 'Unlock & stop'}
+                  : kioskTimerDialog.mode === 'start'
+                    ? 'Start timer'
+                    : kioskTimerDialog.mode === 'pause'
+                      ? 'Pause timer'
+                      : 'Finish timer'}
               </Button>
+              </>
             )}
           </DialogFooter>
         </DialogContent>
@@ -2394,7 +2307,7 @@ export default function OrderDetailPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Move part to department</DialogTitle>
+            <DialogTitle>Submit {selectedCurrentDepartment?.name ?? 'department'} complete</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm">
@@ -2403,45 +2316,18 @@ export default function OrderDetailPage() {
                 {selectedCurrentDepartment?.name ?? selectedPart?.currentDepartmentId ?? 'Unassigned'}
               </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="move-department-select">Destination department</Label>
-              <Select
-                value={moveDepartmentDialog.destinationDepartmentId}
-                onValueChange={(value) =>
-                  setMoveDepartmentDialog((prev) => ({
-                    ...prev,
-                    destinationDepartmentId: value,
-                    error: null,
-                  }))
-                }
-              >
-                <SelectTrigger id="move-department-select">
-                  <SelectValue placeholder="Choose destination department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {submitDestinationOptions.map((department) => (
-                    <SelectItem key={department.id} value={department.id}>
-                      {department.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="move-department-note">Move note</Label>
-              <Textarea
-                id="move-department-note"
-                rows={3}
-                value={moveDepartmentDialog.note}
-                onChange={(event) =>
-                  setMoveDepartmentDialog((prev) => ({
-                    ...prev,
-                    note: event.target.value,
-                    error: null,
-                  }))
-                }
-                placeholder="Why is this part moving departments?"
-              />
+            <div className="rounded-md border border-border/60 bg-background/70 px-3 py-3 text-sm">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                What happens next
+              </div>
+              <div className="mt-1 font-semibold text-foreground">
+                {nextDepartmentOption
+                  ? `Move to ${nextDepartmentOption.name}`
+                  : 'Mark the part complete'}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Every checklist item must be complete and all employee timers must be paused or finished.
+              </div>
             </div>
             {moveDepartmentDialog.error ? (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -2465,7 +2351,7 @@ export default function OrderDetailPage() {
               Cancel
             </Button>
             <Button type="button" onClick={() => void handleBeginSubmitDepartmentComplete()} disabled={timerSaving}>
-              {timerSaving ? 'Reviewing…' : moveActionLabel}
+              {timerSaving ? 'Reviewing…' : `Review ${selectedCurrentDepartment?.name ?? 'department'} completion`}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2473,13 +2359,6 @@ export default function OrderDetailPage() {
       <Dialog
         open={instructionGateDialog.open}
         onOpenChange={(open) => {
-          if (!open) {
-            setDismissedInstructionGateKey(
-              selectedPartId && selectedPartCurrentDepartmentId
-                ? `${selectedPartId}:${selectedPartCurrentDepartmentId}:${selectedPartInstructionsVersion}`
-                : null,
-            );
-          }
           setInstructionGateDialog((prev) =>
             open
               ? { ...prev, open }
@@ -2489,7 +2368,6 @@ export default function OrderDetailPage() {
                   error: null,
                   pendingAction: null,
                   workerId: '',
-                  pin: '',
                 },
           );
         }}
@@ -2529,55 +2407,19 @@ export default function OrderDetailPage() {
                 'No part-specific instructions were found for this part.'
               )}
             </div>
-            {instructionGateSupportsWorkerSelection ? (
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
-                <div className="space-y-2">
-                  <Label htmlFor="instruction-gate-worker">Worker confirming this brief</Label>
-                  <Select
-                    value={instructionGateDialog.workerId || '__none__'}
-                    onValueChange={(value) =>
-                      setInstructionGateDialog((prev) => ({
-                        ...prev,
-                        workerId: value === '__none__' ? '' : value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger id="instruction-gate-worker" className="h-10 border-border/60 bg-background/80">
-                      <SelectValue placeholder="Select user" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Select user</SelectItem>
-                      {timerWorkerOptions.map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="instruction-gate-pin">Worker PIN</Label>
-                  <Input
-                    id="instruction-gate-pin"
-                    type="password"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    value={instructionGateDialog.pin}
-                    onChange={(e) =>
-                      setInstructionGateDialog((prev) => ({
-                        ...prev,
-                        pin: e.target.value.replace(/\D+/g, '').slice(0, 12),
-                      }))
-                    }
-                    placeholder={
-                      selectedInstructionGateWorker
-                        ? `Enter ${selectedInstructionGateWorker.name}'s PIN`
-                        : 'Enter worker PIN'
-                    }
-                  />
-                </div>
+            <div className="rounded-md border border-primary/30 bg-primary/10 p-3 text-sm">
+              <div className="font-semibold text-foreground">
+                Acknowledging for{' '}
+                {instructionGateDialog.pendingAction?.kind === 'timer-start'
+                  ? selectedInstructionGateWorker?.name || 'Selected employee'
+                  : currentUserName}
               </div>
-            ) : null}
+              <div className="mt-1 text-xs text-muted-foreground">
+                {instructionGateDialog.pendingAction?.kind === 'timer-start'
+                  ? `No employee PIN is needed on this trusted console. ${currentUserName} will be recorded as the console operator.`
+                  : 'Your acknowledgement is recorded under your signed-in account.'}
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-foreground">
                 Part: {selectedPart?.partNumber || 'Selected part'}
@@ -2606,19 +2448,19 @@ export default function OrderDetailPage() {
                   error: null,
                   pendingAction: null,
                   workerId: '',
-                  pin: '',
                 });
-                if (selectedPartId && selectedPartCurrentDepartmentId) {
-                  setDismissedInstructionGateKey(
-                    `${selectedPartId}:${selectedPartCurrentDepartmentId}:${selectedPartInstructionsVersion}`,
-                  );
-                }
               }}
             >
               Not now
             </Button>
             <Button type="button" onClick={() => void handleInstructionGateConfirm()} disabled={instructionGateDialog.loading}>
-              {!selectedPartInstructions ? 'Continue' : instructionGateDialog.loading ? 'Accepting…' : 'I have read this'}
+              {!selectedPartInstructions
+                ? 'Continue'
+                : instructionGateDialog.loading
+                  ? 'Recording…'
+                  : instructionGateDialog.pendingAction?.kind === 'timer-start'
+                    ? 'Acknowledge & continue to timer'
+                    : 'I have read this'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2710,21 +2552,17 @@ export default function OrderDetailPage() {
       >
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Are you absolutely sure?</DialogTitle>
+            <DialogTitle>Confirm department completion</DialogTitle>
             <div className="text-sm text-muted-foreground">
-              This is the second check. Make sure the note and destination are right before we move the part.
+              This records the current department as complete and follows the saved production route.
             </div>
           </DialogHeader>
           <div className="space-y-3">
             <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Destination</div>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Next production state</div>
               <div className="font-medium text-foreground">
-                {manualMoveDepartments.find((department) => department.id === submitConfirmDialog.destinationDepartmentId)?.name ?? 'Unknown department'}
+                {nextDepartmentOption ? `Move to ${nextDepartmentOption.name}` : 'Mark the part complete'}
               </div>
-            </div>
-            <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Move note</div>
-              <div className="whitespace-pre-wrap text-foreground">{submitConfirmDialog.note || 'No note captured.'}</div>
             </div>
             {submitConfirmDialog.error ? (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -2760,7 +2598,7 @@ export default function OrderDetailPage() {
               {parts.map((part: any, index: number) => {
                 const isSelected = part.id === selectedPartId;
                 const partLabel = part.partNumber || `Part ${index + 1}`;
-                const totalSeconds = (partTotals[part.id] ?? 0) + (manualPartTotals[part.id] ?? 0);
+                const totalSeconds = partTotals[part.id] ?? 0;
                 const status = part.status || 'IN_PROGRESS';
                 const partCurrentDepartment =
                   departments.find((department) => department.id === part.currentDepartmentId)?.name ??
@@ -2773,7 +2611,7 @@ export default function OrderDetailPage() {
                   <button
                     key={part.id}
                     type="button"
-                    onClick={() => setSelectedPartId(part.id)}
+                    onClick={() => selectPart(part.id)}
                     className={`w-full rounded-lg border px-3 py-3 text-left transition ${
                       isSelected
                         ? 'border-primary/60 bg-primary/10'
@@ -2910,31 +2748,25 @@ export default function OrderDetailPage() {
                     </div>
                     {selectedPartActiveTimers.length ? (
                       <div className="mt-2 text-[11px] text-muted-foreground">
-                        Click a timer to stop it with that worker&apos;s PIN.
+                        Click a timer to pause or finish it from this console.
                       </div>
                     ) : null}
                       </div>
                     ) : null}
 
                 <div className="grid gap-2 md:grid-cols-2">
-                  <Select value={selectedTimerDepartmentId} onValueChange={setSelectedTimerDepartmentId}>
-                    <SelectTrigger className="h-10 border-border/60 bg-background/80">
-                      <SelectValue placeholder="Choose timer department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {timerDepartments.map((department) => (
-                        <SelectItem key={department.id} value={department.id}>
-                          {department.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex h-10 items-center rounded-md border border-border/60 bg-background/80 px-3 text-sm">
+                    <span className="text-muted-foreground">Department:&nbsp;</span>
+                    <span className="font-medium text-foreground">
+                      {selectedCurrentDepartment?.name ?? 'Assign a department first'}
+                    </span>
+                  </div>
                   <Select value={selectedTimerWorkerId || '__none__'} onValueChange={(value) => setSelectedTimerWorkerId(value === '__none__' ? '' : value)}>
                     <SelectTrigger className="h-10 border-border/60 bg-background/80">
-                      <SelectValue placeholder="Select user" />
+                      <SelectValue placeholder="Select employee" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">Select user</SelectItem>
+                      <SelectItem value="__none__">Select employee</SelectItem>
                       {timerWorkerOptions.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
                           {user.name}
@@ -2948,23 +2780,23 @@ export default function OrderDetailPage() {
                   <Button
                     type="button"
                     size="sm"
-                    disabled={!selectedPartId || timerSaving || kioskSessionLoading || !selectedTimerDepartmentId || !selectedTimerWorkerId}
+                    disabled={!selectedPartId || timerSaving || !selectedPartCurrentDepartmentId || !selectedTimerWorkerId || !canStartSelectedPartTimer}
                     onClick={handleOpenTimerStartDialog}
                     className="justify-center gap-2"
                   >
                     <Play className="h-4 w-4" />
-                    Start timer
+                    Start employee timer
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={!selectedPartId || timerSaving || !submitDestinationOptions.length}
+                    disabled={!selectedPartId || timerSaving || !selectedPartCurrentDepartmentId}
                     onClick={openMoveDepartmentDialog}
                     className="justify-center gap-2"
                   >
                     <ArrowRightLeft className="h-4 w-4" />
-                    Move Dept.
+                    Submit {selectedCurrentDepartment?.name ?? 'department'} complete
                   </Button>
                   <Button
                     type="button"
@@ -3242,7 +3074,6 @@ export default function OrderDetailPage() {
                             error: null,
                             pendingAction: null,
                             workerId: currentUserId || timerWorkerOptions[0]?.id || '',
-                            pin: '',
                           })
                         }
                         disabled={!selectedPartInstructions || !selectedPartCurrentDepartmentId}
@@ -3439,6 +3270,10 @@ export default function OrderDetailPage() {
                           <div className="grid gap-2">
                             <Label>Part number</Label>
                             <Input value={partDraft.partNumber} onChange={(e) => setPartDraft((prev) => ({ ...prev, partNumber: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Part name</Label>
+                            <Input value={partDraft.partName} onChange={(e) => setPartDraft((prev) => ({ ...prev, partName: e.target.value }))} />
                           </div>
                           <div className="grid gap-2">
                             <Label>Quantity</Label>
@@ -3765,6 +3600,7 @@ export default function OrderDetailPage() {
 
             {activeTab === 'log' && (
               <div className="space-y-3">
+                <PartLaborHistory entries={selectedPartLaborEntries} title="Timer history" />
                 <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                   <Timer className="h-4 w-4 text-muted-foreground" /> Part log
                 </div>

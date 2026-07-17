@@ -15,6 +15,7 @@ export type RepeatOrderTemplateSummary = {
 export type RepeatOrderTemplatePartInput = {
   id: string;
   partNumber: string;
+  partName: string | null;
   quantity: number;
   materialId: string | null;
   stockSize: string | null;

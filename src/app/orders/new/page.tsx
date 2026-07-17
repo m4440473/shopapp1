@@ -54,6 +54,8 @@ import {
 } from '@/modules/pricing/work-item-pricing';
 import { calculatePartLotTotal, type PartPricingMode } from '@/modules/pricing/part-pricing';
 import type { RepeatOrderTemplateDetail } from '@/modules/repeat-orders/repeat-orders.types';
+import { DrawingImportPanel, type ReviewedDrawingPart } from '@/components/orders/DrawingImportPanel';
+import { buildFinishPartNotes } from '@/modules/drawing-import/drawing-import.materials';
 
 const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 const OPTIONAL_VALUE = '__none__';
@@ -91,6 +93,7 @@ type PartInput = {
   key: string;
   templatePartId?: string;
   partNumber: string;
+  partName: string;
   quantity: number;
   materialId?: string;
   stockSize?: string;
@@ -100,6 +103,7 @@ type PartInput = {
   addonSelections: PartAddonSelection[];
   templateCharges?: RepeatOrderTemplateDetail['parts'][number]['charges'];
   templateAttachments?: RepeatOrderTemplateDetail['parts'][number]['attachments'];
+  attachments: Array<{ kind: 'PRINT' | 'PDF' | 'IMAGE'; storagePath: string; label: string; mimeType: string }>;
 };
 
 type PartPricingState = {
@@ -113,6 +117,7 @@ const emptyPart = (): PartInput => ({
   key: createKey(),
   templatePartId: undefined,
   partNumber: '',
+  partName: '',
   quantity: 1,
   materialId: '',
   stockSize: '',
@@ -122,6 +127,7 @@ const emptyPart = (): PartInput => ({
   addonSelections: [],
   templateCharges: [],
   templateAttachments: [],
+  attachments: [],
 });
 const emptyAttachment = (): AttachmentInput => ({ url: '', storagePath: '', label: '', mimeType: '', uploading: false });
 
@@ -188,6 +194,46 @@ const numberFromString = (value: string) => {
   return parsed;
 };
 
+const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result ?? ''));
+  reader.onerror = () => reject(reader.error ?? new Error('Could not read drawing file.'));
+  reader.readAsDataURL(blob);
+});
+
+async function runImportedBomAnalyses({
+  orderId,
+  createdParts,
+  parts,
+}: {
+  orderId: string;
+  createdParts: Array<{ id?: string }>;
+  parts: Array<{ attachments?: Array<{ storagePath?: string; label?: string }> }>;
+}) {
+  const jobs = parts.flatMap((part, index) => {
+    const source = part.attachments?.[0];
+    const partId = createdParts[index]?.id;
+    return source?.storagePath && partId ? [{ source, partId }] : [];
+  });
+  let cursor = 0;
+  async function worker() {
+    while (cursor < jobs.length) {
+      const job = jobs[cursor++];
+      const drawingResponse = await fetch(`/attachments/${job.source.storagePath}`, { credentials: 'include' });
+      if (!drawingResponse.ok) continue;
+      const dataUrl = await blobToDataUrl(await drawingResponse.blob());
+      await fetch('/api/print-analyzer/analyze', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, partId: job.partId, sourceLabel: job.source.label || 'drawing import', dataUrl }),
+      });
+    }
+  }
+  await Promise.all([worker(), worker()]);
+  return jobs.length;
+}
+
 function NewOrderForm() {
   const searchParams = useSearchParams();
   const [customerId, setCustomerId] = React.useState('');
@@ -230,6 +276,7 @@ function NewOrderForm() {
   const [repeatTemplateError, setRepeatTemplateError] = React.useState<string | null>(null);
   const [repeatTemplateLoading, setRepeatTemplateLoading] = React.useState(false);
   const [currentStep, setCurrentStep] = React.useState(0);
+  const [partEntryMode, setPartEntryMode] = React.useState<'manual' | 'drawing' | null>(null);
   const templateId = searchParams.get('templateId');
   const quoteId = searchParams.get('quoteId');
   const templateMode = Boolean(templateId);
@@ -348,6 +395,7 @@ function NewOrderForm() {
                   key: createKey(),
                   templatePartId: part.id,
                   partNumber: part.partNumber ?? '',
+                  partName: part.partName ?? '',
                   quantity: part.quantity ?? 1,
                   materialId: part.materialId ?? '',
                   stockSize: part.stockSize ?? '',
@@ -357,6 +405,7 @@ function NewOrderForm() {
                   addonSelections: [],
                   templateCharges: Array.isArray(part.charges) ? part.charges : [],
                   templateAttachments: Array.isArray(part.attachments) ? part.attachments : [],
+                  attachments: [],
                 }))
             : [emptyPart()]
         );
@@ -393,6 +442,7 @@ function NewOrderForm() {
                   return {
                     key: createKey(),
                     partNumber: part.partNumber ?? part.name ?? '',
+                    partName: part.name ?? '',
                     quantity: part.quantity ?? 1,
                     materialId: part.materialId ?? '',
                     stockSize: part.stockSize ?? '',
@@ -411,6 +461,7 @@ function NewOrderForm() {
                       units: String(selection.units ?? 1),
                       notes: selection.notes ?? '',
                     })),
+                    attachments: [],
                   };
                 });
               })()
@@ -682,6 +733,45 @@ function NewOrderForm() {
     setActivePartKey(nextPart.key);
   }
 
+  function useImportedDrawingParts(importedParts: ReviewedDrawingPart[], orderFiles: ReviewedDrawingPart['source'][]) {
+    const nextParts: PartInput[] = importedParts.map((part) => ({
+      ...emptyPart(),
+      key: part.key,
+      partNumber: part.partNumber,
+      partName: part.partName,
+      quantity: part.quantity,
+      materialId: part.materialId,
+      stockSize: part.stockSize,
+      cutLength: part.cutLength,
+      notes: buildFinishPartNotes(part.finish),
+      attachments: [{
+        kind: part.source.mimeType === 'application/pdf' ? 'PDF' : 'IMAGE',
+        storagePath: part.source.storagePath,
+        label: part.source.label,
+        mimeType: part.source.mimeType,
+      }],
+    }));
+    const existingParts = parts.filter((part) => part.partNumber.trim() || part.attachments.length > 0);
+    const combinedParts = [...existingParts, ...nextParts];
+    setParts(combinedParts.length ? combinedParts : [emptyPart()]);
+    if (orderFiles.length) {
+      setAttachments((current) => {
+        const existing = current.filter((attachment) => attachment.url.trim() || attachment.storagePath.trim());
+        const imported = orderFiles.map((source) => ({
+          url: '',
+          storagePath: source.storagePath,
+          label: source.label,
+          mimeType: source.mimeType,
+          uploading: false,
+        }));
+        return [...existing, ...imported];
+      });
+    }
+    setActivePartKey(nextParts[0]?.key ?? '');
+    setPartEntryMode('manual');
+    setMessage(`${nextParts.length} part drawing${nextParts.length === 1 ? '' : 's'} added${orderFiles.length ? `; ${orderFiles.length} assembly drawing${orderFiles.length === 1 ? '' : 's'} kept with the order files` : ''}. Review the parts below, then continue.`);
+  }
+
   function removePart(key: string) {
     setParts((prev) => (prev.length === 1 ? prev : prev.filter((part) => part.key !== key)));
   }
@@ -795,6 +885,7 @@ function NewOrderForm() {
     const cleanedParts = parts
       .map((part) => ({
         partNumber: part.partNumber.trim(),
+        partName: part.partName.trim() || undefined,
         quantity: Number.isFinite(part.quantity) ? part.quantity : 1,
         materialId: part.materialId ? part.materialId : undefined,
         stockSize: part.stockSize?.trim() ? part.stockSize.trim() : undefined,
@@ -810,6 +901,7 @@ function NewOrderForm() {
               notes: selection.notes?.trim() ? selection.notes.trim() : undefined,
             };
           }),
+        attachments: part.attachments,
       }))
       .filter((part) => part.partNumber.length > 0);
     const cleanedTemplateParts = parts
@@ -976,10 +1068,16 @@ function NewOrderForm() {
     if (res.ok) {
       const data = await res.json().catch(() => null);
       const newId = typeof data?.id === 'string' ? data.id : null;
-      setMessage('Order created! Choose what to do next.');
+      const createdParts = Array.isArray(data?.parts) ? data.parts : [];
+      const importedCount = cleanedParts.filter((part) => part.attachments.length > 0).length;
+      setMessage(importedCount ? `Order created. Starting BOM analysis for ${importedCount} drawing${importedCount === 1 ? '' : 's'}…` : 'Order created! Choose what to do next.');
       setCreatedOrderId(newId);
       if (!newId) {
         router.push('/');
+      } else if (importedCount) {
+        void runImportedBomAnalyses({ orderId: newId, createdParts, parts: cleanedParts })
+          .then((count) => setMessage(`Order created. BOM analysis finished for ${count} drawing${count === 1 ? '' : 's'}.`))
+          .catch(() => setMessage('Order created. One or more BOM analyses need to be retried from the order page.'));
       }
       setCustomerId('');
       setVendorId('');
@@ -1374,7 +1472,40 @@ function NewOrderForm() {
           </>
         )}
 
-        {currentStep === 1 && (
+        {currentStep === 1 && !templateMode && !conversionMode && partEntryMode === null && (
+          <Card className="border-border/60 bg-card/80">
+            <CardHeader>
+              <CardTitle>How would you like to add the parts?</CardTitle>
+              <CardDescription>Choose the easiest option. You can switch methods later.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <button type="button" onClick={() => setPartEntryMode('drawing')} className="rounded-2xl border-2 border-primary bg-primary/10 p-6 text-left transition hover:bg-primary/15">
+                <Upload className="mb-4 h-8 w-8 text-primary" />
+                <span className="block text-xl font-semibold text-foreground">Read drawings for me</span>
+                <span className="mt-2 block text-sm text-muted-foreground">Upload one drawing or a ZIP. We will fill in the parts and show you anything that needs checking.</span>
+                <span className="mt-4 inline-block rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">Recommended</span>
+              </button>
+              <button type="button" onClick={() => setPartEntryMode('manual')} className="rounded-2xl border border-border bg-background/70 p-6 text-left transition hover:border-primary/50">
+                <PlusCircle className="mb-4 h-8 w-8 text-muted-foreground" />
+                <span className="block text-xl font-semibold text-foreground">Type parts myself</span>
+                <span className="mt-2 block text-sm text-muted-foreground">Continue with the familiar manual part-entry screen.</span>
+              </button>
+            </CardContent>
+          </Card>
+        )}
+
+        {currentStep === 1 && !templateMode && !conversionMode && partEntryMode === 'drawing' && (
+          <DrawingImportPanel
+            business={attachmentBusiness}
+            customerName={customers.find((customer) => customer.id === customerId)?.name ?? ''}
+            draftReference={draftAttachmentReference}
+            materials={materials}
+            onContinue={useImportedDrawingParts}
+            onSwitchToManual={() => setPartEntryMode('manual')}
+          />
+        )}
+
+        {currentStep === 1 && (templateMode || conversionMode || partEntryMode === 'manual') && (
           <Card className="border-border/60 bg-card/70 backdrop-blur">
             <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
@@ -1386,14 +1517,17 @@ function NewOrderForm() {
                 </CardDescription>
               </div>
               {!templateMode && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="rounded-full border border-primary/40 bg-primary/10 text-primary"
-                  onClick={addPartRow}
-                >
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add part
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {!conversionMode && <Button type="button" variant="ghost" onClick={() => setPartEntryMode('drawing')}>Import more drawings</Button>}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="rounded-full border border-primary/40 bg-primary/10 text-primary"
+                    onClick={addPartRow}
+                  >
+                    <PlusCircle className="mr-2 h-4 w-4" /> Add part
+                  </Button>
+                </div>
               )}
             </CardHeader>
             <CardContent className="grid gap-6 lg:grid-cols-[320px_1fr]">
@@ -1467,6 +1601,15 @@ function NewOrderForm() {
                           />
                         </div>
                         <div className="grid gap-2">
+                          <Label>Part name</Label>
+                          <Input
+                            value={activePart.partName}
+                            onChange={(e) => updatePart(activePart.key, { partName: e.target.value })}
+                            placeholder="e.g. Vertical rail mount"
+                            disabled={templateMode}
+                          />
+                        </div>
+                        <div className="grid gap-2">
                           <Label>Quantity</Label>
                           <Input
                             type="number"
@@ -1475,6 +1618,17 @@ function NewOrderForm() {
                             onChange={(e) => updatePart(activePart.key, { quantity: Number(e.target.value) || 1 })}
                           />
                         </div>
+                        {activePart.attachments.length ? (
+                          <div className="grid gap-2 md:col-span-2">
+                            <Label>Drawing attached to this part</Label>
+                            {activePart.attachments.map((attachment) => (
+                              <div key={attachment.storagePath} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/10 px-3 py-2 text-sm">
+                                <span>{attachment.label}</span>
+                                <a href={`/api/orders/drawing-import/preview?path=${encodeURIComponent(attachment.storagePath)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">Open drawing</a>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                         <div className="grid gap-2">
                           <Label>Stock size (optional)</Label>
                           <Input
@@ -1681,6 +1835,24 @@ function NewOrderForm() {
 
         {currentStep === 2 && (
           <>
+
+            <Card className="border-border/60 bg-card/70 backdrop-blur">
+              <CardHeader>
+                <CardTitle>Parts ready to create</CardTitle>
+                <CardDescription>One last, plain-language check before creating the order.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {parts.map((part, index) => (
+                  <div key={part.key} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
+                    <div>
+                      <p className="font-semibold">{part.partNumber || `Part ${index + 1}`}{part.partName ? ` — ${part.partName}` : ''}</p>
+                      <p className="text-sm text-muted-foreground">Quantity {part.quantity}{part.attachments.length ? ` · ${part.attachments.length} drawing attached` : ''}</p>
+                    </div>
+                    {part.attachments.length ? <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-900">BOM will run automatically</span> : null}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
 
             <Card className="border-border/60 bg-card/70 backdrop-blur">
               <CardHeader>
@@ -1928,7 +2100,7 @@ function NewOrderForm() {
                                 Stored file:
                                 <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{att.storagePath}</code>
                                 <a
-                                  href={`/attachments/${att.storagePath}`}
+                                  href={`/api/orders/drawing-import/preview?path=${encodeURIComponent(att.storagePath)}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="font-medium text-primary hover:underline"
@@ -2080,7 +2252,11 @@ function NewOrderForm() {
             >
               Back
             </Button>
-            <Button type="button" onClick={() => setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1))}>
+            <Button
+              type="button"
+              disabled={currentStep === 1 && !templateMode && !conversionMode && partEntryMode !== 'manual'}
+              onClick={() => setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1))}
+            >
               Next
             </Button>
           </div>

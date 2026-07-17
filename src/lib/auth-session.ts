@@ -37,7 +37,25 @@ export async function getServerAuthSession(): Promise<Session | null> {
       expires: new Date(Date.now() + 3600 * 1000).toISOString(),
     } as Session;
   }
-  return getServerSession(authOptions);
+  const session = await getServerSession(authOptions);
+  const userId = String((session?.user as any)?.id ?? '').trim();
+  if (!session || !userId) return null;
+
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, role: true, active: true },
+  });
+  if (!currentUser?.active) return null;
+
+  session.user = {
+    ...(session.user ?? {}),
+    id: currentUser.id,
+    email: currentUser.email,
+    name: currentUser.name,
+    role: currentUser.role,
+    admin: currentUser.role === 'ADMIN',
+  } as Session['user'];
+  return session;
 }
 
 export async function requireServerAuthSession(): Promise<Session> {

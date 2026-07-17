@@ -97,20 +97,27 @@ export function buildOrderChargeEntriesFromQuoteData({
   fallbackDepartmentId?: string | null;
 }): QuoteOrderChargeInput[] {
   const charges: QuoteOrderChargeInput[] = [];
+  const seenSelections = new Set<string>();
 
   for (const entry of selections) {
     const partId = entry.orderPartId;
     const addon = entry.selection.addon;
     if (!partId || addon?.affectsPrice === false) continue;
+    const addonId = entry.selection.addonId ?? null;
+    if (addonId) {
+      const key = buildQuoteSelectionKey(partId, addonId);
+      if (seenSelections.has(key)) continue;
+      seenSelections.add(key);
+    }
     const departmentId = addon?.departmentId ?? fallbackDepartmentId ?? null;
     if (!departmentId) continue;
     charges.push({
       orderId,
       partId,
       departmentId,
-      addonId: entry.selection.addonId ?? null,
+      addonId,
       kind: 'ADDON',
-      name: addon?.name ?? 'Add-on',
+      name: addon?.name ?? 'Work step',
       description: entry.selection.notes ?? null,
       quantity: Number(entry.selection.units ?? 0) || 0,
       unitPriceCents: Number(addon?.rateCents ?? 0) || 0,

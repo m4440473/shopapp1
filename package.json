@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:debug": "NODE_ENV=development next dev",
-    "build": "next build && bash scripts/copy-standalone-assets.sh",
+    "build": "next build && node scripts/copy-standalone-assets.cjs",
     "lint": "next lint",
     "start": "HOSTNAME=0.0.0.0 PORT=${PORT:-5000} node .next/standalone/server.js",
     "test": "vitest run",
@@ -39,6 +39,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.544.0",
     "next": "^15.5.7",
     "next-auth": "^4.24.7",

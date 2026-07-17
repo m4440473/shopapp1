@@ -94,20 +94,13 @@ export function AvailableItemsLibrary({
                       <div className="text-xs text-muted-foreground">{item.description}</div>
                     ) : null}
                     <div className="flex flex-wrap gap-2">
-                      {item.isChecklistItem ? (
-                        <Badge variant="outline" className="text-[10px] uppercase">
-                          Checklist
-                        </Badge>
-                      ) : null}
-                      {item.affectsPrice ? (
-                        <Badge variant="secondary" className="text-[10px] uppercase">
-                          Pricing
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-[10px] uppercase">
-                          No charge
-                        </Badge>
-                      )}
+                      <Badge variant={item.isChecklistItem ? 'outline' : 'secondary'} className="text-[10px] uppercase">
+                        {item.isChecklistItem && item.affectsPrice
+                          ? 'Estimate + shop'
+                          : item.isChecklistItem
+                            ? 'Shop only'
+                            : 'Estimate only'}
+                      </Badge>
                       {item.rateType ? (
                         <Badge variant="secondary" className="text-[10px] uppercase">
                           {item.rateType === 'HOURLY'

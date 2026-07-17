@@ -25,9 +25,9 @@ export default async function Page() {
   return (
     <div className="p-4 text-neutral-100">
       <NavTabs />
-      <h1 className="text-xl font-semibold mb-3">Add-ons</h1>
+      <h1 className="mb-3 text-xl font-semibold">Work Steps</h1>
       <p className="text-sm text-muted-foreground mb-6">
-        Configure hourly, per-foot, or flat-rate services that can be attached to quotes and orders. Rates are only visible to admins.
+        Set up the tasks used to estimate a quote and guide work in the shop. Pricing remains visible only to admins.
       </p>
       <ToastProvider>
         <Client initial={initial} />

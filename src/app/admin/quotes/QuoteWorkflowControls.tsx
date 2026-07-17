@@ -32,6 +32,7 @@ interface QuoteWorkflowControlsProps {
   conversion: QuoteConversionMetadata;
   layout?: 'detail' | 'table';
   onMetadataUpdate?: (metadata: QuoteMetadata) => void;
+  /** Retained for compatibility; order creation is owned by the quote detail action. */
   onConverted?: (args: { orderId: string; orderNumber: string; metadata: QuoteMetadata }) => void;
   showConvertAction?: boolean;
 }
@@ -44,13 +45,10 @@ export default function QuoteWorkflowControls({
   businessName,
   companyName,
   customerName,
-  customerId,
   approval,
   conversion,
   layout = 'detail',
   onMetadataUpdate,
-  onConverted,
-  showConvertAction = true,
 }: QuoteWorkflowControlsProps) {
   const router = useRouter();
   const toast = useToast();
@@ -61,7 +59,6 @@ export default function QuoteWorkflowControls({
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
   const [savingApproval, setSavingApproval] = React.useState(false);
-  const [converting, setConverting] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
 
   React.useEffect(() => {
@@ -81,9 +78,6 @@ export default function QuoteWorkflowControls({
     }
     return null;
   }, [approvalState]);
-
-  const readyForConversion =
-    Boolean(approvalState?.received) && Boolean(customerId) && !conversionState?.orderId;
 
   const alreadyConverted = Boolean(conversionState?.orderId);
 
@@ -169,25 +163,13 @@ export default function QuoteWorkflowControls({
     }
   }
 
-  async function handleConvert() {
-    setConverting(true);
-    try {
-      router.push(`/orders/new?quoteId=${quoteId}`);
-    } catch (error: any) {
-      const message = error?.body?.error || error.message || 'Conversion setup failed';
-      toast.push(message, 'error');
-    } finally {
-      setConverting(false);
-    }
-  }
-
   const approvalControls = (
     <div className="flex items-center gap-2">
       <Checkbox
         id={`approval-toggle-${quoteId}`}
         checked={Boolean(approvalState?.received)}
         onCheckedChange={handleApprovalToggle}
-        disabled={savingApproval || converting}
+        disabled={savingApproval}
       />
       <Label
         htmlFor={`approval-toggle-${quoteId}`}
@@ -247,8 +229,8 @@ export default function QuoteWorkflowControls({
         </DialogContent>
       </Dialog>
 
-      <div className={layout === 'table' ? 'flex flex-col gap-2' : 'flex flex-col gap-2'}>
-        {alreadyConverted ? (
+      {alreadyConverted ? (
+        <div className="flex flex-col gap-2">
           <p className={layout === 'table' ? 'text-xs text-muted-foreground' : 'text-sm text-muted-foreground'}>
             Converted to{' '}
             <Link href={`/orders/${conversionState.orderId}`} className="text-primary underline">
@@ -256,34 +238,8 @@ export default function QuoteWorkflowControls({
             </Link>
             .
           </p>
-        ) : showConvertAction ? (
-          <Button
-            onClick={handleConvert}
-            disabled={!readyForConversion || savingApproval || converting}
-            variant={layout === 'table' ? 'outline' : 'default'}
-            size={layout === 'table' ? 'sm' : 'default'}
-            title={
-              readyForConversion
-                ? 'Convert this quote into a work order'
-                : !approvalState?.received
-                ? 'Upload approval before converting'
-                : 'Link this quote to a customer before converting'
-            }
-          >
-            {converting ? 'Converting…' : 'Convert to order'}
-          </Button>
-        ) : null}
-        {showConvertAction && !alreadyConverted && !approvalState?.received && (
-          <p className={layout === 'table' ? 'text-[11px] text-muted-foreground' : 'text-xs text-muted-foreground'}>
-            Upload a PO or approval to enable conversion.
-          </p>
-        )}
-        {showConvertAction && !alreadyConverted && approvalState?.received && !customerId && (
-          <p className={layout === 'table' ? 'text-[11px] text-destructive' : 'text-xs text-destructive'}>
-            Assign a customer record before converting.
-          </p>
-        )}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

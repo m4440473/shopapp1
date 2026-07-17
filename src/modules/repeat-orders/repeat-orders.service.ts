@@ -84,6 +84,7 @@ export async function snapshotRepeatOrderTemplateFromOrder(
     createdById: userId ?? null,
     parts: (order.parts ?? []).map((part: any, index: number) => ({
       partNumber: part.partNumber,
+      partName: part.partName ?? null,
       quantity: part.quantity,
       materialId: part.materialId ?? null,
       stockSize: part.stockSize ?? null,
@@ -157,6 +158,7 @@ export async function getRepeatOrderTemplate(templateId: string) {
       parts: (template.parts ?? []).map((part) => ({
         id: part.id,
         partNumber: part.partNumber,
+        partName: part.partName ?? null,
         quantity: part.quantity,
         materialId: part.materialId ?? null,
         stockSize: part.stockSize ?? null,
@@ -228,6 +230,7 @@ export async function createOrderFromRepeatOrderTemplate(
     return {
       templatePartId: part.id,
       partNumber: override?.partNumber?.trim() || part.partNumber,
+      partName: override?.partName === undefined ? part.partName ?? null : override.partName ?? null,
       quantity: override?.quantity ?? part.quantity,
       materialId: override?.materialId === undefined ? part.materialId ?? null : override.materialId ?? null,
       stockSize: override?.stockSize === undefined ? part.stockSize ?? null : override.stockSize ?? null,

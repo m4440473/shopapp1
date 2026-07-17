@@ -14,10 +14,13 @@ export interface QuoteConversionMetadata {
 }
 
 export type QuotePartPricingEntry = {
+  quotePartId?: string | null;
   name?: string | null;
   partNumber?: string | null;
   priceCents: number;
   pricingMode?: 'PER_UNIT' | 'LOT_TOTAL';
+  priceSource?: 'CALCULATED' | 'MANUAL';
+  suggestedUnitPriceCents?: number;
 };
 
 export type QuoteCustomAmountEntry = {
@@ -65,6 +68,8 @@ function clonePartPricing(values: QuotePartPricingEntry[] | undefined): QuotePar
   return values.map((entry) => ({
     ...entry,
     pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
+    priceSource: entry.priceSource === 'CALCULATED' ? 'CALCULATED' : 'MANUAL',
+    suggestedUnitPriceCents: Math.max(0, Math.round(Number(entry.suggestedUnitPriceCents ?? 0) || 0)),
   }));
 }
 

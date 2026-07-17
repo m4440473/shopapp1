@@ -9,10 +9,6 @@ describe('validateQuickConvertPayload', () => {
       priority: 'NORMAL',
       assignedMachinistId: '',
       poNumber: '',
-      vendorId: '',
-      materialNeeded: false,
-      materialOrdered: false,
-      modelIncluded: false,
     });
 
     expect(result.payload).toBeNull();
@@ -23,12 +19,8 @@ describe('validateQuickConvertPayload', () => {
     const result = validateQuickConvertPayload({
       dueDate: '2026-04-30',
       priority: 'RUSH',
-      assignedMachinistId: 'mach-1',
+      assignedMachinistId: ' mach-1 ',
       poNumber: ' PO-123 ',
-      vendorId: ' ven-1 ',
-      materialNeeded: true,
-      materialOrdered: false,
-      modelIncluded: true,
     });
 
     expect(result.error).toBeNull();
@@ -37,10 +29,6 @@ describe('validateQuickConvertPayload', () => {
       priority: 'RUSH',
       assignedMachinistId: 'mach-1',
       poNumber: 'PO-123',
-      vendorId: 'ven-1',
-      materialNeeded: true,
-      materialOrdered: false,
-      modelIncluded: true,
     });
   });
 });

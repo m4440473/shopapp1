@@ -62,7 +62,9 @@ export function createMockUsersRepo() {
     },
 
     async findUserByKioskId(id: string) {
-      return state.users.find((user) => user.id === id) ?? null;
+      return state.users.find(
+        (user) => user.id === id && user.active !== false && user.kioskEnabled === true,
+      ) ?? null;
     },
 
     async findKioskUserByPinEligibility(emailOrId: { id?: string; email?: string }) {
@@ -70,6 +72,7 @@ export function createMockUsersRepo() {
         state.users.find(
           (user) =>
             user.active !== false &&
+            user.kioskEnabled === true &&
             (emailOrId.id ? user.id === emailOrId.id : true) &&
             (emailOrId.email ? user.email === emailOrId.email : true),
         ) ?? null
@@ -78,7 +81,7 @@ export function createMockUsersRepo() {
 
     async listKioskUsers() {
       return state.users
-        .filter((user) => user.active !== false)
+        .filter((user) => user.active !== false && user.kioskEnabled === true)
         .map((user) => ({ ...user }));
     },
   };

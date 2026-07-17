@@ -67,6 +67,7 @@ export async function createRepeatOrderTemplate(data: {
   createdById?: string | null;
   parts: Array<{
     partNumber: string;
+    partName: string | null;
     quantity: number;
     materialId: string | null;
     stockSize: string | null;
@@ -119,6 +120,7 @@ export async function createRepeatOrderTemplate(data: {
       parts: {
         create: data.parts.map((part) => ({
           partNumber: part.partNumber,
+          partName: part.partName,
           quantity: part.quantity,
           materialId: part.materialId,
           stockSize: part.stockSize,
@@ -226,6 +228,7 @@ export async function createOrderFromRepeatTemplate(data: {
   parts: Array<{
     templatePartId: string;
     partNumber: string;
+    partName: string | null;
     quantity: number;
     materialId: string | null;
     stockSize: string | null;
@@ -285,6 +288,7 @@ export async function createOrderFromRepeatTemplate(data: {
         data: {
           orderId: order.id,
           partNumber: part.partNumber,
+          partName: part.partName,
           quantity: part.quantity,
           materialId: part.materialId,
           stockSize: part.stockSize,

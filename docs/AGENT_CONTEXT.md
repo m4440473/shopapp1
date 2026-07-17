@@ -60,6 +60,34 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-07-17 - The TV dashboard is the Shop Floor station; the separate PIN kiosk is retired
+Decision: Treat the signed-in production dashboard at `/` as the single trusted Shop Floor station. It may select employees and control their timers using the existing actor/worker audit split, with Read Me First receipts as the safety gate and no employee PIN. Remove the Kiosk navigation entry and employee kiosk/PIN setup; redirect the legacy `/kiosk` URL to Shop Floor.
+Reason: The owner intended “kiosk” to mean the shared 80-inch TV computer, not a second employee-unlock application. Two floor-control surfaces and repeated PIN entry created redundant concepts and unnecessary friction for the actual small-shop deployment.
+
+### 2026-07-17 - Read Me First is a persisted receipt gate; trusted-console acknowledgement is PIN-free and audited
+Decision: A dispatch timer may start only when the selected worker has a current persisted instruction receipt for the part, department, and instruction version. The trusted shop console must show the complete mission brief before saving that receipt, record the selected worker as acknowledger and the signed-in operator as actor, and require no per-action worker PIN. The standalone kiosk uses its already PIN-unlocked worker identity and likewise shows the full brief before acknowledging. A checkbox or timer-request boolean cannot create or substitute for a receipt.
+Reason: The prior supervisor checkbox did not prove the employee saw the note and let the dispatch service silently create an acknowledgement. Persisted, versioned receipts make the boss's note an enforceable gate while keeping the shared TV-console workflow fast enough for the shop floor.
+
+### 2026-07-17 - Part procurement belongs to QuotePart and final-price reasoning stays compact
+Decision: Persist procurement cost and markup on the QuotePart alongside its selected vendor; include that purchase in the owning part's calculated price (not a separate quote-level total); and show a compact expandable work-step/material explanation on each part price.
+Reason: Quote-level purchased-item rows detached material decisions from the part that triggered them and made vendor/cost context easy to lose during estimating.
+
+### 2026-07-17 - Feeds and speeds uses explicit machine limits and operation-specific source geometry
+Decision: Make the owner's Haas VF-2SS the explicit calculator machine profile; hard-cap programmed output at 12,000 RPM and 833 IPM while retaining uncapped targets for warnings; load tool-family setup defaults deliberately; require geometry inputs needed by each operation; use the uploaded FSWizard geometry/deflection helpers for milling, thread milling, drilling/reaming, tapping, turning, and grooving; and replace invented ramp/plunge/torque indicators with supported MRR, horsepower, torque, or unavailable states.
+Reason: A generic formula with retained inputs produced unsafe-looking six-digit RPM recommendations and incorrect specialized-tool geometry. Explicit machine ceilings, branch-specific inputs, and source-derived calculations make the page auditable and prevent unsupported secondary values from appearing authoritative.
+
+### 2026-07-16 - Quote pricing uses frozen Work Step snapshots, explicit final-price intent, and one conversion gate
+Decision: Present the legacy Addon/checklist capabilities as one operator-facing `Work Step` concept with one usage choice; snapshot each selected step's name, department, rate, and price/shop behavior on the quote; enforce one selection per quote part and Work Step; store per-part pricing with stable quote-part identity plus explicit `CALCULATED` or `MANUAL` source; treat final per-part sell prices as replacing their underlying work estimate; and permit conversion only after approval through the single quote-detail conversion review.
+Reason: The prior UI exposed implementation flags as competing concepts, mutable setup rows could silently change saved quotes, non-zero inference made a deliberate $0 price impossible, work and final-price displays invited double counting, and multiple conversion entry points required material/vendor re-entry. Frozen inputs and an explicit price source make saved estimates auditable while a single approval/conversion path preserves the manufacturing package without repeated decisions.
+
+### 2026-07-16 - Admin access is enforced at the route-tree layout and admin home is task-first
+Decision: Guard the entire `/admin` route tree in its server layout, route signed-out visitors to sign-in and non-admin users to `/403`, and make the admin landing page prioritize New Quote and Resume Quotes while grouping infrequent shop/system setup and labeling direct order creation as emergency/internal work.
+Reason: Per-page access checks are easy to omit and had allowed server-rendered admin data to appear without a shared boundary. The previous control-room-style landing page also made daily estimating work compete visually with rarely used configuration tools.
+
+### 2026-07-16 - Drawing-assisted order intake uses a dedicated import module, reviewed title-block contract, and JSZip
+Decision: Add nullable `partName` fields to live and repeat-template parts; keep drawing identity extraction in `src/modules/drawing-import/` rather than expanding the machining-feature BOM contract; use `jszip` for bounded ZIP expansion; create imported drawings as per-part attachments and start the existing BOM analysis against returned created-part IDs after order creation.
+Reason: Title-block/order fields and machining-feature analysis have different validation and review needs, while reliable ZIP traversal/CRC/decompression handling should not be hand-written. Returning created part IDs preserves deterministic file-to-part mapping, and non-blocking BOM startup keeps an analyzer failure from destroying an otherwise valid order intake.
+
 ### 2026-04-20 - Feeds-and-speeds parity now uses branch-specific helix/IPR behavior and treats threadLead as the tap pitch proxy
 Decision: For the current parity pass, keep the existing calculator UI contract but tighten the FSWizard-backed math by using branch-specific helix behavior, exact Carbide-only `ipt_carbide` selection, pitch-driven tap feed from the existing `threadLead` input, and a closer endmill DOC/WOC ideal-geometry solver when one engagement dimension is left at the default-off path.
 Reason: The provided `this.go` shows that the previous single-helix-factor / generic-IPR path was still flattening real drill/tap/endmill behavior away from FSWizard, but exact tap thread-table parity, turn/groove deflection parity, and corner-rounding/threadmill geometry parity would require new inputs/helpers beyond this session's safe scope.
@@ -225,4 +253,24 @@ Reason: Avoid scattered domain logic and enable multi-agent work without drift.
 ### 2026-01-28 — Establish continuity docs
 Decision: Add AGENTS.md, PROGRESS_LOG.md, and docs/AGENT_HANDOFF.md.
 Reason: Multi-agent continuity must be enforced by repo artifacts, not memory.
+
+### 2026-07-16 — Quote-first pre-production workflow with lossless operational conversion
+Decision: Keep Quote and Order as separate lifecycle records, make Quote the admin-only resumable starting point, persist a five-checkpoint workflow, store per-part drawing/material/procurement data on quote parts, and copy the non-pricing manufacturing package into an Order with unique `sourceQuoteId` provenance. Customer quote prices and custom price-only rows remain on Quote; converted operational work definitions use zero order price.
+Reason: Draft estimates must not leak into production dashboards/timers, but operators should never re-enter customer, part, drawing, material, location, vendor, finish, note, or work-definition data after approval. A unique source-quote link also prevents duplicate conversion races.
+
+### 2026-07-16 — Adaptive authenticated BOM analysis
+Decision: Require authentication before starting BOM analysis and replace four unconditional corner-analysis calls with a single lower-right fallback only when the full-image pass lacks confident general tolerances.
+Reason: The prior route exposed API spend to unauthenticated requests and used five model calls per part. The adaptive path keeps human-review safety while reducing normal BOM analysis to one request and difficult prints to two.
+
+### 2026-07-17 — Trusted shop-floor dispatch console and one-active-timer model
+Decision: Treat the large-TV computer as a trusted shop-floor dispatch console. The signed-in console operator may start, pause, resume, or finish time on behalf of any active employee without changing browser login or requiring the target worker's PIN for every action. Persist the console actor separately from the employee whose labor interval is recorded. Enforce one active timer total per employee across all departments; starting different work must atomically pause the employee's current interval before starting the new one. Multiple employees may work on the same part simultaneously. Keep part assignment, timer state, and department completion independent. Make Order detail the primary interactive floor surface, with a TV-optimized dashboard as the queue/status display and an optional self-service kiosk as a secondary future surface.
+Reason: The shop has five to seven employees per department, an 80-inch shared production display, and older machinists who will not repeatedly navigate or change logins. A dispatcher must be able to manage interruptions in seconds while the system still records both who performed the labor and who operated the console. One active timer per worker prevents overlap; preserving assignment while paused lets urgent interruptions occur without falsely moving or completing the original part.
+
+### 2026-07-17 — Part labor history is interval-derived and employee-grouped
+Decision: Derive part labor from immutable timer intervals and show it under the part's History/Log grouped by employee, with employee subtotals, an all-employee part total, running time, interval detail, and the console actor for each action. Administrative corrections require a reason and immutable before/after audit. Do not use unaudited stored-seconds adjustments in canonical totals.
+Reason: Management needs actual employee time per part for estimating and pricing, while employees are frequently interrupted and may create several separate intervals on the same part. Grouped interval totals preserve that reality without double counting or forcing the shop to remember interruptions manually.
+
+### 2026-07-17 — Cross-platform standalone packaging
+Decision: Run standalone asset packaging through dependency-free Node filesystem APIs instead of invoking a Bash-only copy script from `npm run build`.
+Reason: The application is developed and verified on Windows but deployed through standalone/Docker output. The packaging step must behave identically on both platforms so a successful Next.js compile is also a successful production build.
 

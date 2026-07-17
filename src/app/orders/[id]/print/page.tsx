@@ -133,7 +133,8 @@ export default async function OrderPrintPage({
       part.stockSize ? `Stock: ${part.stockSize}` : null,
       part.cutLength ? `Cut: ${part.cutLength}` : null,
     ].filter(Boolean);
-    return `${part.partNumber}${details.length ? ` (${details.join(' • ')})` : ''}`;
+    const identity = part.partName ? `${part.partNumber} — ${part.partName}` : part.partNumber;
+    return `${identity}${details.length ? ` (${details.join(' • ')})` : ''}`;
   });
   const totalQuantity = safeOrder.parts.reduce((sum, part) => sum + part.quantity, 0);
   const materialsUsed: string[] = Array.from(

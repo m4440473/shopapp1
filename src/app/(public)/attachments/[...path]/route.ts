@@ -33,21 +33,32 @@ export async function GET(
 
   const { prisma } = await import('@/lib/prisma');
 
-  const orderAttachment = quoteAttachment
+  const quotePartAttachment = quoteAttachment
+    ? null
+    : await prisma.quotePartAttachment.findFirst({
+        where: { storagePath: relativePath },
+        select: { mimeType: true, label: true },
+      });
+
+  const orderAttachment = quoteAttachment || quotePartAttachment
     ? null
     : await prisma.attachment.findFirst({
         where: { storagePath: relativePath },
         select: { mimeType: true, label: true },
       });
 
-  const partAttachment = quoteAttachment || orderAttachment
+  const partAttachment = quoteAttachment || quotePartAttachment || orderAttachment
     ? null
     : await prisma.partAttachment.findFirst({
         where: { storagePath: relativePath },
         select: { mimeType: true, label: true },
       });
 
-  const attachment = quoteAttachment ?? orderAttachment ?? partAttachment;
+  const attachment = quoteAttachment ?? quotePartAttachment ?? orderAttachment ?? partAttachment;
+
+  if ((quoteAttachment || quotePartAttachment) && !isAdmin) {
+    return new NextResponse('Forbidden', { status: 403 });
+  }
 
   if (attachment && !isAdmin && matchesRestrictedAttachmentLabel(attachment.label)) {
     return new NextResponse('Forbidden', { status: 403 });

@@ -30,6 +30,12 @@ export default function KioskClient() {
   const [parts, setParts] = useState<any[]>([]);
   const [selectedPartId, setSelectedPartId] = useState('');
   const [conflict, setConflict] = useState<any | null>(null);
+  const [instructionGate, setInstructionGate] = useState<{
+    orderId: string;
+    partId: string;
+    departmentId: string;
+    workInstructions: string;
+  } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const selectedPart = useMemo(() => parts.find((part) => part.id === selectedPartId) ?? null, [parts, selectedPartId]);
@@ -78,6 +84,10 @@ export default function KioskClient() {
   }, [session, departmentId, query, loadParts]);
 
   useEffect(() => {
+    setInstructionGate(null);
+  }, [departmentId, selectedPartId]);
+
+  useEffect(() => {
     const timer = session?.activeTimer ? window.setInterval(() => setNowMs(Date.now()), 1000) : null;
     return () => {
       if (timer) window.clearInterval(timer);
@@ -103,6 +113,7 @@ export default function KioskClient() {
       setDepartmentId(data.defaultDepartmentId ?? '');
       setPin('');
       setConflict(null);
+      setInstructionGate(null);
     } catch {
       setError('Failed to unlock kiosk.');
     } finally {
@@ -117,6 +128,7 @@ export default function KioskClient() {
     setParts([]);
     setSelectedPartId('');
     setConflict(null);
+    setInstructionGate(null);
     setActing(false);
   }
 
@@ -138,6 +150,15 @@ export default function KioskClient() {
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         const payload = data?.error;
+        if (res.status === 409 && payload?.code === 'INSTRUCTION_ACK_REQUIRED') {
+          setInstructionGate({
+            orderId: selectedPart.orderId,
+            partId: selectedPart.id,
+            departmentId,
+            workInstructions: String(payload.workInstructions ?? '').trim(),
+          });
+          return;
+        }
         if (res.status === 409 && payload?.requiredAction === 'switch_confirmation') {
           setConflict({ ...payload, target: selectedPart, departmentId });
           return;
@@ -152,6 +173,32 @@ export default function KioskClient() {
     } finally {
       setActing(false);
     }
+  }
+
+  async function handleAcknowledgeInstructions() {
+    if (!instructionGate) return;
+    setActing(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/kiosk/acknowledge-instructions', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(instructionGate),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(typeof data?.error === 'string' ? data.error : 'Failed to acknowledge instructions.');
+        return;
+      }
+      setInstructionGate(null);
+    } catch {
+      setError('Failed to acknowledge instructions.');
+      return;
+    } finally {
+      setActing(false);
+    }
+    await handleStart();
   }
 
   async function handleAction(action: 'pause' | 'finish') {
@@ -345,9 +392,9 @@ export default function KioskClient() {
               </div>
               {selectedPart ? (
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <Button size="lg" className="gap-2" disabled={acting || !departmentId} onClick={() => void handleStart()}>
+                  <Button size="lg" className="gap-2" disabled={acting || !departmentId || Boolean(instructionGate)} onClick={() => void handleStart()}>
                     <Play className="h-5 w-5" />
-                    Start timer
+                    {instructionGate ? 'Read instructions below' : 'Start timer'}
                   </Button>
                   <Button asChild size="lg" variant="outline">
                     <Link href={`/orders/${selectedPart.orderId}?part=${selectedPart.id}`}>Open order details</Link>
@@ -355,6 +402,27 @@ export default function KioskClient() {
                 </div>
               ) : null}
             </div>
+
+            {instructionGate ? (
+              <div className="rounded-lg border border-[#ff5a00]/60 bg-[#ff5a00]/10 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#ff8a4c]">
+                  Read me first
+                </div>
+                <div className="mt-1 text-base font-semibold text-foreground">
+                  You must acknowledge this before your timer can start.
+                </div>
+                <div className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-background/80 p-3 text-sm leading-6 text-foreground">
+                  {instructionGate.workInstructions || 'No instruction text was returned. Open the order details and ask the supervisor before starting.'}
+                </div>
+                <Button
+                  className="mt-4"
+                  disabled={acting || !instructionGate.workInstructions}
+                  onClick={() => void handleAcknowledgeInstructions()}
+                >
+                  {acting ? 'Recording…' : 'I have read this — start my timer'}
+                </Button>
+              </div>
+            ) : null}
 
             {conflict ? (
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">

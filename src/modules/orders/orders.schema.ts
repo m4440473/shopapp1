@@ -34,22 +34,52 @@ const OrderPartAddonSelection = z.object({
   notes: z.string().trim().max(1000).optional().nullable(),
 });
 
+const OrderPartAttachmentMetadata = z
+  .object({
+    kind: z.enum(['DWG', 'STEP', 'PDF', 'PO', 'PRINT', 'IMAGE', 'OTHER']),
+    url: z.string().trim().min(1).max(1000).optional(),
+    storagePath: z.string().trim().min(1).max(500).optional(),
+    label: z.string().trim().max(200).optional(),
+    mimeType: z.string().trim().max(200).optional(),
+  })
+  .refine((value) => Boolean(value.url?.length || value.storagePath?.length), {
+    message: 'Provide an attachment URL or uploaded file path',
+    path: ['url'],
+  });
+
 export const OrderPartCreate = z.object({
   partNumber: z.string().trim().min(1),
+  partName: z.string().trim().max(200).optional(),
   quantity: z.coerce.number().int().min(1),
   materialId: z.string().trim().optional(),
+  drawingMaterialText: z.string().trim().max(500).optional(),
+  drawingFinishText: z.string().trim().max(500).optional(),
+  finish: z.string().trim().max(500).optional(),
+  materialStatus: z.enum(['UNREVIEWED', 'IN_STOCK', 'NEED_TO_ORDER', 'NOT_REQUIRED']).optional(),
+  inventoryLocation: z.string().trim().max(500).optional(),
+  materialNotes: z.string().trim().max(2000).optional(),
+  procurementVendorId: z.string().trim().optional(),
   stockSize: z.string().trim().max(200).optional(),
   cutLength: z.string().trim().max(200).optional(),
   notes: z.string().trim().max(500).optional(),
   workInstructions: z.string().trim().max(4000).optional(),
   addonSelections: z.array(OrderPartAddonSelection).optional().default([]),
+  attachments: z.array(OrderPartAttachmentMetadata).optional(),
 });
 
 export const OrderPartUpdate = z
   .object({
     partNumber: z.string().trim().min(1).optional(),
+    partName: z.string().trim().max(200).nullable().optional(),
     quantity: z.coerce.number().int().min(1).optional(),
     materialId: z.string().trim().nullable().optional(),
+    drawingMaterialText: z.string().trim().max(500).nullable().optional(),
+    drawingFinishText: z.string().trim().max(500).nullable().optional(),
+    finish: z.string().trim().max(500).nullable().optional(),
+    materialStatus: z.enum(['UNREVIEWED', 'IN_STOCK', 'NEED_TO_ORDER', 'NOT_REQUIRED']).optional(),
+    inventoryLocation: z.string().trim().max(500).nullable().optional(),
+    materialNotes: z.string().trim().max(2000).nullable().optional(),
+    procurementVendorId: z.string().trim().nullable().optional(),
     stockSize: z.string().trim().max(200).nullable().optional(),
     cutLength: z.string().trim().max(200).nullable().optional(),
     notes: z.string().trim().max(500).nullable().optional(),
@@ -172,18 +202,7 @@ export const OrderChargeUpdate = z
     path: ['partId'],
   });
 
-export const PartAttachmentCreate = z
-  .object({
-    kind: PartAttachmentKind,
-    url: z.string().trim().min(1).max(1000).optional(),
-    storagePath: z.string().trim().min(1).max(500).optional(),
-    label: z.string().trim().max(200).optional(),
-    mimeType: z.string().trim().max(200).optional(),
-  })
-  .refine((value) => Boolean(value.url?.length || value.storagePath?.length), {
-    message: 'Provide an attachment URL or uploaded file path',
-    path: ['url'],
-  });
+export const PartAttachmentCreate = OrderPartAttachmentMetadata;
 
 export const PartAttachmentUpdate = z
   .object({

@@ -4,7 +4,6 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/Button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
 import {
@@ -37,10 +36,6 @@ type QuickConvertPayload = {
   priority: Priority;
   assignedMachinistId: string;
   poNumber?: string;
-  vendorId?: string;
-  materialNeeded?: boolean;
-  materialOrdered?: boolean;
-  modelIncluded?: boolean;
 };
 
 export function validateQuickConvertPayload(input: {
@@ -48,10 +43,6 @@ export function validateQuickConvertPayload(input: {
   priority: string;
   assignedMachinistId: string;
   poNumber: string;
-  vendorId: string;
-  materialNeeded: boolean;
-  materialOrdered: boolean;
-  modelIncluded: boolean;
 }): { payload: QuickConvertPayload | null; error: string | null } {
   if (!input.dueDate.trim()) {
     return { payload: null, error: 'Due date is required.' };
@@ -69,20 +60,13 @@ export function validateQuickConvertPayload(input: {
   const priority = PRIORITIES.includes(input.priority as Priority) ? (input.priority as Priority) : 'NORMAL';
 
   const payload: QuickConvertPayload = {
-    dueDate: input.dueDate,
+    dueDate: input.dueDate.trim(),
     priority,
-    assignedMachinistId: input.assignedMachinistId,
-    materialNeeded: input.materialNeeded,
-    materialOrdered: input.materialOrdered,
-    modelIncluded: input.modelIncluded,
+    assignedMachinistId: input.assignedMachinistId.trim(),
   };
 
   if (input.poNumber.trim()) {
     payload.poNumber = input.poNumber.trim();
-  }
-
-  if (input.vendorId.trim()) {
-    payload.vendorId = input.vendorId.trim();
   }
 
   return { payload, error: null };
@@ -96,6 +80,7 @@ interface QuoteQuickConvertDialogProps {
   initialPriority?: string | null;
   initialAssignedMachinistId?: string | null;
   initialPoNumber?: string | null;
+  /** Retained for compatibility with existing callers; sourcing is derived during conversion. */
   initialVendorId?: string | null;
   initialMaterialNeeded?: boolean;
   initialMaterialOrdered?: boolean;
@@ -110,10 +95,6 @@ export default function QuoteQuickConvertDialog({
   initialPriority,
   initialAssignedMachinistId,
   initialPoNumber,
-  initialVendorId,
-  initialMaterialNeeded = false,
-  initialMaterialOrdered = false,
-  initialModelIncluded = false,
 }: QuoteQuickConvertDialogProps) {
   const router = useRouter();
   const toast = useToast();
@@ -128,10 +109,6 @@ export default function QuoteQuickConvertDialog({
   );
   const [assignedMachinistId, setAssignedMachinistId] = React.useState(initialAssignedMachinistId ?? '');
   const [poNumber, setPoNumber] = React.useState(initialPoNumber ?? '');
-  const [vendorId, setVendorId] = React.useState(initialVendorId ?? '');
-  const [materialNeeded, setMaterialNeeded] = React.useState(Boolean(initialMaterialNeeded));
-  const [materialOrdered, setMaterialOrdered] = React.useState(Boolean(initialMaterialOrdered));
-  const [modelIncluded, setModelIncluded] = React.useState(Boolean(initialModelIncluded));
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -164,10 +141,6 @@ export default function QuoteQuickConvertDialog({
       priority,
       assignedMachinistId,
       poNumber,
-      vendorId,
-      materialNeeded,
-      materialOrdered,
-      modelIncluded,
     });
 
     if (validationError || !payload) {
@@ -182,13 +155,13 @@ export default function QuoteQuickConvertDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      toast.push('Quote converted to order.', 'success');
+      toast.push('Order created from quote.', 'success');
       setOpen(false);
       router.push(`/orders/${response.orderId}`);
       router.refresh();
     } catch (submitError: any) {
       const message =
-        submitError?.body?.error || submitError?.message || 'Failed to convert quote. Please review the fields and try again.';
+        submitError?.body?.error || submitError?.message || 'Failed to create the order. Please review the fields and try again.';
       setError(message);
     } finally {
       setSubmitting(false);
@@ -198,16 +171,16 @@ export default function QuoteQuickConvertDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button disabled={disabled} title={disabledReason ?? 'Convert quote to order'}>
-          Quick Convert
+        <Button disabled={disabled} title={disabledReason ?? 'Create an order from this quote'}>
+          Create Order
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Quick Convert Quote</DialogTitle>
+            <DialogTitle>Create Order</DialogTitle>
             <DialogDescription>
-              Confirm required order details and convert immediately. This path skips review pricing controls.
+              Confirm the final scheduling details. Parts, drawings, material decisions, and work steps will carry over from the quote.
             </DialogDescription>
           </DialogHeader>
 
@@ -257,7 +230,7 @@ export default function QuoteQuickConvertDialog({
               </Select>
             </div>
 
-            <div className="grid gap-2">
+            <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="quick-convert-po-number">PO number (optional)</Label>
               <Input
                 id="quick-convert-po-number"
@@ -267,31 +240,6 @@ export default function QuoteQuickConvertDialog({
               />
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="quick-convert-vendor-id">Vendor id (optional)</Label>
-              <Input
-                id="quick-convert-vendor-id"
-                value={vendorId}
-                onChange={(event) => setVendorId(event.target.value)}
-                placeholder="Vendor ID"
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-2 rounded-md border border-border p-3">
-            <Label className="text-sm">Material flags</Label>
-            <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <Checkbox checked={materialNeeded} onCheckedChange={(checked) => setMaterialNeeded(Boolean(checked))} />
-              Material needed
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <Checkbox checked={materialOrdered} onCheckedChange={(checked) => setMaterialOrdered(Boolean(checked))} />
-              Material ordered
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <Checkbox checked={modelIncluded} onCheckedChange={(checked) => setModelIncluded(Boolean(checked))} />
-              Model included
-            </label>
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -301,7 +249,7 @@ export default function QuoteQuickConvertDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={submitting || loadingMachinists}>
-              {submitting ? 'Converting…' : 'Convert now'}
+              {submitting ? 'Creating…' : 'Create order'}
             </Button>
           </DialogFooter>
         </form>

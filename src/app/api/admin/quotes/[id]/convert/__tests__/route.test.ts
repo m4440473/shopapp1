@@ -142,6 +142,13 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
           name: 'Part A',
           quantity: 2,
           materialId: null,
+          drawingMaterialText: 'C.R.S.',
+          drawingFinishText: 'BLACK OXIDE',
+          finish: 'Black oxide',
+          materialStatus: 'NEED_TO_ORDER',
+          inventoryLocation: null,
+          materialNotes: 'Buy one 12 foot bar',
+          procurementVendorId: 'vendor-1',
           stockSize: null,
           cutLength: null,
           description: 'Lathe then mill flats',
@@ -180,6 +187,16 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
     expect(args.partsData[0].workInstructions).toContain('- Hold bore within .001');
     expect(args.partsData[0].workInstructions).toContain('Part-specific notes:');
     expect(args.partsData[0].workInstructions).toContain('- Use soft jaws');
+    expect(args.partsData[0]).toMatchObject({
+      sourceQuotePartId: 'qp1',
+      drawingMaterialText: 'C.R.S.',
+      drawingFinishText: 'BLACK OXIDE',
+      finish: 'Black oxide',
+      materialStatus: 'NEED_TO_ORDER',
+      materialNotes: 'Buy one 12 foot bar',
+      procurementVendorId: 'vendor-1',
+    });
+    expect(args.materialNeeded).toBe(true);
     expect(mockSyncChecklistForOrder).toHaveBeenCalledWith('o1');
     expect(mockInitializeCurrentDepartmentForOrder).toHaveBeenCalledWith('o1');
     expect(mockEnsureOrderFilesInCanonicalStorage).toHaveBeenCalledWith('o1');

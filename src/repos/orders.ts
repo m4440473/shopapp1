@@ -34,6 +34,7 @@ export const runInTransaction = repo.runInTransaction;
 export const findChecklistForRoutingById = repo.findChecklistForRoutingById;
 export const findPartForRouting = repo.findPartForRouting;
 export const updatePartCurrentDepartment = repo.updatePartCurrentDepartment;
+export const completePartPreservingDepartment = repo.completePartPreservingDepartment;
 export const setChecklistCompletion = repo.setChecklistCompletion;
 export const listPartEventsForPart = repo.listPartEventsForPart;
 export const createOrderPartWithCharges = repo.createOrderPartWithCharges;

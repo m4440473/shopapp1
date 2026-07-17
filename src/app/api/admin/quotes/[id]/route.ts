@@ -90,7 +90,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   let prepared;
   try {
-    prepared = await prepareQuoteComponents(parsed.data, { existingQuoteNumber: existing.quoteNumber });
+    prepared = await prepareQuoteComponents(parsed.data, {
+      existingQuoteNumber: existing.quoteNumber,
+      existingWorkStepSnapshots: existing.addonSelections,
+    });
   } catch (error: any) {
     const message = typeof error?.message === 'string' ? error.message : 'Failed to prepare quote';
     return NextResponse.json({ error: message }, { status: 400 });
@@ -100,14 +103,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const nextMetadata = {
     ...existingMetadata,
     originDepartmentId: parsed.data.originDepartmentId ?? null,
-    partPricing: parsed.data.partPricing
-      ? parsed.data.partPricing.map((entry) => ({
-          name: entry.name ?? null,
-          partNumber: entry.partNumber ?? null,
-          priceCents: entry.priceCents ?? 0,
-          pricingMode: entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
-        }))
-      : existingMetadata.partPricing,
+    partPricing: prepared.partPricing,
     customAmounts: parsed.data.customAmounts
       ? parsed.data.customAmounts.map((entry) => ({
           title: entry.title,

@@ -72,13 +72,13 @@ export async function POST(req: NextRequest) {
         duplicateMode,
       });
 
-      const existingNames = new Map(
+      const existingNames = new Map<string, { id: string; name: string }>(
         (
           await prisma.vendor.findMany({
             where: { name: { in: rows.map((row) => row.name) } },
             select: { id: true, name: true },
           })
-        ).map((item) => [item.name.toLowerCase(), item])
+        ).map((item) => [item.name.toLowerCase(), item] as const)
       );
 
       let created = 0;

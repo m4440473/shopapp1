@@ -82,6 +82,7 @@ export default async function QuotePrintPage({
       partNumber: part.partNumber ?? null,
       priceCents: 0,
       pricingMode: 'LOT_TOTAL' as const,
+      priceSource: 'CALCULATED' as const,
     };
     const pricingMode = entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL';
     const quantity = Number(part.quantity ?? 0);
@@ -106,17 +107,13 @@ export default async function QuotePrintPage({
   const pricingSummaryTotals = calculatePartPricingSummaryTotalsCents({
     parts: quote.parts.map((part, index) => {
       const entry = partPricing[index];
-      const enteredPriceCents = entry?.priceCents ?? 0;
       return {
         workItemsSubtotalCents: (part.addonSelections ?? []).reduce(
           (sum, selection) => sum + selection.totalCents,
           0
         ),
-        partPricingSubtotalCents:
-          enteredPriceCents > 0
-            ? partPricingRows[index]?.lineTotalCents ?? 0
-            : 0,
-        hasPartPricingOverride: enteredPriceCents > 0,
+        partPricingSubtotalCents: partPricingRows[index]?.lineTotalCents ?? 0,
+        hasPartPricingOverride: true,
       };
     }),
   });
@@ -168,20 +165,12 @@ export default async function QuotePrintPage({
       </div>
       <div className="grid grid-cols-2 gap-2 px-3 py-3 text-sm">
         <div>
-          <p className="text-xs uppercase text-neutral-500">Subtotal</p>
-          <p className="font-semibold">{formatCurrency(quote.basePriceCents)}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase text-neutral-500">Addons &amp; vendor</p>
-          <p className="font-semibold">{formatCurrency(addonTotal + vendorTotal)}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase text-neutral-500">Part pricing</p>
+          <p className="text-xs uppercase text-neutral-500">Parts</p>
           <p className="font-semibold">{formatCurrency(partPricingTotal)}</p>
         </div>
         <div>
-          <p className="text-xs uppercase text-neutral-500">Custom amounts</p>
-          <p className="font-semibold">{formatCurrency(customAmountsTotal)}</p>
+          <p className="text-xs uppercase text-neutral-500">Additional quoted items</p>
+          <p className="font-semibold">{formatCurrency(quote.basePriceCents + addonTotal + vendorTotal + customAmountsTotal)}</p>
         </div>
         <div className="col-span-2 border-t border-black pt-2 text-right text-base font-semibold">
           Total: {formatCurrency(total)}
@@ -303,7 +292,7 @@ export default async function QuotePrintPage({
     const partSelections = quote.parts.flatMap((part) =>
       (part.addonSelections ?? []).map((selection) => ({
         id: selection.id,
-        addonName: selection.addon?.name ?? 'Addon',
+        addonName: selection.addon?.name ?? selection.nameSnapshot ?? 'Work step',
         totalCents: selection.totalCents,
         units: selection.units,
         notes: selection.notes,
@@ -311,24 +300,25 @@ export default async function QuotePrintPage({
         partNumber: part.partNumber,
       }))
     );
-    const showPrices = addonsOptions.showPrices !== false;
+    // Customer quote output shows final sell prices, never internal rates or vendor cost detail.
+    const showPrices = false;
     const showUnits = addonsOptions.showUnits === true;
     const showNotes = addonsOptions.showNotes === true;
     const showPartContext = addonsOptions.showPartContext === true;
-    const showVendorItems = addonsOptions.showVendorItems !== false;
+    const showVendorItems = false;
     const hasVisibleVendorItems = showVendorItems && hasVendorItems;
     const customAmounts = metadata.customAmounts ?? [];
 
     return (
       <section className="border border-black">
         <div className="border-b border-black bg-zinc-200 px-3 py-2 text-xs font-semibold uppercase">
-          Addons &amp; vendor items
+          Work included
         </div>
         <div className={`px-3 py-3 ${textClass}`}>
-          {!hasAddons && !hasVisibleVendorItems && <p className="text-neutral-500">No addons or vendor items.</p>}
+          {!hasAddons && !hasVisibleVendorItems && <p className="text-neutral-500">No additional work steps listed.</p>}
           {hasAddons && (
             <div className="mb-3">
-              <p className={`${metaClass} uppercase text-neutral-500`}>Addons / labor</p>
+              <p className={`${metaClass} uppercase text-neutral-500`}>Work steps</p>
               <ul className="mt-1 space-y-1">
                 {partSelections.map((selection) => (
                   <li key={selection.id} className={`flex items-start justify-between gap-4 ${showPrices ? '' : 'justify-start'}`}>

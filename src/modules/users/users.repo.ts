@@ -69,8 +69,8 @@ export async function findUserById(id: string) {
 }
 
 export async function findUserByKioskId(id: string) {
-  return prisma.user.findUnique({
-    where: { id },
+  return prisma.user.findFirst({
+    where: { id, active: true, kioskEnabled: true },
     include: userInclude,
   });
 }
@@ -79,6 +79,7 @@ export async function findKioskUserByPinEligibility(emailOrId: { id?: string; em
   return prisma.user.findFirst({
     where: {
       active: true,
+      kioskEnabled: true,
       ...(emailOrId.id ? { id: emailOrId.id } : {}),
       ...(emailOrId.email ? { email: emailOrId.email } : {}),
     },
@@ -90,6 +91,7 @@ export async function listKioskUsers() {
   return prisma.user.findMany({
     where: {
       active: true,
+      kioskEnabled: true,
     },
     orderBy: [{ name: 'asc' }, { email: 'asc' }],
     include: userInclude,

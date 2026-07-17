@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { calculatePartLotTotal, calculatePartUnitPrice } from '@/modules/pricing/part-pricing';
+import {
+  calculatePartLotTotal,
+  calculatePartUnitPrice,
+  calculateProcurementTotalCents,
+  calculateSuggestedPartUnitPriceCents,
+} from '@/modules/pricing/part-pricing';
 
 describe('calculatePartLotTotal', () => {
   it('uses entered total directly for LOT_TOTAL', () => {
@@ -36,5 +41,29 @@ describe('calculatePartUnitPrice', () => {
 
   it('falls back safely when lot-total quantity is zero', () => {
     expect(calculatePartUnitPrice({ enteredPriceCents: 1000, quantity: 0, pricingMode: 'LOT_TOTAL' })).toBe(1000);
+  });
+});
+
+describe('calculated part pricing', () => {
+  it('adds marked-up purchased material to the suggested part price', () => {
+    const procurementTotalCents = calculateProcurementTotalCents({
+      baseCostCents: 3000,
+      markupPercent: 20,
+    });
+
+    expect(procurementTotalCents).toBe(3600);
+    expect(calculateSuggestedPartUnitPriceCents({
+      workItemsSubtotalCents: 17000,
+      procurementTotalCents,
+      quantity: 1,
+    })).toBe(20600);
+  });
+
+  it('spreads the part-level purchase across the quoted quantity', () => {
+    expect(calculateSuggestedPartUnitPriceCents({
+      workItemsSubtotalCents: 6000,
+      procurementTotalCents: 3600,
+      quantity: 3,
+    })).toBe(3200);
   });
 });

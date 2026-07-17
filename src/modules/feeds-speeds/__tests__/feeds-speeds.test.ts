@@ -7,6 +7,8 @@ import {
   fswizardToolMaterials,
   fswizardToolTypes,
   getDefaultFeedsSpeedsInputs,
+  getFeedsSpeedsInputsForTool,
+  updateFeedsSpeedsDiameter,
 } from '@/modules/feeds-speeds/feeds-speeds';
 
 type NamedCase = {
@@ -171,8 +173,15 @@ describe('feeds-speeds FSWizard parity cases', () => {
     expect(slotLike.feedRate).toBeLessThan(sideMilling.feedRate);
   });
 
-  it('keeps manual parity-case outputs stable', () => {
-    const cases: NamedCase[] = [
+  it('matches the manually verified FSWizard 4140 endmill cases', () => {
+    const cases: Array<NamedCase & {
+      expected: {
+        sfm: number;
+        rpm: number;
+        chipLoadPerTooth: number;
+        feedRate: number;
+      };
+    }> = [
       {
         name: '4140 baseline',
         toolName: 'Solid End Mill',
@@ -183,6 +192,12 @@ describe('feeds-speeds FSWizard parity cases', () => {
         fluteCount: 4,
         doc: 0.25,
         woc: 0.1,
+        expected: {
+          sfm: 340.16,
+          rpm: 2599,
+          chipLoadPerTooth: 0.0034,
+          feedRate: 35.39,
+        },
       },
       {
         name: '4140 heavier WOC',
@@ -194,6 +209,12 @@ describe('feeds-speeds FSWizard parity cases', () => {
         fluteCount: 4,
         doc: 0.25,
         woc: 0.25,
+        expected: {
+          sfm: 320.72,
+          rpm: 2450,
+          chipLoadPerTooth: 0.0032,
+          feedRate: 31.46,
+        },
       },
       {
         name: '4140 shallow DOC',
@@ -205,6 +226,12 @@ describe('feeds-speeds FSWizard parity cases', () => {
         fluteCount: 4,
         doc: 0.1,
         woc: 0.1,
+        expected: {
+          sfm: 340.16,
+          rpm: 2599,
+          chipLoadPerTooth: 0.0034,
+          feedRate: 35.39,
+        },
       },
     ];
 
@@ -212,12 +239,11 @@ describe('feeds-speeds FSWizard parity cases', () => {
       const result = runNamedCase(testCase);
 
       expect({
-        name: testCase.name,
         sfm: result.sfm,
         rpm: result.rpm,
         chipLoadPerTooth: result.chipLoadPerTooth,
         feedRate: result.feedRate,
-      }).toMatchSnapshot();
+      }).toEqual(testCase.expected);
     }
   });
 
@@ -288,7 +314,7 @@ describe('feeds-speeds FSWizard parity cases', () => {
     expect(result.feedRate).toBeCloseTo(expectedFeed, 2);
   });
 
-  it('keeps DOC-only endmill cases stable when WOC is left at default-off', () => {
+  it('keeps DOC-only endmill cases finite and reduces feed as engagement deepens', () => {
     const cases: NamedCase[] = [
       {
         name: '4140 doc only shallow',
@@ -314,16 +340,177 @@ describe('feeds-speeds FSWizard parity cases', () => {
       },
     ];
 
-    for (const testCase of cases) {
-      const result = runNamedCase(testCase);
+    const [shallow, deeper] = cases.map(runNamedCase);
+    expect(shallow.sfm).toBeGreaterThan(0);
+    expect(shallow.rpm).toBeGreaterThan(0);
+    expect(shallow.feedRate).toBeGreaterThan(0);
+    expect(deeper.feedRate).toBeLessThan(shallow.feedRate);
+  });
 
-      expect({
-        name: testCase.name,
-        sfm: result.sfm,
-        rpm: result.rpm,
-        chipLoadPerTooth: result.chipLoadPerTooth,
-        feedRate: result.feedRate,
-      }).toMatchSnapshot();
+  it('loads tool-family defaults instead of retaining unrelated cutter values', () => {
+    const initial = getDefaultFeedsSpeedsInputs();
+    expect(initial.fluteCount).toBe(2);
+    expect(initial.doc).toBe(0);
+    expect(initial.woc).toBe(0);
+    expect(initial.threadLead).toBe(0);
+    expect(initial.machineProfileId).toBe('haas-vf2ss');
+
+    const drill = fswizardToolTypes.find((tool) => tool.name === 'Jobber twist Drill');
+    expect(drill).toBeTruthy();
+    const drillInputs = getFeedsSpeedsInputsForTool(String(drill?.id), {
+      ...initial,
+      fluteCount: 9,
+      diameter: 3,
+      doc: 2,
+      woc: 1,
+    });
+
+    expect(drillInputs.fluteCount).toBe(2);
+    expect(drillInputs.diameter).toBe(0.5);
+    expect(drillInputs.doc).toBe(0);
+    expect(drillInputs.woc).toBe(0);
+    expect(drillInputs.stickout).toBe(5);
+    expect(drillInputs.fluteLength).toBe(5);
+  });
+
+  it('rescales default geometry with diameter but preserves operator overrides', () => {
+    const initial = getDefaultFeedsSpeedsInputs();
+    const resized = updateFeedsSpeedsDiameter(initial, 1);
+    expect(resized.stickout).toBe(2.5);
+    expect(resized.fluteLength).toBe(2);
+    expect(resized.shankDiameter).toBe(1);
+
+    const overridden = updateFeedsSpeedsDiameter(
+      { ...initial, stickout: 3.25 },
+      1
+    );
+    expect(overridden.stickout).toBe(3.25);
+    expect(overridden.fluteLength).toBe(2);
+  });
+
+  it('requires a tap lead instead of silently assuming 20 TPI', () => {
+    const tap = fswizardToolTypes.find((tool) => tool.name === 'Tap');
+    expect(tap).toBeTruthy();
+    const inputs = getFeedsSpeedsInputsForTool(
+      String(tap?.id),
+      getDefaultFeedsSpeedsInputs()
+    );
+    const result = calculateFeedsSpeeds(inputs);
+    expect(result?.errors).toContain(
+      'Enter the tap lead in inches per revolution before using this recommendation.'
+    );
+    expect(result?.threadFeed).toBeNull();
+  });
+
+  it('caps programmed speed and feed to the Haas VF-2SS envelope', () => {
+    const vbit = fswizardToolTypes.find((tool) => tool.name === 'V-bit Engraver');
+    expect(vbit).toBeTruthy();
+    const speedLimited = calculateFeedsSpeeds(
+      getFeedsSpeedsInputsForTool(
+        String(vbit?.id),
+        getDefaultFeedsSpeedsInputs()
+      )
+    );
+    expect(speedLimited?.rawRpm).toBeGreaterThan(12_000);
+    expect(speedLimited?.rpm).toBe(12_000);
+    expect(speedLimited?.rpmLimitApplied).toBe(true);
+
+    const feedLimited = calculateFeedsSpeeds({
+      ...getDefaultFeedsSpeedsInputs(),
+      fluteCount: 1000,
+      doc: 0.25,
+      woc: 0.1,
+    });
+    expect(feedLimited?.rawFeedRate).toBeGreaterThan(833);
+    expect(feedLimited?.feedRate).toBe(833);
+    expect(feedLimited?.feedLimitApplied).toBe(true);
+  });
+
+  it('uses thread-circle compensation and rejects impossible internal geometry', () => {
+    const threadMill = fswizardToolTypes.find((tool) => tool.name === 'Thread Mill');
+    expect(threadMill).toBeTruthy();
+    const base = getFeedsSpeedsInputsForTool(
+      String(threadMill?.id),
+      getDefaultFeedsSpeedsInputs()
+    );
+    const invalid = calculateFeedsSpeeds({
+      ...base,
+      threadDiameter: base.diameter,
+      threadExternal: false,
+    });
+    expect(invalid?.errors).toContain(
+      'Internal thread diameter must be larger than the thread mill.'
+    );
+
+    const internal = calculateFeedsSpeeds({
+      ...base,
+      threadDiameter: 0.5,
+      threadExternal: false,
+    });
+    const external = calculateFeedsSpeeds({
+      ...base,
+      threadDiameter: 0.5,
+      threadExternal: true,
+    });
+    expect(internal?.pilotDiameter).toBeCloseTo(0.402, 3);
+    expect(external?.feedRate).toBeCloseTo((internal?.feedRate ?? 0) * 3, 1);
+  });
+
+  it('keeps absolute turning DOC defaults absolute when diameter changes', () => {
+    const turning = fswizardToolTypes.find(
+      (tool) => tool.name === 'Turning-Profiling'
+    );
+    expect(turning).toBeTruthy();
+    const result = calculateFeedsSpeeds({
+      ...getFeedsSpeedsInputsForTool(
+        String(turning?.id),
+        getDefaultFeedsSpeedsInputs()
+      ),
+      diameter: 0.5,
+      shankDiameter: 0.5,
+    });
+    expect(result?.sideDoc).toBe(0.2);
+  });
+
+  it('runs every bundled tool family without exceeding machine limits', () => {
+    const base = getDefaultFeedsSpeedsInputs();
+    for (const tool of fswizardToolTypes) {
+      const inputs = getFeedsSpeedsInputsForTool(String(tool.id), base);
+      if (tool.type === 'tap') inputs.threadLead = 0.05;
+      const result = calculateFeedsSpeeds(inputs);
+      expect(result, tool.name).not.toBeNull();
+      expect(result?.errors, tool.name).toEqual([]);
+      expect(Number.isFinite(result?.rpm), tool.name).toBe(true);
+      expect(Number.isFinite(result?.feedRate), tool.name).toBe(true);
+      expect(result?.rpm, tool.name).toBeLessThanOrEqual(12_000);
+      expect(result?.feedRate, tool.name).toBeLessThanOrEqual(833);
+      expect(result?.rampFeed, tool.name).toBeNull();
+      expect(result?.plungeFeed, tool.name).toBeNull();
+    }
+  });
+
+  it('keeps source-derived representative outputs stable across every operation branch', () => {
+    const base = getDefaultFeedsSpeedsInputs();
+    const cases = [
+      { tool: 'High Feed Mill', rpm: 1949, feed: 21.13 },
+      { tool: 'Corner Rounding Mill', rpm: 9174, feed: 35.63 },
+      { tool: 'Thread Mill', rpm: 4678, feed: 8.96 },
+      { tool: 'Turning-Profiling', rpm: 1949, feed: 13.27 },
+      { tool: 'Reamer', rpm: 780, feed: 8.56 },
+      { tool: 'V-bit Engraver', rpm: 12_000, feed: 6.27 },
+    ];
+
+    for (const testCase of cases) {
+      const tool = fswizardToolTypes.find(
+        (candidate) => candidate.name === testCase.tool
+      );
+      expect(tool, testCase.tool).toBeTruthy();
+      const result = calculateFeedsSpeeds(
+        getFeedsSpeedsInputsForTool(String(tool?.id), base)
+      );
+      expect(result?.errors, testCase.tool).toEqual([]);
+      expect(result?.rpm, testCase.tool).toBe(testCase.rpm);
+      expect(result?.feedRate, testCase.tool).toBe(testCase.feed);
     }
   });
 });

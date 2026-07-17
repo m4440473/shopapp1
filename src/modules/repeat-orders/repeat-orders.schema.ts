@@ -24,6 +24,7 @@ export const RepeatOrderTemplateCreateOrder = z.object({
     z.object({
       templatePartId: z.string().trim().min(1),
       partNumber: z.string().trim().min(1).optional(),
+      partName: z.string().trim().max(200).nullable().optional(),
       quantity: z.coerce.number().int().min(1).optional(),
       materialId: z.string().trim().nullable().optional(),
       stockSize: z.string().trim().max(200).nullable().optional(),

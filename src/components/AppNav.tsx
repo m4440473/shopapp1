@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   Menu,
   Search,
-  Timer,
   UserRound,
   Users,
   Wrench,
@@ -32,7 +31,7 @@ import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/lib/use-current-user";
 
 const baseLinks = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/", label: "Shop Floor", icon: LayoutDashboard },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/tools/feeds-speeds", label: "Feeds & Speeds", icon: Calculator },
 ];
@@ -52,7 +51,6 @@ export default function AppNav({ companyName, initials, logoUrl }: AppNavProps) 
   const links = React.useMemo<NavLink[]>(() => {
     const items: NavLink[] = [...baseLinks];
     if (user?.role === "MACHINIST" || user?.role === "ADMIN") {
-      items.push({ href: "/kiosk", label: "Kiosk", icon: Timer });
       if (user?.id) {
         items.push({ href: `/machinists/${user.id}`, label: "Machinist Profile", icon: Wrench });
       }

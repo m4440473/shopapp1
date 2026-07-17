@@ -42,21 +42,26 @@ export async function POST(
   const departmentId = typeof body?.departmentId === 'string' ? body.departmentId.trim() : '';
   const requestedWorkerId = typeof body?.workerId === 'string' ? body.workerId.trim() : '';
   const workerPin = typeof body?.pin === 'string' ? body.pin.trim() : '';
+  const trustedConsole = body?.trustedConsole === true;
   if (!departmentId) {
     return NextResponse.json({ error: 'departmentId is required.' }, { status: 400 });
   }
 
   let acknowledgementUserId = (session.user as any)?.id as string;
   if (requestedWorkerId) {
-    if (!workerPin) {
-      return NextResponse.json({ error: 'pin is required when workerId is provided.' }, { status: 400 });
-    }
-    const unlockResult = await unlockKioskByWorkerPin({
-      userId: requestedWorkerId,
-      pin: workerPin,
-    });
-    if (unlockResult.ok === false) {
-      return NextResponse.json({ error: unlockResult.error }, { status: unlockResult.status });
+    if (workerPin) {
+      const unlockResult = await unlockKioskByWorkerPin({
+        userId: requestedWorkerId,
+        pin: workerPin,
+      });
+      if (unlockResult.ok === false) {
+        return NextResponse.json({ error: unlockResult.error }, { status: unlockResult.status });
+      }
+    } else if (!trustedConsole && requestedWorkerId !== acknowledgementUserId) {
+      return NextResponse.json(
+        { error: 'Use the trusted console acknowledgement flow or enter the worker PIN.' },
+        { status: 400 },
+      );
     }
     acknowledgementUserId = requestedWorkerId;
   }
@@ -66,6 +71,7 @@ export async function POST(
     partId,
     departmentId,
     userId: acknowledgementUserId,
+    actorUserId: (session.user as any)?.id as string,
   });
   if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
