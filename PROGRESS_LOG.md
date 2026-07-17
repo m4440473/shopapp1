@@ -2602,6 +2602,7 @@ Verification evidence:
 - Excluded local-only data/artifacts from publication: `prisma/prisma/dev.db`, `tsconfig.tsbuildinfo`, and `tmp-dev-3000.pid`.
 - Restored GitHub CLI authentication and confirmed the target repository is `m4440473/shopapp1` with `main` as its default branch.
 - Full verification passed before commit: 29 test files / 143 tests and a clean production build with standalone assets.
+- Published commit `60bcf11` to `codex/feeds-speeds-fswizard-parity` and updated draft PR #178 with the full scope and validation record.
 
 ### 2026-07-17 — Retired separate PIN kiosk in favor of Shop Floor (latest)
 - Renamed the primary production dashboard and navigation entry to `Shop Floor`, with plain-language live-production copy for the shared TV.

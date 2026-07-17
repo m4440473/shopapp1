@@ -4867,6 +4867,11 @@ Goal: Publish the full validated product checkpoint while keeping local shop dat
 - `git diff --cached --check`: passed.
 - Local SQLite data, `tsconfig.tsbuildinfo`, and the temporary development-server PID were intentionally excluded.
 
+### Published
+- Product checkpoint commit: `60bcf11` (`Unify quote and shop floor workflows`).
+- Branch: `codex/feeds-speeds-fswizard-parity`.
+- Draft PR: `https://github.com/m4440473/shopapp1/pull/178`.
+
 ## Session Handoff — 2026-07-17 (Retired separate PIN kiosk, latest)
 
 Goal: Make the existing TV dashboard the only Shop Floor station and remove the redundant employee PIN-kiosk concept from normal use.

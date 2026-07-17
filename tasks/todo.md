@@ -8,7 +8,7 @@ Publish the complete validated product change set to GitHub without including lo
 - [x] Restore GitHub CLI authentication and confirm `m4440473/shopapp1` with `main` as the target.
 - [x] Run the full test suite and a clean production build.
 - [x] Stage all product code, migrations, tests, and continuity docs while excluding the local SQLite database, TypeScript build cache, and temporary PID.
-- [ ] Commit the staged checkpoint, push the current branch, and open or update a draft pull request.
+- [x] Commit the staged checkpoint, push the current branch, and update draft pull request #178.
 
 ## Verification
 - [x] Full suite passed: 29 files / 143 tests.
