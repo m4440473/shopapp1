@@ -28,6 +28,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters } from '@/modules/orders/orders.shared';
 import type { DepartmentFeedOrder, OrderWithMeta } from '@/modules/orders/orders.types';
 import { WorkQueueOrderCard } from '@/components/work-queue/WorkQueueOrderCard';
+import {
+  RunningWorkersStrip,
+  type RunningWorkerSummary,
+} from '@/components/work-queue/RunningWorkersStrip';
 
 type LayoutOption = 'grid' | 'machinist' | 'workQueue';
 
@@ -37,6 +41,7 @@ type Props = {
   departments: Array<{ id: string; name: string; sortOrder?: number | null }>;
   initialDepartmentId: string | null;
   initialDepartmentFeed: DepartmentFeedOrder[];
+  runningWorkers?: RunningWorkerSummary[];
 };
 
 const SORT_KEYS = ['dueDate', 'priority', 'status', 'quantity'] as const;
@@ -72,6 +77,7 @@ export function ShopFloorLayouts({
   departments,
   initialDepartmentId,
   initialDepartmentFeed,
+  runningWorkers = [],
 }: Props) {
   const [layout, setLayout] = useState<LayoutOption>('workQueue');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'closed'>('active');
@@ -85,11 +91,37 @@ export function ShopFloorLayouts({
   const [departmentLoading, setDepartmentLoading] = useState(false);
   const [departmentError, setDepartmentError] = useState<string | null>(null);
   const [includeCompleted, setIncludeCompleted] = useState(false);
+  const [liveRunningWorkers, setLiveRunningWorkers] = useState(runningWorkers);
 
   useEffect(() => {
     setDepartmentId(initialDepartmentId ?? '');
     setDepartmentFeed(initialDepartmentFeed ?? []);
   }, [initialDepartmentId, initialDepartmentFeed]);
+
+  useEffect(() => {
+    setLiveRunningWorkers(runningWorkers);
+  }, [runningWorkers]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshRunningWorkers = async () => {
+      try {
+        const res = await fetch('/api/dispatch/timers', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data?.items)) {
+          setLiveRunningWorkers(data.items);
+        }
+      } catch {
+        // Keep the last trusted snapshot visible during a temporary network interruption.
+      }
+    };
+    const timer = window.setInterval(refreshRunningWorkers, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const loadDepartmentFeed = useCallback(async (nextDepartmentId: string, includeCompletedValue: boolean) => {
     if (!nextDepartmentId) return;
@@ -127,6 +159,36 @@ export function ShopFloorLayouts({
     }
     loadDepartmentFeed(departmentId, includeCompleted);
   }, [departmentId, includeCompleted, initialDepartmentId, initialDepartmentFeed, loadDepartmentFeed]);
+
+  useEffect(() => {
+    if (!departmentId) return;
+
+    let cancelled = false;
+    const refreshDepartmentFeed = async () => {
+      try {
+        const params = new URLSearchParams({
+          departmentId,
+          includeCompleted: String(includeCompleted),
+        });
+        const res = await fetch(`/api/intelligence/department-feed?${params.toString()}`, {
+          credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data?.items)) {
+          setDepartmentFeed(data.items);
+        }
+      } catch {
+        // Keep the last trusted snapshot visible during a temporary network interruption.
+      }
+    };
+
+    const timer = window.setInterval(refreshDepartmentFeed, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [departmentId, includeCompleted]);
 
   const departmentNameById = useMemo(
     () => new Map(departments.map((department) => [department.id, department.name] as const)),
@@ -219,6 +281,8 @@ export function ShopFloorLayouts({
 
   return (
     <div className="space-y-4 rounded-xl border border-border/60 bg-card/70 p-4 backdrop-blur">
+      <RunningWorkersStrip workers={liveRunningWorkers} />
+
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-primary/70">Displays</p>

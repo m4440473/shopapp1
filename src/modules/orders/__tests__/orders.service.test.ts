@@ -123,12 +123,119 @@ describe('orders.service completion gating', () => {
     expect(created.ok).toBe(true);
 
     const orderId = (created as { ok: true; data: { id: string } }).data.id;
-    const details = await getOrderDetails(orderId, true);
+    const details = await getOrderDetails(orderId, { isAdmin: true });
     expect(details.ok).toBe(true);
 
     const payload = (details as { ok: true; data: { item: { parts: Array<{ currentDepartmentId: string | null }> }; departments: Array<{ id: string; name: string }> } }).data;
     expect(payload.departments[0]?.name).toBe('Machining');
     expect(payload.item.parts[0]?.currentDepartmentId).toBe(payload.departments[0]?.id);
+  });
+
+  it('normalizes blank optional material IDs on order create', async () => {
+    const { createOrderFromPayload, getOrderDetails } = await import('../orders.service');
+
+    const created = await createOrderFromPayload({
+      business: 'STD',
+      customerId: 'customer_test_001',
+      receivedDate: '2026-02-01',
+      dueDate: '2026-02-10',
+      priority: 'NORMAL',
+      materialNeeded: false,
+      materialOrdered: false,
+      modelIncluded: false,
+      vendorId: undefined,
+      poNumber: undefined,
+      assignedMachinistId: undefined,
+      notes: '',
+      attachments: [],
+      addonIds: [],
+      customFieldValues: [],
+      parts: [
+        {
+          partNumber: 'NEW-BLANK-MATERIAL',
+          quantity: 1,
+          materialId: '',
+          stockSize: undefined,
+          cutLength: undefined,
+          notes: undefined,
+          addonSelections: [],
+        },
+      ],
+    });
+
+    expect(created.ok).toBe(true);
+
+    const orderId = (created as { ok: true; data: { id: string } }).data.id;
+    const details = await getOrderDetails(orderId, { isAdmin: true });
+    expect(details.ok).toBe(true);
+
+    const payload = (details as { ok: true; data: { item: { parts: Array<{ materialId: string | null }> } } }).data;
+    expect(payload.item.parts[0]?.materialId).toBeNull();
+  });
+
+  it('persists a dedicated part name and maps an imported drawing to that created part', async () => {
+    const { createOrderFromPayload, getOrderDetails } = await import('../orders.service');
+
+    const created = await createOrderFromPayload({
+      business: 'STD',
+      customerId: 'customer_test_001',
+      receivedDate: '2026-07-16',
+      dueDate: '2026-07-30',
+      priority: 'NORMAL',
+      materialNeeded: false,
+      materialOrdered: false,
+      modelIncluded: false,
+      attachments: [],
+      addonIds: [],
+      customFieldValues: [],
+      parts: [{
+        partNumber: '25011-00-133-607',
+        partName: 'VERTICAL RAIL MOUNT',
+        quantity: 1,
+        addonSelections: [],
+        attachments: [{
+          kind: 'PDF',
+          storagePath: 'draft/customer/25011-00-133-607.pdf',
+          label: '25011-00-133-607.pdf',
+          mimeType: 'application/pdf',
+        }],
+      }],
+    });
+
+    expect(created.ok).toBe(true);
+    const data = (created as { ok: true; data: { id: string; parts: Array<{ id: string }> } }).data;
+    expect(data.parts).toHaveLength(1);
+
+    const details = await getOrderDetails(data.id, { isAdmin: true });
+    expect(details.ok).toBe(true);
+    const part = (details as { ok: true; data: { item: { parts: Array<{ id: string; partName?: string | null; attachments: Array<{ partId: string; label: string | null }> }> } } }).data.item.parts[0];
+    expect(part.partName).toBe('VERTICAL RAIL MOUNT');
+    expect(part.attachments.find((attachment) => attachment.label === '25011-00-133-607.pdf')).toMatchObject({
+      partId: part.id,
+      label: '25011-00-133-607.pdf',
+    });
+  });
+
+  it('keeps the final department visible when checklist completion finishes a part', async () => {
+    const { completeChecklistAndAdvance, getOrderDetails } = await import('../orders.service');
+
+    const result = await completeChecklistAndAdvance({
+      orderId: 'order_test_001',
+      partId: 'part_test_002',
+      checklistId: 'checklist_test_001',
+      actorUserId: 'user_test_machinist',
+    });
+
+    expect(result.ok).toBe(true);
+    const payload = (result as { ok: true; data: { part: { currentDepartmentId: string | null } } }).data;
+    expect(payload.part.currentDepartmentId).toBe('dept_test_002');
+
+    const details = await getOrderDetails('order_test_001', { isAdmin: true });
+    expect(details.ok).toBe(true);
+    const part = (details as { ok: true; data: { item: { parts: Array<{ id: string; status: string | null; currentDepartmentId: string | null }> } } }).data.item.parts
+      .find((entry) => entry.id === 'part_test_002');
+    expect(part?.status).toBe('COMPLETE');
+    expect(part?.currentDepartmentId).toBe('dept_test_002');
   });
 
   it('does not visually auto-advance a null-owned part to the next department after checklist completion', async () => {
@@ -146,7 +253,7 @@ describe('orders.service completion gating', () => {
     });
     expect(toggle.ok).toBe(true);
 
-    const details = await getOrderDetails('order_test_001', true);
+    const details = await getOrderDetails('order_test_001', { isAdmin: true });
     expect(details.ok).toBe(true);
 
     const payload = (details as { ok: true; data: { item: { parts: Array<{ id: string; currentDepartmentId: string | null }> }; departments: Array<{ id: string; name: string }> } }).data;
@@ -220,7 +327,7 @@ describe('orders.service completion gating', () => {
     });
     expect(toggle.ok).toBe(true);
 
-    const details = await getOrderDetails('order_test_001', true);
+    const details = await getOrderDetails('order_test_001', { isAdmin: true });
     expect(details.ok).toBe(true);
     const checklistItem = (details as { ok: true; data: { item: { checklist: Array<{ id: string; toggledBy?: { id: string }; performedBy?: { id: string } }> } } }).data.item.checklist
       .find((item) => item.id === 'checklist_ack_test_001');
@@ -266,7 +373,7 @@ describe('orders.service completion gating', () => {
     });
     expect(started.ok).toBe(true);
 
-    const details = await getOrderDetails('order_test_001', true);
+    const details = await getOrderDetails('order_test_001', { isAdmin: true });
     expect(details.ok).toBe(true);
     const part = (details as { ok: true; data: { item: { parts: Array<{ id: string; assignments: any[]; partActivity: any }> } } }).data.item.parts
       .find((entry) => entry.id === 'part_test_001');

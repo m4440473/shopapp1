@@ -35,6 +35,8 @@ type CanvasModule = {
   };
 };
 
+type CanvasInstance = ReturnType<CanvasModule['createCanvas']>;
+
 async function loadCanvasModule(): Promise<CanvasModule> {
   const dynamicImport = new Function('specifier', 'return import(specifier);') as (specifier: string) => Promise<unknown>;
   return (await dynamicImport(CANVAS_MODULE_NAME)) as CanvasModule;
@@ -165,12 +167,12 @@ class PdfCanvasFactory {
     };
   }
 
-  reset(target: { canvas: ReturnType<ReturnType<typeof loadCanvasModule>['createCanvas']> }, width: number, height: number) {
+  reset(target: { canvas: CanvasInstance }, width: number, height: number) {
     target.canvas.width = Math.ceil(width);
     target.canvas.height = Math.ceil(height);
   }
 
-  destroy(target: { canvas: ReturnType<ReturnType<typeof loadCanvasModule>['createCanvas']> | null; context: unknown | null }) {
+  destroy(target: { canvas: CanvasInstance | null; context: unknown | null }) {
     if (!target.canvas) return;
 
     target.canvas.width = 0;
@@ -518,6 +520,11 @@ async function persistResultIfScoped({
 }
 
 export async function POST(req: Request) {
+  const session = await getServerAuthSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const body = (await req.json().catch(() => null)) as
     | { dataUrl?: string; orderId?: string; partId?: string; sourceLabel?: string }
     | null;
@@ -579,7 +586,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const corners: CornerName[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+    const passOneData = passOneValidation.data;
+    const needsToleranceDetail =
+      passOneData.generalTolerances.length === 0 ||
+      passOneData.generalTolerances.every((item) => item.confidence < 0.7);
+    const corners: CornerName[] = needsToleranceDetail ? ['bottom-right'] : [];
     const passTwoPayloads: TitleBlockTolerancePassResult[] = [];
 
     for (const corner of corners) {
@@ -623,7 +634,6 @@ export async function POST(req: Request) {
       passTwoPayloads.push(passTwoValidation.data);
     }
 
-    const passOneData = passOneValidation.data;
     const mergedGeneralTolerances = mergeGeneralTolerances(passOneData.generalTolerances, passTwoPayloads);
     const mergedWarnings = uniqueWarnings(passOneData.warnings, ...passTwoPayloads.map((pass) => pass.warnings));
 
@@ -639,7 +649,6 @@ export async function POST(req: Request) {
     const withFlips = computeEstimatedFlips(merged);
     const enriched = attachTapDrills(withFlips);
 
-    const session = await getServerAuthSession();
     await persistResultIfScoped({
       orderId: typeof body?.orderId === 'string' ? body.orderId : undefined,
       partId: typeof body?.partId === 'string' ? body.partId : undefined,

@@ -17,6 +17,16 @@ export type QuoteAddonPreset = {
   items: QuoteAddonPresetItem[];
 };
 
+export function dedupeSelectionsByAddonId<T extends { addonId: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const addonId = (item.addonId || '').trim();
+    if (!addonId || seen.has(addonId)) return false;
+    seen.add(addonId);
+    return true;
+  });
+}
+
 export function dedupePresetItems(items: QuoteAddonPresetItem[]) {
   const seen = new Set<string>();
   const next: QuoteAddonPresetItem[] = [];
@@ -43,7 +53,7 @@ export function mergeSelectionsWithoutDuplicates({
   createKey: () => string;
 }) {
   const existingAddonIds = new Set(existing.map((item) => item.addonId));
-  const appended = incoming
+  const appended = dedupeSelectionsByAddonId(incoming)
     .filter((item) => item.addonId && !existingAddonIds.has(item.addonId))
     .map((item) => ({
       key: createKey(),

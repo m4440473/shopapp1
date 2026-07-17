@@ -8,7 +8,7 @@ export type OrderListItem = {
   receivedDate: string | Date | null;
   customer?: { name?: string | null } | null;
   assignedMachinist?: { id?: string; name?: string | null; email?: string | null } | null;
-  parts?: Array<{ quantity: number | null; currentDepartmentId?: string | null; partNumber?: string | null }>;
+  parts?: Array<{ quantity: number | null; currentDepartmentId?: string | null; partNumber?: string | null; partName?: string | null }>;
   checklist?: Array<{ completed: boolean; departmentId?: string | null; addon?: { name?: string | null } | null }>;
   statusHistory?: Array<{ createdAt: string | Date }>;
 };
@@ -38,6 +38,7 @@ export type OrderFilterState = {
 export type DepartmentFeedPart = {
   id: string;
   partNumber: string | null;
+  partName?: string | null;
   quantity: number | null;
   currentDepartmentId?: string | null;
   currentDepartmentName?: string | null;
@@ -45,6 +46,7 @@ export type DepartmentFeedPart = {
   reasonText: string | null;
   checklistDoneCount: number;
   checklistTotalCount: number;
+  assignedWorkers: Array<{ id: string; name: string }>;
 };
 
 export type DepartmentFeedActiveTimer = {

@@ -81,6 +81,7 @@ import {
   listChecklistItems,
   runInTransaction,
   setChecklistCompletion,
+  completePartPreservingDepartment,
   updatePartCurrentDepartment,
   listDepartmentsOrdered,
   listOrderLevelDepartmentChecklistItems,
@@ -108,7 +109,7 @@ import {
   generateNextOrderNumber,
   syncChecklistForOrder,
 } from '@/repos/orders';
-import { listTimeEntriesForPartsDetailed } from '@/repos/time';
+import { listActiveTimeEntriesForPart, listTimeEntriesForPartsDetailed } from '@/repos/time';
 
 export { generateNextOrderNumber, syncChecklistForOrder };
 export type { OrderFilterState, OrderListItem, OrderWithMeta };
@@ -153,6 +154,11 @@ function parseDate(value: string | Date | null | undefined) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function optionalId(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 type DepartmentSortEntry = { id: string; name?: string | null; sortOrder: number };
@@ -367,10 +373,8 @@ async function requireInstructionAcknowledgement({
   });
 }
 
-function isPartComplete(part: { id?: string | null; status?: string | null }, checklist: Array<{ partId?: string | null; completed?: boolean | null; isActive?: boolean | null }>) {
-  if (normalizeOrderWorkflowStatus(part.status) === 'COMPLETE') return true;
-  const partChecklist = checklist.filter((item) => item.partId === part.id && item.isActive !== false);
-  return partChecklist.length > 0 && partChecklist.every((item) => item.completed === true);
+function isPartComplete(part: { status?: string | null }) {
+  return normalizeOrderWorkflowStatus(part.status) === 'COMPLETE';
 }
 
 export function deriveWorkflowStatusFromSnapshot(order: {
@@ -385,7 +389,7 @@ export function deriveWorkflowStatusFromSnapshot(order: {
 
   const parts = Array.isArray(order.parts) ? order.parts : [];
   const checklist = Array.isArray(order.checklist) ? order.checklist : [];
-  if (parts.length > 0 && parts.every((part) => isPartComplete(part, checklist))) {
+  if (parts.length > 0 && parts.every((part) => isPartComplete(part))) {
     return 'COMPLETE';
   }
 
@@ -542,8 +546,16 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
         parts: {
           create: body.parts.map((p) => ({
             partNumber: p.partNumber,
+            partName: p.partName ?? null,
             quantity: p.quantity,
-            materialId: p.materialId ?? null,
+            materialId: optionalId(p.materialId),
+            drawingMaterialText: p.drawingMaterialText ?? null,
+            drawingFinishText: p.drawingFinishText ?? null,
+            finish: p.finish ?? null,
+            materialStatus: p.materialStatus ?? 'UNREVIEWED',
+            inventoryLocation: p.inventoryLocation ?? null,
+            materialNotes: p.materialNotes ?? null,
+            procurementVendorId: optionalId(p.procurementVendorId),
             stockSize: p.stockSize ?? null,
             cutLength: p.cutLength ?? null,
             notes: p.notes ?? null,
@@ -592,6 +604,24 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
     .filter((entry) => entry.partId && entry.selections.length);
 
   const checklistKeys = new Set<string>();
+
+  for (const [index, inputPart] of body.parts.entries()) {
+    const partId = created.parts?.[index]?.id;
+    if (!partId) continue;
+    for (const attachment of inputPart.attachments ?? []) {
+      await createPartAttachment({
+        data: {
+          orderId: created.id,
+          partId,
+          kind: attachment.kind,
+          url: attachment.url ?? null,
+          storagePath: attachment.storagePath ?? null,
+          label: attachment.label ?? null,
+          mimeType: attachment.mimeType ?? null,
+        },
+      });
+    }
+  }
 
   if (selectionsByPart.length) {
     const addonIds = Array.from(
@@ -668,7 +698,7 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
   await initializeCurrentDepartmentForOrder(created.id);
   await syncOrderWorkflowStatus(created.id, { userId: userId ?? null });
   await ensureOrderFilesInCanonicalStorage(created.id);
-  return ok({ id: created.id });
+  return ok({ id: created.id, parts: created.parts ?? [] });
 }
 
 export async function ensureOrderFilesInCanonicalStorage(orderId: string) {
@@ -950,11 +980,13 @@ export async function acknowledgePartInstructions({
   partId,
   departmentId,
   userId,
+  actorUserId,
 }: {
   orderId: string;
   partId: string;
   departmentId: string;
   userId: string;
+  actorUserId?: string | null;
 }) {
   const part = await findPartForRouting(partId);
   if (!part || part.orderId !== orderId) return fail(404, 'Part not found');
@@ -969,10 +1001,16 @@ export async function acknowledgePartInstructions({
   await recordPartEvent({
     orderId,
     partId,
-    userId,
+    userId: actorUserId ?? userId,
     type: 'PART_INSTRUCTIONS_ACKNOWLEDGED',
     message: 'Part instructions acknowledged.',
-    meta: { departmentId, instructionsVersion, receiptId: receipt.id },
+    meta: {
+      departmentId,
+      instructionsVersion,
+      receiptId: receipt.id,
+      acknowledgedForUserId: userId,
+      acknowledgementSource: actorUserId && actorUserId !== userId ? 'dispatch_console' : 'self',
+    },
   });
   return ok({ receipt, created: true });
 }
@@ -1087,7 +1125,18 @@ export async function recomputePartDepartment(
     return fail(400, 'Reason is required for rework/backward/manual department transitions.');
   }
 
-  await updatePartCurrentDepartment(partId, toDepartmentId, tx);
+  if (toDepartmentId) {
+    await updatePartCurrentDepartment(partId, toDepartmentId, tx);
+  } else {
+    if (tx?.orderPart) {
+      await tx.orderPart.update({
+        where: { id: partId },
+        data: { status: 'COMPLETE' },
+      });
+    } else {
+      await updateOrderPart(partId, { status: 'COMPLETE' });
+    }
+  }
 
   let type = 'DEPARTMENT_ADVANCED';
   if (manual) type = 'DEPARTMENT_SET_MANUAL';
@@ -1113,7 +1162,7 @@ export async function recomputePartDepartment(
     },
   }, tx);
 
-  return ok({ partId, orderId: part.orderId, currentDepartmentId: toDepartmentId, changed: true, flagged });
+  return ok({ partId, orderId: part.orderId, currentDepartmentId: toDepartmentId ?? fromDepartmentId, changed: true, flagged });
 }
 
 export async function previewChecklistComplete({ orderId, partId, checklistId }: { orderId: string; partId: string; checklistId: string }) {
@@ -1472,6 +1521,10 @@ export async function assignPartDepartment({
 
   const part = await findOrderPart(orderId, partId);
   if (!part) return fail(404, 'Part not found for this order');
+  const activeTimers = await listActiveTimeEntriesForPart(partId);
+  if (activeTimers.length) {
+    return fail(409, 'Pause or finish every active employee timer before moving this part.');
+  }
 
   const [department, departments] = await Promise.all([findActiveDepartmentById(departmentId), listDepartmentsOrdered()]);
   if (!department) return fail(400, 'Department not found');
@@ -1551,6 +1604,7 @@ export async function addOrderPart({
     orderId,
     partData: {
       partNumber: payload.partNumber,
+      partName: payload.partName ?? null,
       quantity: payload.quantity,
       materialId: payload.materialId ?? null,
       stockSize: payload.stockSize ?? null,
@@ -1590,6 +1644,7 @@ export async function updateOrderPartDetails({
 
   const data: Record<string, unknown> = {};
   if (payload.partNumber !== undefined) data.partNumber = payload.partNumber;
+  if (payload.partName !== undefined) data.partName = payload.partName;
   if (payload.quantity !== undefined) data.quantity = payload.quantity;
   if (payload.materialId !== undefined) data.materialId = payload.materialId;
   if (payload.stockSize !== undefined) data.stockSize = payload.stockSize;
@@ -1923,6 +1978,10 @@ export async function submitDepartmentComplete({
 
   const part = await findPartForRouting(partId);
   if (!part || part.orderId !== orderId) return fail(404, 'Part not found');
+  const activeTimers = await listActiveTimeEntriesForPart(partId);
+  if (activeTimers.length) {
+    return fail(409, 'Pause or finish every active employee timer before submitting this department complete.');
+  }
 
   const currentDepartmentId = part.currentDepartmentId ?? findNextDepartmentWithOpenChecklist(part.checklistItems ?? [], departments);
   if (!currentDepartmentId) return fail(409, 'Part has no active department to submit.');
@@ -1992,7 +2051,7 @@ export async function submitDepartmentComplete({
       return { currentDepartmentId: nextDepartmentId, status: 'IN_PROGRESS' as const };
     }
 
-    await updatePartCurrentDepartment(partId, currentDepartmentId, tx);
+    await completePartPreservingDepartment(partId, currentDepartmentId, tx);
     await recordPartEvent({
       orderId,
       partId,
@@ -2032,6 +2091,10 @@ export async function completeOrderPart({
 }) {
   const part = await findOrderPart(orderId, partId);
   if (!part) return fail(404, 'Part not found');
+  const activeTimers = await listActiveTimeEntriesForPart(partId);
+  if (activeTimers.length) {
+    return fail(409, 'Pause or finish every active employee timer before completing this part.');
+  }
 
   const checklistItems = await listChecklistItems(orderId);
   const hasIncompleteChecklist = checklistItems.some((item: any) => item.partId === partId && item.isActive !== false && item.completed === false);
@@ -2224,6 +2287,12 @@ export async function getOrderDepartmentFeed(
       reasonText: typeof flaggedEvent?.meta?.reasonText === 'string' ? String(flaggedEvent.meta.reasonText) : null,
       checklistDoneCount,
       checklistTotalCount,
+      assignedWorkers: (Array.isArray(part.assignments) ? part.assignments : [])
+        .filter((assignment: any) => assignment?.user?.active !== false)
+        .map((assignment: any) => ({
+          id: String(assignment.user.id),
+          name: getUserLabel(assignment.user),
+        })),
     });
     existing.partsInDeptCount += 1;
     existing.openChecklistCount += Math.max(checklistTotalCount - checklistDoneCount, 0);

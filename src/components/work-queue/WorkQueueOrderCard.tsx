@@ -26,7 +26,7 @@ export function WorkQueueOrderCard({
     <Card className="h-full border-border/60 bg-card/70 p-4 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <Link href={`/orders/${order.orderId}`} className="text-lg font-semibold text-primary hover:underline">
+          <Link href={`/orders/${order.orderId}`} className="text-xl font-bold text-primary hover:underline">
             #{order.orderNumber}
           </Link>
           <div className="flex items-center gap-2">
@@ -50,9 +50,10 @@ export function WorkQueueOrderCard({
         {order.activeTimers.length ? (
           <div className="flex flex-wrap gap-2">
             {order.activeTimers.map((timer) => (
-              <span
+              <Link
                 key={timer.id}
-                className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-100"
+                href={timer.partId ? `/orders/${order.orderId}?part=${encodeURIComponent(timer.partId)}` : `/orders/${order.orderId}`}
+                className="inline-flex min-h-10 items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 transition hover:border-emerald-400 hover:bg-emerald-500/20"
                 title={
                   timer.partNumber
                     ? `${timer.userName} on ${timer.partNumber}${timer.departmentName ? ` in ${timer.departmentName}` : ''}`
@@ -60,7 +61,7 @@ export function WorkQueueOrderCard({
                 }
               >
                 {timer.userName}, {formatDuration(timer.elapsedSeconds)}
-              </span>
+              </Link>
             ))}
           </div>
         ) : null}
@@ -72,27 +73,39 @@ export function WorkQueueOrderCard({
           <div className="rounded-lg border border-border/50 bg-muted/10 px-3 py-2">Last activity: {latestActivityLabel}</div>
         </div>
 
-        <div className="space-y-1 text-xs text-muted-foreground">
+        <div className="space-y-2 text-sm text-muted-foreground">
           {order.parts.map((part) => (
-            <div
+            <Link
               key={part.id}
-              className="flex items-center justify-between rounded-md border border-border/50 bg-background/60 px-2 py-1"
+              href={`/orders/${order.orderId}?part=${encodeURIComponent(part.id)}`}
+              className="flex min-h-12 items-center justify-between gap-3 rounded-md border border-border/50 bg-background/60 px-3 py-2 transition hover:border-primary/60 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               title={part.reasonText ?? undefined}
             >
-              <span>
-                {part.partNumber ?? `#${part.id.slice(0, 6)}`} · Qty {part.quantity ?? 0} · {part.currentDepartmentName ?? selectedDepartmentName}
+              <span className="min-w-0">
+                <span className="block truncate font-semibold text-foreground">
+                  {part.partNumber ?? `#${part.id.slice(0, 6)}`}{part.partName ? ` · ${part.partName}` : ''}
+                </span>
+                <span className="block text-xs">Qty {part.quantity ?? 0} · {part.currentDepartmentName ?? selectedDepartmentName}</span>
+                <span className="mt-1 block text-xs font-medium text-primary">
+                  {part.assignedWorkers.length
+                    ? `Assigned: ${part.assignedWorkers.map((worker) => worker.name).join(', ')}`
+                    : 'Assigned: nobody yet'}
+                </span>
               </span>
-              <span className="flex items-center gap-2">
+              <span className="flex shrink-0 items-center gap-2">
                 {part.checklistDoneCount}/{part.checklistTotalCount}
                 {part.flagged ? <Badge className="bg-amber-500/20 text-amber-300">REWORK</Badge> : null}
               </span>
-            </div>
+            </Link>
           ))}
         </div>
 
-        <div>
-          <Link href={`/orders/${order.orderId}`} className="text-sm text-primary hover:underline">
-            View order →
+        <div className="pt-1">
+          <Link
+            href={`/orders/${order.orderId}`}
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            Open order #{order.orderNumber}
           </Link>
         </div>
       </div>

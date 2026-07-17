@@ -20,6 +20,7 @@ import {
 } from '@/modules/orders/orders.service';
 import { getInitials } from '@/lib/get-initials';
 import { cn } from '@/lib/utils';
+import { getRunningWorkerSummary } from '@/modules/time/time.service';
 
 export default async function Home() {
   const session = await getServerAuthSession();
@@ -36,6 +37,8 @@ export default async function Home() {
   }
 
   const { totalOrders, closedOrders, activeOrders, recentOrders } = dashboardResult.data;
+  const runningWorkersResult = await getRunningWorkerSummary();
+  const runningWorkers = runningWorkersResult.ok ? runningWorkersResult.data.items : [];
   const departmentsResult = await getDepartmentsOrdered();
   const departments = departmentsResult.ok ? departmentsResult.data.items : [];
   const initialDepartmentId = departments[0]?.id ?? null;
@@ -85,10 +88,10 @@ export default async function Home() {
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.4em] text-primary/70">Overview</p>
-          <h1 className="text-4xl font-semibold text-foreground">Dashboard</h1>
+          <p className="text-xs uppercase tracking-[0.4em] text-primary/70">Live production</p>
+          <h1 className="text-4xl font-semibold text-foreground">Shop Floor</h1>
           <p className="max-w-xl text-sm text-muted-foreground">
-            Track every order, deadline, and machinist assignment in one navy-drenched control center built entirely with shadcn blocks.
+            See what is running, who is working, and where every part is in production.
           </p>
         </div>
       </div>
@@ -142,6 +145,7 @@ export default async function Home() {
         departments={departments}
         initialDepartmentId={initialDepartmentId}
         initialDepartmentFeed={departmentFeedItems}
+        runningWorkers={runningWorkers}
       />
 
       <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">

@@ -1,3 +1,133 @@
+### 2026-07-17 — Quote material-order resolution feedback (latest)
+- Reproduced the material-check path and confirmed the underlying state was saving correctly: selecting a vendor reduced the unresolved count from 13 to 12 and persisted after reload.
+- Fixed the misleading UI state in QuoteEditor: a vendor-backed Order material choice now shows an explicit resolved badge and confirmation, while orange warning styling remains only for unreviewed or vendor-missing parts.
+- Verification passed: targeted ESLint, TypeScript, live save/reload verification, and visual resolved-state inspection.
+
+### 2026-07-17 — Quote part-list overflow correction (latest)
+- Corrected the quote editor's manual parts sidebar after long imported names, part numbers, and quantities escaped the fixed-width list and overlapped the selected-part form.
+- Widened the responsive list track, gave both grid columns safe shrink behavior, and changed each shared-Button row from inherited single-line horizontal layout to an auto-height stacked/wrapping layout.
+- Verification passed: targeted ESLint, TypeScript, and live browser QA with deliberately oversized text. Measured row descendants remain inside the panel, row scroll width equals client width, and the page has no horizontal overflow.
+
+### 2026-07-17 — Production feeds-and-speeds correction for Haas VF-2SS (latest)
+- Reworked the calculator around an explicit Haas VF-2SS profile with 12,000 RPM and 833 IPM hard programming ceilings; uncapped targets remain visible in warnings instead of leaking into programmed output.
+- Added deliberate tool-family defaults and the missing operation inputs for stickout/flute length, shank diameter, lead angle, corner radius, work diameter, thread diameter/location, tap lead, and explicit slotting.
+- Ported the uploaded FSWizard geometry/deflection behavior for specialized milling, corner rounding, thread milling, drilling/reaming, tapping, turning, and grooving. Removed fabricated ramp/plunge outputs and replaced the hardness-only torque indicator with calculated MRR, horsepower, and correctly dimensioned torque where supported.
+- Replaced self-generated snapshots with explicit source-derived expectations and expanded coverage across defaults, overrides, machine caps, invalid geometry, all 29 tool families, and representative specialized branches.
+- Verification passed: focused tests `19/19`, full tests `140/140`, full lint, TypeScript, production build with 59 generated pages, and live browser QA for default/reset, V-bit RPM cap, tap-pitch validation, thread-mill validation, styling, and console health.
+
+### 2026-07-16 — Drawing import progress and removal follow-up
+- Replaced the indefinite blue spinner with a staged progress bar that advances while extraction runs and displays status, percentage, and elapsed seconds.
+- Added `Remove from list` to every imported drawing review card, including assembly detections, and remove actions update both proposal/review state before order creation.
+- Verification passed: drawing-import tests (3/3), full lint, and live side-browser loading of the updated import panel.
+
+### 2026-07-16 — Drawing-to-order import v1 (latest)
+- Implemented dedicated part names plus reviewed PDF/image/ZIP-assisted order creation, per-part drawing attachments, and automatic BOM startup.
+- Verification passed: Prisma migration/generation, 25 focused tests, full lint, 16-file sample ZIP expansion, live `/orders/new` compilation, and representative title-block extraction.
+- Full implementation details, known follow-ups, and command evidence are recorded in the matching detailed entry below and in `docs/AGENT_HANDOFF.md`.
+
+### 2026-06-30 - Known bug burn-down 1: quote-converted order execution integrity
+- Synced the current local source/docs checkpoint to GitHub before new work:
+  - verified the existing quote/order QA fixes with targeted ESLint and focused Orders service tests,
+  - committed `ad2be7b` (`Fix quote order material and completion edge cases`),
+  - pushed `codex/feeds-speeds-fswizard-parity`,
+  - opened draft PR #178 (`https://github.com/m4440473/shopapp1/pull/178`).
+- Fixed two follow-up defects in direct quote conversion:
+  - quote-converted parts now seed `OrderPart.workInstructions` from quote requirements, quote notes, material summary, purchase items, part description, and part-specific notes so the existing Read Me First gate can trigger on converted work,
+  - quote-converted checklist rows now link to the matching newly created `OrderCharge` when a checklist add-on also creates a priced charge, allowing checklist completion to sync `OrderCharge.completedAt` through the existing checklist flow.
+- Kept scope intentionally narrow; manual department movement guards, no-checklist department dead ends, timer active-entry behavior, and time-entry query duplication remain follow-up items.
+
+Commands run:
+- `gh --version`
+- `gh auth status`
+- `git fetch origin`
+- `npx eslint --ext .ts,.tsx -- "src/modules/quotes/quotes.service.ts" "src/modules/orders/orders.service.ts" "src/app/api/admin/quotes/[id]/convert/route.ts" "src/modules/orders/__tests__/orders.service.test.ts"`
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts`
+- `git commit -m "Fix quote order material and completion edge cases"`
+- `git push -u origin codex/feeds-speeds-fswizard-parity`
+- `gh pr create --draft --base main --head codex/feeds-speeds-fswizard-parity --title "[codex] Sync local feeds parity and quote workflow fixes" ...`
+- `npx eslint --ext .ts,.tsx -- "src/modules/quotes/quote-work-items.ts" "src/modules/quotes/__tests__/quote-work-items.test.ts" "src/modules/quotes/quotes.repo.ts" "src/app/api/admin/quotes/[id]/convert/route.ts" "src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts"`
+- `npm run test -- src/modules/quotes/__tests__/quote-work-items.test.ts src/app/api/admin/quotes/[id]/convert/__tests__/route.test.ts`
+
+Verification note:
+- Existing local QA fixes passed targeted ESLint and focused Orders service tests (`13/13`) before sync.
+- New quote-conversion regression tests passed (`7/7` across route conversion and quote work-item helper tests).
+- Targeted ESLint passed on all newly touched quote conversion files/tests.
+- Local runtime artifacts remain intentionally uncommitted: `prisma/prisma/dev.db` and `tmp-dev-3000.pid`.
+
+### 2026-05-13 - QA deep dive: quote-to-order machinist workflow
+- Audited the quote -> order -> department/checklist/timer workflow with source review, two parallel review agents, and authenticated live-server runtime requests.
+- Browser Use was explicitly attempted but the in-app browser backend was not discoverable in this session, so runtime verification used the same live Next routes/API calls instead of visible browser automation.
+- Created and converted three fresh quote-originated QA orders with multiple parts:
+  - `CRM-1001` from `CRM-QA-1778688724794-Q1` with 2 parts,
+  - `CRM-1002` from `CRM-QA-1778688724794-Q2` with 2 parts,
+  - `CRM-1003` from `CRM-QA-1778688724794-Q3` with 3 parts.
+- Fixed two narrow, reproduced defects:
+  - blank optional `materialId` values from quote/order forms now normalize to `null` before writes, avoiding Prisma FK failures when "No material" is selected,
+  - checklist-driven part completion now preserves the final department ownership instead of clearing `currentDepartmentId` to `null`.
+- Runtime findings confirmed for follow-up:
+  - quote-converted parts are missing `workInstructions`, so quote requirements/notes do not trigger the expected Read Me First acknowledgement gate,
+  - manual department transition can move a part out of its current department while checklist items remain open,
+  - starting a second active timer in another department for the same worker returns `409`, despite the documented department-scoped timer model,
+  - quote-converted checklist rows have `chargeId: null`, so checking them off does not update matching `OrderCharge.completedAt`,
+  - parts can be manually moved into a department with no checklist items and then cannot submit that department complete,
+  - order detail/time endpoints still duplicate some time-entry fetching and can grow expensive on timer-heavy orders.
+
+Commands run:
+- `npm run dev -- --hostname 0.0.0.0 --port 3001` *(outside-sandbox attempt used to bypass Windows `spawn EPERM`; port was already occupied by the timed run)*
+- `npm run dev -- --hostname 0.0.0.0 --port 3002`
+- Authenticated runtime flow requests against `http://127.0.0.1:3002`
+- `npx eslint --ext .ts,.tsx -- "src/modules/quotes/quotes.service.ts" "src/modules/orders/orders.service.ts" "src/app/api/admin/quotes/[id]/convert/route.ts" "src/modules/orders/__tests__/orders.service.test.ts"`
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts` *(sandboxed run hit Windows Vitest/esbuild `spawn EPERM`; outside-sandbox rerun passed)*
+
+Verification note:
+- Targeted ESLint passed on touched source/test files.
+- Focused Orders service tests passed (`13/13`).
+- Live runtime repro proved blank quote material caused `P2003` before the fix, then quote creation/conversion succeeded after the fix.
+- Live runtime repro proved final checklist completion now leaves completed parts in `dept_shipping`.
+
+### 2026-05-13 - Synced feeds-and-speeds parity branch
+- Checked `codex/feeds-speeds-fswizard-parity` against `origin/codex/feeds-speeds-fswizard-parity`; the branch tip was already aligned after fetch.
+- Re-verified the pending feeds-and-speeds parity changes before preparing them for commit/push.
+- Left the local tracked SQLite dev DB change out of the sync commit because it appears to be runtime/local state rather than part of the feeds-and-speeds feature.
+
+Commands run:
+- `git fetch origin`
+- `npm run test -- src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts` *(sandboxed run hit Windows Vitest/esbuild `spawn EPERM`; outside-sandbox rerun passed)*
+- `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts" "src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts"`
+
+Verification note:
+- Focused feeds-speeds Vitest tests passed (`6/6`).
+- Targeted ESLint passed on the calculator module, types, and parity test.
+
+### 2026-04-20 - Expanded FSWizard parity coverage across taps, drills, and DOC-only endmill behavior
+- Audited more of `src/modules/feeds-speeds/feeds-speeds.ts` against the provided `C:\\Users\\user\\Downloads\\this.go` beyond the prior single endmill baseline and tightened the source-backed gaps that were practical without widening the current UI contract.
+- Updated the calculator math in `src/modules/feeds-speeds/feeds-speeds.ts` so it now:
+  - uses exact Carbide-only `ipt_carbide` behavior for the calculation path instead of treating diamond/ceramic tools as the same branch,
+  - applies branch-specific helix-factor behavior for endmills, drills/reamers, taps, and corner-rounding tools,
+  - treats taps as pitch-driven from the existing `threadLead` input for both displayed `IPR` and feed,
+  - treats drill/ream `IPR` as true per-revolution output so feed matches the FSWizard-style `per tooth × flute count` path,
+  - resolves omitted DOC/WOC endmill geometry more like the source before load scaling instead of leaving the missing engagement dimension on the flatter approximation path.
+- Expanded focused regression coverage in `src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts` and refreshed `src/modules/feeds-speeds/__tests__/__snapshots__/feeds-speeds.test.ts.snap` so parity checks now cover:
+  - the earlier 4140 carbide endmill cases,
+  - a pitch-driven tap case,
+  - a drill helix/IPR/feed case,
+  - DOC-only endmill snapshots when WOC is left at the default-off path.
+
+Commands run:
+- `npm run test -- src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts` *(outside-sandbox rerun after the Windows sandbox hit Vitest/esbuild `spawn EPERM` on startup)*
+- `npx eslint --ext .ts,.tsx -- "src/modules/feeds-speeds/feeds-speeds.ts" "src/modules/feeds-speeds/feeds-speeds.types.ts" "src/modules/feeds-speeds/__tests__/feeds-speeds.test.ts"`
+
+Verification note:
+- Focused feeds-speeds Vitest parity tests passed (`6/6`).
+- Targeted ESLint passed on the calculator module, types, and updated parity tests.
+- New snapshot-backed parity values now include:
+  - DOC-only shallow endmill case (`DOC 0.10 / WOC 0`) -> `SFM 272.13`, `RPM 2079`, `IPT 0.0027`, `Feed 22.65`
+  - DOC-only deeper endmill case (`DOC 0.25 / WOC 0`) -> `SFM 298.92`, `RPM 2284`, `IPT 0.0020`, `Feed 18.22`
+- Remaining known parity gaps after this pass:
+  - exact tap parity still needs FSWizard-style thread-form/thread-size inputs instead of only freeform `threadLead`,
+  - exact turn/groove parity still needs the source branch's deflection/load model plus a machine max-RPM contract,
+  - exact corner-rounding and full threadmill parity still need more source-specific geometry helpers than the current module exposes.
+
 ### 2026-04-16 - Added FSWizard parity checks and corrected default-path feeds-and-speeds assumptions
 - Audited the current `src/modules/feeds-speeds/feeds-speeds.ts` endmill path against the provided `C:\\Users\\user\\Downloads\\this.go` and corrected a few remaining source-parity gaps:
   - chip thinning is no longer auto-applied unless the FSWizard tool data explicitly enables it,
@@ -2298,3 +2428,192 @@ Verification note:
 - `npm run build` still fails in this environment because of the existing `next/font` Roboto fetch / `127.0.0.1:9` connection issue, but the PDF-renderer native-module webpack parse error is resolved.
 
 
+### 2026-07-16 — Drawing-to-order import workflow design
+- Inspected the current order builder, part attachments, canonical file storage, persisted BOM analyzer flow, and the supplied `fwdfiles.zip` sample.
+- Confirmed the ZIP contains 16 PDFs with strong title-block identity data and at least one multi-page assembly drawing with a parts list.
+- Added `docs/DRAWING_ORDER_IMPORT_WORKFLOW.md`, covering the low-friction operator flow, confidence-based review, assembly/duplicate handling, partial failures, suggested module boundaries, delivery slices, and first-release acceptance criteria.
+- No application code, schema, dependencies, or supplied drawings were changed.
+
+Verification evidence:
+- ZIP entry inventory completed: 16 PDF files.
+- Representative PDF text extraction confirmed drawing number, part name, material, and assembly parts-list content.
+### 2026-07-16 — Drawing-to-order import v1
+- Added a dedicated nullable part-name field to live order parts and repeat-order template parts, including migration, create/edit/quote-conversion/repeat-order flows, search, order detail, and print display.
+- Added a drawing-import module and admin upload API for PDF/PNG/JPG or bounded ZIP input (50 files, 20 MB each, 100 MB expanded total, CRC checking, traversal-safe filenames).
+- Added title-block extraction for part number, name, quantity, material, stock size, cut length, revision, assembly flag, evidence, and confidence; unavailable/invalid extraction falls back to filename identity and highlighted manual confirmation.
+- Updated `/orders/new` with large manual-vs-drawing choices, simple upload progress, editable review cards, material matching, explicit quantity fallback, assembly warnings, per-part drawing links, and final readiness summary.
+- Imported drawings now create per-part attachments, normalize into canonical order storage, and automatically start the existing BOM analyzer against returned created-part IDs with bounded concurrency; analyzer failure does not roll back the order.
+- Added `jszip` and recorded the dependency/architecture decision in `docs/AGENT_CONTEXT.md`.
+
+Verification evidence:
+- `npx prisma migrate dev` applied `20260716103000_add_order_part_name`; Prisma client generation passed.
+- Focused drawing-import, Orders, repeat-order, and quote-conversion suite passed: 25/25 tests.
+- `npm run lint` passed with no warnings/errors.
+- Real `fwdfiles.zip` verification found 16 supported PDFs totaling 1,049,086 expanded bytes.
+- Live `/orders/new` returned 200; drawing API returned a deterministic 400 for malformed multipart input.
+- Live representative-PDF extraction returned part `26031-00-133-602`, name `STANCHION TUBE`, quantity uncertainty, material text, and cut length.
+- `npx tsc --noEmit --pretty false` remains blocked by previously documented baseline errors outside this feature; no drawing-import/part-name path errors were reported.
+
+Next:
+- Add persisted/resumable import drafts if users need to leave during large imports.
+- Add explicit assembly parts-list component expansion (assembly only / listed components / both); v1 flags assemblies for manual confirmation.
+### 2026-07-16 — Neon-orange confirmation palette + quantity checkbox (latest)
+- Replaced the confirmation UI's amber/yellow/brown treatment with white cards, neon-orange (`#ff5a00`) attention borders/glow, and navy (`#0b1f3a`) status/confirmation surfaces.
+- Resolved tiles now use a quiet white/navy border instead of green/yellow competition, and extraction warnings use an orange rule with navy text.
+- Uncertain quantities now show a direct `Quantity N is correct` checkbox; checking it clears the quantity reason without requiring a number-input arrow/edit.
+- Quantity was removed from the bulk confirm button so the dedicated checkbox is the obvious, low-effort action.
+- Verification passed: focused suite (13/13), targeted ESLint, full lint, and live review inspection. The owner's confirmed 15-part + 1 assembly-file import remained intact.
+
+### 2026-07-16 — Live per-field drawing confirmation highlights (latest)
+- Replaced the import-time `needsReview` latch with confirmation reasons derived from current values, extraction confidence, and explicit confirmations.
+- Only unresolved part tiles are yellow; each yellow tile now lists the exact fields/reasons and highlights only those field containers.
+- Editing a highlighted field clears its warning when valid. Uncertain prefilled values have a plain `The highlighted values look right` action, and assembly detections have an explicit `Keep as a part` decision alongside the existing keep-as-order-file path.
+- The header changes from `# need confirmation` to `All parts confirmed` as issues are resolved, and Continue unlocks from the same live state.
+- Verification passed: focused suite (13/13), targeted ESLint, and full lint. Live inspection preserved the owner's existing 15-part + 1 assembly-order-file review form rather than restarting it.
+
+### 2026-07-16 — Finish, assembly-file, and material matching follow-up (latest)
+- Added FINISH to title-block extraction and review; the original finish remains visible/editable and becomes a `Finish: ...` line in the created part notes.
+- Assembly detections now offer `Remove from part list; keep file`, move into a clear order-files section, remain attached at order level, and can be restored to the part list if detection was wrong.
+- Replaced literal material matching with shared shop-name/grade normalization covering catalog shorthand such as 6061, C.R.S./cold-rolled steel, 304 stainless, and PTFE/Teflon; review shows both the raw drawing value and matched catalog material.
+- Verification passed: 12 focused tests, targeted ESLint, full lint, and live page compilation. Full TypeScript produced only the documented baseline errors outside the touched paths. The browser session required sign-in after reload, so the owner-facing ZIP click-through remains the final manual check.
+
+### 2026-07-16 — Drawing review preview fix (latest)
+- Fixed Open drawing during pre-order review by adding an authenticated, admin-only draft preview endpoint; persisted order attachments continue using the existing attachment route.
+- Added storage-root containment, traversal rejection, supported-drawing validation, inline response headers, and no-store caching for draft previews.
+- Updated both drawing-review Open drawing links to use the draft-aware preview path.
+- Verification passed: focused drawing-import tests (4/4), targeted ESLint, full lint, and a live authenticated sample-ZIP PDF response with `application/pdf` instead of 404.
+
+### 2026-07-16 — Latest drawing-import test order cleanup (latest)
+- Identified CRM-1004 for Versa Tech Automation as the newest order by received date/order number and confirmed it contained 16 imported parts.
+- Deleted CRM-1004 in a database transaction, including 16 part drawing records, 16 parts, one BOM analysis, and its status history.
+- Removed only the verified canonical CRM-1004 drawing folder under the Versa Tech Automation storage path.
+- Verified CRM-1004 and its canonical folder are absent, STD-1007 for Toyota-TMMK is now the newest remaining order, and the running `/orders/new` page still returns 200.
+
+### 2026-07-16 — Quote-first resumable workflow (latest)
+- Made Quotes the admin-only starting point for the pre-production flow without representing drafts as Orders.
+- Added five persisted checkpoints: Customer, Drawings & parts, Material check, Work details, and Pricing & finish. **Save & continue** writes the draft before advancing; reopening uses the saved checkpoint and Quotes list rows show a resume link.
+- Reused the drawing importer in Quote Editor. Imported detail drawings belong to their quote parts; removed assemblies remain quote-level files; exact material/finish wording remains visible alongside normalized material selection.
+- Added per-part material disposition, stock location, purchasing note, selected vendor, finish, drawing wording, stable sort order, and quote-part attachments.
+- Added a pricing-free admin print page for the shop material walkdown with large handwritten checkboxes/lines.
+- Updated conversion to copy all new operational fields and part drawings, set order material-needed state, keep quote price/custom-price rows off the order, record `Order.sourceQuoteId`, and prevent duplicate conversion at the database layer.
+- Quote-owned attachments are now admin-only through the attachment route. BOM analysis now requires authentication and uses one normal model pass plus at most one targeted tolerance fallback instead of five unconditional passes.
+- Added `docs/QUOTE_FIRST_WORKFLOW.md` with the workflow/data/conversion/cost architecture and official pricing references.
+
+Verification evidence:
+- Applied migrations `20260716154035_quote_first_workflow_v1` and `20260716155142_quote_source_provenance_v1`; Prisma generation and validation passed.
+- Focused quote/conversion suite passed 9/9.
+- Targeted ESLint passed for all touched quote, order, drawing, print, attachment, and analyzer files.
+- Live port-3000 checks rendered quote new/list/edit and material-walkdown print pages; `/admin/quotes/new` remains open for owner testing.
+- Full TypeScript still reports only the documented repo baseline errors; no quote-first files are in the error list. The related pre-existing print-analyzer canvas typing error was fixed.
+
+Next:
+- Add source-hash/analyzer-version caching and response-usage telemetry before evaluating local OCR or a cheaper model on a real corrected-drawing test set.
+- Add a dedicated quote BOM-analysis record if admins need machining-feature analysis visible before conversion; do not rerun it during conversion.
+### 2026-07-16 — Quote workflow simplification, pricing integrity, and admin cleanup (latest)
+- Reorganized Admin around daily work: large `New Quote` and `Resume Quotes` actions, compact navigation, clearly grouped setup, and direct order creation demoted to emergency/internal jobs.
+- Added one shared server-side `/admin` guard plus signed-out/non-admin/admin regression coverage.
+- Replaced operator-facing add-on/checklist language with `Work Steps` and one usage choice while retaining the legacy database/API names for compatibility.
+- Frozen selected Work Step name/rate/department/price-shop behavior on each quote, added quote-part/step uniqueness, and removed two legacy duplicate groups in migration `20260716161000_quote_work_step_snapshots`.
+- Made final part-price intent explicit (`CALCULATED` or `MANUAL`), supported intentional $0 prices, matched pricing to stable quote-part IDs, and stopped work estimates from being added again after a final part price is chosen.
+- Simplified quote intake/customer ownership, material notes, customer print pricing, approval status, and the single quote-detail conversion review. Conversion carries quote material/vendor/shop/file data and no longer asks for it again.
+- Verified the live task-first admin home, Work Steps list/dialog, and five-checkpoint quote intake; left the running app at `/admin/quotes/new` for owner testing.
+
+Commands/evidence:
+- `npx prisma migrate status` — 32 migrations found; database schema up to date.
+- focused Vitest command covering admin layout, quote pricing/work steps, approval, conversion, and quick-convert UI — 7 files / 22 tests passed.
+- targeted ESLint across changed admin/quote/pricing files — passed with no errors.
+- `npx tsc --noEmit` — no task-related errors; still blocked by the logged vendor-import, kiosk, order-test, mock-repo, and `sterling-site` baseline errors.
+- `npm run build` — task code compiles; repo-wide type check remains blocked first by the pre-existing vendor-import `existing.id` typing error, with the pre-existing kiosk schema import warning also present.
+- Live development server is running on `http://127.0.0.1:3000`; `TEST_MODE=true` intentionally supplies a mock admin for local browser testing.
+
+### 2026-07-17 — Kiosk / employee / department / time-flow audit
+- Reproduced the production type-check baseline and separated localized compile drift from runtime shop-floor integrity risks.
+- The build blockers are small and independent: vendor-import tuple inference, one obsolete kiosk route/import, kiosk generic result typing, stale Orders tests, mock-repository contract drift, and the standalone `sterling-site` being included in the root type-check.
+- Audited normal authentication, kiosk PIN authentication, shared-station worker identity, department ownership/transitions, checklist submission, timer interval lifecycle, corrections, totals, and current database state.
+- Found P0 runtime risks: kiosk-disabled users can still authenticate; deactivated/role-changed users keep stale JWT access; single-active timers are not database-enforced; close-and-switch is non-atomic; legacy timer APIs allow missing or mismatched parts; and visible department movement bypasses the canonical completion rules.
+- Found a current active timer whose recorded department differs from the part's current department, demonstrating that moves/completion can strand active labor.
+- Found the canonical final-department submit returns `COMPLETE` but persists `IN_PROGRESS`, while ordinary checklist completion can prematurely mark an order complete.
+- Found admin time correction cannot edit another employee's interval and lacks transactional before/after audit data; manual stored-seconds adjustments also produce totals that disagree with interval reports.
+- Found overlapping timer API families, two floor timing surfaces, dead order-page timer handlers, legacy completion routes, and three actor identities across timer/checklist/department actions.
+- No application behavior or database records were changed during this audit.
+
+Verification evidence:
+- `npx tsc --noEmit --pretty false` reproduced the documented baseline errors.
+- Focused kiosk/time/orders suite passed 25/25; coverage gaps are documented in `tasks/todo.md`.
+- Read-only data checks: 55 intervals, one active timer, no current duplicate-active users, seven active kiosk-disabled users retaining PIN hashes, and five parts with null current-department ownership.
+
+Next:
+- First implement a bounded security/integrity slice: kiosk eligibility and revocation, session freshness, database-enforced single-active timers, atomic switching, and audited admin stale-timer recovery.
+- Then consolidate department movement around one canonical submit/override contract, fix completion persistence/status derivation, block active-timer moves, and retire legacy routes.
+- Keep the build-baseline cleanup as a separate small no-behavior-change ticket.
+
+Owner-direction addendum:
+- Confirmed the large-TV computer is a trusted interactive dispatch console for five to seven employees per department, not an employee-by-employee login kiosk.
+- The console operator must control timers on behalf of workers; the system will record console actor and labor owner separately.
+- Chosen invariant is one active timer total per employee, with atomic pause-and-switch for urgent interruptions and multiple workers allowed on one part.
+- Part assignment remains intact while paused. Timer state does not move or complete the part.
+- Part History/Log will group interval-derived labor by employee and show employee subtotals plus the complete part total.
+
+### 2026-07-17 — Trusted shop-floor dispatch console completed
+- Replaced the normal floor timer path with one trusted-console workflow: the selected employee owns the labor interval and the signed-in console user is recorded separately for every start, switch, pause, finish, and correction.
+- Enforced one open timer total per employee with a partial unique database index and atomic pause-and-switch transactions. Multiple employees can still work the same part.
+- Preserved part assignments during pauses and switches; department movement/completion is independent and refuses to proceed while a part has active timers.
+- Added a large `Working now` strip to the TV dashboard with live duration, employee, order, part, and department; department queue rows show assigned workers and both dashboard feeds refresh automatically.
+- Added part Timer History grouped by employee with employee subtotals, all-worker total, live running time, interval/action detail, and console actor attribution.
+- Consolidated the optional PIN kiosk onto the same atomic timer service, enforced kiosk enablement/session expiry, refreshed normal user activity/role at the session boundary, and removed weaker legacy mutation/auto-advance routes.
+- Fixed final department completion persistence, premature order completion derivation, admin cross-employee time correction, and before/after correction auditing.
+- Backfilled the one active part missing a department so active work no longer disappears from the TV queue; completed historical null-department records were intentionally preserved.
+- Browser QA found and fixed a sticky `?part=` bug that prevented switching away from a dashboard-linked part. Part selection now changes controls, history, and the shareable URL together.
+- New timers are blocked for Shipping or completed parts while any pre-existing stale timer remains visible and can be paused/finished.
+- Replaced the Bash-only standalone copy step with a cross-platform Node script so the production build completes on Windows and Docker/Linux.
+
+Verification evidence:
+- Migrations applied: `20260717120000_trusted_dispatch_timers`, `20260717124500_backfill_active_part_departments`.
+- Full ESLint and `npx tsc --noEmit` passed.
+- Full Vitest suite passed: 28 files / 127 tests.
+- `npm run build` passed: compile, type/lint validation, all 59 static pages, route tracing, and standalone asset copy.
+- Live browser QA passed at 1920x1080 for dashboard, assignment labels, direct worker-to-part navigation, part switching, trusted timer dialog, Pause/Finish choices, employee-grouped History/Log, and Shipping/complete timer guard.
+
+Operational note:
+- The existing Jim timer on CRM-1002 / QA-2-1 is roughly 1,555 hours old and conflicts with the part's completed/Shipping state. It was intentionally not altered without owner confirmation; the new UI exposes Pause and Finish for cleanup and prevents any new timer on that part.
+
+### 2026-07-17 — FSWizard feeds-and-speeds math audit
+- Located and audited the owner-provided FSWizard calculation source at `C:\Users\user\Downloads\this.go`, the decoded embedded database, the ShopApp calculation module, UI, parity notes, tests, and live page.
+- Confirmed the app-owned database is an exact copy of the decoded upload: 34 materials, 29 tool types, 5 tool materials, 9 coatings, and 68 chipload rows.
+- Confirmed the ordinary SFM/RPM/chipload stack, drill helix/feed formula, and pitch-driven tap feed are substantially faithful to the source when the required inputs are correct.
+- Found a critical missing machine-speed limit: the original source defaults to a 10,000 RPM cap, while ShopApp can recommend 162,014 RPM for the bundled High Feed Mill and 129,932 RPM for the V-bit.
+- Found specialized parity gaps in high-feed/lens/chamfer geometry, the separate corner-rounding area model, thread-mill circle/internal/external compensation, turning/grooving load/deflection, and tap thread/drill selection.
+- Found secondary-output defects: the maximum-angle ramp-feed endpoint is treated as a constant factor, drill/ream feed is duplicated as an invented 60% “plunge” feed, absolute negative DOC defaults are rescaled by tool diameter, and thread-mill pilot size is based on tool diameter rather than thread circle diameter.
+- Live verification confirmed the initial Solid End Mill family default is 2 flutes but the page initializes at 4; the current 4140 example therefore displays 35.39 IPM instead of 17.70 IPM unless the operator corrects the flute count.
+- No calculator behavior or live data was changed. The findings support a bounded correction task before the page is treated as production-ready or “full scope.”
+
+Verification evidence:
+- Exact JSON table comparison passed for all calculator data tables.
+- Focused feeds/speeds suite passed: 1 file / 6 tests.
+- One-off all-family execution covered all 29 tool rows without crashes and exposed the unbounded/specialized outputs above.
+- Live `/tools/feeds-speeds` review reproduced the default-flute discrepancy and showed no console errors.
+### 2026-07-17 — Quote part-price purchase inclusion and expandable breakdown (latest)
+- Corrected the pricing path so a part's marked-up purchased material is included in that part's calculated unit price and lot total rather than appearing only as a detached note or being added twice to the quote estimate.
+- Purchase cards now turn from orange `Enter cost` to a calm `Cost captured` state only after the carried vendor and a cost are present; the supporting message confirms that the purchase is included below.
+- Replaced the flat price note with an in-tile `View price details` accordion that lists each selected work step, units, rate, priced amount, checklist-only status, and purchased-material math.
+- Verification passed: targeted ESLint, TypeScript, focused pricing/quote-total tests (`13/13`), and live quote-editor QA. A $30 cost at 20% markup changed the relevant part from $170.00 to $206.00 and revealed the $36.00 material contribution; the temporary browser-only entry was reloaded without saving.
+### 2026-07-17 — Accumulated GitHub publication checkpoint (latest)
+- Reviewed and staged the accumulated drawing-to-order, quote-first workflow, pricing, admin, feeds-and-speeds, trusted dispatch, labor history, Read Me First, and Shop Floor work as one product checkpoint.
+- Excluded local-only data/artifacts from publication: `prisma/prisma/dev.db`, `tsconfig.tsbuildinfo`, and `tmp-dev-3000.pid`.
+- Restored GitHub CLI authentication and confirmed the target repository is `m4440473/shopapp1` with `main` as its default branch.
+- Full verification passed before commit: 29 test files / 143 tests and a clean production build with standalone assets.
+- Published commit `60bcf11` to `codex/feeds-speeds-fswizard-parity` and updated draft PR #178 with the full scope and validation record.
+
+### 2026-07-17 — Retired separate PIN kiosk in favor of Shop Floor (latest)
+- Renamed the primary production dashboard and navigation entry to `Shop Floor`, with plain-language live-production copy for the shared TV.
+- Removed the separate Kiosk navigation entry and made `/kiosk` redirect to the Shop Floor dashboard.
+- Removed kiosk enablement, kiosk status, and kiosk PIN controls from employee administration; primary-department assignment remains available for useful timer defaults.
+- The trusted-console timer audit model and Read Me First receipt gate remain unchanged.
+- Verification passed: TypeScript, targeted ESLint, diff check, and live browser QA of the dashboard, redirect, navigation, and employee form.
+
+### 2026-07-17 — Authoritative Read Me First timer gate (latest)
+- Removed the dispatch timer's bare `instructionsConfirmed` bypass. Starting work now requires a current persisted receipt for the selected employee, part, department, and instruction version.
+- The trusted order console shows the complete mission brief before acknowledgement, records the selected employee and signed-in console operator separately, and does not require an employee PIN for each action.
+- Removed the detached supervisor checkbox. Successful acknowledgement refreshes the order immediately and continues into the normal timer confirmation.
+- The standalone kiosk now renders the actual blocking instructions and lets the already PIN-unlocked employee acknowledge before retrying timer start.
+- Verification passed: focused time/order tests (2 files, 18 tests), TypeScript, targeted ESLint, diff check, and live browser QA. The current test order has no instructions and correctly remains unblocked.

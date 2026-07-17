@@ -55,6 +55,46 @@ const RATE_LABEL: Record<Item['rateType'], string> = {
   PER_FOOT: 'Per foot',
 };
 
+type WorkStepUsage = 'SHOP_AND_PRICE' | 'SHOP_ONLY' | 'PRICE_ONLY';
+
+const USAGE_OPTIONS: Array<{ value: WorkStepUsage; label: string; detail: string }> = [
+  {
+    value: 'SHOP_AND_PRICE',
+    label: 'Shop task + include in price',
+    detail: 'Workers see this step, and its rate is included in the quote.',
+  },
+  {
+    value: 'SHOP_ONLY',
+    label: 'Shop task only (no charge)',
+    detail: 'Workers see this step, but it does not add to the quote price.',
+  },
+  {
+    value: 'PRICE_ONLY',
+    label: 'Price only (do not show in shop)',
+    detail: 'The estimator can charge for it without adding a shop task.',
+  },
+];
+
+function usageFromFlags(item: Pick<Item, 'affectsPrice' | 'isChecklistItem'>): WorkStepUsage {
+  if (item.isChecklistItem && item.affectsPrice) return 'SHOP_AND_PRICE';
+  if (item.isChecklistItem) return 'SHOP_ONLY';
+  if (item.affectsPrice) return 'PRICE_ONLY';
+  // Normalize legacy "neither" records without unexpectedly adding a charge.
+  return 'SHOP_ONLY';
+}
+
+function flagsFromUsage(usage: WorkStepUsage) {
+  return {
+    affectsPrice: usage !== 'SHOP_ONLY',
+    isChecklistItem: usage !== 'PRICE_ONLY',
+  };
+}
+
+function usageLabel(item: Pick<Item, 'affectsPrice' | 'isChecklistItem'>) {
+  const usage = usageFromFlags(item);
+  return USAGE_OPTIONS.find((option) => option.value === usage)?.label ?? usage;
+}
+
 export default function Client({ initial }: ClientProps) {
   const [items, setItems] = useState<Item[]>(initial.items ?? []);
   const [nextCursor, setNextCursor] = useState<string | null>(initial.nextCursor ?? null);
@@ -67,8 +107,7 @@ export default function Client({ initial }: ClientProps) {
     rateType: 'HOURLY' as Item['rateType'],
     rate: '0.00',
     active: true,
-    affectsPrice: true,
-    isChecklistItem: true,
+    usage: 'SHOP_AND_PRICE' as WorkStepUsage,
     departmentId: '',
   });
   const toast = useToast();
@@ -89,8 +128,7 @@ export default function Client({ initial }: ClientProps) {
         rateType: dialog.data.rateType,
         rate: (dialog.data.rateCents / 100).toFixed(2),
         active: dialog.data.active,
-        affectsPrice: dialog.data.affectsPrice,
-        isChecklistItem: dialog.data.isChecklistItem,
+        usage: usageFromFlags(dialog.data),
         departmentId: dialog.data.departmentId,
       });
     } else if (dialog?.mode === 'create') {
@@ -100,8 +138,7 @@ export default function Client({ initial }: ClientProps) {
         rateType: 'HOURLY',
         rate: '0.00',
         active: true,
-        affectsPrice: true,
-        isChecklistItem: true,
+        usage: 'SHOP_AND_PRICE',
         departmentId: '',
       });
     }
@@ -117,18 +154,14 @@ export default function Client({ initial }: ClientProps) {
       },
       {
         key: 'rateCents',
-        header: 'Rate',
-        render: (_: number, row: Item) => formatWorkItemRateLabel(row),
+        header: 'Price',
+        render: (_: number, row: Item) =>
+          row.affectsPrice ? formatWorkItemRateLabel(row) : 'Not included in price',
       },
       {
-        key: 'isChecklistItem',
-        header: 'Checklist Item',
-        render: (value: boolean) => (value ? 'Yes' : 'No'),
-      },
-      {
-        key: 'affectsPrice',
-        header: 'Affects Price',
-        render: (value: boolean) => (value ? 'Yes' : 'No'),
+        key: 'usage',
+        header: 'Used for',
+        render: (_: unknown, row: Item) => usageLabel(row),
       },
       {
         key: 'active',
@@ -172,14 +205,15 @@ export default function Client({ initial }: ClientProps) {
       return;
     }
 
+    const usageFlags = flagsFromUsage(form.usage);
     const payload = AddonUpsert.parse({
       name: form.name,
       description: form.description || undefined,
       rateType: form.rateType,
       rateCents,
       active: form.active,
-      affectsPrice: form.affectsPrice,
-      isChecklistItem: form.isChecklistItem,
+      affectsPrice: usageFlags.affectsPrice,
+      isChecklistItem: usageFlags.isChecklistItem,
       departmentId: form.departmentId,
     });
 
@@ -191,7 +225,7 @@ export default function Client({ initial }: ClientProps) {
           body: JSON.stringify(payload),
         });
         setItems(items.map((i) => (i.id === dialog.data?.id ? res.item : i)));
-        toast.push('Add-on updated', 'success');
+        toast.push('Work step updated', 'success');
       } else {
         const res = await fetchJson<{ item: Item }>(`/api/admin/addons`, {
           method: 'POST',
@@ -199,18 +233,18 @@ export default function Client({ initial }: ClientProps) {
           body: JSON.stringify(payload),
         });
         setItems([res.item, ...items]);
-        toast.push('Add-on created', 'success');
+        toast.push('Work step created', 'success');
       }
       setDialog(null);
     } catch (error: any) {
-      toast.push(error.message || 'Failed to save add-on', 'error');
+      toast.push(error.message || 'Failed to save work step', 'error');
     }
   }
 
   async function remove(row: Item) {
     await fetchJson(`/api/admin/addons/${row.id}`, { method: 'DELETE' });
     setItems(items.filter((i) => i.id !== row.id));
-    toast.push('Add-on deleted', 'success');
+    toast.push('Work step deleted', 'success');
   }
 
   const selectableDepartments = useMemo(() => {
@@ -230,14 +264,14 @@ export default function Client({ initial }: ClientProps) {
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search add-ons"
+          placeholder="Search work steps"
           className="w-full max-w-xs"
         />
         <Button variant="outline" onClick={() => refresh()}>
           Search
         </Button>
         <div className="flex-1" />
-        {isAdmin && <Button onClick={() => setDialog({ mode: 'create' })}>New add-on</Button>}
+        {isAdmin && <Button onClick={() => setDialog({ mode: 'create' })}>New work step</Button>}
       </div>
 
       <Table
@@ -259,9 +293,9 @@ export default function Client({ initial }: ClientProps) {
       <Dialog open={dialog !== null} onOpenChange={(open) => !open && setDialog(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{dialog?.mode === 'edit' ? 'Edit add-on' : 'New add-on'}</DialogTitle>
+            <DialogTitle>{dialog?.mode === 'edit' ? 'Edit work step' : 'New work step'}</DialogTitle>
             <DialogDescription>
-              Hourly, per-foot, or fixed-rate services are available to admins while quoting and appear on order checklists.
+              Choose where this step is used. The app will handle its shop and pricing behavior for you.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -272,41 +306,70 @@ export default function Client({ initial }: ClientProps) {
             }}
           >
             <div className="grid gap-2">
-              <Label htmlFor="addonName">Name</Label>
+              <Label htmlFor="addonName">Step name</Label>
               <Input
                 id="addonName"
                 value={form.name}
                 onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+                placeholder="Example: Deburr, machine, inspect, or package"
                 required
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="addonRateType">Billing type</Label>
+              <Label htmlFor="workStepUsage">How is this step used?</Label>
               <select
-                id="addonRateType"
-                value={form.rateType}
+                id="workStepUsage"
+                value={form.usage}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, rateType: event.target.value as Item['rateType'] }))
+                  setForm((prev) => ({ ...prev, usage: event.target.value as WorkStepUsage }))
                 }
-                className="rounded border border-border bg-background px-3 py-2 text-sm"
+                className="min-h-11 rounded border border-border bg-background px-3 py-2 text-sm"
               >
-                <option value="HOURLY">Hourly</option>
-                <option value="PER_FOOT">Per foot</option>
-                <option value="FLAT">Flat rate</option>
+                {USAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
+              <p className="text-xs text-muted-foreground">
+                {USAGE_OPTIONS.find((option) => option.value === form.usage)?.detail}
+              </p>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="addonRate">Rate (USD)</Label>
-              <Input
-                id="addonRate"
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.rate}
-                onChange={(event) => setForm((prev) => ({ ...prev, rate: event.target.value }))}
-                required
-              />
-            </div>
+            {form.usage !== 'SHOP_ONLY' ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="addonRateType">How to charge</Label>
+                  <select
+                    id="addonRateType"
+                    value={form.rateType}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, rateType: event.target.value as Item['rateType'] }))
+                    }
+                    className="min-h-11 rounded border border-border bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="HOURLY">Per hour</option>
+                    <option value="PER_FOOT">Per foot</option>
+                    <option value="FLAT">Flat amount</option>
+                  </select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="addonRate">Rate (USD)</Label>
+                  <Input
+                    id="addonRate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.rate}
+                    onChange={(event) => setForm((prev) => ({ ...prev, rate: event.target.value }))}
+                    required
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                This step will appear for the shop, but it will not add anything to the quote price.
+              </p>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="addonDepartment">Department</Label>
               <select
@@ -335,7 +398,7 @@ export default function Client({ initial }: ClientProps) {
                 id="addonDescription"
                 value={form.description}
                 onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-                placeholder="Optional details such as when to apply this add-on"
+                placeholder="Optional guidance about when this step should be used"
               />
             </div>
             <div className="flex items-center space-x-2">
@@ -345,27 +408,7 @@ export default function Client({ initial }: ClientProps) {
                 onCheckedChange={(checked) => setForm((prev) => ({ ...prev, active: Boolean(checked) }))}
               />
               <Label htmlFor="addonActive" className="text-sm font-normal">
-                Active and available on new quotes
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="addonAffectsPrice"
-                checked={form.affectsPrice}
-                onCheckedChange={(checked) => setForm((prev) => ({ ...prev, affectsPrice: Boolean(checked) }))}
-              />
-              <Label htmlFor="addonAffectsPrice" className="text-sm font-normal">
-                Include in quote and order totals
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="addonChecklistItem"
-                checked={form.isChecklistItem}
-                onCheckedChange={(checked) => setForm((prev) => ({ ...prev, isChecklistItem: Boolean(checked) }))}
-              />
-              <Label htmlFor="addonChecklistItem" className="text-sm font-normal">
-                Show as checklist item on parts (uncheck for pricing-only addons like labor hours)
+                Available on new quotes and orders
               </Label>
             </div>
             <DialogFooter>

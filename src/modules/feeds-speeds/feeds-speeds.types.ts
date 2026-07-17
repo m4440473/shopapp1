@@ -30,6 +30,10 @@ export type FswizardToolType = {
   leadangle?: number;
   helix?: number;
   rigid?: number;
+  flute_factor?: number;
+  forming?: boolean | number;
+  flute_numbers?: number[];
+  material_group_ids?: number[];
   usage?: string;
   default_chip_thinning?: boolean | number;
 };
@@ -82,6 +86,7 @@ export type FswizardChipload = {
 };
 
 export type FeedsSpeedsInputs = {
+  machineProfileId: string;
   toolTypeId: string;
   materialId: string;
   toolMaterialId: string;
@@ -92,16 +97,29 @@ export type FeedsSpeedsInputs = {
   woc: number;
   workDiameter: number;
   threadLead: number;
+  stickout: number;
+  fluteLength: number;
+  shankDiameter: number;
+  leadAngle: number;
+  cornerRadius: number;
+  threadDiameter: number;
+  threadExternal: boolean;
+  slotting: boolean;
 };
 
 export type FeedsSpeedsResult = {
+  machine: import('./feeds-speeds.machine').FeedsSpeedsMachineProfile;
   tool: FswizardToolType;
   material: FswizardMaterial;
   toolMaterial: FswizardToolMaterial;
   coating: FswizardToolCoating;
   sfm: number;
   sfmHigh: number | null;
+  rawRpm: number;
   rpm: number;
+  rpmLimitApplied: boolean;
+  feedLimitApplied: boolean;
+  rawFeedRate: number;
   chipLoadPerTooth: number;
   ipr: number;
   feedRate: number;
@@ -113,6 +131,14 @@ export type FeedsSpeedsResult = {
   peckDepth: number | null;
   pilotDiameter: number | null;
   threadFeed: number | null;
-  torqueRisk: 'low' | 'medium' | 'high';
+  effectiveDiameter: number;
+  effectiveDoc: number | null;
+  effectiveWoc: number | null;
+  materialRemovalRate: number | null;
+  spindleHorsepower: number | null;
+  spindleTorqueFtLb: number | null;
+  spindleHorsepowerPercent: number | null;
+  spindleTorquePercent: number | null;
+  errors: string[];
   warnings: string[];
 };

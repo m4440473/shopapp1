@@ -1,5 +1,5 @@
-import KioskClient from './KioskClient';
+import { redirect } from 'next/navigation';
 
 export default function KioskPage() {
-  return <KioskClient />;
+  redirect('/');
 }

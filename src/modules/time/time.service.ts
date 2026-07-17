@@ -1,15 +1,21 @@
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import {
   closeTimeEntryById,
+  closeWorkerTimeEntryWithAction,
   createTimeEntry,
+  createTimeEntryWithAction,
   findActiveTimeEntryForUser,
   findLatestTimeEntriesForUserParts,
   findLatestTimeEntryForUserOrder,
   findTimeEntryById,
   listActiveTimeEntriesForUser,
+  listActiveTimeEntriesDetailed,
+  listActiveTimeEntriesForPart,
   listTimeEntriesForOrderParts,
   listTimeEntriesForPartsDetailed,
+  switchTimeEntryWithActions,
   updateClosedTimeEntryById,
+  updateClosedTimeEntryWithAudit,
 } from '@/repos/time';
 import type {
   TimeEntry,
@@ -31,15 +37,116 @@ function fail<T>(status: number, error: string): ServiceResult<T> {
 }
 
 
-function mapTimeEntryCreateError(error: unknown): ServiceResult<{ entry: TimeEntry }> | null {
+function mapTimeEntryCreateError<T>(error: unknown): ServiceResult<T> | null {
   if (error instanceof PrismaClientKnownRequestError && error.code === 'P2003') {
     return fail(
       409,
       'Timer could not be started because the linked order, part, or user record is no longer available. Refresh and retry; if it persists, sign out and sign back in.'
     );
   }
+  if (error instanceof PrismaClientKnownRequestError && error.code === 'P2002') {
+    return fail(409, 'That employee already has a running timer. Refresh and try again.');
+  }
 
   return null;
+}
+
+export type DispatchTimerInput = {
+  orderId: string;
+  partId: string;
+  departmentId: string;
+  operation?: string;
+};
+
+export async function startWorkerTimer(
+  actorUserId: string,
+  workerUserId: string,
+  input: DispatchTimerInput,
+): Promise<ServiceResult<{ entry: TimeEntry }>> {
+  try {
+    const result = await createTimeEntryWithAction({
+      actorUserId,
+      workerUserId,
+      orderId: input.orderId,
+      partId: input.partId,
+      departmentId: input.departmentId,
+      operation: input.operation ?? 'Part Work',
+    });
+    if (!result.entry) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'That employee is already working on another part.',
+      };
+    }
+    return ok({ entry: result.entry });
+  } catch (error) {
+    return mapTimeEntryCreateError<{ entry: TimeEntry }>(error) ?? fail(500, 'Failed to start employee timer.');
+  }
+}
+
+export async function switchWorkerTimer(
+  actorUserId: string,
+  workerUserId: string,
+  input: DispatchTimerInput,
+): Promise<ServiceResult<{ entry: TimeEntry; previousEntry: TimeEntry | null }>> {
+  try {
+    const result = await switchTimeEntryWithActions({
+      actorUserId,
+      workerUserId,
+      orderId: input.orderId,
+      partId: input.partId,
+      departmentId: input.departmentId,
+      operation: input.operation ?? 'Part Work',
+    });
+    return ok({ entry: result.entry, previousEntry: result.previousEntry });
+  } catch (error) {
+    return mapTimeEntryCreateError<{ entry: TimeEntry; previousEntry: TimeEntry | null }>(error)
+      ?? fail(500, 'Failed to switch employee timer.');
+  }
+}
+
+export async function closeWorkerTimer(
+  actorUserId: string,
+  workerUserId: string,
+  input: {
+    entryId?: string | null;
+    action: 'PAUSE' | 'FINISH' | 'ADMIN_CLOSE';
+    reason?: string | null;
+  },
+): Promise<ServiceResult<{ entry: TimeEntry }>> {
+  const entry = await closeWorkerTimeEntryWithAction({
+    actorUserId,
+    workerUserId,
+    entryId: input.entryId,
+    action: input.action,
+    reason: input.reason,
+  });
+  if (!entry) return fail(404, 'No matching active timer was found for that employee.');
+  return ok({ entry });
+}
+
+export async function getRunningWorkerSummary() {
+  const entries = await listActiveTimeEntriesDetailed();
+  return ok({
+    items: entries.map((entry) => ({
+      entryId: entry.id,
+      workerId: entry.userId,
+      workerName: entry.user?.name ?? entry.user?.email ?? 'Employee',
+      orderId: entry.orderId,
+      orderNumber: entry.order?.orderNumber ?? entry.orderId,
+      partId: entry.partId,
+      partNumber: entry.part?.partNumber ?? null,
+      partName: entry.part?.partName ?? null,
+      departmentName: entry.department?.name ?? null,
+      startedAt: entry.startedAt,
+    })),
+  });
+}
+
+export async function getActiveTimersForPart(partId: string) {
+  const entries = await listActiveTimeEntriesForPart(partId);
+  return ok({ entries });
 }
 
 export async function getActiveTimeEntry(userId: string): Promise<ServiceResult<{ entry: TimeEntry | null }>> {
@@ -117,7 +224,7 @@ export async function startTimeEntry(
 
     return ok({ entry });
   } catch (error) {
-    return mapTimeEntryCreateError(error) ?? fail(500, 'Failed to start timer entry.');
+    return mapTimeEntryCreateError<{ entry: TimeEntry }>(error) ?? fail(500, 'Failed to start timer entry.');
   }
 }
 
@@ -142,7 +249,7 @@ export async function startTimeEntryWithConflict(
 
     return ok({ entry });
   } catch (error) {
-    return mapTimeEntryCreateError(error) ?? fail(500, 'Failed to start timer entry.');
+    return mapTimeEntryCreateError<{ entry: TimeEntry }>(error) ?? fail(500, 'Failed to start timer entry.');
   }
 }
 
@@ -245,7 +352,7 @@ export async function resumeTimeEntry(
 
     return ok({ entry });
   } catch (error) {
-    return mapTimeEntryCreateError(error) ?? fail(500, 'Failed to resume timer entry.');
+    return mapTimeEntryCreateError<{ entry: TimeEntry }>(error) ?? fail(500, 'Failed to resume timer entry.');
   }
 }
 
@@ -436,16 +543,12 @@ export function computeEntryMinutes(entries: Array<Pick<TimeEntry, 'startedAt' |
 
 
 export async function editClosedTimeEntry(
-  userId: string,
+  actorUserId: string,
   input: TimeEntryClosedEditInput
 ): Promise<ServiceResult<{ entry: TimeEntry }>> {
   const entry = await findTimeEntryById(input.entryId);
   if (!entry) {
     return fail(404, 'Time entry not found.');
-  }
-
-  if (entry.userId !== userId) {
-    return fail(403, 'Cannot edit a time entry owned by another user.');
   }
 
   if (!entry.endedAt) {
@@ -456,14 +559,20 @@ export async function editClosedTimeEntry(
     return fail(400, 'endedAt must be later than startedAt.');
   }
 
-  const updated = await updateClosedTimeEntryById(input.entryId, {
+  const updated = await updateClosedTimeEntryWithAudit({
+    entryId: input.entryId,
+    actorUserId,
     startedAt: input.startedAt,
     endedAt: input.endedAt,
+    reason: input.reason,
   });
 
   if (!updated) {
     return fail(409, 'Closed time entry update conflict.');
   }
+  if (updated.overlap) {
+    return fail(409, 'That correction overlaps another interval for this employee.');
+  }
 
-  return ok({ entry: updated });
+  return ok({ entry: updated.entry });
 }

@@ -31,6 +31,7 @@ const STATUS_LABELS: Record<string, string> = {
   SENT: 'Sent',
   APPROVED: 'Approved',
   EXPIRED: 'Expired',
+  CONVERTED: 'Converted',
 };
 
 const formatCurrency = (cents: number) =>
@@ -97,6 +98,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
       partNumber: part.partNumber ?? null,
       priceCents: 0,
       pricingMode: 'LOT_TOTAL' as const,
+      priceSource: 'CALCULATED' as const,
     };
     const pricingMode = entry.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL';
     const quantity = Number(part.quantity ?? 0);
@@ -113,6 +115,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     return {
       part,
       pricingMode,
+      priceSource: entry.priceSource ?? 'CALCULATED',
       quantity,
       unitPriceCents,
       lineTotalCents,
@@ -121,17 +124,13 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const pricingSummaryTotals = calculatePartPricingSummaryTotalsCents({
     parts: quote.parts.map((part, index) => {
       const entry = partPricing[index];
-      const enteredPriceCents = entry?.priceCents ?? 0;
       return {
         workItemsSubtotalCents: (part.addonSelections ?? []).reduce(
           (sum, selection) => sum + selection.totalCents,
           0
         ),
-        partPricingSubtotalCents:
-          enteredPriceCents > 0
-            ? partPricingRows[index]?.lineTotalCents ?? 0
-            : 0,
-        hasPartPricingOverride: enteredPriceCents > 0,
+        partPricingSubtotalCents: partPricingRows[index]?.lineTotalCents ?? 0,
+        hasPartPricingOverride: true,
       };
     }),
   });
@@ -140,7 +139,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     legacyAddonSelections.reduce((sum, selection) => sum + selection.totalCents, 0);
   const partPricingTotal = pricingSummaryTotals.partPricingCents;
   const customAmountsTotal = sumQuoteCustomAmountsCents(metadata.customAmounts);
-  const partPricingByPartId = new Map(partPricingRows.map((row) => [row.part.id, row]));
+  const partPricingByPartId = new Map<string, (typeof partPricingRows)[number]>(
+    partPricingRows.map((row) => [String(row.part.id), row]),
+  );
   const totalCents = quote.basePriceCents + addonTotal + vendorTotal + partPricingTotal + customAmountsTotal;
   const attachmentLinks = quote.attachments
     .map((attachment) => {
@@ -170,7 +171,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
       const label = row.part.partNumber
         ? `${row.part.name ?? 'Part'} (${row.part.partNumber})`
         : row.part.name ?? 'Part';
-      return `- ${label}: Unit ${formatCurrency(row.unitPriceCents)} × Qty ${row.quantity} = ${formatCurrency(row.lineTotalCents)} (${row.pricingMode})`;
+      return `- ${label}: ${row.quantity} × ${formatCurrency(row.unitPriceCents)} = ${formatCurrency(row.lineTotalCents)}`;
     }),
     `Total estimate: ${formatCurrency(totalCents)}`,
   ];
@@ -335,13 +336,15 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                     <span className="font-medium">{formatCurrency(vendorTotal)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Add-ons and labor</span>
-                    <span className="font-medium">{formatCurrency(addonTotal)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Part pricing (basis-adjusted)</span>
+                    <span className="text-muted-foreground">Final part prices</span>
                     <span className="font-medium">{formatCurrency(partPricingTotal)}</span>
                   </div>
+                  {addonTotal > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Legacy unassigned work</span>
+                      <span className="font-medium">{formatCurrency(addonTotal)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Custom amounts</span>
                     <span className="font-medium">{formatCurrency(customAmountsTotal)}</span>
@@ -370,7 +373,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                   <span className="font-medium text-muted-foreground">Restricted</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Add-ons and labor</span>
+                  <span className="text-muted-foreground">Final part prices</span>
                   <span className="font-medium text-muted-foreground">Restricted</span>
                 </div>
                 <div className="border-t border-border/60 pt-2 flex justify-between text-base font-semibold">
@@ -472,8 +475,10 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                   <p className="font-medium text-foreground">{formatCurrency(partPricingByPartId.get(part.id)?.lineTotalCents ?? 0)}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Pricing mode</p>
-                  <p className="font-medium text-foreground">{partPricingByPartId.get(part.id)?.pricingMode ?? 'LOT_TOTAL'}</p>
+                  <p className="text-muted-foreground">Price choice</p>
+                  <p className="font-medium text-foreground">
+                    {partPricingByPartId.get(part.id)?.priceSource === 'MANUAL' ? 'Final price adjusted' : 'Using suggestion'}
+                  </p>
                 </div>
               </div>
               {part.description && (
@@ -484,13 +489,14 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               )}
               {(part.addonSelections?.length ?? 0) > 0 && (
                 <div className="mt-3">
-                  <p className="text-xs font-medium text-muted-foreground">Add-ons & labor</p>
+                  <p className="text-xs font-medium text-muted-foreground">Work steps used for the estimate</p>
+                  <p className="mt-1 text-xs text-muted-foreground">These amounts are already included in the final part price above.</p>
                   <div className="mt-2 space-y-2">
                     {part.addonSelections?.map((selection) => (
                       <div key={selection.id} className="rounded border border-border/50 bg-muted/20 p-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div>
-                            <p className="font-medium">{selection.addon?.name ?? 'Add-on removed'}</p>
+                            <p className="font-medium">{selection.addon?.name ?? selection.nameSnapshot ?? 'Work step removed'}</p>
                             <p className="text-xs text-muted-foreground">
                               {selection.units} {getWorkItemUnitsLabel(selection.rateTypeSnapshot, 'short')} •{' '}
                               <AdminPricingGate
@@ -522,13 +528,13 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           ))}
           {legacyAddonSelections.length > 0 && (
             <div className="rounded border border-border/50 bg-card/40 p-4 text-sm">
-              <p className="text-xs font-medium text-muted-foreground">Unassigned add-ons</p>
+              <p className="text-xs font-medium text-muted-foreground">Legacy unassigned work</p>
               <div className="mt-2 space-y-2">
                 {legacyAddonSelections.map((selection) => (
                   <div key={selection.id} className="rounded border border-border/50 bg-muted/20 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p className="font-medium">{selection.addon?.name ?? 'Add-on removed'}</p>
+                        <p className="font-medium">{selection.addon?.name ?? selection.nameSnapshot ?? 'Work step removed'}</p>
                         <p className="text-xs text-muted-foreground">
                           {selection.units} {getWorkItemUnitsLabel(selection.rateTypeSnapshot, 'short')} •{' '}
                           <AdminPricingGate

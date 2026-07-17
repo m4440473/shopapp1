@@ -44,6 +44,35 @@ describe('buildChecklistEntriesFromQuoteSelections', () => {
       {
         orderId: 'order-1',
         partId: 'part-1',
+        chargeId: null,
+        addonId: 'addon-1',
+        departmentId: 'dept-1',
+        completed: false,
+        isActive: true,
+      },
+    ]);
+  });
+
+  it('links checklist entries to matching order charges when provided', () => {
+    const entries = buildChecklistEntriesFromQuoteSelections(
+      'order-1',
+      [
+        {
+          orderPartId: 'part-1',
+          selection: {
+            addonId: 'addon-1',
+            addon: { departmentId: 'dept-1', isChecklistItem: true },
+          },
+        },
+      ],
+      new Map([['part-1:addon-1', 'charge-1']]),
+    );
+
+    expect(entries).toEqual([
+      {
+        orderId: 'order-1',
+        partId: 'part-1',
+        chargeId: 'charge-1',
         addonId: 'addon-1',
         departmentId: 'dept-1',
         completed: false,

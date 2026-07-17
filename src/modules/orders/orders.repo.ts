@@ -309,6 +309,12 @@ export async function findOrderWithDetails(id: string) {
         include: {
           user: { select: { id: true, name: true, email: true } },
           department: { select: { id: true, name: true } },
+          actions: {
+            orderBy: { createdAt: 'asc' },
+            include: {
+              actor: { select: { id: true, name: true, email: true } },
+            },
+          },
         },
       },
       assignedMachinist: true,
@@ -515,6 +521,7 @@ export async function findOrderPartSummary(orderId: string, partId: string) {
     select: {
       id: true,
       partNumber: true,
+      status: true,
       currentDepartmentId: true,
       workInstructions: true,
       instructionsVersion: true,
@@ -631,6 +638,17 @@ export async function updatePartCurrentDepartment(partId: string, currentDepartm
   });
 }
 
+export async function completePartPreservingDepartment(
+  partId: string,
+  currentDepartmentId: string,
+  db: DbClient = prisma,
+) {
+  return db.orderPart.update({
+    where: { id: partId },
+    data: { currentDepartmentId, status: 'COMPLETE' },
+  });
+}
+
 export async function setChecklistCompletion(
   {
     checklistId,
@@ -668,9 +686,10 @@ export async function createOrderPartWithCharges({
   noteBuilder,
 }: {
   orderId: string;
-  partData: {
-    partNumber: string;
-    quantity: number;
+    partData: {
+      partNumber: string;
+      partName?: string | null;
+      quantity: number;
     materialId?: string | null;
     stockSize?: string | null;
     cutLength?: string | null;
@@ -686,6 +705,7 @@ export async function createOrderPartWithCharges({
       data: {
         orderId,
         partNumber: partData.partNumber,
+        partName: partData.partName ?? null,
         quantity: partData.quantity,
         materialId: partData.materialId ?? null,
         stockSize: partData.stockSize ?? null,
@@ -1214,6 +1234,7 @@ export async function listReadyOrderPartsForDepartment(departmentId: string, inc
     select: {
       id: true,
       partNumber: true,
+      partName: true,
       quantity: true,
       currentDepartmentId: true,
       currentDepartment: { select: { id: true, name: true } },
@@ -1232,6 +1253,13 @@ export async function listReadyOrderPartsForDepartment(departmentId: string, inc
         select: {
           id: true,
           completed: true,
+        },
+      },
+      assignments: {
+        where: { isActive: true },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          user: { select: { id: true, name: true, email: true, active: true } },
         },
       },
       order: {
@@ -1286,11 +1314,13 @@ export async function searchOrdersByTerm(query: string, variants: string[]) {
         { orderNumber: { contains: value } },
         { customer: { name: { contains: value } } },
         { parts: { some: { partNumber: { contains: value } } } },
+        { parts: { some: { partName: { contains: value } } } },
       ])
     : [
         { orderNumber: { contains: query } },
         { customer: { name: { contains: query } } },
         { parts: { some: { partNumber: { contains: query } } } },
+        { parts: { some: { partName: { contains: query } } } },
       ];
 
   return prisma.order.findMany({
@@ -1323,6 +1353,7 @@ export async function searchKioskPartsForDepartment({
         ? {
             OR: [
               { partNumber: { contains: normalized, mode: 'insensitive' } },
+              { partName: { contains: normalized, mode: 'insensitive' } },
               { order: { orderNumber: { contains: normalized, mode: 'insensitive' } } },
               { order: { customer: { name: { contains: normalized, mode: 'insensitive' } } } },
             ],
@@ -1334,6 +1365,7 @@ export async function searchKioskPartsForDepartment({
     select: {
       id: true,
       partNumber: true,
+      partName: true,
       quantity: true,
       currentDepartmentId: true,
       currentDepartment: { select: { id: true, name: true } },

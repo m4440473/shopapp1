@@ -23,7 +23,7 @@ export default async function FeedsSpeedsPage() {
           <div className="space-y-2">
             <h1 className="text-4xl font-semibold text-foreground">Feeds and Speeds</h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              A full-scope calculator page for the whole shop. Mix any supported FSWizard tool family with the attached FSWizard material database and get native ShopApp recommendations without leaving the app.
+              FSWizard-backed starting values for the shop, calculated against the actual tool geometry and capped to the Haas VF-2SS machine envelope.
             </p>
           </div>
         </div>
@@ -33,8 +33,8 @@ export default async function FeedsSpeedsPage() {
             <CardContent className="flex items-center gap-3 p-4">
               <Calculator className="h-5 w-5 text-primary" />
               <div>
-                <p className="text-sm font-medium text-foreground">Full Tool Coverage</p>
-                <p className="text-xs text-muted-foreground">Milling, drilling, reaming, threading, turning.</p>
+                <p className="text-sm font-medium text-foreground">Operation-Specific Math</p>
+                <p className="text-xs text-muted-foreground">Separate milling, drilling, threading, and turning paths.</p>
               </div>
             </CardContent>
           </Card>
@@ -51,8 +51,8 @@ export default async function FeedsSpeedsPage() {
             <CardContent className="flex items-center gap-3 p-4">
               <SlidersHorizontal className="h-5 w-5 text-primary" />
               <div>
-                <p className="text-sm font-medium text-foreground">Calculator Only</p>
-                <p className="text-xs text-muted-foreground">No presets or saved setups in v1.</p>
+                <p className="text-sm font-medium text-foreground">Haas VF-2SS Limits</p>
+                <p className="text-xs text-muted-foreground">12,000 RPM and 833 IPM hard ceilings.</p>
               </div>
             </CardContent>
           </Card>

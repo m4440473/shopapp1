@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildPresetFromSelections,
+  dedupeSelectionsByAddonId,
   dedupePresetItems,
   mergeSelectionsWithoutDuplicates,
 } from '@/modules/quotes/quote-addon-bulk';
@@ -22,6 +23,32 @@ describe('quote-addon-bulk helpers', () => {
 
     expect(result).toHaveLength(3);
     expect(result[2]).toMatchObject({ addonId: 'ADDON-3', units: '1.5', notes: 'new' });
+  });
+
+  it('does not append the same incoming work step twice', () => {
+    const result = mergeSelectionsWithoutDuplicates({
+      existing: [],
+      incoming: [
+        { addonId: 'DEBURR', units: '1.0', notes: 'first' },
+        { addonId: 'DEBURR', units: '3.0', notes: 'duplicate click' },
+      ],
+      createKey: () => 'new-key',
+    });
+
+    expect(result).toEqual([{ key: 'new-key', addonId: 'DEBURR', units: '1.0', notes: 'first' }]);
+  });
+
+  it('keeps only the first direct selection for each work step', () => {
+    expect(
+      dedupeSelectionsByAddonId([
+        { addonId: 'MACHINE', units: 2 },
+        { addonId: 'MACHINE', units: 8 },
+        { addonId: 'DEBURR', units: 1 },
+      ]),
+    ).toEqual([
+      { addonId: 'MACHINE', units: 2 },
+      { addonId: 'DEBURR', units: 1 },
+    ]);
   });
 
   it('builds preset from selected assignment keys only', () => {

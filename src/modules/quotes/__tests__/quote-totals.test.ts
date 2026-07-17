@@ -37,10 +37,98 @@ describe('calculatePricedAddonTotal', () => {
           name: 'Rail',
           priceCents: 900,
           pricingMode: 'PER_UNIT',
+          priceSource: 'MANUAL',
         },
       ],
     });
 
     expect(total).toBe(10000 + 2500 + 9000 + 1800);
+  });
+
+  it('allows an admin to intentionally set a final part price to zero', () => {
+    const total = calculateQuoteEstimateTotalCents({
+      basePriceCents: 0,
+      vendorTotalCents: 0,
+      customAmountsCents: 0,
+      addonMap: new Map([['machine', { rateCents: 5000, affectsPrice: true }]]),
+      parts: [
+        {
+          name: 'Warranty repair',
+          quantity: 1,
+          pieceCount: 1,
+          addonSelections: [{ addonId: 'machine', units: 2 }],
+        },
+      ],
+      partPricing: [
+        {
+          name: 'Warranty repair',
+          priceCents: 0,
+          pricingMode: 'PER_UNIT',
+          priceSource: 'MANUAL',
+        },
+      ],
+    });
+
+    expect(total).toBe(0);
+  });
+
+  it('uses each work step once and reconciles a calculated unit price back to quantity', () => {
+    const total = calculateQuoteEstimateTotalCents({
+      basePriceCents: 0,
+      vendorTotalCents: 0,
+      customAmountsCents: 0,
+      addonMap: new Map([['machine', { rateCents: 1000, affectsPrice: true }]]),
+      parts: [
+        {
+          name: 'Three brackets',
+          quantity: 3,
+          pieceCount: 1,
+          addonSelections: [
+            { addonId: 'machine', units: 1 },
+            { addonId: 'machine', units: 9 },
+          ],
+        },
+      ],
+      partPricing: [
+        {
+          name: 'Three brackets',
+          priceCents: 999999,
+          pricingMode: 'PER_UNIT',
+          priceSource: 'CALCULATED',
+        },
+      ],
+    });
+
+    expect(total).toBe(1002);
+  });
+
+  it('includes part-specific purchased material in its owning calculated part price once', () => {
+    const total = calculateQuoteEstimateTotalCents({
+      basePriceCents: 0,
+      vendorTotalCents: 0,
+      customAmountsCents: 0,
+      addonMap: new Map([['machine', { rateCents: 17000, affectsPrice: true }]]),
+      parts: [
+        {
+          name: 'Vertical rail mount',
+          quantity: 1,
+          pieceCount: 1,
+          materialStatus: 'NEED_TO_ORDER',
+          procurementCostCents: 3000,
+          procurementMarkupPercent: 20,
+          addonSelections: [{ addonId: 'machine', units: 1 }],
+        },
+      ],
+      partPricing: [
+        {
+          name: 'Vertical rail mount',
+          priceCents: 0,
+          pricingMode: 'PER_UNIT',
+          priceSource: 'CALCULATED',
+        },
+      ],
+    });
+
+    expect(total).toBe(20600);
   });
 });

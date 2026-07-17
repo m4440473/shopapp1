@@ -35,6 +35,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const item = await updateUser(id, {
     ...data,
     ...(kioskEnabled !== undefined ? { kioskEnabled } : {}),
+    ...(kioskEnabled === false ? { kioskPinHash: null } : {}),
     ...(primaryDepartmentId !== undefined ? { primaryDepartmentId: primaryDepartmentId || null } : {}),
     ...(kioskPin ? { kioskPinHash: await hash(kioskPin, 10) } : {}),
     ...(password ? { passwordHash: await hash(password, 10) } : {}),

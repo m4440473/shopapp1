@@ -25,6 +25,7 @@ interface QuoteItem {
   companyName: string;
   contactName?: string | null;
   status: string;
+  workflowStep?: number;
   totalCents: number;
   updatedAt: string;
   createdAt: string;
@@ -48,6 +49,8 @@ const STATUS_LABELS: Record<string, string> = {
   APPROVED: 'Approved',
   EXPIRED: 'Expired',
 };
+
+const WORKFLOW_LABELS = ['Customer', 'Drawings & parts', 'Material check', 'Work details', 'Pricing & finish'];
 
 export default function Client({ initial, initialRole, initialAdmin }: ClientProps) {
   const [items, setItems] = useState<QuoteItem[]>(initial.items ?? []);
@@ -80,11 +83,21 @@ export default function Client({ initial, initialRole, initialAdmin }: ClientPro
       {
         key: 'quoteNumber',
         header: 'Quote',
-        render: (_: any, row: QuoteItem) => (
-          <Link href={`/admin/quotes/${row.id}`} className="font-medium text-primary hover:underline">
-            {row.quoteNumber}
-          </Link>
-        ),
+        render: (_: any, row: QuoteItem) => {
+          const isConverted = Boolean(mergeQuoteMetadata(row.metadata).conversion?.orderId);
+          return (
+          <div className="flex flex-col gap-1">
+            <Link href={`/admin/quotes/${row.id}`} className="font-medium text-primary hover:underline">
+              {row.quoteNumber}
+            </Link>
+            {!isConverted && (row.workflowStep ?? 0) < 4 ? (
+              <Link href={`/admin/quotes/${row.id}/edit`} className="text-xs font-semibold text-[#ff5a00] hover:underline">
+                Resume: {WORKFLOW_LABELS[row.workflowStep ?? 0]}
+              </Link>
+            ) : <span className="text-xs text-muted-foreground">Preparation complete</span>}
+          </div>
+          );
+        },
       },
       {
         key: 'business',
@@ -158,16 +171,12 @@ export default function Client({ initial, initialRole, initialAdmin }: ClientPro
               approval={metadata.approval!}
               conversion={metadata.conversion!}
               onMetadataUpdate={(next) => updateRowMetadata(row.id, next)}
-              onConverted={(result) => {
-                updateRowMetadata(row.id, result.metadata);
-                toast.push(`Order ${result.orderNumber} created`, 'success');
-              }}
             />
           );
         },
       },
     ],
-    [initialAdmin, initialRole, toast, updateRowMetadata]
+    [initialAdmin, initialRole, updateRowMetadata]
   );
 
   async function refresh(cursor?: string) {

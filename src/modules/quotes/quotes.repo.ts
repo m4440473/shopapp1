@@ -11,8 +11,11 @@ import {
   stringifyQuoteMetadata,
   type QuoteApprovalMetadata,
 } from '@/lib/quote-metadata';
-import { buildChecklistEntriesFromQuoteSelections } from './quote-work-items';
-import { buildOrderChargeEntriesFromQuoteData } from './quote-work-items';
+import {
+  buildChecklistEntriesFromQuoteSelections,
+  buildOrderChargeEntriesFromQuoteData,
+  buildQuoteSelectionKey,
+} from './quote-work-items';
 
 export async function listQuotes({
   where,
@@ -29,7 +32,7 @@ export async function listQuotes({
     include: {
       customer: { select: { id: true, name: true } },
       createdBy: { select: { id: true, name: true, email: true } },
-      parts: { include: { material: true } },
+      parts: { orderBy: { sortOrder: 'asc' }, include: { material: true } },
     },
     orderBy: { createdAt: 'desc' },
     take: take + 1,
@@ -58,7 +61,15 @@ export async function listAddonsByIds(ids: string[]) {
   if (!ids.length) return [];
   return prisma.addon.findMany({
     where: { id: { in: ids } },
-    select: { id: true, name: true, rateType: true, rateCents: true, affectsPrice: true },
+    select: {
+      id: true,
+      name: true,
+      rateType: true,
+      rateCents: true,
+      affectsPrice: true,
+      isChecklistItem: true,
+      departmentId: true,
+    },
   });
 }
 
@@ -111,6 +122,7 @@ export async function createQuoteWithDetails({
         addonsTotalCents: prepared.addonsTotalCents,
         vendorTotalCents: prepared.vendorTotalCents,
         totalCents: prepared.totalCents,
+        workflowStep: data.workflowStep ?? 0,
         metadata: stringifyQuoteMetadata({
           ...DEFAULT_QUOTE_METADATA,
           originDepartmentId: data.originDepartmentId ?? null,
@@ -141,15 +153,25 @@ export async function createQuoteWithDetails({
     }
 
     const createdParts = await Promise.all(
-      prepared.parts.map((part: any) =>
+      prepared.parts.map((part: any, index: number) =>
         tx.quotePart.create({
           data: {
             quoteId: quote.id,
             name: part.name,
             partNumber: part.partNumber,
             materialId: part.materialId,
+            drawingMaterialText: part.drawingMaterialText,
+            drawingFinishText: part.drawingFinishText,
+            finish: part.finish,
             stockSize: part.stockSize,
             cutLength: part.cutLength,
+            materialStatus: part.materialStatus,
+            inventoryLocation: part.inventoryLocation,
+            materialNotes: part.materialNotes,
+            procurementVendorId: part.procurementVendorId,
+            procurementCostCents: part.procurementCostCents,
+            procurementMarkupPercent: part.procurementMarkupPercent,
+            sortOrder: part.sortOrder ?? index,
             description: part.description,
             quantity: part.quantity,
             pieceCount: part.pieceCount,
@@ -159,6 +181,41 @@ export async function createQuoteWithDetails({
         })
       )
     );
+
+    await tx.quote.update({
+      where: { id: quote.id },
+      data: {
+        metadata: stringifyQuoteMetadata({
+          ...DEFAULT_QUOTE_METADATA,
+          originDepartmentId: data.originDepartmentId ?? null,
+          partPricing: prepared.partPricing.map((entry: any, index: number) => ({
+            ...entry,
+            quotePartId: createdParts[index]?.id ?? null,
+          })),
+          customAmounts: data.customAmounts?.map((entry: any) => ({
+            title: entry.title?.trim() ?? '',
+            amountCents: entry.amountCents ?? 0,
+          })),
+        }),
+      },
+    });
+
+    const partAttachments = prepared.parts.flatMap((part: any, index: number) => {
+      const quotePartId = createdParts[index]?.id;
+      if (!quotePartId) return [];
+      return (part.attachments ?? []).map((attachment: any) => ({
+        quoteId: quote.id,
+        quotePartId,
+        kind: attachment.kind ?? 'DWG',
+        url: attachment.url,
+        storagePath: attachment.storagePath,
+        label: attachment.label,
+        mimeType: attachment.mimeType,
+      }));
+    });
+    if (partAttachments.length) {
+      await tx.quotePartAttachment.createMany({ data: partAttachments });
+    }
 
     const addonSelections = prepared.parts.flatMap((part: any, index: number) => {
       const partId = createdParts[index]?.id;
@@ -171,6 +228,10 @@ export async function createQuoteWithDetails({
         rateTypeSnapshot: selection.rateTypeSnapshot,
         rateCents: selection.rateCents,
         totalCents: selection.totalCents,
+        affectsPriceSnapshot: selection.affectsPriceSnapshot,
+        isChecklistItemSnapshot: selection.isChecklistItemSnapshot,
+        departmentIdSnapshot: selection.departmentIdSnapshot,
+        nameSnapshot: selection.nameSnapshot,
         notes: selection.notes,
       }));
     });
@@ -213,8 +274,11 @@ export async function createQuoteWithDetails({
         customer: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         parts: {
+          orderBy: { sortOrder: 'asc' },
           include: {
             material: true,
+            procurementVendor: { select: { id: true, name: true } },
+            attachments: true,
             addonSelections: {
               include: {
                 addon: { select: { id: true, name: true, rateType: true, rateCents: true } },
@@ -241,8 +305,11 @@ export async function findQuoteById(id: string) {
       customer: { select: { id: true, name: true } },
       createdBy: { select: { id: true, name: true, email: true } },
       parts: {
+        orderBy: { sortOrder: 'asc' },
         include: {
           material: true,
+          procurementVendor: { select: { id: true, name: true } },
+          attachments: true,
           addonSelections: {
             include: {
               addon: { select: { id: true, name: true, rateType: true, rateCents: true } },
@@ -278,7 +345,23 @@ export async function deleteQuoteById(id: string) {
 export async function findQuoteForUpdate(id: string) {
   return prisma.quote.findUnique({
     where: { id },
-    select: { quoteNumber: true, metadata: true },
+    select: {
+      quoteNumber: true,
+      metadata: true,
+      addonSelections: {
+        select: {
+          quotePartId: true,
+          addonId: true,
+          rateTypeSnapshot: true,
+          rateCents: true,
+          totalCents: true,
+          affectsPriceSnapshot: true,
+          isChecklistItemSnapshot: true,
+          departmentIdSnapshot: true,
+          nameSnapshot: true,
+        },
+      },
+    },
   });
 }
 
@@ -316,6 +399,7 @@ export async function updateQuoteWithDetails({
         vendorTotalCents: prepared.vendorTotalCents,
         addonsTotalCents: prepared.addonsTotalCents,
         totalCents: prepared.totalCents,
+        workflowStep: data.workflowStep ?? 0,
         metadata: stringifyQuoteMetadata(nextMetadata),
       },
     });
@@ -331,30 +415,79 @@ export async function updateQuoteWithDetails({
       });
     }
 
+    const existingParts = await tx.quotePart.findMany({ where: { quoteId }, select: { id: true } });
+    const existingPartIds = new Set(existingParts.map((part: { id: string }) => part.id));
+    const submittedPartIds = prepared.parts
+      .map((part: any) => part.id)
+      .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+    const foreignPartId = submittedPartIds.find((id: string) => !existingPartIds.has(id));
+    if (foreignPartId) throw new Error('A submitted quote part does not belong to this quote.');
+
     await tx.quoteAddonSelection.deleteMany({ where: { quoteId } });
-    await tx.quotePart.deleteMany({ where: { quoteId } });
+    await tx.quotePartAttachment.deleteMany({ where: { quoteId } });
+    await tx.quotePart.deleteMany({
+      where: { quoteId, ...(submittedPartIds.length ? { id: { notIn: submittedPartIds } } : {}) },
+    });
     await tx.quoteVendorItem.deleteMany({ where: { quoteId } });
-    await tx.quoteAttachment.deleteMany({ where: { quoteId } });
 
     const createdParts = await Promise.all(
-      prepared.parts.map((part: any) =>
-        tx.quotePart.create({
-          data: {
-            quoteId,
-            name: part.name,
-            partNumber: part.partNumber,
-            materialId: part.materialId,
-            stockSize: part.stockSize,
-            cutLength: part.cutLength,
-            description: part.description,
-            quantity: part.quantity,
-            pieceCount: part.pieceCount,
-            notes: part.notes,
-          },
-          select: { id: true },
-        })
-      )
+      prepared.parts.map((part: any, index: number) => {
+        const partData = {
+          name: part.name,
+          partNumber: part.partNumber,
+          materialId: part.materialId,
+          drawingMaterialText: part.drawingMaterialText,
+          drawingFinishText: part.drawingFinishText,
+          finish: part.finish,
+          stockSize: part.stockSize,
+          cutLength: part.cutLength,
+          materialStatus: part.materialStatus,
+          inventoryLocation: part.inventoryLocation,
+          materialNotes: part.materialNotes,
+          procurementVendorId: part.procurementVendorId,
+          procurementCostCents: part.procurementCostCents,
+          procurementMarkupPercent: part.procurementMarkupPercent,
+          sortOrder: part.sortOrder ?? index,
+          description: part.description,
+          quantity: part.quantity,
+          pieceCount: part.pieceCount,
+          notes: part.notes,
+        };
+        return part.id
+          ? tx.quotePart.update({ where: { id: part.id }, data: partData, select: { id: true } })
+          : tx.quotePart.create({ data: { quoteId, ...partData }, select: { id: true } });
+      })
     );
+
+    await tx.quote.update({
+      where: { id: quoteId },
+      data: {
+        metadata: stringifyQuoteMetadata({
+          ...nextMetadata,
+          partPricing: prepared.partPricing.map((entry: any, index: number) => ({
+            ...entry,
+            quotePartId: createdParts[index]?.id ?? null,
+          })),
+        }),
+      },
+    });
+
+    const partAttachments = prepared.parts.flatMap((part: any, index: number) => {
+      const quotePartId = createdParts[index]?.id;
+      if (!quotePartId) return [];
+      return (part.attachments ?? []).map((attachment: any) => ({
+        quoteId,
+        quotePartId,
+        kind: attachment.kind ?? 'DWG',
+        url: attachment.url,
+        storagePath: attachment.storagePath,
+        label: attachment.label,
+        mimeType: attachment.mimeType,
+      }));
+    });
+    if (partAttachments.length) {
+      await tx.quotePartAttachment.createMany({ data: partAttachments });
+    }
 
     const addonSelections = prepared.parts.flatMap((part: any, index: number) => {
       const partId = createdParts[index]?.id;
@@ -367,6 +500,10 @@ export async function updateQuoteWithDetails({
         rateTypeSnapshot: selection.rateTypeSnapshot,
         rateCents: selection.rateCents,
         totalCents: selection.totalCents,
+        affectsPriceSnapshot: selection.affectsPriceSnapshot,
+        isChecklistItemSnapshot: selection.isChecklistItemSnapshot,
+        departmentIdSnapshot: selection.departmentIdSnapshot,
+        nameSnapshot: selection.nameSnapshot,
         notes: selection.notes,
       }));
     });
@@ -391,17 +528,35 @@ export async function updateQuoteWithDetails({
       });
     }
 
-    if (prepared.attachments.length) {
-      await tx.quoteAttachment.createMany({
-        data: prepared.attachments.map((attachment: any) => ({
-          quoteId,
+    const existingAttachments = await tx.quoteAttachment.findMany({ where: { quoteId }, select: { id: true } });
+    const existingAttachmentIds = new Set(existingAttachments.map((attachment: { id: string }) => attachment.id));
+    const submittedAttachmentIds = prepared.attachments
+      .map((attachment: any) => attachment.id)
+      .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+    const foreignAttachmentId = submittedAttachmentIds.find((id: string) => !existingAttachmentIds.has(id));
+    if (foreignAttachmentId) throw new Error('A submitted quote attachment does not belong to this quote.');
+    const approvalAttachmentId =
+      typeof nextMetadata?.approval?.attachmentId === 'string' ? nextMetadata.approval.attachmentId : null;
+    const retainedAttachmentIds = [
+      ...submittedAttachmentIds,
+      ...(approvalAttachmentId && existingAttachmentIds.has(approvalAttachmentId) ? [approvalAttachmentId] : []),
+    ];
+    await tx.quoteAttachment.deleteMany({
+      where: { quoteId, ...(retainedAttachmentIds.length ? { id: { notIn: retainedAttachmentIds } } : {}) },
+    });
+    await Promise.all(
+      prepared.attachments.map((attachment: any) => {
+        const attachmentData = {
           url: attachment.url,
           storagePath: attachment.storagePath,
           label: attachment.label,
           mimeType: attachment.mimeType,
-        })),
-      });
-    }
+        };
+        return attachment.id
+          ? tx.quoteAttachment.update({ where: { id: attachment.id }, data: attachmentData })
+          : tx.quoteAttachment.create({ data: { quoteId, ...attachmentData } });
+      })
+    );
 
     return tx.quote.findUnique({
       where: { id: quoteId },
@@ -409,8 +564,11 @@ export async function updateQuoteWithDetails({
         customer: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         parts: {
+          orderBy: { sortOrder: 'asc' },
           include: {
             material: true,
+            procurementVendor: { select: { id: true, name: true } },
+            attachments: true,
             addonSelections: {
               include: { addon: { select: { id: true, name: true, rateType: true, rateCents: true } } },
             },
@@ -505,7 +663,10 @@ export async function updateQuoteApproval({
 
     const updatedQuote = await tx.quote.update({
       where: { id: quote.id },
-      data: { metadata: stringifyQuoteMetadata(updatedMetadata) },
+      data: {
+        metadata: stringifyQuoteMetadata(updatedMetadata),
+        status: received ? 'APPROVED' : quote.status === 'APPROVED' ? 'SENT' : quote.status,
+      },
       include: { attachments: true },
     });
 
@@ -524,8 +685,11 @@ export async function findQuoteForConversion(id: string) {
     include: {
       customer: { select: { id: true, name: true } },
       parts: {
+        orderBy: { sortOrder: 'asc' },
         include: {
           material: true,
+          procurementVendor: { select: { id: true, name: true } },
+          attachments: true,
           addonSelections: {
             include: {
               addon: {
@@ -634,6 +798,7 @@ export async function convertQuoteToOrder({
   assignedMachinistId,
   partsData,
   orderAttachments,
+  partAttachments,
   noteContent,
   userId,
   normalizedCustomFieldValues,
@@ -650,14 +815,32 @@ export async function convertQuoteToOrder({
   poNumber: string | null;
   assignedMachinistId: string | null;
   partsData: Array<{
+    sourceQuotePartId?: string | null;
     partNumber: string | null;
+    partName?: string | null;
     quantity: number;
     materialId: string | null;
+    drawingMaterialText?: string | null;
+    drawingFinishText?: string | null;
+    finish?: string | null;
+    materialStatus?: string;
+    inventoryLocation?: string | null;
+    materialNotes?: string | null;
+    procurementVendorId?: string | null;
     stockSize?: string | null;
     cutLength?: string | null;
     notes?: string | null;
+    workInstructions?: string | null;
   }>;
   orderAttachments: Array<{
+    url: string | null;
+    storagePath: string | null;
+    label: string | null;
+    mimeType: string | null;
+  }>;
+  partAttachments: Array<{
+    sourceQuotePartId: string;
+    kind: string;
     url: string | null;
     storagePath: string | null;
     label: string | null;
@@ -676,6 +859,7 @@ export async function convertQuoteToOrder({
 
     const order = await tx.order.create({
       data: {
+        sourceQuoteId: quote.id,
         orderNumber,
         business: quote.business,
         customerId: quote.customerId,
@@ -709,17 +893,49 @@ export async function convertQuoteToOrder({
           data: {
             orderId: order.id,
             partNumber: part.partNumber,
+            partName: part.partName ?? null,
             quantity: part.quantity,
             materialId: part.materialId,
+            drawingMaterialText: part.drawingMaterialText ?? null,
+            drawingFinishText: part.drawingFinishText ?? null,
+            finish: part.finish ?? null,
+            materialStatus: part.materialStatus ?? 'UNREVIEWED',
+            inventoryLocation: part.inventoryLocation ?? null,
+            materialNotes: part.materialNotes ?? null,
+            procurementVendorId: part.procurementVendorId ?? null,
             currentDepartmentId: originDepartmentId,
             stockSize: part.stockSize ?? null,
             cutLength: part.cutLength ?? null,
             notes: part.notes ?? undefined,
+            workInstructions: part.workInstructions ?? null,
           },
           select: { id: true },
         })
       )
     );
+
+    const orderPartIdByQuotePartId = new Map<string, string>();
+    partsData.forEach((part, index) => {
+      if (part.sourceQuotePartId && orderParts[index]?.id) {
+        orderPartIdByQuotePartId.set(part.sourceQuotePartId, orderParts[index].id);
+      }
+    });
+    const convertedPartAttachments = partAttachments.flatMap((attachment) => {
+      const partId = orderPartIdByQuotePartId.get(attachment.sourceQuotePartId);
+      if (!partId) return [];
+      return [{
+        orderId: order.id,
+        partId,
+        kind: attachment.kind,
+        url: attachment.url,
+        storagePath: attachment.storagePath,
+        label: attachment.label,
+        mimeType: attachment.mimeType,
+      }];
+    });
+    if (convertedPartAttachments.length) {
+      await tx.partAttachment.createMany({ data: convertedPartAttachments });
+    }
 
     if (orderAttachments.length) {
       await tx.attachment.createMany({
@@ -758,7 +974,17 @@ export async function convertQuoteToOrder({
       const orderPartId = orderParts[index]?.id;
       if (!orderPartId) return [];
       return (part.addonSelections ?? []).map((selection: any) => ({
-        selection,
+        selection: {
+          ...selection,
+          addon: {
+            ...selection.addon,
+            name: selection.nameSnapshot ?? selection.addon?.name,
+            rateCents: selection.rateCents,
+            departmentId: selection.departmentIdSnapshot ?? selection.addon?.departmentId,
+            affectsPrice: selection.affectsPriceSnapshot,
+            isChecklistItem: selection.isChecklistItemSnapshot,
+          },
+        },
         orderPartId,
       }));
     });
@@ -767,7 +993,17 @@ export async function convertQuoteToOrder({
       quote.addonSelections
         ?.filter((selection: any) => !selection.quotePartId)
         .map((selection: any) => ({
-          selection,
+          selection: {
+            ...selection,
+            addon: {
+              ...selection.addon,
+              name: selection.nameSnapshot ?? selection.addon?.name,
+              rateCents: selection.rateCents,
+              departmentId: selection.departmentIdSnapshot ?? selection.addon?.departmentId,
+              affectsPrice: selection.affectsPriceSnapshot,
+              isChecklistItem: selection.isChecklistItemSnapshot,
+            },
+          },
           orderPartId: orderParts[0]?.id ?? null,
         })) ?? [];
 
@@ -775,13 +1011,13 @@ export async function convertQuoteToOrder({
     const chargeData = buildOrderChargeEntriesFromQuoteData({
       orderId: order.id,
       selections: allSelections,
-      customAmounts: metadata?.customAmounts,
+      customAmounts: [],
       customAmountPartId: orderParts[0]?.id ?? null,
       fallbackDepartmentId: originDepartmentId,
-    });
+    }).map((charge) => ({ ...charge, unitPriceCents: 0 }));
 
     if (chargeData.length) {
-      await Promise.all(
+      const createdCharges = await Promise.all(
         chargeData.map((charge) =>
           tx.orderCharge.create({
             data: {
@@ -796,21 +1032,35 @@ export async function convertQuoteToOrder({
               unitPrice: new Prisma.Decimal(charge.unitPriceCents),
               sortOrder: charge.sortOrder,
             },
+            select: { id: true },
           })
         )
       );
-    }
 
-    const checklistData = buildChecklistEntriesFromQuoteSelections(order.id, allSelections);
-    if (checklistData.length) {
-      await tx.orderChecklist.createMany({ data: checklistData });
+      const chargeIdsByPartAddon = new Map<string, string>();
+      createdCharges.forEach((created, index) => {
+        const charge = chargeData[index];
+        if (!charge?.partId || !charge.addonId) return;
+        chargeIdsByPartAddon.set(buildQuoteSelectionKey(charge.partId, charge.addonId), created.id);
+      });
+
+      const checklistData = buildChecklistEntriesFromQuoteSelections(order.id, allSelections, chargeIdsByPartAddon);
+      if (checklistData.length) {
+        await tx.orderChecklist.createMany({ data: checklistData });
+      }
+    } else {
+      const checklistData = buildChecklistEntriesFromQuoteSelections(order.id, allSelections);
+      if (checklistData.length) {
+        await tx.orderChecklist.createMany({ data: checklistData });
+      }
     }
 
     const updatedMetadata = mergeQuoteMetadata({
       ...metadata,
       conversion: {
         orderId: order.id,
-              convertedAt: now.toISOString(),
+        orderNumber,
+        convertedAt: now.toISOString(),
       },
       approval: metadata.approval,
     });
@@ -819,6 +1069,7 @@ export async function convertQuoteToOrder({
       where: { id: quote.id },
       data: {
         metadata: stringifyQuoteMetadata(updatedMetadata),
+        status: 'CONVERTED',
       },
     });
 

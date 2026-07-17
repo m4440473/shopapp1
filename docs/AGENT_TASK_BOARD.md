@@ -12,6 +12,11 @@ Use with:
 
 ## Session Status Notes
 
+- 2026-07-17: Retired the separate PIN-kiosk user flow: the existing TV dashboard is now labeled Shop Floor, `/kiosk` redirects there, Kiosk navigation and employee PIN setup are removed, and trusted-console audit/Read Me First behavior is preserved.
+- 2026-07-17: Completed authoritative Read Me First enforcement: dispatch starts require a persisted versioned receipt, the trusted console shows the full brief and records worker/operator separately without repeated worker PIN entry, and the kiosk resolves the same gate for its PIN-unlocked worker. Evidence is recorded in `tasks/todo.md`, `PROGRESS_LOG.md`, and `docs/AGENT_HANDOFF.md`.
+- 2026-07-17: Completed unplanned production feeds-and-speeds correction for the owner's Haas VF-2SS: explicit 12,000 RPM / 833 IPM caps, operation-specific FSWizard geometry, honest validation/unavailable states, and branch-complete regression coverage. Evidence is recorded in `tasks/todo.md`, `PROGRESS_LOG.md`, and `docs/AGENT_HANDOFF.md`.
+- 2026-07-16: Completed unplanned Quote workflow simplification + pricing-integrity slice (task-first admin home, shared admin guard, unified Work Steps UI, frozen quote work snapshots, explicit calculated/manual final prices, duplicate prevention, one approval-gated conversion path). Focused admin/quote suite passes 22/22; repo-wide build remains blocked only by logged pre-existing vendor/kiosk/type baselines.
+- 2026-07-16: Completed unplanned Drawing-to-order import v1 (dedicated part name, reviewed PDF/ZIP extraction, per-part drawing attachment, and automatic BOM analysis). Evidence is recorded in `tasks/todo.md`, `PROGRESS_LOG.md`, and `docs/AGENT_HANDOFF.md`.
 - 2026-04-07: Completed unplanned department-bound timer enhancement (required department selection on timer start, one-active-per-department enforcement, Shipping timer exclusion, and selected-part department history totals/detail in order detail). Evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
 - 2026-03-23: Completed unplanned isolated `sterling-site/` marketing-site scaffold (premium one-page manufacturing landing page with standalone tooling/docs). Evidence recorded in `PROGRESS_LOG.md` and `docs/AGENT_HANDOFF.md`.
 - 2026-02-26: Completed unplanned Part BOM analyzer attachment-ingestion bugfix (non-image MIME guard + image MIME resolution hardening) and documented quote→order conversion audit evidence.
@@ -217,3 +222,63 @@ When assigning work to an agent, send:
 
 Example assignment:
 - "Execute `P2-T2` using `AGENT_PROMPTS.md` wrapper. Do not touch Orders domain."
+
+---
+
+## Audit follow-up queue — 2026-07-17
+
+### FLOOR-I1 — Identity and active-timer integrity (P0)
+- **Why:** Disabled kiosk users remain PIN-authenticatable, normal sessions retain stale access, and one active timer is not database-enforced.
+- **Scope:** auth/session refresh, kiosk eligibility/revocation, time schema/service transaction boundary, admin stale-timer recovery.
+- **DoD:**
+  - `active`, current role, and `kioskEnabled` are enforced at the correct session boundary.
+  - Disabling kiosk access revokes existing kiosk authority.
+  - A database constraint prevents two open intervals for one worker.
+  - Switch is atomic and deterministic under conflict.
+  - Admin can close a stale employee timer with a required reason and before/after audit.
+  - Concurrency, disabled-user, stale-session, switch-failure, and recovery tests pass.
+
+### FLOOR-I2 — Canonical department transition (P0)
+- **Why:** The visible move flow bypasses canonical completion, final submission persists the wrong status, and active timers can survive moves.
+- **Dependencies:** FLOOR-I1.
+- **Scope:** department submit/reassignment contracts, status derivation, active-timer guard, legacy completion endpoint retirement.
+- **DoD:**
+  - Normal floor completion checks required work and follows the configured route.
+  - Administrative reassignment is visually separate, permissioned, and reasoned.
+  - Move/complete cannot strand an active timer.
+  - Final completion is persisted and returned consistently.
+  - Order completion is derived only from persisted part completion.
+  - Legacy auto-advance routes cannot bypass the contract.
+
+### FLOOR-I3 — Shared-station and timer surface consolidation (P1)
+- **Why:** Timer, acknowledgement, checklist, and submit can currently record different people for one physical work sequence.
+- **Dependencies:** FLOOR-I2.
+- **Scope:** acting-worker context, order-detail timer extraction, worker directory, duplicate route/UI retirement.
+- **DoD:**
+  - One short-lived, expected-worker identity is bound to every floor mutation.
+  - Cross-tab worker replacement cannot silently affect another worker.
+  - Order detail is the primary floor work surface; any standalone kiosk has a narrow documented role.
+  - Duplicate/dead timer handlers and API families are removed or redirected.
+
+### BUILD-B1 — Existing TypeScript baseline cleanup (P1)
+- **Why:** Small unrelated contract errors prevent a clean production build and hide future regressions.
+- **Scope:** vendor tuple inference, kiosk result typing/obsolete route, Orders test signatures, mock Orders parity, root `sterling-site` exclusion/project boundary.
+- **DoD:**
+  - Root type-check and production build pass without changing workflow behavior.
+  - Focused vendor/kiosk/orders/mock tests remain green.
+
+### FLOOR-I1/FLOOR-I3 owner clarification — dispatch-console target
+- The TV computer is a trusted interactive dispatch console. Do not model its signed-in account as the employee performing the labor.
+- Every timer command must store both the authorized console actor and explicit labor owner.
+- The console may control an active employee without login switching or target-worker PIN entry on each action.
+- Enforce one active timer total per employee across departments; atomic switch pauses the previous interval and starts the requested part.
+- Multiple employees may run on the same part, while assignment remains independent of pause/resume state.
+- Order detail is the primary interactive floor surface. The dashboard receives a TV-optimized, pricing-free status mode.
+- Part History/Log groups intervals by employee, shows employee subtotals and an all-worker total, and exposes the console actor in interval detail.
+
+### Trusted dispatch completion evidence — 2026-07-17
+- `FLOOR-I1`: complete for the approved trusted-console scope. Current session role/active state is refreshed, kiosk eligibility is enforced, one-open-timer-per-worker is database-enforced, switch is atomic, and stale/admin closes are audited.
+- `FLOOR-I2`: complete for the normal order-detail flow. Active timers block department completion/reassignment, final completion persists correctly, and the bypassing auto-advance route is retired.
+- `FLOOR-I3`: complete for timer identity/surface consolidation. Order detail uses explicit labor owner plus authenticated console actor; the TV dashboard is the primary status surface and the optional PIN kiosk delegates to the same timer invariants.
+- `BUILD-B1`: complete. Root type-check, full lint, 127 tests, and production build pass.
+- Browser evidence: 1920x1080 TV dashboard, live running-worker card, direct part navigation, employee timer dialog, Pause/Finish dialog, employee-grouped labor history, assignment labels, part-switch URL state, and Shipping/complete timer guard all verified.

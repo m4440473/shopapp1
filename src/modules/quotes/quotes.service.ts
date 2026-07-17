@@ -6,6 +6,8 @@ import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
 import type { QuoteApprovalMetadata } from '@/lib/quote-metadata';
 import { calculatePartLotTotal } from '@/modules/pricing/part-pricing';
 import { calculatePartPricingSummaryTotalsCents, calculateWorkItemsSubtotalCents } from '@/modules/pricing/work-item-pricing';
+import { calculateProcurementTotalCents, calculateSuggestedPartUnitPriceCents } from '@/modules/pricing/part-pricing';
+import { dedupeSelectionsByAddonId } from '@/modules/quotes/quote-addon-bulk';
 import {
   createQuoteWithDetails,
   deleteQuoteById,
@@ -52,22 +54,54 @@ export interface PreparedQuoteComponents {
   vendorTotalCents: number;
   addonsTotalCents: number;
   totalCents: number;
+  partPricing: Array<{
+    quotePartId: string | null;
+    name: string;
+    partNumber: string | null;
+    priceCents: number;
+    pricingMode: 'PER_UNIT' | 'LOT_TOTAL';
+    priceSource: 'CALCULATED' | 'MANUAL';
+    suggestedUnitPriceCents: number;
+  }>;
   parts: Array<{
+    id: string | null;
     name: string;
     partNumber: string | null;
     materialId: string | null;
+    drawingMaterialText: string | null;
+    drawingFinishText: string | null;
+    finish: string | null;
     stockSize: string | null;
     cutLength: string | null;
+    materialStatus: 'UNREVIEWED' | 'IN_STOCK' | 'NEED_TO_ORDER' | 'NOT_REQUIRED';
+    inventoryLocation: string | null;
+    materialNotes: string | null;
+    procurementVendorId: string | null;
+    procurementCostCents: number | null;
+    procurementMarkupPercent: number | null;
+    sortOrder: number;
     description: string | null;
     quantity: number;
     pieceCount: number;
     notes: string | null;
+    attachments: Array<{
+      id: string | null;
+      kind: string;
+      url: string | null;
+      storagePath: string | null;
+      label: string | null;
+      mimeType: string | null;
+    }>;
     addonSelections: Array<{
       addonId: string;
       units: number;
       rateTypeSnapshot: string;
       rateCents: number;
       totalCents: number;
+      affectsPriceSnapshot: boolean;
+      isChecklistItemSnapshot: boolean;
+      departmentIdSnapshot: string | null;
+      nameSnapshot: string;
       notes: string | null;
     }>;
   }>;
@@ -82,6 +116,7 @@ export interface PreparedQuoteComponents {
     notes: string | null;
   }>;
   attachments: Array<{
+    id: string | null;
     url: string | null;
     storagePath: string | null;
     label: string | null;
@@ -117,7 +152,7 @@ export function calculateQuoteEstimateTotalCents({
   const pricingSummaryTotals = calculatePartPricingSummaryTotalsCents({
     parts: (parts ?? []).map((part, index) => {
       const workItemsSubtotalCents = calculateWorkItemsSubtotalCents({
-        selections: (part.addonSelections ?? []).map((selection) => ({
+        selections: dedupeSelectionsByAddonId(part.addonSelections ?? []).map((selection) => ({
           addonId: selection.addonId,
           units: selection.units ?? 0,
         })),
@@ -126,17 +161,33 @@ export function calculateQuoteEstimateTotalCents({
       const pricingEntry = partPricing?.[index];
       const enteredPriceCents = Math.max(0, pricingEntry?.priceCents ?? 0);
       const quantity = Math.max(1, part.quantity ?? 1);
+      const priceSource = pricingEntry
+        ? pricingEntry.priceSource === 'CALCULATED'
+          ? 'CALCULATED'
+          : 'MANUAL'
+        : 'CALCULATED';
+      const procurementTotalCents = part.materialStatus === 'NEED_TO_ORDER'
+        ? calculateProcurementTotalCents({
+            baseCostCents: part.procurementCostCents ?? 0,
+            markupPercent: part.procurementMarkupPercent,
+          })
+        : 0;
+      const suggestedUnitPriceCents = calculateSuggestedPartUnitPriceCents({
+        workItemsSubtotalCents,
+        procurementTotalCents,
+        quantity,
+      });
       return {
         workItemsSubtotalCents,
         partPricingSubtotalCents:
-          enteredPriceCents > 0
+          priceSource === 'MANUAL'
             ? calculatePartLotTotal({
                 enteredPriceCents,
                 quantity,
                 pricingMode: pricingEntry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
               })
-            : 0,
-        hasPartPricingOverride: enteredPriceCents > 0,
+            : suggestedUnitPriceCents * quantity,
+        hasPartPricingOverride: true,
       };
     }),
   });
@@ -150,9 +201,24 @@ export function calculateQuoteEstimateTotalCents({
   );
 }
 
+type ExistingQuoteWorkStepSnapshot = {
+  quotePartId: string | null;
+  addonId: string;
+  rateTypeSnapshot: string;
+  rateCents: number;
+  totalCents: number;
+  affectsPriceSnapshot: boolean;
+  isChecklistItemSnapshot: boolean;
+  departmentIdSnapshot: string | null;
+  nameSnapshot: string | null;
+};
+
 export async function prepareQuoteComponents(
   input: QuoteCreateInput,
-  options?: { existingQuoteNumber?: string }
+  options?: {
+    existingQuoteNumber?: string;
+    existingWorkStepSnapshots?: ExistingQuoteWorkStepSnapshot[];
+  }
 ): Promise<PreparedQuoteComponents> {
   const business = input.business as BusinessCode;
   const prefix = prefixForBusiness(business);
@@ -173,13 +239,20 @@ export async function prepareQuoteComponents(
     rateType: string;
     rateCents: number;
     affectsPrice: boolean;
+    isChecklistItem: boolean;
+    departmentId: string;
   };
   const addonSelectionsInput = parts.flatMap((part, partIndex) =>
-    (part.addonSelections ?? []).map((item) => ({ partIndex, item }))
+    dedupeSelectionsByAddonId(part.addonSelections ?? []).map((item) => ({ partIndex, item }))
   );
   const addonIds = addonSelectionsInput.map(({ item }) => item.addonId);
   const addonRecords = (await listAddonsByIds(addonIds)) as AddonRecord[];
   const addonMap = new Map(addonRecords.map((addon) => [addon.id, addon]));
+  const existingSnapshotMap = new Map(
+    (options?.existingWorkStepSnapshots ?? [])
+      .filter((selection) => selection.quotePartId)
+      .map((selection) => [`${selection.quotePartId}:${selection.addonId}`, selection]),
+  );
 
   for (const selection of addonSelectionsInput) {
     if (!addonMap.has(selection.item.addonId)) {
@@ -191,13 +264,27 @@ export async function prepareQuoteComponents(
   for (const selection of addonSelectionsInput) {
     const addon = addonMap.get(selection.item.addonId)!;
     const units = typeof selection.item.units === 'number' ? selection.item.units : 0;
-    const totalCents = addon.affectsPrice ? Math.round(addon.rateCents * units) : 0;
+    const quotePartId = parts[selection.partIndex]?.id ?? null;
+    const snapshot = quotePartId
+      ? existingSnapshotMap.get(`${quotePartId}:${selection.item.addonId}`)
+      : null;
+    const rateTypeSnapshot = snapshot?.rateTypeSnapshot ?? addon.rateType;
+    const rateCents = snapshot?.rateCents ?? addon.rateCents;
+    const affectsPriceSnapshot = snapshot?.affectsPriceSnapshot ?? addon.affectsPrice;
+    const isChecklistItemSnapshot = snapshot?.isChecklistItemSnapshot ?? addon.isChecklistItem;
+    const departmentIdSnapshot = snapshot?.departmentIdSnapshot ?? addon.departmentId ?? null;
+    const nameSnapshot = snapshot?.nameSnapshot ?? addon.name;
+    const totalCents = affectsPriceSnapshot ? Math.round(rateCents * units) : 0;
     const entry = {
       addonId: addon.id,
       units,
-      rateTypeSnapshot: addon.rateType,
-      rateCents: addon.rateCents,
+      rateTypeSnapshot,
+      rateCents,
       totalCents,
+      affectsPriceSnapshot,
+      isChecklistItemSnapshot,
+      departmentIdSnapshot,
+      nameSnapshot,
       notes: selection.item.notes ?? null,
     };
     const existing = addonSelectionsByPart.get(selection.partIndex) ?? [];
@@ -225,39 +312,56 @@ export async function prepareQuoteComponents(
   const vendorTotalCents = vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
   const basePriceCents = input.basePriceCents ?? 0;
   const customAmountsCents = sumQuoteCustomAmountsCents(input.customAmounts);
-  const addonsTotalCents = calculatePartPricingSummaryTotalsCents({
+  const canonicalPartPricing = parts.map((part, index) => {
+    const workItemsSubtotalCents = (addonSelectionsByPart.get(index) ?? []).reduce(
+      (sum, selection) => sum + selection.totalCents,
+      0,
+    );
+    const quantity = Math.max(1, part.quantity ?? 1);
+    const procurementTotalCents = part.materialStatus === 'NEED_TO_ORDER'
+      ? calculateProcurementTotalCents({
+          baseCostCents: part.procurementCostCents ?? 0,
+          markupPercent: part.procurementMarkupPercent,
+        })
+      : 0;
+    const suggestedUnitPriceCents = calculateSuggestedPartUnitPriceCents({
+      workItemsSubtotalCents,
+      procurementTotalCents,
+      quantity,
+    });
+    const submitted = input.partPricing?.[index];
+    const priceSource: 'CALCULATED' | 'MANUAL' = submitted?.priceSource === 'MANUAL' ? 'MANUAL' : 'CALCULATED';
+    return {
+      quotePartId: part.id?.trim() || null,
+      name: part.name,
+      partNumber: part.partNumber ?? null,
+      priceCents: priceSource === 'MANUAL' ? Math.max(0, submitted?.priceCents ?? 0) : suggestedUnitPriceCents,
+      pricingMode: priceSource === 'MANUAL' && submitted?.pricingMode === 'LOT_TOTAL' ? 'LOT_TOTAL' as const : 'PER_UNIT' as const,
+      priceSource,
+      suggestedUnitPriceCents,
+    };
+  });
+  const pricingTotals = calculatePartPricingSummaryTotalsCents({
     parts: parts.map((part, index) => {
-      const workItemsSubtotalCents = calculateWorkItemsSubtotalCents({
-        selections: (part.addonSelections ?? []).map((selection) => ({
-          addonId: selection.addonId,
-          units: selection.units ?? 0,
-        })),
-        itemsById: addonMap,
-      });
-      const partPricingEntry = input.partPricing?.[index];
-      const enteredPriceCents = Math.max(0, partPricingEntry?.priceCents ?? 0);
+      const workItemsSubtotalCents = (addonSelectionsByPart.get(index) ?? []).reduce(
+        (sum, selection) => sum + selection.totalCents,
+        0,
+      );
+      const partPricingEntry = canonicalPartPricing[index];
       return {
         workItemsSubtotalCents,
-        partPricingSubtotalCents:
-          enteredPriceCents > 0
-            ? calculatePartLotTotal({
-                enteredPriceCents,
-                quantity: Math.max(1, part.quantity ?? 1),
-                pricingMode: partPricingEntry?.pricingMode === 'PER_UNIT' ? 'PER_UNIT' : 'LOT_TOTAL',
-              })
-            : 0,
-        hasPartPricingOverride: enteredPriceCents > 0,
+        partPricingSubtotalCents: calculatePartLotTotal({
+          enteredPriceCents: partPricingEntry.priceCents,
+          quantity: Math.max(1, part.quantity ?? 1),
+          pricingMode: partPricingEntry.pricingMode,
+        }),
+        hasPartPricingOverride: true,
       };
     }),
-  }).addonsAndLaborCents;
-  const totalCents = calculateQuoteEstimateTotalCents({
-    basePriceCents,
-    vendorTotalCents,
-    parts,
-    partPricing: input.partPricing,
-    addonMap,
-    customAmountsCents,
   });
+  const addonsTotalCents = pricingTotals.addonsAndLaborCents;
+  const totalCents =
+    basePriceCents + vendorTotalCents + pricingTotals.addonsAndLaborCents + pricingTotals.partPricingCents + customAmountsCents;
 
   const providedQuoteNumber = input.quoteNumber?.trim();
   let quoteNumber: string;
@@ -281,21 +385,46 @@ export async function prepareQuoteComponents(
       ? input.multiPiece
       : parts.some((part) => (part.pieceCount ?? 1) > 1);
 
+  const optionalId = (value: string | null | undefined) => {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : null;
+  };
+
   const partsData = parts.map((part, index) => ({
+    id: optionalId(part.id),
     name: part.name,
     partNumber: part.partNumber ?? null,
-    materialId: part.materialId ?? null,
+    materialId: optionalId(part.materialId),
+    drawingMaterialText: part.drawingMaterialText ?? null,
+    drawingFinishText: part.drawingFinishText ?? null,
+    finish: part.finish ?? null,
     stockSize: part.stockSize ?? null,
     cutLength: part.cutLength ?? null,
+    materialStatus: part.materialStatus ?? 'UNREVIEWED',
+    inventoryLocation: part.inventoryLocation ?? null,
+    materialNotes: part.materialNotes ?? null,
+    procurementVendorId: optionalId(part.procurementVendorId),
+    procurementCostCents: part.procurementCostCents ?? null,
+    procurementMarkupPercent: part.procurementMarkupPercent ?? null,
+    sortOrder: part.sortOrder ?? index,
     description: part.description ?? null,
     quantity: part.quantity ?? 1,
     pieceCount: part.pieceCount ?? 1,
     notes: part.notes ?? null,
+    attachments: (part.attachments ?? []).map((attachment) => ({
+      id: optionalId(attachment.id),
+      kind: attachment.kind ?? 'DWG',
+      url: attachment.url?.trim() ? attachment.url.trim() : null,
+      storagePath: attachment.storagePath?.trim() ? attachment.storagePath.trim() : null,
+      label: attachment.label?.trim() ? attachment.label.trim() : null,
+      mimeType: attachment.mimeType?.trim() ? attachment.mimeType.trim() : null,
+    })),
     addonSelections: addonSelectionsByPart.get(index) ?? [],
   }));
 
   const attachments = attachmentsInput
     .map((attachment) => ({
+      id: optionalId(attachment.id),
       url: attachment.url?.trim() ? attachment.url.trim() : null,
       storagePath: attachment.storagePath?.trim() ? attachment.storagePath.trim() : null,
       label: attachment.label?.trim() ? attachment.label.trim() : null,
@@ -310,6 +439,7 @@ export async function prepareQuoteComponents(
     vendorTotalCents,
     addonsTotalCents,
     totalCents,
+    partPricing: canonicalPartPricing,
     parts: partsData,
     vendorItems,
     attachments,

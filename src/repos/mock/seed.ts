@@ -65,6 +65,7 @@ export type MockOrderPart = {
   id: string;
   orderId: string;
   partNumber: string | null;
+  partName?: string | null;
   quantity: number | null;
   description: string | null;
   status: string | null;
@@ -197,6 +198,16 @@ export type MockTimeEntry = {
   updatedAt: Date;
 };
 
+export type MockTimeEntryAction = {
+  id: string;
+  timeEntryId: string;
+  actorUserId: string | null;
+  action: string;
+  reason: string | null;
+  metadata: string | null;
+  createdAt: Date;
+};
+
 export type MockSeedState = {
   users: MockUser[];
   customers: MockCustomer[];
@@ -216,6 +227,7 @@ export type MockSeedState = {
   partEvents: MockPartEvent[];
   partTimeAdjustments: MockPartTimeAdjustment[];
   timeEntries: MockTimeEntry[];
+  timeEntryActions: MockTimeEntryAction[];
 };
 
 export function createMockSeedState(): MockSeedState {
@@ -592,5 +604,6 @@ export function createMockSeedState(): MockSeedState {
     partEvents,
     partTimeAdjustments: [],
     timeEntries,
+    timeEntryActions: [],
   };
 }

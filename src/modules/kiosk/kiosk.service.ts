@@ -12,13 +12,31 @@ import {
   syncOrderWorkflowStatus,
 } from '@/modules/orders/orders.service';
 import {
+  closeWorkerTimer,
   getActiveTimeEntry,
-  pauseActiveTimeEntry,
-  startTimeEntry,
-  stopActiveTimeEntry,
+  startWorkerTimer,
+  switchWorkerTimer,
 } from '@/modules/time/time.service';
 
 type ServiceResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string | object };
+
+type SanitizedWorker = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  role: string | null;
+  kioskEnabled: boolean;
+  active: boolean;
+  primaryDepartmentId: string | null;
+  primaryDepartment: { id: string; name: string } | null;
+};
+
+type ActiveTimerContext = {
+  activeEntry: any | null;
+  activeOrder: any | null;
+  activePart: any | null;
+  elapsedSeconds: number;
+};
 
 function ok<T>(data: T): ServiceResult<T> {
   return { ok: true, data };
@@ -28,7 +46,7 @@ function fail<T>(status: number, error: string | object): ServiceResult<T> {
   return { ok: false, status, error };
 }
 
-function sanitizeWorker(user: any) {
+function sanitizeWorker(user: any): SanitizedWorker | null {
   if (!user) return null;
   return {
     id: user.id,
@@ -44,15 +62,15 @@ function sanitizeWorker(user: any) {
 
 async function resolveKioskWorker(userId: string) {
   const user = await findUserByKioskId(userId);
-  if (!user || user.active === false) {
+  if (!user || user.active === false || user.kioskEnabled !== true) {
     return null;
   }
   return user;
 }
 
-async function buildActiveTimerContext(userId: string) {
+async function buildActiveTimerContext(userId: string): Promise<ServiceResult<ActiveTimerContext>> {
   const activeResult = await getActiveTimeEntry(userId);
-  if (activeResult.ok === false) return activeResult;
+  if (activeResult.ok === false) return fail(activeResult.status, activeResult.error);
 
   const activeEntry = activeResult.data.entry;
   if (!activeEntry) {
@@ -71,16 +89,19 @@ async function buildActiveTimerContext(userId: string) {
 
   return ok({
     activeEntry,
-    activeOrder: orderResult.ok ? orderResult.data.order : null,
-    activePart: partResult?.ok ? partResult.data.part : null,
+    activeOrder: orderResult.ok ? (orderResult.data as { order: unknown }).order : null,
+    activePart: partResult?.ok ? (partResult.data as { part: unknown }).part : null,
     elapsedSeconds: Math.max(0, Math.floor((Date.now() - activeEntry.startedAt.getTime()) / 1000)),
   });
 }
 
-export async function authenticateKioskWorker(pin: string, userId?: string) {
+export async function authenticateKioskWorker(
+  pin: string,
+  userId?: string,
+): Promise<ServiceResult<{ worker: SanitizedWorker }>> {
   if (userId) {
     const worker = await findUserByKioskId(userId);
-    if (!worker || worker.active === false) {
+    if (!worker || worker.active === false || worker.kioskEnabled !== true) {
       return fail(401, 'Invalid worker or PIN.');
     }
     if (!worker.kioskPinHash) {
@@ -90,21 +111,28 @@ export async function authenticateKioskWorker(pin: string, userId?: string) {
     if (!matches) {
       return fail(401, 'Invalid worker or PIN.');
     }
-    return ok({ worker: sanitizeWorker(worker) });
+    return ok({ worker: sanitizeWorker(worker)! });
   }
 
   const workers = await listKioskUsers();
   for (const worker of workers) {
     if (!worker.kioskPinHash) continue;
     if (await compare(pin, worker.kioskPinHash)) {
-      return ok({ worker: sanitizeWorker(worker) });
+      return ok({ worker: sanitizeWorker(worker)! });
     }
   }
 
   return fail(401, 'Invalid PIN.');
 }
 
-export async function getKioskWorkerSession(userId: string) {
+export async function getKioskWorkerSession(userId: string): Promise<
+  ServiceResult<
+    ActiveTimerContext & {
+      worker: SanitizedWorker;
+      departments: Array<{ id: string; name: string; sortOrder?: number | null }>;
+    }
+  >
+> {
   const worker = await resolveKioskWorker(userId);
   if (!worker) {
     return fail(401, 'Kiosk session is no longer valid.');
@@ -114,12 +142,12 @@ export async function getKioskWorkerSession(userId: string) {
     getDepartmentsOrdered(),
     buildActiveTimerContext(userId),
   ]);
-  if (departmentsResult.ok === false) return departmentsResult;
+  if (departmentsResult.ok === false) return fail(departmentsResult.status, departmentsResult.error);
   if (activeContextResult.ok === false) return activeContextResult;
 
   return ok({
-    worker: sanitizeWorker(worker),
-    departments: departmentsResult.data.items,
+    worker: sanitizeWorker(worker)!,
+    departments: departmentsResult.data.items as Array<{ id: string; name: string; sortOrder?: number | null }>,
     ...activeContextResult.data,
   });
 }
@@ -189,22 +217,35 @@ export async function startKioskWorkerTimer({
     return fail(401, 'Kiosk session is no longer valid.');
   }
 
+  const partResult = await getOrderPartSummary(orderId, partId);
+  if (partResult.ok === false) return partResult;
+  const part = (partResult.data as {
+    part: { currentDepartmentId: string | null; status: string };
+  }).part;
+  if (part.status === 'COMPLETE') {
+    return fail(409, 'Completed parts cannot start new production timers.');
+  }
+  const effectiveDepartmentId = part.currentDepartmentId;
+  if (!effectiveDepartmentId) {
+    return fail(409, 'This part needs a current department before work can begin.');
+  }
+  if (effectiveDepartmentId !== departmentId) {
+    return fail(409, 'This part has moved to another department. Refresh the kiosk and choose it again.');
+  }
+
   const departmentsResult = await getDepartmentsOrdered();
   if (departmentsResult.ok === false) return departmentsResult;
-  const selectedDepartment = departmentsResult.data.items.find((department) => department.id === departmentId);
+  const selectedDepartment = departmentsResult.data.items.find((department) => department.id === effectiveDepartmentId);
   if (!selectedDepartment) return fail(400, 'Department not found.');
   if (selectedDepartment.name.trim().toLowerCase() === 'shipping') {
     return fail(400, 'Shipping timers are disabled.');
   }
 
-  const partResult = await getOrderPartSummary(orderId, partId);
-  if (partResult.ok === false) return partResult;
-
   const ackResult = await requirePartInstructionAcknowledgement({
     orderId,
     partId,
     userId,
-    departmentId,
+    departmentId: effectiveDepartmentId,
   });
   if (ackResult.ok === false) return ackResult;
 
@@ -224,28 +265,43 @@ export async function startKioskWorkerTimer({
       });
     }
 
-    const closeResult =
-      switchAction === 'pause' ? await pauseActiveTimeEntry(userId) : await stopActiveTimeEntry(userId);
-    if (closeResult.ok === false) return closeResult;
+    const switchResult = await switchWorkerTimer(userId, userId, {
+      orderId,
+      partId,
+      departmentId: effectiveDepartmentId,
+      operation: 'Part Work',
+    });
+    if (switchResult.ok === false) return switchResult;
 
-    const closedEntry = closeResult.data.entry;
-    if (closedEntry.partId) {
+    const closedEntry = switchResult.data.previousEntry;
+    if (closedEntry?.partId) {
       await logPartEvent({
         orderId: closedEntry.orderId,
         partId: closedEntry.partId,
         userId,
-        type: switchAction === 'pause' ? 'TIMER_PAUSED' : 'TIMER_FINISHED',
-        message: switchAction === 'pause' ? 'Timer paused from kiosk switch.' : 'Timer finished from kiosk switch.',
+        type: 'TIMER_PAUSED',
+        message: 'Timer paused from kiosk switch.',
         meta: { timeEntryId: closedEntry.id, transitionSource: 'kiosk_switch' },
       });
       await syncOrderWorkflowStatus(closedEntry.orderId, { userId });
     }
+
+    await logPartEvent({
+      orderId,
+      partId,
+      userId,
+      type: 'TIMER_STARTED',
+      message: 'Timer started from kiosk.',
+      meta: { timeEntryId: switchResult.data.entry.id, transitionSource: 'kiosk_switch' },
+    });
+    await syncOrderWorkflowStatus(orderId, { userId });
+    return ok({ entry: switchResult.data.entry });
   }
 
-  const startResult = await startTimeEntry(userId, {
+  const startResult = await startWorkerTimer(userId, userId, {
     orderId,
     partId,
-    departmentId,
+    departmentId: effectiveDepartmentId,
     operation: 'Part Work',
   });
   if (startResult.ok === false) return startResult;
@@ -282,7 +338,7 @@ export async function pauseKioskWorkerTimer(userId: string) {
     return fail(401, 'Kiosk session is no longer valid.');
   }
 
-  const result = await pauseActiveTimeEntry(userId);
+  const result = await closeWorkerTimer(userId, userId, { action: 'PAUSE' });
   if (result.ok === false) return result;
 
   if (result.data.entry.partId) {
@@ -304,7 +360,7 @@ export async function finishKioskWorkerTimer(userId: string) {
     return fail(401, 'Kiosk session is no longer valid.');
   }
 
-  const result = await stopActiveTimeEntry(userId);
+  const result = await closeWorkerTimer(userId, userId, { action: 'FINISH' });
   if (result.ok === false) return result;
 
   if (result.data.entry.partId) {

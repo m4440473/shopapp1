@@ -150,6 +150,7 @@ export function createMockOrdersRepo() {
           id: partId,
           orderId: order.id,
           partNumber: (part.partNumber as string) ?? null,
+          partName: (part.partName as string) ?? null,
           quantity: (part.quantity as number) ?? null,
           description: (part.notes as string) ?? null,
           status: null,
@@ -432,6 +433,7 @@ export function createMockOrdersRepo() {
       return {
         id: part.id,
         partNumber: part.partNumber,
+        status: part.status,
         currentDepartmentId: part.currentDepartmentId,
         workInstructions: part.workInstructions ?? '',
         instructionsVersion: part.instructionsVersion ?? 1,
@@ -522,6 +524,14 @@ export function createMockOrdersRepo() {
       return part;
     },
 
+    async completePartPreservingDepartment(partId: string, currentDepartmentId: string) {
+      const part = state.orderParts.find((item) => item.id === partId);
+      if (!part) throw new Error('Part not found');
+      part.currentDepartmentId = currentDepartmentId;
+      part.status = 'COMPLETE';
+      return part;
+    },
+
     async setChecklistCompletion({
       checklistId,
       checked,
@@ -561,7 +571,16 @@ export function createMockOrdersRepo() {
       partData,
     }: {
       orderId: string;
-      partData: { partNumber: string; quantity: number; materialId?: string | null; stockSize?: string | null; cutLength?: string | null; notes?: string | null };
+      partData: {
+        partNumber: string;
+        partName?: string | null;
+        quantity: number;
+        materialId?: string | null;
+        stockSize?: string | null;
+        cutLength?: string | null;
+        notes?: string | null;
+        workInstructions?: string | null;
+      };
       sourcePartId?: string | null;
       userId?: string | null;
       noteBuilder?: (input: { part: { partNumber: string; quantity: number }; copiedCharges: number }) => string | null;
@@ -570,6 +589,7 @@ export function createMockOrdersRepo() {
         id: nextId('part'),
         orderId,
         partNumber: partData.partNumber ?? null,
+        partName: partData.partName ?? null,
         quantity: partData.quantity ?? null,
         description: partData.notes ?? null,
         status: null,
@@ -774,6 +794,13 @@ export function createMockOrdersRepo() {
       return attachment;
     },
 
+    async updateOrderAttachmentStoragePath(attachmentId: string, storagePath: string) {
+      const attachment = state.orderAttachments.find((item) => item.id === attachmentId);
+      if (!attachment) throw new Error('Attachment not found');
+      attachment.storagePath = storagePath;
+      return attachment;
+    },
+
     async findPartById(partId: string) {
       return state.orderParts.find((part) => part.id === partId) ?? null;
     },
@@ -825,6 +852,13 @@ export function createMockOrdersRepo() {
       const attachment = state.partAttachments.find((item) => item.id === attachmentId);
       if (!attachment) throw new Error('Attachment not found');
       Object.assign(attachment, data);
+      return attachment;
+    },
+
+    async updatePartAttachmentStoragePath(attachmentId: string, storagePath: string) {
+      const attachment = state.partAttachments.find((item) => item.id === attachmentId);
+      if (!attachment) throw new Error('Attachment not found');
+      attachment.storagePath = storagePath;
       return attachment;
     },
 
@@ -1025,6 +1059,7 @@ export function createMockOrdersRepo() {
           const customer = order ? state.customers.find((item) => item.id === order.customerId) : null;
           return (
             (part.partNumber ?? '').toLowerCase().includes(normalized) ||
+            (part.partName ?? '').toLowerCase().includes(normalized) ||
             (order?.orderNumber ?? '').toLowerCase().includes(normalized) ||
             (customer?.name ?? '').toLowerCase().includes(normalized)
           );
@@ -1036,6 +1071,7 @@ export function createMockOrdersRepo() {
           return {
             id: part.id,
             partNumber: part.partNumber,
+            partName: part.partName ?? null,
             quantity: part.quantity,
             currentDepartmentId: part.currentDepartmentId,
             currentDepartment: state.departments.find((department) => department.id === part.currentDepartmentId) ?? null,

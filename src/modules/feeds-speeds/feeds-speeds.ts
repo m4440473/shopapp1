@@ -1,4 +1,28 @@
 import fswizardDb from './data/fswizard-db.json';
+import {
+  calculateCornerRoundingEffectiveDiameter,
+  calculateEffectiveCuttingDiameter as calculateSourceEffectiveCuttingDiameter,
+  calculateMillingDeflection,
+  calculateTurningDeflection,
+  cornerRoundingArea,
+  cornerRoundingDocForWoc,
+  cornerRoundingWocForDoc,
+  getDefaultCornerRadius,
+  getDefaultFluteLength as getSourceDefaultFluteLength,
+  getDefaultShankDiameter,
+  getDefaultStickout as getSourceDefaultStickout,
+  getDefaultToolLength,
+  getEffectiveDiameter,
+  getEffectiveDiameterMin,
+  getFeedmillMaxFluteLength,
+  getIdealSideDoc as getSourceIdealSideDoc,
+  getIdealSideWoc as getSourceIdealSideWoc,
+  getIdealSlotDoc as getSourceIdealSlotDoc,
+} from './feeds-speeds.geometry';
+import {
+  HAAS_VF2SS_MACHINE,
+  getFeedsSpeedsMachineProfile,
+} from './feeds-speeds.machine';
 import type {
   FeedsSpeedsInputs,
   FeedsSpeedsResult,
@@ -72,10 +96,7 @@ function lerpClamped(x1: number, x2: number, y1: number, y2: number, x: number) 
 }
 
 function xYDelta(x1: number, x2: number, y1: number, y2: number, x: number) {
-  if (!Number.isFinite(x1) || !Number.isFinite(x2) || x1 === x2) {
-    return y2;
-  }
-  return y1 + ((x - x1) * (y2 - y1)) / (x2 - x1);
+  return lerpClamped(x1, x2, y1, y2, x);
 }
 
 function isCarbideLike(toolMaterial: FswizardToolMaterial) {
@@ -83,12 +104,19 @@ function isCarbideLike(toolMaterial: FswizardToolMaterial) {
   return name.includes('carbide') || name.includes('diamond') || name.includes('ceramic');
 }
 
+function usesCarbideChiploadBaseline(toolMaterial: FswizardToolMaterial) {
+  return toolMaterial.name.trim().toLowerCase() === 'carbide';
+}
+
 function getChiploadFamily(tool: FswizardToolType) {
   return CHIPLOAD_TYPE_MAP[tool.type] ?? 'endmill';
 }
 
 function interpolateChipload(tool: FswizardToolType, diameter: number) {
-  const family = getChiploadFamily(tool);
+  return interpolateChiploadFamily(getChiploadFamily(tool), diameter);
+}
+
+function interpolateChiploadFamily(family: string, diameter: number) {
   const entries = fswizardChiploads
     .filter((entry) => entry.tool_type === family)
     .sort((a, b) => a.dia - b.dia);
@@ -120,108 +148,31 @@ function interpolateChipload(tool: FswizardToolType, diameter: number) {
 }
 
 function getMaterialChipload(material: FswizardMaterial, toolMaterial: FswizardToolMaterial) {
-  if (isCarbideLike(toolMaterial) && clampPositive(material.ipt_carbide) > 0) {
+  if (usesCarbideChiploadBaseline(toolMaterial) && clampPositive(material.ipt_carbide) > 0) {
     return material.ipt_carbide as number;
   }
   return clampPositive(material.ipt, 0.001);
 }
 
-function getCornerRadius(tool: FswizardToolType, diameter: number) {
-  return clampPositive(tool.corner_radius) * diameter;
-}
-
-function getDefaultStickout(tool: FswizardToolType, diameter: number) {
-  const defaultLength = Number(tool.default_len);
-  if (Number.isFinite(defaultLength) && defaultLength !== 0) {
-    return Math.abs(defaultLength);
-  }
-
-  if ((tool.tool_len ?? 0) < 0) {
-    return Math.abs(tool.tool_len as number);
-  }
-
-  if ((tool.tool_len ?? 0) > 0) {
-    return diameter * clampPositive(tool.tool_len, 0);
-  }
-
-  return diameter;
-}
-
-function getDefaultFluteLength(tool: FswizardToolType, diameter: number) {
-  const defaultFluteLength = Number(tool.default_flute_len);
-  if (Number.isFinite(defaultFluteLength) && defaultFluteLength !== 0) {
-    return Math.abs(defaultFluteLength);
-  }
-
-  if ((tool.flute_len ?? 0) < 0) {
-    return Math.abs(tool.flute_len as number);
-  }
-
-  if ((tool.flute_len ?? 0) > 0) {
-    return diameter * clampPositive(tool.flute_len, 0);
-  }
-
-  return diameter;
-}
-
 function getHelixFactor(tool: FswizardToolType) {
-  const helix = Math.min(Math.max(clampPositive(tool.helix, 30), 0), 70);
+  const rawHelix = Number.isFinite(tool.helix) ? (tool.helix as number) : 0;
+
+  if (tool.type === 'cornerrounding') {
+    return 1;
+  }
+
+  if (tool.type === 'drill' || tool.type === 'ream') {
+    const helix = Math.min(Math.max(rawHelix, 0), 60);
+    return 1 + 0.75 * (Math.sin(degToRad(helix)) - Math.sin(degToRad(15)));
+  }
+
+  if (tool.type === 'tap') {
+    const helix = Math.min(Math.max(rawHelix, 0), 60);
+    return 1 + 0.5 * (Math.sin(degToRad(helix)) - Math.sin(degToRad(15)));
+  }
+
+  const helix = Math.min(Math.max(rawHelix, 0), 70);
   return 1 + 0.5 * (Math.sin(degToRad(helix)) - Math.sin(degToRad(30)));
-}
-
-function getIdealSideWoc(tool: FswizardToolType, diameter: number) {
-  if ((tool.side_woc ?? 0) < 0) return Math.abs(tool.side_woc as number);
-  return diameter * clampPositive(tool.side_woc, 0);
-}
-
-function getIdealSideDoc(tool: FswizardToolType, diameter: number, fluteLength: number) {
-  if ((tool.side_doc ?? 0) < 0) return Math.abs(tool.side_doc as number);
-  if ((tool.side_doc ?? 0) === 0) return fluteLength;
-  return diameter * clampPositive(tool.side_doc, 0);
-}
-
-function getIdealSlotDoc(tool: FswizardToolType, diameter: number) {
-  if ((tool.slot_doc ?? 0) < 0) return Math.abs(tool.slot_doc as number);
-  return diameter * clampPositive(tool.slot_doc, 0);
-}
-
-function calculateEngagementDiameter(diameter: number, leadAngle: number, doc: number) {
-  const safeDiameter = clampPositive(diameter, 0.001);
-  const safeDoc = clampPositive(doc, 0);
-  const safeLeadAngle = Math.min(Math.max(clampPositive(leadAngle, 90), 5), 175);
-
-  if (safeDoc <= 0) return safeDiameter;
-  if (safeLeadAngle >= 89.999) return safeDiameter;
-
-  const engagement = 2 * safeDoc * Math.tan(degToRad(safeLeadAngle / 2));
-  return Math.min(safeDiameter, clampPositive(engagement, safeDiameter));
-}
-
-function calculateEffectiveCuttingDiameter(
-  tool: FswizardToolType,
-  diameter: number,
-  doc: number,
-  fluteLength: number
-) {
-  const cornerRadius = getCornerRadius(tool, diameter);
-  const safeDiameter = clampPositive(diameter, 0.001);
-  const safeDoc = clampPositive(doc, 0);
-
-  if (tool.subtype === 'profile') {
-    return safeDiameter + 2 * safeDoc;
-  }
-
-  if (cornerRadius >= safeDiameter / 2 && safeDoc > 0 && safeDoc < safeDiameter / 2) {
-    return Math.max(0.001, 2 * Math.sqrt(Math.max(0, safeDiameter * safeDoc - safeDoc * safeDoc)));
-  }
-
-  if (safeDoc > 0 && safeDoc < cornerRadius && cornerRadius > 0) {
-    const ratio = Math.max(0, 1 - safeDoc / cornerRadius);
-    const chipFactor = 1 / Math.sqrt(Math.max(1e-9, 1 - ratio * ratio));
-    return Math.min(safeDiameter, safeDiameter / chipFactor);
-  }
-
-  return calculateEngagementDiameter(safeDiameter, clampPositive(tool.leadangle, 90), Math.min(safeDoc, fluteLength));
 }
 
 function getRotaryLoadFactor(
@@ -295,15 +246,6 @@ function getFswizardMaterialDocAdjust(material: FswizardMaterial, fluteCount: nu
   return result;
 }
 
-function isMillingStyleTool(tool: FswizardToolType) {
-  return (
-    tool.type === 'endmill' ||
-    tool.type === 'threadmill' ||
-    tool.type === 'chamfermill' ||
-    tool.type === 'cornerrounding'
-  );
-}
-
 function computeSfm(
   material: FswizardMaterial,
   tool: FswizardToolType,
@@ -332,14 +274,22 @@ function computeChipOrIpr(
   material: FswizardMaterial,
   tool: FswizardToolType,
   toolMaterial: FswizardToolMaterial,
-  coating: FswizardToolCoating,
   diameter: number,
   helixFactor = 1,
-  toolChiploadOverride?: number
+  options?: {
+    family?: string;
+    toolChipload?: number;
+    halfInchChipload?: number;
+  }
 ) {
   const selectedMaterialIpt = getMaterialChipload(material, toolMaterial);
-  const diameterReferenceIpt = toolChiploadOverride ?? interpolateChipload(tool, diameter);
-  const halfInchReferenceIpt = interpolateChipload(tool, 0.5) || diameterReferenceIpt;
+  const family = options?.family ?? getChiploadFamily(tool);
+  const diameterReferenceIpt =
+    options?.toolChipload ?? interpolateChiploadFamily(family, diameter);
+  const halfInchReferenceIpt =
+    options?.halfInchChipload ??
+    interpolateChiploadFamily(family, 0.5) ??
+    diameterReferenceIpt;
   const toolFactor = clampPositive(tool.ipt, 1);
 
   let result =
@@ -349,7 +299,7 @@ function computeChipOrIpr(
     toolFactor /
     Math.max(halfInchReferenceIpt, 1e-9);
 
-  if (!isCarbideLike(toolMaterial) || clampPositive(material.ipt_carbide) <= 0) {
+  if (!usesCarbideChiploadBaseline(toolMaterial) || clampPositive(material.ipt_carbide) <= 0) {
     result *= factorReduce(toolMaterial.ipt ?? 1, material.material_ipt_reduction);
   }
 
@@ -367,68 +317,490 @@ function roundChipload(value: number) {
   return round(value, 4);
 }
 
-function getTorqueRisk(material: FswizardMaterial) {
-  const hardness = clampPositive(material.hb);
-  if (hardness >= 350) return 'high' as const;
-  if (hardness >= 220) return 'medium' as const;
-  return 'low' as const;
+function getToolDependentDefaults(
+  tool: FswizardToolType,
+  requestedDiameter?: number
+) {
+  const diameter = clampPositive(
+    requestedDiameter ?? 0,
+    clampPositive(tool.diameter, 0.5)
+  );
+  const stickout = getSourceDefaultStickout(tool, diameter);
+  const fluteLength = Math.min(getSourceDefaultFluteLength(tool, diameter), stickout);
+  const shankDiameter = getDefaultShankDiameter(tool, diameter);
+
+  return {
+    diameter,
+    fluteCount: Math.max(1, Math.round(tool.flutes ?? 1)),
+    doc: 0,
+    woc: 0,
+    workDiameter: tool.type === 'turn' || tool.type === 'groove' ? 1 : diameter,
+    threadLead: 0,
+    stickout,
+    fluteLength,
+    shankDiameter,
+    leadAngle: clampPositive(tool.leadangle, 90),
+    cornerRadius: getDefaultCornerRadius(tool, diameter),
+    threadDiameter: Math.max(0.5, diameter * 2),
+    threadExternal: false,
+    slotting: (tool.side_doc ?? 0) === 0 && (tool.side_woc ?? 0) === 0,
+  };
+}
+
+export function getFeedsSpeedsInputsForTool(
+  toolTypeId: string,
+  current?: FeedsSpeedsInputs
+): FeedsSpeedsInputs {
+  const tool =
+    fswizardToolTypes.find((item) => String(item.id) === toolTypeId) ??
+    fswizardToolTypes[0];
+  const defaults = getToolDependentDefaults(tool);
+
+  return {
+    machineProfileId: current?.machineProfileId ?? HAAS_VF2SS_MACHINE.id,
+    toolTypeId: String(tool.id),
+    materialId: current?.materialId ?? String(fswizardMaterials[0]?.id ?? ''),
+    toolMaterialId:
+      current?.toolMaterialId ??
+      String(
+        fswizardToolMaterials.find((item) => item.name === 'Carbide')?.id ??
+          fswizardToolMaterials[0]?.id ??
+          ''
+      ),
+    coatingId:
+      current?.coatingId ??
+      String(
+        fswizardToolCoatings.find((item) => item.name === 'AlTiN')?.id ??
+          fswizardToolCoatings[0]?.id ??
+          ''
+      ),
+    ...defaults,
+  };
 }
 
 export function getDefaultFeedsSpeedsInputs(): FeedsSpeedsInputs {
+  return getFeedsSpeedsInputsForTool(String(fswizardToolTypes[0]?.id ?? ''));
+}
+
+export function updateFeedsSpeedsDiameter(
+  current: FeedsSpeedsInputs,
+  requestedDiameter: number
+): FeedsSpeedsInputs {
+  const tool =
+    fswizardToolTypes.find((item) => String(item.id) === current.toolTypeId) ??
+    fswizardToolTypes[0];
+  const oldDefaults = getToolDependentDefaults(tool, current.diameter);
+  const nextDefaults = getToolDependentDefaults(tool, requestedDiameter);
+  const followsDefault = (currentValue: number, defaultValue: number) =>
+    Math.abs(currentValue - defaultValue) < 1e-9;
+
   return {
-    toolTypeId: String(fswizardToolTypes[0]?.id ?? ''),
-    materialId: String(fswizardMaterials[0]?.id ?? ''),
-    toolMaterialId: String(fswizardToolMaterials.find((item) => item.name === 'Carbide')?.id ?? fswizardToolMaterials[0]?.id ?? ''),
-    coatingId: String(fswizardToolCoatings.find((item) => item.name === 'AlTiN')?.id ?? fswizardToolCoatings[0]?.id ?? ''),
-    diameter: 0.5,
-    fluteCount: 4,
-    doc: 0.25,
-    woc: 0.1,
-    workDiameter: 1,
-    threadLead: 0.05,
+    ...current,
+    diameter: requestedDiameter,
+    stickout: followsDefault(current.stickout, oldDefaults.stickout)
+      ? nextDefaults.stickout
+      : current.stickout,
+    fluteLength: followsDefault(current.fluteLength, oldDefaults.fluteLength)
+      ? nextDefaults.fluteLength
+      : current.fluteLength,
+    shankDiameter: followsDefault(
+      current.shankDiameter,
+      oldDefaults.shankDiameter
+    )
+      ? nextDefaults.shankDiameter
+      : current.shankDiameter,
+    cornerRadius: followsDefault(
+      current.cornerRadius,
+      oldDefaults.cornerRadius
+    )
+      ? nextDefaults.cornerRadius
+      : current.cornerRadius,
+    threadDiameter: followsDefault(
+      current.threadDiameter,
+      oldDefaults.threadDiameter
+    )
+      ? nextDefaults.threadDiameter
+      : current.threadDiameter,
   };
+}
+
+function resolveSourceMillingGeometry(options: {
+  tool: FswizardToolType;
+  diameter: number;
+  fluteLength: number;
+  leadAngle: number;
+  enteredDoc: number;
+  enteredWoc: number;
+  idealSideDoc: number;
+  idealSideWoc: number;
+  idealSlotDoc: number;
+  slotArea: number;
+  sideArea: number;
+  slotting: boolean;
+}) {
+  const {
+    tool,
+    diameter,
+    fluteLength,
+    leadAngle,
+    enteredDoc,
+    enteredWoc,
+    idealSideDoc,
+    idealSideWoc,
+    idealSlotDoc,
+    slotArea,
+    sideArea,
+    slotting,
+  } = options;
+  const clampedDoc = enteredDoc > 0 ? Math.min(enteredDoc, fluteLength) : 0;
+  let idealDoc = Math.min(idealSideDoc, fluteLength);
+  let idealWoc = idealSideWoc;
+
+  if (slotting) {
+    idealDoc = idealSlotDoc;
+    idealWoc = getEffectiveDiameter(diameter, leadAngle, idealDoc);
+  } else if (enteredWoc <= 0 && clampedDoc <= 0) {
+    idealDoc = Math.min(idealSideDoc, fluteLength);
+    idealWoc =
+      xYDelta(idealSideDoc, idealSlotDoc, sideArea, slotArea, idealDoc) /
+      Math.max(idealDoc, 1e-9);
+  } else if (enteredWoc <= 0 && clampedDoc > 0) {
+    const effectiveFromDoc = getEffectiveDiameter(diameter, leadAngle, clampedDoc);
+    const solvedWoc = xYDelta(
+      idealSlotDoc,
+      idealSideDoc,
+      effectiveFromDoc,
+      idealSideWoc,
+      clampedDoc
+    );
+    idealDoc =
+      idealSideWoc < effectiveFromDoc
+        ? xYDelta(idealSideWoc, effectiveFromDoc, sideArea, slotArea, solvedWoc) /
+          Math.max(solvedWoc, 1e-9)
+        : idealSlotDoc;
+    idealWoc = solvedWoc;
+  } else if (enteredWoc > 0 && clampedDoc <= 0 && tool.type !== 'chamfermill') {
+    const solvedDoc = xYDelta(
+      idealSideWoc,
+      diameter,
+      idealSideDoc,
+      idealSlotDoc,
+      enteredWoc
+    );
+    idealWoc =
+      xYDelta(idealSideDoc, idealSlotDoc, sideArea, slotArea, solvedDoc) /
+      Math.max(solvedDoc, 1e-9);
+    idealDoc = solvedDoc;
+  } else if (enteredWoc > 0 && clampedDoc > 0) {
+    const solvedDoc = xYDelta(
+      idealSideWoc,
+      diameter,
+      idealSideDoc,
+      idealSlotDoc,
+      enteredWoc
+    );
+    idealWoc =
+      xYDelta(idealSideDoc, idealSlotDoc, sideArea, slotArea, solvedDoc) /
+      Math.max(solvedDoc, 1e-9);
+    idealDoc = solvedDoc;
+  }
+
+  return {
+    clampedDoc,
+    idealDoc: Math.min(idealDoc, fluteLength),
+    idealWoc,
+  };
+}
+
+function getMillingDeflectionScale(options: {
+  tool: FswizardToolType;
+  toolMaterial: FswizardToolMaterial;
+  diameter: number;
+  idealLength: number;
+  idealFluteLength: number;
+  stickout: number;
+  fluteLength: number;
+  shankDiameter: number;
+  fluteCount: number;
+  leadAngle: number;
+}) {
+  const {
+    toolMaterial,
+    diameter,
+    idealLength,
+    idealFluteLength,
+    stickout,
+    fluteLength,
+    shankDiameter,
+    fluteCount,
+    leadAngle,
+  } = options;
+  const rigidity = clampPositive(toolMaterial.rigid, 30_000_000);
+  const idealDeflection = calculateMillingDeflection({
+    stickout: idealLength,
+    fluteLength: idealFluteLength,
+    cuttingLength: idealFluteLength,
+    shankDiameter: diameter,
+    fluteCount,
+    leadAngle: 90,
+    diameter,
+    cuttingDiameter: diameter,
+    radialWoc: 0.5 * diameter,
+    forcePerLength: 10 * diameter,
+    rigidity,
+  });
+  const actualDeflection = calculateMillingDeflection({
+    stickout,
+    fluteLength,
+    cuttingLength: fluteLength,
+    shankDiameter,
+    fluteCount,
+    leadAngle,
+    diameter,
+    cuttingDiameter: shankDiameter,
+    radialWoc: 0.5 * diameter,
+    forcePerLength: 10 * diameter,
+    rigidity,
+  });
+
+  if (
+    Number.isFinite(idealDeflection) &&
+    Number.isFinite(actualDeflection) &&
+    idealDeflection > 0 &&
+    actualDeflection > idealDeflection
+  ) {
+    return Math.pow(idealDeflection / actualDeflection, 0.25);
+  }
+  return 1;
+}
+
+function getLoadFactorFromAreas(
+  material: FswizardMaterial,
+  targetArea: number,
+  actualArea: number
+) {
+  if (targetArea <= 0 || actualArea <= 0) return 1;
+  let factor = targetArea / actualArea;
+  let ceiling = (1 / clampPositive(material.kp, 1)) * 1.5;
+  if (ceiling < 1) ceiling = 1;
+  if (ceiling > 1.5) ceiling = 1.5;
+  if (factor > ceiling) factor = ceiling;
+  if (factor < 0.5) factor = 0.5;
+  return factor;
+}
+
+function getToolLengthRpmLimit(diameter: number, stickout: number) {
+  if (diameter <= 0 || stickout <= 0) return Number.POSITIVE_INFINITY;
+  return (4.76 * 10 ** 6 * diameter * 0.25) / (2 * stickout ** 2);
 }
 
 export function calculateFeedsSpeeds(inputs: FeedsSpeedsInputs): FeedsSpeedsResult | null {
   const tool = fswizardToolTypes.find((item) => String(item.id) === inputs.toolTypeId);
   const material = fswizardMaterials.find((item) => String(item.id) === inputs.materialId);
-  const toolMaterial = fswizardToolMaterials.find((item) => String(item.id) === inputs.toolMaterialId);
-  const coating = fswizardToolCoatings.find((item) => String(item.id) === inputs.coatingId);
+  const toolMaterial = fswizardToolMaterials.find(
+    (item) => String(item.id) === inputs.toolMaterialId
+  );
+  const coating = fswizardToolCoatings.find(
+    (item) => String(item.id) === inputs.coatingId
+  );
 
-  if (!tool || !material || !toolMaterial || !coating) {
-    return null;
-  }
+  if (!tool || !material || !toolMaterial || !coating) return null;
 
+  const machine = getFeedsSpeedsMachineProfile(inputs.machineProfileId);
   const requestedDiameter = Number(inputs.diameter);
   const requestedFluteCount = Number(inputs.fluteCount);
   const diameter = clampPositive(requestedDiameter, clampPositive(tool.diameter, 0.5));
-  const fluteCount = Math.max(1, Math.round(requestedFluteCount || tool.flutes || 1));
+  const fluteCount = Math.max(
+    1,
+    Math.round(requestedFluteCount || tool.flutes || 1)
+  );
   const workDiameter = clampPositive(inputs.workDiameter, diameter);
-  const stickout = getDefaultStickout(tool, diameter);
-  const fluteLength = Math.min(getDefaultFluteLength(tool, diameter), stickout);
-  const idealSideWoc = getIdealSideWoc(tool, diameter);
-  const idealSideDoc = getIdealSideDoc(tool, diameter, fluteLength);
-  const idealSlotDoc = getIdealSlotDoc(tool, diameter);
-  const cornerRadius = getCornerRadius(tool, diameter);
+  const idealLength = getDefaultToolLength(tool, diameter);
+  const idealFluteLength = getSourceDefaultFluteLength(tool, diameter);
+  const stickout = clampPositive(
+    inputs.stickout,
+    getSourceDefaultStickout(tool, diameter)
+  );
+  let fluteLength = Math.min(
+    clampPositive(inputs.fluteLength, idealFluteLength),
+    stickout
+  );
+  const shankDiameter = clampPositive(
+    inputs.shankDiameter,
+    getDefaultShankDiameter(tool, diameter)
+  );
+  const leadAngle =
+    tool.type === 'turn' || tool.type === 'groove'
+      ? Math.min(Math.max(clampPositive(inputs.leadAngle, tool.leadangle ?? 90), 5), 90)
+      : Math.min(
+          Math.max(clampPositive(inputs.leadAngle, tool.leadangle ?? 90), 5),
+          175
+        );
+  const cornerRadius = clampPositive(
+    inputs.cornerRadius,
+    getDefaultCornerRadius(tool, diameter)
+  );
   const enteredDoc = clampPositive(inputs.doc, 0);
   const enteredWoc = clampPositive(inputs.woc, 0);
-  const slottingMode = (tool.side_doc ?? 0) === 0 && (tool.side_woc ?? 0) === 0;
-  const idealDoc = slottingMode ? idealSlotDoc : idealSideDoc;
-  const effectiveDoc = enteredDoc > 0 ? Math.min(enteredDoc, fluteLength || enteredDoc) : idealDoc;
-  const effectiveDiameter = calculateEffectiveCuttingDiameter(tool, diameter, effectiveDoc, fluteLength);
-  const effectiveWoc = enteredWoc > 0 ? Math.min(enteredWoc, effectiveDiameter) : slottingMode ? effectiveDiameter : idealSideWoc;
-  const helixFactor = isMillingStyleTool(tool) || tool.type === 'drill' || tool.type === 'ream' ? getHelixFactor(tool) : 1;
-  const chipThinningEnabled = Boolean(tool.default_chip_thinning);
+  const slotting =
+    Boolean(inputs.slotting) ||
+    ((tool.side_doc ?? 0) === 0 && (tool.side_woc ?? 0) === 0);
+  const isMilling =
+    tool.type === 'endmill' ||
+    tool.type === 'threadmill' ||
+    tool.type === 'chamfermill';
+  const isCornerRounding = tool.type === 'cornerrounding';
+  const isTurning = tool.type === 'turn' || tool.type === 'groove';
+  const isDrilling = tool.type === 'drill' || tool.type === 'ream';
+  const helixFactor =
+    isMilling || isCornerRounding || isDrilling || tool.type === 'tap'
+      ? getHelixFactor(tool)
+      : 1;
+  const errors: string[] = [];
+  const warnings: string[] = [];
 
+  let effectiveDiameter = isTurning ? workDiameter : diameter;
+  let effectiveDoc: number | null = null;
+  let effectiveWoc: number | null = null;
+  let loadFactor = 1;
   let radialChipThinningFactor = 1;
   let axialChipThinningFactor = 1;
+  let chipThinningFactor = 1;
+  let chipFamily = getChiploadFamily(tool);
+  let chipDiameter = diameter;
+  let toolChiploadOverride: number | undefined;
+  let halfInchChiploadOverride: number | undefined;
+  let sfmMultiplier = 1;
+  let threadGeometryFactor = 1;
+  let pilotDiameter: number | null = null;
+  let loadBudgetArea = 0;
 
-  if (isMillingStyleTool(tool)) {
+  if (tool.subtype === 'feedmill') {
+    fluteLength = Math.min(fluteLength, getFeedmillMaxFluteLength(diameter, leadAngle));
+  }
+
+  if (isMilling) {
+    let idealSideWoc = getSourceIdealSideWoc(tool, diameter);
+    const idealSideDoc = getSourceIdealSideDoc(
+      tool,
+      diameter,
+      fluteLength,
+      cornerRadius
+    );
+    const idealSlotDoc = getSourceIdealSlotDoc(tool, diameter, cornerRadius);
+    let sideArea = idealSideDoc * idealSideWoc;
+    let slotArea = idealSlotDoc * diameter;
+
+    if (tool.type === 'chamfermill' && tool.subtype !== 'vbit') {
+      const fluteEnvelope =
+        diameter +
+        fluteLength /
+          Math.max(Math.tan(degToRad(leadAngle)) / 2, 1e-9);
+      idealSideWoc =
+        (tool.side_woc ?? 0) < 0
+          ? Math.abs(tool.side_woc as number)
+          : fluteEnvelope * clampPositive(tool.side_woc, 0);
+      sideArea = idealSideDoc * idealSideWoc;
+      slotArea =
+        idealSlotDoc *
+        getEffectiveDiameter(diameter, leadAngle, idealSlotDoc) /
+        2;
+    }
+
+    const geometry = resolveSourceMillingGeometry({
+      tool,
+      diameter,
+      fluteLength,
+      leadAngle,
+      enteredDoc,
+      enteredWoc,
+      idealSideDoc,
+      idealSideWoc,
+      idealSlotDoc,
+      slotArea,
+      sideArea,
+      slotting,
+    });
+    let idealDoc = geometry.idealDoc;
+    let idealWoc = geometry.idealWoc;
+    const deflectionScale = getMillingDeflectionScale({
+      tool,
+      toolMaterial,
+      diameter,
+      idealLength,
+      idealFluteLength,
+      stickout,
+      fluteLength,
+      shankDiameter,
+      fluteCount,
+      leadAngle,
+    });
+    if (slotting) idealDoc *= deflectionScale;
+    else idealWoc *= deflectionScale;
+
+    let slottingLoadAdjust = 1;
+    if (slotting) {
+      slottingLoadAdjust =
+        cornerRadius <= diameter / 2
+          ? xYDelta(0, diameter / 2, 1, 0.5, cornerRadius)
+          : xYDelta(diameter / 2, 2 * diameter, 0.5, 1, cornerRadius);
+    }
+    loadBudgetArea =
+      idealWoc *
+      idealDoc *
+      getFswizardMaterialDocAdjust(material, fluteCount) *
+      slottingLoadAdjust;
+
+    if (geometry.clampedDoc > 0 && !slotting) {
+      idealWoc = loadBudgetArea / geometry.clampedDoc;
+    }
+    if (enteredWoc > 0 && (!slotting || tool.type !== 'chamfermill')) {
+      idealDoc = loadBudgetArea / enteredWoc;
+    }
+    if (enteredWoc <= 0 && enteredDoc <= 0) {
+      if (slotting) {
+        idealDoc =
+          tool.type === 'chamfermill'
+            ? loadBudgetArea / Math.max(idealSideWoc, 1e-9)
+            : loadBudgetArea / Math.max(diameter, 1e-9);
+      } else {
+        idealWoc = loadBudgetArea / Math.max(idealDoc, 1e-9);
+      }
+    }
+
+    idealDoc = Math.min(idealDoc, fluteLength);
+    effectiveDoc =
+      geometry.clampedDoc > 0 ? geometry.clampedDoc : Math.max(idealDoc, 0);
+    effectiveDiameter = calculateSourceEffectiveCuttingDiameter({
+      tool,
+      diameter,
+      cornerRadius,
+      leadAngle,
+      doc: effectiveDoc,
+      fluteLength,
+    });
+    idealWoc = Math.min(idealWoc, effectiveDiameter);
+    effectiveWoc =
+      enteredWoc > 0
+        ? Math.min(enteredWoc, effectiveDiameter)
+        : slotting
+          ? effectiveDiameter
+          : idealWoc;
+
     if (effectiveDoc < cornerRadius && cornerRadius > 0) {
-      const docRatio = Math.max(0, 1 - effectiveDoc / cornerRadius);
-      axialChipThinningFactor = 1 / Math.sqrt(Math.max(1e-9, 1 - docRatio * docRatio));
+      axialChipThinningFactor =
+        effectiveDiameter < diameter
+          ? 1 /
+            Math.sqrt(
+              Math.max(
+                1e-9,
+                1 - Math.pow(1 - effectiveDoc / cornerRadius, 2)
+              )
+            )
+          : 1;
     } else {
-      axialChipThinningFactor = 1 / Math.sin(degToRad(Math.min(Math.max(clampPositive(tool.leadangle, 90), 5), 175)));
+      axialChipThinningFactor =
+        1 / Math.sin(degToRad(Math.min(Math.max(leadAngle, 5), 175)));
     }
     if (!Number.isFinite(axialChipThinningFactor) || axialChipThinningFactor <= 0) {
       axialChipThinningFactor = 1;
@@ -436,165 +808,466 @@ export function calculateFeedsSpeeds(inputs: FeedsSpeedsInputs): FeedsSpeedsResu
 
     if (effectiveWoc < effectiveDiameter / 2) {
       radialChipThinningFactor =
-        1 / Math.sqrt(Math.max(1e-9, 1 - Math.pow(1 - (2 * effectiveWoc) / Math.max(effectiveDiameter, 1e-9), 2)));
-      if (!Number.isFinite(radialChipThinningFactor) || radialChipThinningFactor <= 0) {
-        radialChipThinningFactor = 1;
-      }
-      if (radialChipThinningFactor > 3) {
-        radialChipThinningFactor = 3;
+        1 /
+        Math.sqrt(
+          Math.max(
+            1e-9,
+            1 -
+              Math.pow(
+                1 - (2 * effectiveWoc) / Math.max(effectiveDiameter, 1e-9),
+                2
+              )
+          )
+        );
+      radialChipThinningFactor = Math.min(
+        Math.max(radialChipThinningFactor, 1),
+        3
+      );
+    }
+
+    const engagementDiameter = getEffectiveDiameterMin(
+      diameter,
+      leadAngle,
+      effectiveDoc,
+      effectiveWoc
+    );
+    const slotIptFactor = clampPositive(tool.slot_ipt_factor, 1);
+    const slotSfmFactor = clampPositive(tool.slot_sfm_factor, 1);
+    const baseChipDiameter =
+      tool.type === 'chamfermill' ? engagementDiameter : diameter;
+    toolChiploadOverride =
+      interpolateChiploadFamily(chipFamily, baseChipDiameter) *
+      xYDelta(
+        idealSideWoc,
+        engagementDiameter,
+        1,
+        slotIptFactor,
+        effectiveWoc
+      );
+    sfmMultiplier = xYDelta(
+      idealSideWoc,
+      engagementDiameter,
+      1,
+      slotSfmFactor,
+      effectiveWoc
+    );
+    loadFactor = getRotaryLoadFactor(
+      material,
+      radialChipThinningFactor,
+      loadBudgetArea,
+      effectiveDoc,
+      effectiveWoc
+    );
+    if (Boolean(tool.default_chip_thinning)) {
+      chipThinningFactor =
+        radialChipThinningFactor * axialChipThinningFactor;
+    }
+
+    if (tool.type === 'threadmill') {
+      const threadDiameter = clampPositive(inputs.threadDiameter, 0);
+      if (threadDiameter <= 0) {
+        errors.push('Thread diameter is required for thread milling.');
+      } else if (!inputs.threadExternal && threadDiameter <= diameter) {
+        errors.push('Internal thread diameter must be larger than the thread mill.');
+      } else {
+        threadGeometryFactor = inputs.threadExternal
+          ? (threadDiameter + diameter) / threadDiameter
+          : (threadDiameter - diameter) / threadDiameter;
+        pilotDiameter = threadDiameter * clampPositive(tool.pilot_size, 0);
       }
     }
-  }
+  } else if (isCornerRounding) {
+    const materialAdjust = getFswizardMaterialDocAdjust(material, fluteCount);
+    const deflectionScale = getMillingDeflectionScale({
+      tool,
+      toolMaterial,
+      diameter,
+      idealLength,
+      idealFluteLength,
+      stickout,
+      fluteLength,
+      shankDiameter,
+      fluteCount,
+      leadAngle,
+    });
+    const idealSideWoc = cornerRadius * clampPositive(tool.side_woc, 0);
+    const idealSideDoc = getSourceIdealSideDoc(
+      tool,
+      diameter,
+      fluteLength,
+      cornerRadius
+    );
+    const idealSlotDoc = getSourceIdealSlotDoc(tool, diameter, cornerRadius);
+    const sideAreaTarget =
+      cornerRoundingArea(cornerRadius, idealSideWoc, idealSideDoc) *
+      materialAdjust *
+      deflectionScale;
+    const slotAreaTarget =
+      cornerRoundingArea(cornerRadius, cornerRadius, idealSlotDoc) *
+      materialAdjust *
+      deflectionScale;
 
-  const engagementReferenceDiameter = calculateEngagementDiameter(
-    diameter,
-    clampPositive(tool.leadangle, 90),
-    effectiveDoc
-  );
-  const slotIptFactor = clampPositive(tool.slot_ipt_factor, 1);
-  const slotSfmFactor = clampPositive(tool.slot_sfm_factor, 1);
-  const toolChiploadBase = interpolateChipload(tool, tool.type === 'chamfermill' ? engagementReferenceDiameter : diameter);
-  const toolChipload =
-    isMillingStyleTool(tool)
-      ? toolChiploadBase *
-        lerpClamped(idealSideWoc || effectiveDiameter, engagementReferenceDiameter || effectiveDiameter, 1, slotIptFactor, effectiveWoc)
-      : toolChiploadBase;
-
-  let sfmMultiplier = 1;
-  if (isMillingStyleTool(tool)) {
-    sfmMultiplier *= lerpClamped(idealSideWoc || effectiveDiameter, engagementReferenceDiameter || effectiveDiameter, 1, slotSfmFactor, effectiveWoc);
-  }
-
-  const { sfm, sfmHigh } = computeSfm(material, tool, toolMaterial, coating);
-  const finalSfmBase = sfm * sfmMultiplier;
-  const finalSfmHigh = sfmHigh ? sfmHigh * sfmMultiplier : null;
-  const rpmDiameter = tool.type === 'turn' || tool.type === 'groove' ? workDiameter : isMillingStyleTool(tool) ? effectiveDiameter : diameter;
-  const rpm = clampPositive((finalSfmBase * RPM_FACTOR) / Math.max(rpmDiameter, 0.001));
-  const chipOrIpr = computeChipOrIpr(material, tool, toolMaterial, coating, diameter, helixFactor, toolChipload);
-
-  const idealArea =
-    isMillingStyleTool(tool)
-      ? clampPositive(idealSideWoc || effectiveDiameter, 0) * clampPositive(idealDoc, 0)
-      : clampPositive(idealDoc, 0) * clampPositive(idealSideWoc || effectiveDiameter, 0);
-  const materialDocAdjust = getFswizardMaterialDocAdjust(material, fluteCount);
-  let slottingLoadAdjust = 1;
-  if (slottingMode) {
-    if (cornerRadius <= diameter / 2) {
-      slottingLoadAdjust *= xYDelta(0, diameter / 2, 1, 0.5, cornerRadius);
+    if (slotting) {
+      effectiveDoc = Math.min(
+        enteredDoc > 0 ? enteredDoc : idealSlotDoc,
+        cornerRadius
+      );
+      effectiveWoc = Math.min(
+        enteredWoc > 0 ? enteredWoc : cornerRadius,
+        cornerRadius
+      );
+      loadBudgetArea = slotAreaTarget;
+    } else if (enteredDoc <= 0 && enteredWoc <= 0) {
+      effectiveWoc = Math.min(idealSideWoc, cornerRadius);
+      effectiveDoc = cornerRoundingDocForWoc(
+        cornerRadius,
+        effectiveWoc,
+        sideAreaTarget
+      );
+      loadBudgetArea = sideAreaTarget;
+    } else if (enteredDoc > 0 && enteredWoc <= 0) {
+      effectiveDoc = Math.min(enteredDoc, cornerRadius);
+      effectiveWoc = cornerRoundingWocForDoc(
+        cornerRadius,
+        effectiveDoc,
+        sideAreaTarget
+      );
+      loadBudgetArea = sideAreaTarget;
+    } else if (enteredDoc <= 0 && enteredWoc > 0) {
+      effectiveWoc = Math.min(enteredWoc, cornerRadius);
+      effectiveDoc = cornerRoundingDocForWoc(
+        cornerRadius,
+        effectiveWoc,
+        sideAreaTarget
+      );
+      loadBudgetArea = sideAreaTarget;
     } else {
-      slottingLoadAdjust *= xYDelta(diameter / 2, 2 * diameter, 0.5, 1, cornerRadius);
+      effectiveDoc = Math.min(enteredDoc, cornerRadius);
+      effectiveWoc = Math.min(enteredWoc, cornerRadius);
+      loadBudgetArea = sideAreaTarget;
     }
+
+    const actualArea = cornerRoundingArea(
+      cornerRadius,
+      effectiveWoc,
+      effectiveDoc
+    );
+    loadFactor = getLoadFactorFromAreas(material, loadBudgetArea, actualArea);
+    effectiveDiameter = calculateCornerRoundingEffectiveDiameter(
+      diameter,
+      cornerRadius,
+      effectiveDoc
+    );
+    const chipReferenceDiameter = calculateCornerRoundingEffectiveDiameter(
+      diameter,
+      cornerRadius,
+      cornerRadius / 2
+    );
+    chipFamily = 'endmill';
+    chipDiameter = chipReferenceDiameter;
+    toolChiploadOverride = interpolateChiploadFamily(
+      chipFamily,
+      chipReferenceDiameter
+    );
+    halfInchChiploadOverride = interpolateChiploadFamily(chipFamily, 0.5);
+  } else if (isTurning) {
+    let idealDoc =
+      (tool.side_doc ?? 0) < 0
+        ? Math.abs(tool.side_doc as number)
+        : shankDiameter * clampPositive(tool.side_doc, 0);
+    const toolRigidity = clampPositive(tool.rigid, clampPositive(toolMaterial.rigid, 30_000_000));
+    const idealDeflection = calculateTurningDeflection({
+      stickout: idealLength,
+      shankWidth: shankDiameter,
+      shankHeight: shankDiameter,
+      force: 10 * shankDiameter,
+      rigidity: toolRigidity,
+    });
+    const actualDeflection = calculateTurningDeflection({
+      stickout,
+      shankWidth: shankDiameter,
+      shankHeight: shankDiameter,
+      force: 10 * shankDiameter,
+      rigidity: toolRigidity,
+    });
+    if (
+      idealDeflection > 0 &&
+      actualDeflection > idealDeflection &&
+      Number.isFinite(actualDeflection)
+    ) {
+      idealDoc *= Math.pow(idealDeflection / actualDeflection, 0.25);
+    }
+    idealDoc /= Math.max(clampPositive(material.kp, 0.8) / 0.8, 1);
+    idealDoc = Math.min(idealDoc, fluteLength);
+    effectiveDoc = Math.min(enteredDoc > 0 ? enteredDoc : idealDoc, fluteLength);
+    const baseIdealDoc = Math.max(idealDoc, 1e-9);
+    let turningLoadFactor = 1 / Math.max(effectiveDoc / baseIdealDoc, 1e-9);
+    let turningLoadCeiling = (1 / clampPositive(material.kp, 1)) * 1.5;
+    turningLoadCeiling = Math.min(turningLoadCeiling, 1.5);
+    turningLoadFactor = Math.min(turningLoadFactor, turningLoadCeiling);
+    loadFactor = Math.max(turningLoadFactor, 0.5);
+    effectiveDiameter =
+      tool.subtype === 'profile'
+        ? workDiameter + 2 * effectiveDoc
+        : workDiameter;
+    chipDiameter = shankDiameter;
+  } else if (isDrilling) {
+    pilotDiameter = diameter * clampPositive(tool.pilot_size, 0);
+  } else if (tool.type === 'tap') {
+    if (clampPositive(inputs.threadLead, 0) <= 0) {
+      errors.push('Enter the tap lead in inches per revolution before using this recommendation.');
+    }
+    warnings.push(
+      'Tap output calculates speed and pitch feed only; verify tap-drill size and thread engagement separately.'
+    );
   }
-  const loadBudgetArea = idealArea * materialDocAdjust * slottingLoadAdjust;
-  const loadFactor = isMillingStyleTool(tool)
-    ? getRotaryLoadFactor(material, radialChipThinningFactor, loadBudgetArea, effectiveDoc, effectiveWoc)
-    : 1;
-  const chipRealThinningFactor =
-    isMillingStyleTool(tool) && chipThinningEnabled
-      ? radialChipThinningFactor * axialChipThinningFactor
-      : 1;
 
-  const adjustedChipOrIpr = isMillingStyleTool(tool) ? chipOrIpr * loadFactor * chipRealThinningFactor : chipOrIpr;
-  const chipLoadPerTooth = tool.ipr_mode ? adjustedChipOrIpr / fluteCount : adjustedChipOrIpr;
-  const ipr = tool.ipr_mode ? adjustedChipOrIpr : chipLoadPerTooth * fluteCount;
-  const feedRate = tool.ipr_mode ? rpm * ipr : rpm * chipLoadPerTooth * fluteCount;
-  const threadFeed =
+  const chipOrIpr =
     tool.type === 'tap'
-      ? rpm * clampPositive(inputs.threadLead, 0)
-      : tool.type === 'threadmill'
-        ? rpm * chipLoadPerTooth * fluteCount
-        : null;
+      ? clampPositive(inputs.threadLead, 0)
+      : computeChipOrIpr(
+          material,
+          tool,
+          toolMaterial,
+          chipDiameter,
+          helixFactor,
+          {
+            family: chipFamily,
+            toolChipload: toolChiploadOverride,
+            halfInchChipload: halfInchChiploadOverride,
+          }
+        );
+  const adjustedChipOrIpr =
+    tool.type === 'tap'
+      ? chipOrIpr
+      : chipOrIpr * loadFactor * chipThinningFactor * threadGeometryFactor;
+  const chipLoadPerTooth =
+    tool.type === 'tap'
+      ? adjustedChipOrIpr / fluteCount
+      : adjustedChipOrIpr;
+  const ipr =
+    tool.type === 'tap'
+      ? adjustedChipOrIpr
+      : adjustedChipOrIpr * fluteCount;
 
-  const rampFactor =
-    clampPositive(tool.max_ramp_angle_feed) > 0
-      ? tool.max_ramp_angle_feed
-      : clampPositive(tool.ramp_angle_feed_factor, 0.4);
-  const rampFeed = tool.type === 'endmill' || tool.type === 'chamfermill' || tool.type === 'threadmill'
-    ? feedRate * rampFactor
-    : null;
-  const plungeFeed = tool.type === 'drill' || tool.type === 'ream' ? feedRate * 0.6 : null;
+  const { sfm, sfmHigh } = computeSfm(
+    material,
+    tool,
+    toolMaterial,
+    coating
+  );
+  const targetSfm = sfm * sfmMultiplier;
+  const targetSfmHigh = sfmHigh ? sfmHigh * sfmMultiplier : null;
+  const rpmDiameter = isTurning ? workDiameter : effectiveDiameter;
+  const formulaRpm =
+    (targetSfm * RPM_FACTOR) / Math.max(rpmDiameter, 0.001);
+  const rpmLimitDiameter = Math.max(
+    isTurning ? workDiameter : diameter,
+    shankDiameter
+  );
+  const lengthRpmLimit = getToolLengthRpmLimit(rpmLimitDiameter, stickout);
+  const sourceLimitedRpm = Math.min(formulaRpm, lengthRpmLimit);
+  const rawRpm = sourceLimitedRpm;
+  const rpm = Math.min(rawRpm, machine.maxRpm);
+  const rpmLimitApplied = rpm < rawRpm - 0.5;
+  const programmedSfm =
+    targetSfm * (rpm / Math.max(formulaRpm, 1e-9));
+  const calculatedFeed =
+    tool.type === 'tap'
+      ? rpm * ipr
+      : tool.ipr_mode
+        ? rpm * ipr
+        : rpm * chipLoadPerTooth * fluteCount;
+  const rawFeedRate = calculatedFeed;
+  const feedRate = Math.min(calculatedFeed, machine.maxCuttingFeedIpm);
+  const feedLimitApplied = feedRate < calculatedFeed - 0.005;
+  const threadFeed =
+    tool.type === 'tap' || tool.type === 'threadmill'
+      ? feedRate
+      : null;
 
-  const slotDoc = clampPositive(tool.slot_doc) > 0 ? diameter * clampPositive(tool.slot_doc) : null;
-  const sideDoc = clampPositive(Math.abs(tool.side_doc ?? 0)) > 0 ? diameter * Math.abs(tool.side_doc ?? 0) : null;
-  const sideWoc = clampPositive(tool.side_woc) > 0 ? diameter * clampPositive(tool.side_woc) : null;
-  const peckDepth = clampPositive(tool.peck) > 0 ? diameter * clampPositive(tool.peck) : null;
-  const pilotDiameter = clampPositive(tool.pilot_size) > 0 ? diameter * clampPositive(tool.pilot_size) : null;
+  let materialRemovalRate: number | null = null;
+  let spindleHorsepower: number | null = null;
+  let spindleTorqueFtLb: number | null = null;
+  if (isMilling || isCornerRounding) {
+    materialRemovalRate =
+      clampPositive(effectiveDoc ?? 0, 0) *
+      clampPositive(effectiveWoc ?? 0, 0) *
+      feedRate;
+    spindleHorsepower =
+      materialRemovalRate * clampPositive(material.kp, 0) /
+      Math.max(helixFactor, 1e-9);
+  } else if (isDrilling) {
+    const pilot = clampPositive(pilotDiameter ?? 0, 0);
+    materialRemovalRate =
+      (Math.PI * diameter ** 2 - Math.PI * pilot ** 2) *
+      feedRate /
+      4;
+    spindleHorsepower =
+      materialRemovalRate * clampPositive(material.kp, 0) /
+      Math.max(helixFactor, 1e-9);
+  } else if (isTurning && effectiveDoc) {
+    materialRemovalRate =
+      (Math.PI * (workDiameter + effectiveDoc / 2) ** 2 -
+        Math.PI * workDiameter ** 2) *
+      feedRate;
+    spindleHorsepower =
+      materialRemovalRate * clampPositive(material.kp, 0);
+  }
+  if (spindleHorsepower !== null && rpm > 0) {
+    spindleTorqueFtLb = (spindleHorsepower * 5252) / rpm;
+  }
+  const spindleHorsepowerPercent =
+    spindleHorsepower === null
+      ? null
+      : (spindleHorsepower / machine.maxSpindleHorsepower) * 100;
+  const spindleTorquePercent =
+    spindleTorqueFtLb === null
+      ? null
+      : (spindleTorqueFtLb / machine.maxSpindleTorqueFtLb) * 100;
 
-  const warnings: string[] = [];
   if (!Number.isFinite(requestedDiameter) || requestedDiameter <= 0) {
-    warnings.push('Tool diameter must be greater than zero; the calculator fell back to the tool default diameter.');
+    warnings.push(
+      'Tool diameter was invalid, so the bundled tool-family diameter was used.'
+    );
   }
   if (!Number.isFinite(requestedFluteCount) || requestedFluteCount < 1) {
-    warnings.push('Flute count must be at least 1; the calculator fell back to a minimum valid flute count.');
+    warnings.push(
+      'Flute count was invalid, so the bundled tool-family flute count was used.'
+    );
   }
-  if (finalSfmHigh && finalSfmBase > finalSfmHigh) {
-    warnings.push('Selected tool/coating multipliers push the recommendation above the material high-SFM range.');
+  if (requestedFluteCount > 0 && requestedFluteCount !== tool.flutes) {
+    warnings.push(
+      `This tool family defaults to ${tool.flutes ?? 1} flute${tool.flutes === 1 ? '' : 's'}; the entered ${fluteCount}-flute cutter is being used.`
+    );
+  }
+  if (lengthRpmLimit < formulaRpm) {
+    warnings.push(
+      'RPM was reduced by the FSWizard stickout/rigidity speed limit before applying the machine ceiling.'
+    );
+  }
+  if (rpmLimitApplied) {
+    warnings.push(
+      `RPM was capped at the ${machine.name} maximum of ${machine.maxRpm.toLocaleString()} RPM.`
+    );
+  }
+  if (feedLimitApplied) {
+    warnings.push(
+      `Feed was capped at the ${machine.name} maximum cutting feed of ${machine.maxCuttingFeedIpm} IPM; actual chipload will be below the target value.`
+    );
+  }
+  if (spindleHorsepowerPercent !== null && spindleHorsepowerPercent > 100) {
+    warnings.push(
+      `Estimated spindle load exceeds the ${machine.maxSpindleHorsepower} hp machine rating; reduce DOC, WOC, or feed.`
+    );
+  }
+  if (spindleTorquePercent !== null && spindleTorquePercent > 100) {
+    warnings.push(
+      `Estimated spindle torque exceeds the ${machine.maxSpindleTorqueFtLb} ft-lb reference rating; reduce the cut and verify against the Haas torque chart.`
+    );
+  }
+  if (targetSfmHigh && targetSfm > targetSfmHigh) {
+    warnings.push(
+      'Selected tool/coating multipliers push the target above the material high-SFM range.'
+    );
   }
   if (clampPositive(material.hb) >= 360 && !isCarbideLike(toolMaterial)) {
-    warnings.push('This material is in a hardened range; carbide-like tooling will usually be safer than HSS for production work.');
+    warnings.push(
+      'This hardened material will usually require carbide-like tooling for production work.'
+    );
   }
-  if (tool.type === 'tap' && clampPositive(inputs.threadLead) <= 0) {
-    warnings.push('Tap feed needs a thread lead input in inches per revolution.');
+  if (isTurning && clampPositive(inputs.workDiameter, 0) <= 0) {
+    warnings.push(
+      'Work diameter was invalid, so tool diameter was used for the turning RPM calculation.'
+    );
   }
-  if (tool.type === 'threadmill' && clampPositive(inputs.threadLead) <= 0) {
-    warnings.push('Thread lead is optional for thread milling here, but entering it helps compare the result against the thread pitch.');
-  }
-  if ((tool.type === 'turn' || tool.type === 'groove') && clampPositive(inputs.workDiameter) <= 0) {
-    warnings.push('Turning tools need a work diameter to calculate spindle speed accurately.');
-  }
-  if (slotDoc && clampPositive(inputs.doc) > slotDoc * 1.35) {
-    warnings.push('Requested DOC is above the tool default slotting DOC guideline from the FSWizard dataset.');
-  }
-  if (sideWoc && clampPositive(inputs.woc) > sideWoc * 1.35) {
-    warnings.push('Requested WOC is above the tool default side-milling WOC guideline from the FSWizard dataset.');
-  }
-  if (tool.type === 'endmill' && diameter > 0.125 && chipLoadPerTooth < 0.0001) {
-    warnings.push('Chipload is extremely low for this endmill diameter; re-check the selected tool/material stack because the feed may be unrealistically conservative.');
-  }
-  if (isMillingStyleTool(tool) && enteredDoc > 0 && enteredWoc > 0 && Math.abs(loadFactor - 1) > 0.05) {
-    warnings.push('Planned DOC/WOC are actively scaling the programmed feed based on the FSWizard engagement/load model.');
+  if ((isMilling || isCornerRounding) && enteredDoc > fluteLength) {
+    warnings.push('Planned DOC was limited to the entered flute length.');
   }
   if (
-    (tool.type === 'endmill' ||
-      tool.type === 'drill' ||
-      tool.type === 'ream' ||
-      tool.type === 'threadmill' ||
-      tool.type === 'chamfermill' ||
-      tool.type === 'cornerrounding') &&
-    feedRate < 1
+    (isMilling || isCornerRounding) &&
+    effectiveDoc !== null &&
+    effectiveWoc !== null &&
+    Math.abs(loadFactor - 1) > 0.05
   ) {
-    warnings.push('Feed rate is below 1 IPM for a normal rotary tool, which usually indicates either an extreme setup or bad math inputs.');
+    warnings.push(
+      'DOC/WOC are scaling feed through the FSWizard engagement/load model.'
+    );
   }
   if (rpm > 0 && feedRate > 0 && feedRate < 1) {
-    warnings.push('RPM is valid but the resulting feed collapsed to an unrealistic value; confirm the selected inputs if this does not match shop expectations.');
+    warnings.push(
+      'The resulting feed is below 1 IPM; confirm the setup and tool selection.'
+    );
   }
-  if (chipLoadPerTooth > 0 && round(chipLoadPerTooth, 4) === 0) {
-    warnings.push('Chipload is positive but extremely small, so the display precision has been increased to avoid showing a misleading zero.');
-  }
-  if (tool.usage) {
-    warnings.push(tool.usage.replace(/\s+/g, ' ').trim());
-  }
+  if (tool.usage) warnings.push(tool.usage.replace(/\s+/g, ' ').trim());
+
+  const slotDoc =
+    isMilling || isCornerRounding
+      ? getSourceIdealSlotDoc(tool, diameter, cornerRadius)
+      : null;
+  const sideDoc =
+    isMilling || isCornerRounding || isTurning
+      ? isTurning
+        ? (tool.side_doc ?? 0) < 0
+          ? Math.abs(tool.side_doc as number)
+          : shankDiameter * clampPositive(tool.side_doc, 0)
+        : getSourceIdealSideDoc(tool, diameter, fluteLength, cornerRadius)
+      : null;
+  const sideWoc =
+    isMilling || isCornerRounding
+      ? isCornerRounding
+        ? cornerRadius * clampPositive(tool.side_woc, 0)
+        : getSourceIdealSideWoc(tool, diameter)
+      : null;
+  const peckDepth =
+    isDrilling && clampPositive(tool.peck, 0) > 0
+      ? diameter * clampPositive(tool.peck, 0)
+      : null;
 
   return {
+    machine,
     tool,
     material,
     toolMaterial,
     coating,
-    sfm: round(finalSfmBase),
-    sfmHigh: finalSfmHigh ? round(finalSfmHigh) : null,
+    sfm: round(programmedSfm),
+    sfmHigh: targetSfmHigh ? round(targetSfmHigh) : null,
+    rawRpm: round(rawRpm, 0),
     rpm: round(rpm, 0),
+    rpmLimitApplied,
+    feedLimitApplied,
+    rawFeedRate: round(rawFeedRate, 2),
     chipLoadPerTooth: roundChipload(chipLoadPerTooth),
     ipr: roundChipload(ipr),
     feedRate: round(feedRate, 2),
-    plungeFeed: plungeFeed ? round(plungeFeed, 2) : null,
-    rampFeed: rampFeed ? round(rampFeed, 2) : null,
+    plungeFeed: null,
+    rampFeed: null,
     slotDoc: slotDoc ? round(slotDoc, 3) : null,
     sideDoc: sideDoc ? round(sideDoc, 3) : null,
     sideWoc: sideWoc ? round(sideWoc, 3) : null,
     peckDepth: peckDepth ? round(peckDepth, 3) : null,
     pilotDiameter: pilotDiameter ? round(pilotDiameter, 3) : null,
     threadFeed: threadFeed ? round(threadFeed, 2) : null,
-    torqueRisk: getTorqueRisk(material),
+    effectiveDiameter: round(effectiveDiameter, 4),
+    effectiveDoc:
+      effectiveDoc === null ? null : round(effectiveDoc, 4),
+    effectiveWoc:
+      effectiveWoc === null ? null : round(effectiveWoc, 4),
+    materialRemovalRate:
+      materialRemovalRate === null ? null : round(materialRemovalRate, 3),
+    spindleHorsepower:
+      spindleHorsepower === null ? null : round(spindleHorsepower, 2),
+    spindleTorqueFtLb:
+      spindleTorqueFtLb === null ? null : round(spindleTorqueFtLb, 2),
+    spindleHorsepowerPercent:
+      spindleHorsepowerPercent === null
+        ? null
+        : round(spindleHorsepowerPercent, 0),
+    spindleTorquePercent:
+      spindleTorquePercent === null
+        ? null
+        : round(spindleTorquePercent, 0),
+    errors,
     warnings,
   };
 }
