@@ -1,3 +1,15 @@
+### 2026-08-24 — Sleeker open-canvas Shop Floor styling (latest)
+- Removed the full-page dark navy backing sheet and the strong glass results wrapper so Live Production / Shop Floor and the production content sit directly on the black/navy gradient.
+- Reduced Shop Floor card, panel, select, button, timer, and nested-row radii to restrained rectangular geometry while keeping true status badges and activity dots circular.
+- Live browser QA confirmed the oversized navy shell is gone, the title remains clear against the gradient, and the collapsed controls, timer strip, quick selectors, and order tiles retain readable hierarchy.
+- Verification passed: focused Shop Floor tests `10/10`, targeted ESLint, `npx tsc --noEmit`, clean production build with 62 generated pages, and `git diff --check`.
+
+### 2026-08-24 — Daily sequential quote numbering (latest)
+- Replaced business-prefixed random quote identifiers with shop-wide daily numbers in `DDMMYY-###` format; August 24, 2026 begins at `240826-001` and increments from the highest valid number already assigned that day.
+- Kept previously assigned quote numbers stable during edits, including legacy-format quotes, while validating any newly supplied replacement against the new format.
+- Added focused coverage for first-of-day numbering, next-sequence numbering, malformed daily entries, and edit preservation.
+- Verification passed: focused Vitest `3/3`, targeted ESLint, `npx tsc --noEmit`, clean production build with 62 generated pages, and `git diff --check`.
+
 ### 2026-07-17 — Quote material-order resolution feedback (latest)
 - Reproduced the material-check path and confirmed the underlying state was saving correctly: selecting a vendor reduced the unresolved count from 13 to 12 and persisted after reload.
 - Fixed the misleading UI state in QuoteEditor: a vendor-backed Order material choice now shows an explicit resolved badge and confirmation, while orange warning styling remains only for unreviewed or vendor-missing parts.
@@ -748,6 +760,25 @@ Verification note:
 - Lint passed with no ESLint warnings/errors.
 
 **Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
+
+### 2026-08-24 — Exact Shop Floor pre-tile control-row correction (latest)
+- Removed the separate Quick View glass surface. Status, Priority, Sort, and Direction now occupy the exact row where department pills previously appeared, immediately before the selected view's tiles/groups.
+- Moved the department pills and Show completed items into the collapsible Customize this shop floor configuration area. Collapsing Customize now hides department configuration while leaving the compact four-select row in place.
+- Applied the same pre-result row to work queue, grid digest, and machinist layouts with compact rounded select sizing.
+- Verification passed: targeted lint, TypeScript, focused tests (2 files / 10 tests), clean production build (62 pages), and live QA for exact placement, department switching, collapse behavior, and descending order-number sorting.
+
+### 2026-08-24 — Shop Floor Quick View sorting and collapsible Working now (latest)
+- Moved the everyday status, priority, sort-field, and direction controls completely outside the collapsible Live Production configuration menu into a slim, select-only strip directly above the chosen tile view.
+- Kept layout, advanced queue filters, conditional tile colors, and shared saving inside the configuration collapse. The Quick View strip quietly reports the shown count, ordering, and advanced-filter count without action buttons.
+- Fixed filter-then-sort behavior in the department work queue, included real live timer counts in grid/machinist sorting, and removed the duplicate Unassigned machinist option.
+- Added a separately collapsible Working now strip whose state is remembered on that display.
+- Verification passed: targeted lint, TypeScript, focused tests (2 files / 10 tests), clean production build (62 pages), and live QA for collapsed hierarchy, filtering/sorting, order-number reversal, timer-collapse persistence, and the cleaned filter menu.
+
+### 2026-08-24 — Black/navy Live Production palette correction (latest)
+- Replaced the Shop Floor's cyan/green/amber ambient wash with a black and near-black navy foundation plus restrained royal-blue and indigo depth.
+- Increased the dashboard backing opacity so the global body-level cyan glow cannot bleed through the glass surfaces. The three glass depths and white edge highlights remain intact.
+- Kept semantic colors local: the live-production green accent remains subtle, and overdue orders retain the deeper oxblood `#7f1d1d` translucent alert treatment.
+- Verification passed: targeted ESLint, TypeScript, production build with 62 generated pages and standalone asset copy, and live browser QA in expanded/collapsed modes with no page-wide cyan cast.
 
 # Progress Log
 
@@ -2617,3 +2648,41 @@ Verification evidence:
 - Removed the detached supervisor checkbox. Successful acknowledgement refreshes the order immediately and continues into the normal timer confirmation.
 - The standalone kiosk now renders the actual blocking instructions and lets the already PIN-unlocked employee acknowledge before retrying timer start.
 - Verification passed: focused time/order tests (2 files, 18 tests), TypeScript, targeted ESLint, diff check, and live browser QA. The current test order has no instructions and correctly remains unblocked.
+### 2026-07-20 — Narrated quote-to-order tutorial video (latest)
+- Created a finished 4 minute 32 second, 1920x1080 narrated training walkthrough at `artifacts/quote-tutorial/ShopApp_Quote_to_Order_Tutorial.mp4`.
+- The video uses real ShopApp screens with clear on-screen callouts and covers creating/resuming a quote, customer selection, drawings, part review, material walkdown, work steps, pricing, quote editing, conversion, and order editing.
+- Included a matching caption file at `artifacts/quote-tutorial/ShopApp_Quote_to_Order_Tutorial.srt`.
+- Verified H.264/AAC encoding and visually inspected the title, workflow, and closing frames. The development app remains running on `http://127.0.0.1:3000/` for owner testing.
+### 2026-07-20 — Live-action quote-to-order tutorial rebuild (latest)
+- Replaced the rejected screenshot slideshow with a genuine 3 minute 10.58 second ShopApp walkthrough built from 218 real application states and 158 selected action frames.
+- The 1920x1080 H.264/AAC tutorial visibly demonstrates customer selection, drawing upload, import progress, part and material review, work planning, pricing, quote editing, approval, quote-to-order conversion, production-order review, and order editing.
+- Added a natural neural narrator, synchronized captions, visible pointer movement, click pulses, typed field entry, scrolling, and real page transitions. The canonical deliverable remains `artifacts/quote-tutorial/ShopApp_Quote_to_Order_Tutorial.mp4`.
+- Created isolated training records (`CRM-20260720-5745` and converted order `CRM-1006`) and retained the reusable live tutorial builder, capture timeline, caption file, manifest, and QA contact sheet under `artifacts/quote-tutorial/`.
+- Recording QA exposed an order due-date display one day early in negative UTC offsets. `src/app/orders/[id]/page.tsx` now formats the date-only due date in UTC; the live app confirmed July 31 remains July 31.
+- Verification passed: final media probe, matching output hashes, visual contact-sheet and representative-frame inspection, targeted ESLint, `npx tsc --noEmit`, and `git diff --check`.
+### 2026-08-24 — Customer-part repeat orders and explicit required reading (latest)
+- Changed repeat-order templates from an order-shaped concept to stable customer/part definitions. Old orders now expose `Create again` for the selected part, repeat templates reuse the same source-part snapshot, and a new admin Repeat Orders page lists customer, part number/name, source order, and a direct launch action.
+- Added a clear `Required reading / Read Me First` authoring field to quote Work Details and direct/repeat order part entry. Quote-part required reading is persisted separately and carried through conversion; direct-order submission now includes the field instead of silently dropping it.
+- Expanded order-detail Read Me First status to show all active timer-eligible users grouped into acknowledged and not acknowledged for the current part/department/version. The existing service gate continues to require the selected timer worker's receipt.
+- Added and applied Prisma migrations for repeat-template source-part identity and quote-part required reading.
+- Verification passed: focused tests 31/31, targeted ESLint, TypeScript, production build (61 pages), Prisma migration/generation, and live browser QA of Repeat Orders, old-order Create again, the 1-acknowledged/12-not-acknowledged roster, quote authoring, and direct-order authoring with no browser errors.
+### 2026-08-24 — Required-reading demonstration order created (latest)
+- Created production order `STD-1009` for Starter Customer through the normal order-entry workflow.
+- Added part `READ-ME-DEMO` / `Required Reading Demo`, quantity 1, due September 7, 2026.
+- Required reading instructs the worker to review the latest print and confirm material, setup, and revision before starting, and to stop and ask the boss if anything does not match.
+- Runtime verification confirmed the order detail displays `Needs acknowledgement`, the complete required-reading note, and the acknowledged/not-acknowledged roster before timer start.
+
+### 2026-08-24 — Customizable Live Production display (latest)
+- Added the top-of-page, collapsible `Customize this shop floor` panel and moved the existing layout/filter controls into it for big-screen use.
+- Added live sorting by due date, days past due, received date, order number, business, customer, machinist, current department, priority, status, quantity, part count, open checklist count, or active timers, with ascending/descending direction.
+- Added ordered, editable tile-color rules for numeric and text conditions. The safe default highlights orders at least seven days overdue with a translucent red tile; the first enabled matching rule wins.
+- Applied rule colors and sorting consistently to grid cards, machinist rows, and department work-queue cards. Preview changes are immediate; administrators can save one shared shop-floor profile, while collapse state is remembered only on the current screen.
+- Added and applied `20260824143000_shop_floor_display_options`; the persisted JSON contract is validated in the new Shop Floor module and malformed stored data falls back to safe defaults.
+- Verification passed: focused Shop Floor tests (2 files / 9 tests), targeted ESLint, TypeScript, `git diff --check`, and production build (62 pages). Live browser QA confirmed top placement, saved settings, remembered collapse state, order-number descending preview, restored saved due-date ordering, and the exact red translucent style on overdue work-queue and grid tiles.
+
+### 2026-08-24 — Glass Live Production treatment and deeper overdue red (latest)
+- Added a dashboard-scoped atmospheric background with blue, green, amber, and violet light inspired by the supplied glass-interface reference; no other application route inherits it.
+- Added strong, regular, soft, and emerald-tinted glass surfaces using translucent gradients, white edge highlights, inset light, depth shadows, saturation, and 14–28px backdrop blur.
+- Applied the glass system to the Shop Floor control shell, nested settings/rules, live-worker strip, department queue cards, nested part rows, grid cards, machinist groups/rows, metric cards, recent-order table, workload, and status pulse.
+- Deepened the default seven-day-overdue rule from bright red `#dc2626` to oxblood `#7f1d1d`. Existing untouched legacy defaults are promoted at read time; custom rule colors are not changed.
+- Verification passed: focused Shop Floor tests (2 files / 10 tests), targeted ESLint, TypeScript, `git diff --check`, production build (62 pages), and live visual QA of expanded/collapsed controls plus deep-red overdue work-queue tiles.

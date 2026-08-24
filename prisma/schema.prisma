@@ -450,6 +450,7 @@ model RepeatOrderTemplate {
   customer        Customer                        @relation(fields: [customerId], references: [id], onDelete: Cascade)
   sourceOrderId   String?
   sourceOrder     Order?                          @relation(fields: [sourceOrderId], references: [id], onDelete: SetNull)
+  sourcePartId    String?                         @unique
   name            String
   business        String                          @default("STD")
   vendorId        String?
@@ -586,6 +587,7 @@ model QuotePart {
   quantity        Int                   @default(1)
   pieceCount      Int                   @default(1)
   notes           String?
+  workInstructions String?
   partNumber      String?
   materialId      String?
   material        Material?             @relation("QuotePartMaterial", fields: [materialId], references: [id])
@@ -688,6 +690,7 @@ model AppSettings {
   requirePOForQuoteToOrder  Boolean  @default(false)
   invoiceTemplateId         String   @default("classic")
   invoiceOptions            String?
+  shopFloorDisplayOptions   String?
   updatedAt                 DateTime @updatedAt
 }
 

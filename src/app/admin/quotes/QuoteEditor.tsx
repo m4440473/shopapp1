@@ -127,6 +127,7 @@ type QuotePartState = {
   quantity: string;
   pieceCount: string;
   notes: string;
+  workInstructions: string;
   addonSelections: QuoteAddonState[];
   attachments: Array<{
     id?: string;
@@ -232,6 +233,7 @@ type QuoteDetail = {
     quantity: number;
     pieceCount: number;
     notes?: string | null;
+    workInstructions?: string | null;
     attachments?: Array<{
       id: string;
       kind: 'DWG' | 'STEP' | 'PDF' | 'PRINT' | 'IMAGE' | 'OTHER';
@@ -391,6 +393,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         quantity: '1',
         pieceCount: '1',
         notes: '',
+        workInstructions: '',
         addonSelections: [],
         attachments: [],
       }) satisfies QuotePartState,
@@ -430,6 +433,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               quantity: String(part.quantity ?? 1),
               pieceCount: String(part.pieceCount ?? 1),
               notes: part.notes ?? '',
+              workInstructions: part.workInstructions ?? '',
               attachments: (part.attachments ?? []).map((attachment) => ({
                 id: attachment.id,
                 kind: attachment.kind,
@@ -863,6 +867,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       quantity: String(part.quantity || 1),
       pieceCount: '1',
       notes: part.finish ? `Finish: ${part.finish}` : '',
+      workInstructions: '',
       addonSelections: [],
       attachments: [{
         kind: 'DWG',
@@ -1351,6 +1356,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         quantity: Number.parseInt(part.quantity || '1', 10) || 1,
         pieceCount: Number.parseInt(part.pieceCount || '1', 10) || 1,
         notes: part.notes || undefined,
+        workInstructions: part.workInstructions || undefined,
         attachments: part.attachments
           .filter((attachment) => attachment.url.trim() || attachment.storagePath.trim())
           .map((attachment) => ({
@@ -2193,6 +2199,20 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                           placeholder="Per-part requirements, fixtures, or inspection notes"
                         />
                       </div>
+                      <div className="mt-4 grid gap-2 rounded-lg border border-amber-500/35 bg-amber-500/5 p-4">
+                        <div className="space-y-1">
+                          <Label className="text-amber-100">Required reading / Read Me First</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Put boss-required setup, safety, inspection, or handling notes here. After conversion, whichever employee is selected to start a timer must acknowledge this text first.
+                          </p>
+                        </div>
+                        <Textarea
+                          value={activePart.workInstructions}
+                          onChange={(event) => updatePart(activePart.key, { workInstructions: event.target.value })}
+                          placeholder="Example: Review rev C print; use fixture 207-B; first piece inspection required before continuing."
+                          className="min-h-[130px] border-amber-500/25 bg-background/80"
+                        />
+                      </div>
                     </div>
                     <AssignedItemsPanel
                       title="Work steps for this part"
@@ -2405,7 +2425,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="quoteRequirements">Requirements / process notes</Label>
+                <Label htmlFor="quoteRequirements">Assembly requirements / process notes</Label>
+                <p className="text-xs text-muted-foreground">
+                  These apply across the quote and are included in each converted part&apos;s required reading. Use the per-part Read Me First field above for part-specific instructions.
+                </p>
                 <Textarea
                   id="quoteRequirements"
                   value={form.requirements}

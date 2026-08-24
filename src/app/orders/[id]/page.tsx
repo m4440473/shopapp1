@@ -319,9 +319,10 @@ export default function OrderDetailPage() {
   );
   const defaultRepeatTemplateName = useMemo(() => {
     const customerName = typeof item?.customer?.name === 'string' ? item.customer.name.trim() : 'Customer';
-    const orderNumber = typeof item?.orderNumber === 'string' && item.orderNumber.trim().length ? ` - ${item.orderNumber}` : '';
-    return `${customerName}${orderNumber}`;
-  }, [item?.customer?.name, item?.orderNumber]);
+    const partNumber = typeof selectedPart?.partNumber === 'string' ? selectedPart.partNumber.trim() : 'Part';
+    const partName = typeof selectedPart?.partName === 'string' ? selectedPart.partName.trim() : '';
+    return `${customerName} - ${partNumber}${partName ? ` - ${partName}` : ''}`;
+  }, [item?.customer?.name, selectedPart?.partName, selectedPart?.partNumber]);
   const currentUser = session?.user as any;
   const currentUserId = typeof currentUser?.id === 'string' ? currentUser.id : '';
   const currentUserName =
@@ -444,6 +445,18 @@ export default function OrderDetailPage() {
         Math.max(1, Number(receipt?.instructionsVersion ?? 1)) === selectedPartInstructionsVersion,
     );
   }, [selectedPart?.instructionReceipts, selectedPartCurrentDepartmentId, selectedPartInstructionsVersion]);
+  const acknowledgedWorkerIds = useMemo(
+    () => new Set(selectedPartAcknowledgedReceipts.map((receipt: any) => receipt.userId)),
+    [selectedPartAcknowledgedReceipts],
+  );
+  const acknowledgedWorkers = useMemo(
+    () => timerWorkerOptions.filter((user) => acknowledgedWorkerIds.has(user.id)),
+    [acknowledgedWorkerIds, timerWorkerOptions],
+  );
+  const unacknowledgedWorkers = useMemo(
+    () => timerWorkerOptions.filter((user) => !acknowledgedWorkerIds.has(user.id)),
+    [acknowledgedWorkerIds, timerWorkerOptions],
+  );
 
   const selectedPartDepartmentHistory = useMemo(() => {
     if (!selectedPartId) return [];
@@ -1588,8 +1601,8 @@ export default function OrderDetailPage() {
   };
 
 
-  const handleSaveRepeatTemplate = async () => {
-    if (!id || !canEditParts) return;
+  const handleSaveRepeatTemplate = async ({ launch = false }: { launch?: boolean } = {}) => {
+    if (!id || !selectedPartId || !canEditParts) return;
     setRepeatTemplateSaving(true);
     setRepeatTemplateError(null);
     try {
@@ -1599,6 +1612,7 @@ export default function OrderDetailPage() {
         credentials: 'include',
         body: JSON.stringify({
           name: repeatTemplateName.trim() || undefined,
+          partId: selectedPartId,
         }),
       });
       if (!res.ok) {
@@ -1619,7 +1633,11 @@ export default function OrderDetailPage() {
           : null;
       setSavedRepeatTemplate(savedTemplate);
       setRepeatTemplateDialogOpen(false);
-      toast.push('Repeat-order template saved.', 'success');
+      if (launch && savedTemplate) {
+        router.push(`/orders/new?templateId=${savedTemplate.id}`);
+        return;
+      }
+      toast.push('Customer-part repeat template saved.', 'success');
     } catch (err: any) {
       const message = err?.message || 'Failed to save repeat-order template.';
       setRepeatTemplateError(message);
@@ -2018,7 +2036,9 @@ export default function OrderDetailPage() {
   }
 
   const orderTitle = `Order ${item.orderNumber}`;
-  const dueDateLabel = item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'TBD';
+  const dueDateLabel = item.dueDate
+    ? new Date(item.dueDate).toLocaleDateString(undefined, { timeZone: 'UTC' })
+    : 'TBD';
   const statusLabel = item.status
     ? String(item.status)
         .toLowerCase()
@@ -2252,9 +2272,9 @@ export default function OrderDetailPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Save as repeat template</DialogTitle>
+            <DialogTitle>Save customer-part repeat template</DialogTitle>
             <DialogDescription>
-              Freeze this order&apos;s parts, charges, files, and instructions so the next reorder starts from a trusted template.
+              Save the selected part&apos;s manufacturing definition for this customer. This is not a document layout or a generic order format.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -2271,8 +2291,9 @@ export default function OrderDetailPage() {
               />
             </div>
             <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm text-muted-foreground">
-              Source order <span className="font-medium text-foreground">#{item.orderNumber}</span> for{' '}
-              <span className="font-medium text-foreground">{item.customer?.name ?? 'this customer'}</span>.
+              <span className="font-medium text-foreground">{selectedPart?.partNumber ?? 'Selected part'}</span> for{' '}
+              <span className="font-medium text-foreground">{item.customer?.name ?? 'this customer'}</span>, sourced from order{' '}
+              <span className="font-medium text-foreground">#{item.orderNumber}</span>.
             </div>
             {repeatTemplateError ? (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -2289,7 +2310,7 @@ export default function OrderDetailPage() {
             >
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleSaveRepeatTemplate()} disabled={repeatTemplateSaving}>
+            <Button type="button" onClick={() => void handleSaveRepeatTemplate()} disabled={repeatTemplateSaving || !selectedPartId}>
               {repeatTemplateSaving ? 'Saving...' : 'Save template'}
             </Button>
           </DialogFooter>
@@ -2648,8 +2669,18 @@ export default function OrderDetailPage() {
               </div>
               <div className="flex items-center gap-2">
                 {canEditParts ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handleSaveRepeatTemplate({ launch: true })}
+                    disabled={repeatTemplateSaving || !selectedPartId}
+                  >
+                    {repeatTemplateSaving ? 'Preparing...' : 'Create again'}
+                  </Button>
+                ) : null}
+                {canEditParts ? (
                   <Button type="button" variant="outline" size="sm" onClick={() => setRepeatTemplateDialogOpen(true)}>
-                    Save as repeat template
+                    Save repeat template
                   </Button>
                 ) : null}
                 {canEditParts ? (
@@ -2672,11 +2703,11 @@ export default function OrderDetailPage() {
                   <div className="space-y-1">
                     <p className="font-medium text-foreground">{savedRepeatTemplate.name}</p>
                     <p className="text-muted-foreground">
-                      Template saved. Launch the next reorder without rebuilding files or part setup.
+                      Customer-part template saved. Launch the next reorder without rebuilding its manufacturing setup.
                     </p>
                   </div>
                   <Button asChild size="sm" className="rounded-full">
-                    <Link href={`/orders/new?templateId=${savedRepeatTemplate.id}`}>Create repeat order</Link>
+                    <Link href={`/orders/new?templateId=${savedRepeatTemplate.id}`}>Create again</Link>
                   </Button>
                 </div>
               ) : null}
@@ -3032,36 +3063,38 @@ export default function OrderDetailPage() {
                         No part-specific instructions were entered for this job.
                       </div>
                     )}
-                    <div className="space-y-2 rounded-md border border-border/60 bg-background/60 p-3">
-                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Already read by</div>
-                      {selectedPartAcknowledgedReceipts.length ? (
-                        <div className="space-y-2">
-                          {selectedPartAcknowledgedReceipts.map((receipt: any) => {
-                            const workerName =
-                              receipt?.user?.name?.trim() ||
-                              receipt?.user?.email?.trim() ||
-                              receipt?.userId ||
-                              'Worker';
-                            const acknowledgedAtLabel = receipt?.acknowledgedAt
-                              ? new Date(receipt.acknowledgedAt).toLocaleString()
-                              : 'Time unavailable';
-                            return (
-                              <div
-                                key={receipt?.id ?? `${receipt?.userId ?? workerName}-${receipt?.acknowledgedAt ?? ''}`}
-                                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/10 px-3 py-2 text-sm"
-                              >
-                                <span className="font-medium text-foreground">{workerName}</span>
-                                <span className="text-xs text-muted-foreground">{acknowledgedAtLabel}</span>
+                    {selectedPartInstructions ? (
+                    <div className="grid gap-3 rounded-md border border-border/60 bg-background/60 p-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                          <span>Acknowledged</span>
+                          <Badge className="bg-emerald-500/15 text-emerald-200">{acknowledgedWorkers.length}</Badge>
+                        </div>
+                        {acknowledgedWorkers.length ? acknowledgedWorkers.map((worker) => {
+                          const receipt = selectedPartAcknowledgedReceipts.find((item: any) => item.userId === worker.id);
+                          return (
+                            <div key={worker.id} className="rounded-md border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-sm">
+                              <div className="font-medium text-foreground">{worker.name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {receipt?.acknowledgedAt ? new Date(receipt.acknowledgedAt).toLocaleString() : 'Receipt saved'}
                               </div>
-                            );
-                          })}
+                            </div>
+                          );
+                        }) : <div className="text-sm text-muted-foreground">Nobody yet.</div>}
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                          <span>Not acknowledged</span>
+                          <Badge className="bg-amber-500/15 text-amber-100">{unacknowledgedWorkers.length}</Badge>
                         </div>
-                      ) : (
-                        <div className="text-sm text-muted-foreground">
-                          Nobody has acknowledged this version for {selectedCurrentDepartment?.name ?? 'this department'} yet.
-                        </div>
-                      )}
+                        {unacknowledgedWorkers.length ? unacknowledgedWorkers.map((worker) => (
+                          <div key={worker.id} className="rounded-md border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-sm font-medium text-foreground">
+                            {worker.name}
+                          </div>
+                        )) : <div className="text-sm text-muted-foreground">All active users have acknowledged.</div>}
+                      </div>
                     </div>
+                    ) : null}
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
                         type="button"

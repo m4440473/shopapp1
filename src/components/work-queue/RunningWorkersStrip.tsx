@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Clock3, Radio } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, ChevronUp, Clock3, Radio } from 'lucide-react';
+
+import { Button } from '@/components/ui/Button';
 
 export type RunningWorkerSummary = {
   entryId: string;
@@ -36,10 +38,15 @@ export function formatRunningDuration(startedAt: Date | string, nowMs: number) {
 
 export function RunningWorkersStrip({ workers }: { workers: RunningWorkerSummary[] }) {
   const [nowMs, setNowMs] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(true);
   const sortedWorkers = useMemo(
     () => [...workers].sort((a, b) => a.workerName.localeCompare(b.workerName, undefined, { sensitivity: 'base' })),
     [workers],
   );
+
+  useEffect(() => {
+    setExpanded(window.localStorage.getItem('shop-floor-working-now-collapsed') !== 'true');
+  }, []);
 
   useEffect(() => {
     setNowMs(Date.now());
@@ -48,12 +55,19 @@ export function RunningWorkersStrip({ workers }: { workers: RunningWorkerSummary
     return () => window.clearInterval(interval);
   }, [workers.length]);
 
+  const toggleExpanded = () => {
+    setExpanded((current) => {
+      window.localStorage.setItem('shop-floor-working-now-collapsed', String(current));
+      return !current;
+    });
+  };
+
   return (
     <section
       aria-labelledby="running-workers-heading"
-      className="overflow-hidden rounded-xl border-2 border-emerald-500/40 bg-gradient-to-r from-emerald-500/10 via-card to-primary/10 shadow-lg shadow-emerald-950/10"
+      className="shop-glass shop-glass-emerald overflow-hidden rounded-lg border shadow-lg shadow-emerald-950/10"
     >
-      <div className="flex flex-col gap-2 border-b border-emerald-500/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className={`flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${expanded ? 'border-b border-emerald-500/20' : ''}`}>
         <div className="flex items-center gap-3">
           <span className="relative flex h-4 w-4" aria-hidden="true">
             {sortedWorkers.length ? <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" /> : null}
@@ -66,13 +80,27 @@ export function RunningWorkersStrip({ workers }: { workers: RunningWorkerSummary
             </h2>
           </div>
         </div>
-        <div className="text-sm font-semibold text-muted-foreground">
-          {sortedWorkers.length === 1 ? '1 employee running' : `${sortedWorkers.length} employees running`}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="text-sm font-semibold text-muted-foreground">
+            {sortedWorkers.length === 1 ? '1 employee running' : `${sortedWorkers.length} employees running`}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-md border-emerald-500/30 bg-background/30"
+            onClick={toggleExpanded}
+            aria-expanded={expanded}
+            aria-controls="running-workers-content"
+          >
+            {expanded ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
+            {expanded ? 'Collapse timers' : 'Show timers'}
+          </Button>
         </div>
       </div>
 
-      {sortedWorkers.length ? (
-        <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
+      {expanded && sortedWorkers.length ? (
+        <div id="running-workers-content" className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
           {sortedWorkers.map((worker) => {
             const partNumber = worker.partNumber?.trim() || 'Part not recorded';
             const partLabel = worker.partName?.trim()
@@ -82,7 +110,7 @@ export function RunningWorkersStrip({ workers }: { workers: RunningWorkerSummary
               <Link
                 key={worker.entryId}
                 href={buildOrderPartHref(worker)}
-                className="group grid min-h-32 grid-cols-[1fr_auto] gap-4 rounded-xl border border-emerald-500/30 bg-background/85 p-5 shadow-sm transition hover:border-emerald-400 hover:bg-emerald-500/10 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="shop-glass-soft group grid min-h-32 grid-cols-[1fr_auto] gap-4 rounded-md border border-emerald-500/30 p-5 shadow-sm transition hover:border-emerald-400 hover:bg-emerald-500/10 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                 aria-label={`Open ${worker.workerName}'s running work on ${partNumber}, order ${worker.orderNumber}`}
               >
                 <div className="min-w-0 space-y-2">
@@ -106,12 +134,12 @@ export function RunningWorkersStrip({ workers }: { workers: RunningWorkerSummary
             );
           })}
         </div>
-      ) : (
-        <div className="px-5 py-8 text-center">
+      ) : expanded ? (
+        <div id="running-workers-content" className="px-5 py-8 text-center">
           <p className="text-lg font-semibold text-foreground">No timers are running.</p>
           <p className="mt-1 text-sm text-muted-foreground">Started jobs will appear here.</p>
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

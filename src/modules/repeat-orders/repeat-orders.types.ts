@@ -5,6 +5,9 @@ export type RepeatOrderTemplateSummary = {
   customerName: string | null;
   sourceOrderId: string | null;
   sourceOrderNumber: string | null;
+  sourcePartId: string | null;
+  primaryPartNumber: string | null;
+  primaryPartName: string | null;
   business: string;
   priority: string;
   createdAt: Date;

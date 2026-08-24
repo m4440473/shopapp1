@@ -56,6 +56,7 @@ export async function findOrderTemplateSource(orderId: string) {
 export async function createRepeatOrderTemplate(data: {
   customerId: string;
   sourceOrderId: string;
+  sourcePartId: string | null;
   name: string;
   business: string;
   vendorId: string | null;
@@ -108,6 +109,7 @@ export async function createRepeatOrderTemplate(data: {
     data: {
       customerId: data.customerId,
       sourceOrderId: data.sourceOrderId,
+      sourcePartId: data.sourcePartId,
       name: data.name,
       business: data.business,
       vendorId: data.vendorId,
@@ -167,7 +169,7 @@ export async function createRepeatOrderTemplate(data: {
     include: {
       customer: { select: { id: true, name: true } },
       sourceOrder: { select: { id: true, orderNumber: true } },
-      parts: { select: { id: true } },
+      parts: { select: { id: true, partNumber: true, partName: true } },
     },
   });
 }
@@ -180,7 +182,24 @@ export async function listRepeatOrderTemplates(params: { customerId?: string; ta
     include: {
       customer: { select: { id: true, name: true } },
       sourceOrder: { select: { id: true, orderNumber: true } },
-      parts: { select: { id: true } },
+      parts: {
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, partNumber: true, partName: true },
+      },
+    },
+  });
+}
+
+export async function findRepeatOrderTemplateBySourcePart(sourcePartId: string) {
+  return prisma.repeatOrderTemplate.findUnique({
+    where: { sourcePartId },
+    include: {
+      customer: { select: { id: true, name: true } },
+      sourceOrder: { select: { id: true, orderNumber: true } },
+      parts: {
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, partNumber: true, partName: true },
+      },
     },
   });
 }

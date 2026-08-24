@@ -1,3 +1,37 @@
+## Session Handoff — 2026-08-24 (Sleeker open-canvas Shop Floor styling, latest)
+
+Goal: Remove the bubble-like dark enclosure from Live Production and give the Shop Floor a flatter, more professional visual hierarchy.
+
+### What changed
+- Removed the `.shop-floor-glass::after` dark backing sheet from `src/app/globals.css` while preserving the atmospheric navy gradient.
+- Removed the rounded outer page shell and the `shop-glass-strong` results wrapper.
+- Tightened Shop Floor panels, work/order cards, selectors, buttons, timer surfaces, and nested rows from oversized/pill radii to `rounded-lg` or `rounded-md` where appropriate.
+- Retained circular geometry for semantic badges, progress indicators, avatars, and live-status dots.
+
+### Verification
+- Live in-app browser QA confirmed the Live Production / Shop Floor heading sits directly on the gradient and the main production tiles no longer have a dark navy enclosure behind them.
+- `npm run test -- src/modules/shop-floor/__tests__/shop-floor.shared.test.ts src/components/work-queue/__tests__/RunningWorkersStrip.test.ts` — 10/10 passed.
+- Targeted ESLint and `npx tsc --noEmit` passed.
+- Clean `npm run build` passed with 62 generated pages and standalone assets copied.
+- `git diff --check` passed (line-ending notices only).
+
+## Session Handoff — 2026-08-24 (Daily sequential quote numbering, latest)
+
+Goal: Make quote identifiers read as creation date followed by that quote's order within the day.
+
+### What changed
+- `src/modules/quotes/quotes.repo.ts` now lists quote numbers matching a six-digit daily stamp.
+- `src/modules/quotes/quotes.service.ts` assigns `DDMMYY-###` using the next sequence for the local calendar day.
+- Existing quote numbers are preserved on edit, including legacy business-prefixed identifiers; newly supplied replacements must use the new format.
+- Added `src/modules/quotes/__tests__/quote-number.test.ts` with deterministic date/sequence and edit-preservation coverage.
+
+### Verification
+- `npm run test -- src/modules/quotes/__tests__/quote-number.test.ts` — 3/3 passed.
+- Targeted ESLint passed for the quote repository, service, and test.
+- `npx tsc --noEmit` passed.
+- Clean `npm run build` passed with 62 generated pages and standalone assets copied; the sandboxed attempt was blocked only by the managed Google Fonts network redirect and the permitted rerun passed.
+- `git diff --check` passed (line-ending notices only).
+
 ## Session Handoff — 2026-07-17 (Quote part-list overflow correction, latest)
 
 Goal: Keep imported part labels contained and readable in the quote editor's manual parts sidebar.
@@ -4911,3 +4945,168 @@ Goal: Make the boss's Read Me First note a real timer-start gate without adding 
 
 ### Next
 - No required follow-up for this gate. A future enhancement could add an admin report of unread current-version instructions across active parts if the owner wants proactive visibility.
+## Session Handoff — 2026-07-20 (Narrated quote-to-order tutorial video, latest)
+
+Goal: Deliver a friendly, thorough 3–5 minute training video that shows the full quote-to-order flow plus quote/order editing.
+
+### What changed
+- Created the narrated 1080p walkthrough: `artifacts/quote-tutorial/ShopApp_Quote_to_Order_Tutorial.mp4`.
+- Created matching captions: `artifacts/quote-tutorial/ShopApp_Quote_to_Order_Tutorial.srt`.
+- Retained the reusable local authoring files, captured real ShopApp screens, and render manifest under `artifacts/quote-tutorial/`.
+
+### Verification
+- Video probe confirmed H.264 video, AAC narration, 1920x1080 resolution, and a 4 minute 32 second runtime.
+- Visual QA checked the title, part-pricing/work-step explanation, and closing screens for framing and legibility.
+- The walkthrough covers quote creation/resume, customer setup, drawing upload/review, material walkdown, work planning, pricing, editing a quote, conversion to an order, and editing an order.
+- The local app is intentionally left running at `http://127.0.0.1:3000/`.
+## Session Handoff — 2026-07-20 (Live-action quote tutorial rebuild, latest)
+
+Goal: Replace the rejected narrated slideshow with a genuine 3–5 minute tutorial that visibly demonstrates ShopApp quote creation, editing, conversion, and order editing.
+
+### What changed
+- Captured 218 real ShopApp states and assembled 158 action frames into a continuous 3:10.58 walkthrough with cursor movement, click feedback, typing, scrolling, file upload, import progress, and real navigation.
+- Replaced `artifacts/quote-tutorial/ShopApp_Quote_to_Order_Tutorial.mp4` with the 1920x1080 H.264/AAC live-action version and regenerated its matching SRT captions and manifest.
+- Added reusable authoring script `artifacts/quote-tutorial/create_live_quote_tutorial.py`, capture timeline, QA contact sheet, and isolated training input.
+- Created training quote `CRM-20260720-5745` and converted training order `CRM-1006` for the demonstration.
+- Fixed date-only order due dates displaying one day early by formatting the order detail due date in UTC in `src/app/orders/[id]/page.tsx`.
+
+### Verification
+- Media probe confirmed 3:10.58 duration, 1920x1080 H.264 High video, yuv420p pixel format, and AAC narration.
+- The canonical and `_Live` MP4 copies have matching SHA-256 `A104FC8D7C4E3F9EC54F870E438568CECC75C909C2B89C049059E4AED2080F33`.
+- Visual QA passed across the full contact sheet and a representative final-order frame; the tutorial visibly covers the full requested workflow rather than holding screenshots.
+- Targeted ESLint for `src/app/orders/[id]/page.tsx` passed.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed with line-ending notices only.
+- The development app remains running at `http://127.0.0.1:3000`.
+## Session Handoff — 2026-08-24 (Customer-part repeats and required reading, latest)
+
+Goal: Make repeat orders reusable by customer/part and make required-reading authoring, enforcement, and status obvious end to end.
+
+### What changed
+- Added nullable unique `RepeatOrderTemplate.sourcePartId`; selected-part snapshots reuse the existing frozen template for that source part.
+- Added `Create again` to old order detail, customer/part identity to template summaries, and `/repeat-orders` plus admin navigation for launching saved definitions.
+- Added `QuotePart.workInstructions`, schema/repo/service/editor support, and conversion mapping into order-part required reading.
+- Renamed and visually emphasized direct/repeat order work instructions as `Required reading / Read Me First`; fixed direct-order submission to include `workInstructions`.
+- Added acknowledged/not acknowledged active-user groups on order detail for the current instruction version and department.
+- Preserved the pre-existing order due-date UTC display correction in the dirty order-detail file.
+
+### Files and migrations
+- Repeat order: `prisma/schema.prisma`, `prisma/migrations/20260824120000_repeat_template_source_part/migration.sql`, `src/modules/repeat-orders/*`, `src/app/repeat-orders/page.tsx`, `src/components/repeat-orders/CustomerRepeatTemplateSection.tsx`, `src/components/AppNav.tsx`, `src/app/orders/[id]/page.tsx`.
+- Required reading: `prisma/migrations/20260824121000_quote_part_required_reading/migration.sql`, `src/app/admin/quotes/QuoteEditor.tsx`, `src/app/orders/new/page.tsx`, quote schema/service/repo, conversion route/test.
+
+### Verification
+- `npx prisma format`, normal `npx prisma generate`, and `npx prisma migrate deploy` passed; both new migrations applied to the workspace dev DB.
+- Focused Vitest passed: 4 files, 31 tests (repeat orders, orders, timer, quote conversion).
+- Targeted ESLint and `npx tsc --noEmit` passed.
+- `npm run build` passed and generated 61 pages; the sandboxed first attempt could not fetch existing Google Font assets, and the approved network-enabled rerun passed.
+- Live browser QA passed for `/repeat-orders`, old-order `Create again`, explicit acknowledgment roster (1 acknowledged, 12 not acknowledged on the inspected part), quote Work Details authoring, and direct-order authoring; no browser console errors.
+- Temporary dev server used for QA was stopped at session end.
+
+### Next
+- No required follow-up for this slice. Existing legacy multi-part repeat templates remain readable and are labeled as legacy; new selected-part templates use the customer-part contract.
+## Session Handoff — 2026-08-24 (Required-reading demonstration order, latest)
+
+Goal: Create a real order that demonstrates the new required-reading gate.
+
+### Result
+- Created `STD-1009` for Starter Customer with part `READ-ME-DEMO` (`Required Reading Demo`), quantity 1, due 2026-09-07.
+- Saved required reading: review the latest print and confirm material, setup, and revision; stop and ask the boss if anything does not match.
+- Verified the order detail shows `Needs acknowledgement`, the full note, and both acknowledgement roster groups.
+- The local development server remains running on port 3000 and the created order is open in the browser.
+
+## Session Handoff — 2026-08-24 (Customizable Live Production display, latest)
+
+Goal: Make the shared Shop Floor page directly configurable for broad sorting and attention-based tile colors without sacrificing the big-screen view.
+
+### What changed
+- Added `shopFloorDisplayOptions` to `AppSettings` with migration `20260824143000_shop_floor_display_options`.
+- Added the Shop Floor repo/service/schema/shared-helper boundary plus authenticated GET and admin-only PATCH at `/api/shop-floor/display-options`.
+- Made `Customize this shop floor` the first major block below the page title. It contains layout, filters, sort field/direction, ordered color-rule editing, save feedback, and a collapse control whose state survives refresh on that device.
+- Added fourteen practical sort choices plus rule fields covering overdue age, business, priority, status, customer, machinist, current department, quantity, parts, open checklist items, and active timers.
+- Added the requested default rule: 7 or more days past due uses `#dc2626` at 28% opacity. Rule styling is shared by department queue cards, grid tiles, and machinist rows.
+
+### Verification
+- Migration applied and Prisma client regenerated.
+- Focused Vitest: 2 files / 9 tests passed.
+- Targeted ESLint, `npx tsc --noEmit`, and `git diff --check` passed.
+- `npm run build` passed with 62 generated pages and standalone asset copy.
+- Live browser QA confirmed shared settings save, collapse persistence after refresh, order-number descending preview (`STD-1009` first), saved due-date ordering restored (`STD-1003` first), and red translucent CSS on overdue queue/grid tiles.
+- One clean development server remains running at `http://127.0.0.1:3000/` for owner review.
+
+### Next
+- No required follow-up. If management later wants different displays to retain different shared profiles, promote the singleton profile to named/device-assigned profiles rather than overloading the current device-local collapse flag.
+
+## Session Handoff — 2026-08-24 (Glass Live Production treatment, latest)
+
+Goal: Match the owner-supplied glassmorphism reference on the Shop Floor dashboard and deepen the overdue alert red.
+
+### What changed
+- Added dashboard-scoped glass atmosphere and three surface depths in `src/app/globals.css`; the style does not leak to quotes, orders, customers, or admin.
+- Restyled the full Live Production hierarchy: control shell, settings, rule rows, running-worker strip/cards, department queue/cards/part rows, grid digest, machinist groups, metrics, recent orders, workload, and status pulse.
+- Preserved inline conditional-color precedence so alert tiles remain status-colored while retaining light edges and blur.
+- Changed the default overdue color to oxblood `#7f1d1d` and added a compatibility promotion for only the untouched `#dc2626` legacy default.
+
+### Verification
+- Focused Shop Floor tests passed: 2 files / 10 tests.
+- Targeted ESLint, `npx tsc --noEmit`, and `git diff --check` passed.
+- Production build passed with 62 generated pages and standalone asset copy.
+- Live browser QA confirmed the supplied-reference visual traits: colored atmospheric light, translucent panels, white glass borders, nested blur/depth, collapsed big-screen controls, and overdue card CSS `rgba(127, 29, 29, 0.28)` with a deeper oxblood border.
+
+### Next
+- No required follow-up. Keep future glass adjustments scoped under `.shop-floor-glass` unless the owner explicitly asks to expand the visual system app-wide.
+
+## Session Handoff — 2026-08-24 (Black/navy Shop Floor palette, latest)
+
+Goal: Keep the new glassmorphism treatment while removing the owner-disliked cyan cast from Live Production.
+
+### What changed
+- Replaced the route-scoped ambient cyan/green/amber lighting with black, near-black navy, restrained royal blue, and a small indigo depth layer in `src/app/globals.css`.
+- Strengthened the dark backing layer so the global application cyan glow does not show through the dashboard's transparent panels.
+- Retained the glass borders, blur, depth, and localized semantic colors; overdue tiles remain translucent oxblood rather than blending into the navy palette.
+
+### Verification
+- Targeted ESLint and `npx tsc --noEmit` passed.
+- Production build passed with 62 generated pages and standalone asset copy.
+- Live browser QA confirmed expanded/collapsed controls, black/navy/slate glass, preserved deep-red overdue tiles, and no cyan page wash.
+
+### Next
+- No required follow-up. Existing cyan action/brand accents are intentionally localized; remove those separately only if the owner asks for a fully cyan-free component palette.
+
+## Session Handoff — 2026-08-24 (Shop Floor Quick View and collapsible timers, latest)
+
+Goal: Make common sorting/filtering permanently convenient without crowding the collapsible configuration menu, and allow Working now to collapse independently.
+
+### What changed
+- Added a small select-only Quick View strip immediately above the active grid, machinist, or department-queue view. It owns quick status, priority, sort field, and ascending/descending selection plus quiet result-state text.
+- Restored the Live Production collapse to configuration only: layout choice, advanced filter dialog, conditional tile rules, and shared Save remain inside it.
+- Department queue items now use the same filtered order membership before sorting; grid/machinist active-timer sorting uses live timer counts.
+- Working now has a separate collapse control and device-local remembered state.
+- Removed the duplicate Unassigned machinist entry from the advanced filter menu.
+
+### Verification
+- Targeted ESLint and `npx tsc --noEmit` passed.
+- Focused Shop Floor/Working now tests passed: 2 files / 10 tests.
+- A clean production build passed with 62 generated pages and standalone asset copy. The first attempt hit a stale missing `.next` chunk after a Windows paging interruption; verified cache removal resolved it.
+- Live QA confirmed the Quick View strip stays visible while both larger sections are collapsed, order-number descending returns `STD-1009`, `STD-1008`, `STD-1007`, the timer collapse survives reload, and the filter menu has one Unassigned option.
+
+### Next
+- No required follow-up. Keep future reversible view-only controls in the Quick View strip and persistence/configuration actions in the collapsible Live Production menu.
+
+## Session Handoff — 2026-08-24 (Exact pre-tile control placement correction, latest)
+
+Goal: Use the former department-selector slot for the four everyday view controls and keep department configuration inside Customize.
+
+### What changed
+- Removed the standalone Quick View glass wrapper.
+- Rendered Status, Priority, Sort, and Direction as compact rounded selects in the exact row immediately before work-queue tiles, grid tiles, or machinist groups.
+- Moved department pills and Show completed items into the collapsible Customize this shop floor content, visible for the work-queue layout.
+- Kept the previously verified filter-then-sort behavior and independently remembered Working now collapse.
+
+### Verification
+- Targeted ESLint and `npx tsc --noEmit` passed.
+- Focused tests passed: 2 files / 10 tests.
+- Clean production build passed with 62 generated pages and standalone asset copy.
+- Live QA confirmed department controls hide with Customize, the four selects remain in the former pill row, Fab/Machining switching works inside configuration, and descending order number produces `STD-1009`, `STD-1008`, `STD-1007`.
+
+### Next
+- No required follow-up. Treat this exact pre-tile row as the owner-approved location for reversible status/priority/sort/direction controls.

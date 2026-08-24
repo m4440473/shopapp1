@@ -3638,3 +3638,209 @@ Require a saved acknowledgement for the selected employee before any trusted-con
 - [x] Targeted ESLint passed for all touched timer, acknowledgement-route, order-page, and kiosk files.
 - [x] `git diff --check` passed (line-ending notices only).
 - [x] Live browser QA confirmed a full mission brief with explicit acknowledgement identity and no trusted-console PIN field; orders without instructions remain optional and unblocked.
+# Session Plan — 2026-07-20 — Narrated quote tutorial video
+
+## Goal
+Create a 3–5 minute narrated MP4 showing an administrator how to create, review, edit, and convert a quote in ShopApp.
+
+## Plan
+- [x] Capture representative live ShopApp screens for quote intake, drawing import, material review, pricing, quote editing, and conversion.
+- [x] Write a plain-language narration and matching on-screen callouts.
+- [x] Produce a narrated 16:9 MP4 with readable captions and clear pacing.
+- [x] Review the finished video and update continuity records with the delivered file.
+
+## Verification
+- [x] Rendered `artifacts/quote-tutorial/ShopApp_Quote_to_Order_Tutorial.mp4` as 1920x1080 H.264 video with AAC narration.
+- [x] Verified the delivered runtime is 4 minutes 32 seconds, within the requested 3-5 minute range.
+- [x] Visually inspected the title, pricing/work-step, and closing frames for readable callouts and correct framing.
+- [x] Generated the matching caption file at `artifacts/quote-tutorial/ShopApp_Quote_to_Order_Tutorial.srt`.
+
+# Session Plan — 2026-07-20 — Natural-voice tutorial narration
+
+## Goal
+Replace the tutorial's robotic Windows narration with a warm, natural neural voice while preserving the on-screen walkthrough and requested 3–5 minute runtime.
+
+## Plan
+- [x] Generate and inspect a short natural-voice sample before rerendering the full video.
+- [x] Update the reusable video builder to generate neural narration and keep each visual aligned to its spoken section.
+- [x] Rerender the MP4 and regenerate captions/manifest timing.
+- [x] Verify voice presence, encoding, duration, and representative visual frames.
+- [x] Record the correction and supersede this slideshow-based output with the live-action deliverable below.
+
+## Correction
+- The natural narration succeeded, but the underlying visual format remained a sequence of held screenshots. The result was a narrated slideshow, not the requested demonstration video. This plan is superseded by the live-action plan below.
+
+# Session Plan — 2026-07-20 — Live-action quote tutorial recording
+
+## Goal
+Deliver a genuine 3–5 minute tutorial showing ShopApp being operated on screen, with visible pointer movement, clicks, typing, uploads, saved checkpoints, quote editing, conversion, and order editing.
+
+## Plan
+- [x] Create isolated training data and map a safe, repeatable quote-to-order path in the live app.
+- [x] Capture the application continuously during each workflow scene, including visible interaction feedback and cursor motion.
+- [x] Edit the captured action scenes into a concise walkthrough and synchronize natural narration/captions.
+- [x] Verify the video visibly demonstrates the requested operations rather than holding static screenshots.
+- [x] Verify 1080p encoding, audible narration, readable UI, 3–5 minute runtime, and update continuity records.
+
+## Verification
+- [x] Captured 218 real application states and selected 158 action frames spanning customer selection, drawing upload/import progress, part review, material check, work planning, pricing, approval, conversion, order review, and order editing.
+- [x] Rendered the replacement `ShopApp_Quote_to_Order_Tutorial.mp4` at 1920x1080 with H.264 video, AAC natural neural narration, captions, visible cursor movement, click feedback, typing, scrolling, and real page transitions.
+- [x] Verified a 3 minute 10.58 second runtime and matching SHA-256 for the canonical and explicitly named live-action copies.
+- [x] Visually inspected the full contact sheet and representative production-order frame for readable UI, visible interaction, and correct workflow order.
+- [x] Fixed the order-detail date-only display discovered during recording; targeted ESLint, `npx tsc --noEmit`, and `git diff --check` passed.
+# Session Plan — 2026-08-24 — Customer-part repeat orders and acknowledgement roster
+
+## Goal
+Make repeat-order templates represent one customer/part manufacturing definition and make Read Me First status explicit for every active worker before the selected worker can start a timer.
+
+## Plan
+- [x] Validate the existing repeat-order snapshot/create lifecycle and selected-worker timer gate against the requested behavior.
+- [x] Add stable source-part identity to repeat templates and make old-order “Create again” reuse or create the selected customer/part template.
+- [x] Update repeat-template summaries and order-detail language so the feature is clearly about a customer/part reorder, not a document layout.
+- [x] Show active users grouped by acknowledged/not acknowledged for the current part, department, and instruction version.
+- [x] Make required-reading entry unmistakable during quote, direct-order, and repeat-order creation, including the acknowledgement/timer-gate consequence.
+- [x] Add focused regression coverage and run Prisma generation/migration checks, targeted tests, lint, type-check, and build as applicable.
+- [x] Record verification evidence and the clarified product decision in continuity docs.
+
+## Verification
+- [x] Prisma format/generate and both migrations passed against the workspace development database.
+- [x] Focused Vitest passed: 4 files, 31 tests.
+- [x] Targeted ESLint and `npx tsc --noEmit` passed.
+- [x] Production build passed with 61 generated pages.
+- [x] Live browser QA passed for repeat navigation/launch, old-order Create again, acknowledgement roster, quote authoring, and direct-order authoring with no console errors.
+
+# Session Plan — 2026-08-24 — Customizable Live Production display
+
+## Goal
+Let an administrator configure the Shop Floor display directly from the top of Live Production, including broad order sorting and reusable translucent tile-color rules such as “7 or more days overdue = red.”
+
+## Plan
+- [x] Define and persist a validated Shop Floor display configuration with safe defaults and administrator-only updates.
+- [x] Move the existing layout/filter controls into a prominent collapsible display-controls panel at the top of Live Production.
+- [x] Add configurable sort field/direction choices covering the practical order fields shown on the floor.
+- [x] Add editable conditional tile-color rules, including the requested default 7+ days overdue red rule, and apply them consistently to order tiles/rows.
+- [x] Add focused rule/sort/settings regression coverage and run migration, lint, type-check, tests, build, and live-browser QA.
+- [x] Record the product decision and verification evidence in continuity artifacts.
+
+## Replan note
+- The first focused-test run was blocked before collection by the managed Windows sandbox (`esbuild` spawn `EPERM`). Prisma generation had the same sandbox/process-lock constraint. The ShopApp dev processes were identified by exact command line and stopped with the user's authorization; verification will continue with the same focused scope outside the sandbox where required.
+- The added service test initially failed during module setup because Vitest hoists mock factories. The test fixture is being converted to `vi.hoisted`; no application behavior failed, and the same focused suite will be rerun before live QA.
+
+## Verification
+- [x] Migration applied and Prisma client generation passed.
+- [x] Focused Vitest passed: 2 files / 9 tests.
+- [x] Targeted ESLint, `npx tsc --noEmit`, and `git diff --check` passed.
+- [x] Production build passed with 62 generated pages and standalone asset copy.
+- [x] Live browser QA passed for top placement, edit/save feedback, collapse persistence, alternate sorting, restored saved ordering, and red translucent styling in work-queue and grid layouts.
+
+# Session Plan — 2026-08-24 — Live Production glass visual treatment
+
+## Goal
+Bring the Shop Floor dashboard closer to the supplied glassmorphism reference with layered ambient color, translucent blurred panels, soft light borders, and depth, while preserving TV readability and conditional alert colors.
+
+## Plan
+- [x] Add a dashboard-scoped atmospheric background and reusable glass surface treatment without changing the rest of the application.
+- [x] Restyle Live Production controls, metrics, work-queue cards, grid tiles, machinist rows, and lower overview cards as a coherent glass system.
+- [x] Preserve overdue/custom rule colors as the highest-priority tile background and keep text/controls readable at TV scale.
+- [x] Run targeted lint, TypeScript, production build, and live visual QA against the supplied reference.
+- [x] Update continuity records with the visual decision and verification evidence.
+
+## Replan note
+- The first targeted lint invocation mistakenly included `globals.css`, which the JavaScript parser cannot lint. Application TypeScript remained clean; final ESLint will target only TS/TSX, while the production build will validate Tailwind/PostCSS output.
+
+## Verification
+- [x] Focused Shop Floor tests passed: 2 files / 10 tests.
+- [x] Targeted ESLint, `npx tsc --noEmit`, and `git diff --check` passed.
+- [x] Production build passed with 62 generated pages and standalone asset copy.
+- [x] Live visual QA passed for expanded/collapsed control glass, nested panels, ambient color, work-queue cards, and the deeper oxblood overdue style.
+
+# Session Plan — 2026-08-24 — Black/navy glass palette correction
+
+## Goal
+Remove the disliked cyan cast from Live Production and replace it with a dark black/navy glass foundation while preserving status and alert colors.
+
+## Plan
+- [x] Replace cyan/green/amber ambient dashboard lighting with black, navy, and restrained royal-blue depth.
+- [x] Make the dashboard backing layer opaque enough to prevent the global cyan body glow from bleeding through the glass.
+- [x] Verify the clean palette live, run static/build checks, and update continuity records.
+
+## Verification
+- [x] Targeted ESLint and `npx tsc --noEmit` passed.
+- [x] Production build passed with 62 generated pages and standalone asset copy; `git diff --check` passed before continuity updates.
+- [x] Live browser QA passed in expanded and collapsed modes with a black/navy backing, slate-blue glass, localized oxblood overdue tiles, and no page-wide cyan wash.
+
+# Session Plan — 2026-08-24 — Persistent quick sorting and collapsible live timers
+
+## Goal
+Keep the common Shop Floor filters and sorting controls immediately usable when advanced customization is collapsed, make those controls affect every layout in the correct filter-then-sort order, and let the big-screen Working now area collapse independently.
+
+## Plan
+- [x] Add an always-visible, select-only Quick View strip for status, priority, sort field, and ascending/descending direction directly above the chosen tile view, with quiet result/filter feedback.
+- [x] Ensure filtered order membership and live timer counts feed sorting consistently in grid, machinist, and department work-queue layouts.
+- [x] Add an independently collapsible, device-remembered Working now timer strip.
+- [x] Add focused regression coverage and run lint, TypeScript, tests, production build, and live interaction QA.
+- [x] Update continuity records with the final behavior and verification evidence.
+
+## Replan note
+- The first production build compiled successfully but failed during page-data collection because `.next/server/webpack-runtime.js` referenced a missing generated chunk (`5611.js`) after the earlier Windows paging-file interruption. This is a stale/corrupt build-cache condition. Verification is paused for a verified `.next` removal and clean rebuild; the build and `git diff --check` will be run as separate commands so a later command cannot mask a build failure.
+
+## Verification
+- [x] Targeted ESLint and `npx tsc --noEmit` passed.
+- [x] Focused Vitest passed: 2 files / 10 tests.
+- [x] Clean production build passed with 62 generated pages and standalone asset copy after the verified stale-cache removal.
+- [x] Live QA confirmed the select-only strip remains outside collapsed configuration, filters precede sorting in the department queue, order-number descending yields `STD-1009`, `STD-1008`, `STD-1007`, both collapses persist independently, and only one Unassigned option is present.
+
+# Session Plan — 2026-08-24 — Quick-control row placement correction
+
+## Goal
+Put department selection back inside Customize this shop floor and place the compact Status, Priority, Sort, and Direction selects in the former department-selector row immediately above the chosen tiles.
+
+## Plan
+- [x] Move department selection and the completed-items option into the collapsible configuration area.
+- [x] Remove the standalone Quick View surface and render its four small selects in the exact pre-tile row for work-queue, grid, and machinist views.
+- [x] Verify placement, collapse independence, filtering, and direction changes live; rerun static checks, focused tests, and production build.
+- [x] Update the correction lesson and continuity records.
+
+## Verification
+- [x] Targeted ESLint and `npx tsc --noEmit` passed.
+- [x] Focused Vitest passed: 2 files / 10 tests.
+- [x] Clean production build passed with 62 generated pages and standalone asset copy.
+- [x] Live QA confirmed the department controls disappear with Customize, the four compact selects occupy the former department-pill row directly before tiles, department switching works inside Customize, and descending order-number sorting yields `STD-1009`, `STD-1008`, `STD-1007`.
+# Session Plan — 2026-08-24 — Daily sequential quote numbers
+
+## Goal
+- Change automatically assigned quote numbers to `DDMMYY-###`, resetting the sequence each calendar day (for example, the first quote on August 24, 2026 is `240826-001`).
+
+## Plan
+- [x] Trace quote-number generation, persistence, and edit behavior.
+- [x] Add a repository lookup for the day's assigned quote numbers and generate the next sequence deterministically.
+- [x] Preserve existing quote numbers during edits and validate only newly supplied replacements against the new format.
+- [x] Add focused regression tests for first-of-day and subsequent quote numbering.
+- [x] Run focused tests, lint, TypeScript/build verification, and update continuity documents.
+
+## Verification
+- [x] Focused quote-number tests pass (3/3).
+- [x] Targeted ESLint and TypeScript checks pass.
+- [x] Production build passes with 62 generated pages and standalone assets copied.
+
+## Replan note
+- The clean sandboxed production build reached `next/font` compilation but its Google Fonts request was redirected to the closed local address `127.0.0.1:9`. This is the managed network restriction, so the same clean build is being rerun outside the sandbox before acceptance.
+
+---
+# Session Plan — 2026-08-24 — Sleeker Shop Floor surfaces
+
+## Goal
+- Remove the dark navy dashboard backing tile, place the Live Production / Shop Floor heading directly on the page gradient, and reduce excessive corner rounding across the Shop Floor UI.
+
+## Plan
+- [x] Remove the Shop Floor's full-page dark backing layer while preserving the navy gradient atmosphere.
+- [x] Flatten the Live Production results wrapper and tighten panel, tile, control, and nested-row corner radii.
+- [x] Verify the visual hierarchy and responsive behavior in the live app.
+- [x] Run focused lint, TypeScript, tests/build, and update continuity documents.
+
+## Verification
+- [x] Live browser QA confirms the heading and main tiles sit directly on the gradient without the oversized navy shell.
+- [x] Targeted ESLint, `npx tsc --noEmit`, and focused Shop Floor tests pass (10/10).
+- [x] Production build passes with 62 generated pages and standalone assets copied.
+
+---

@@ -82,7 +82,7 @@ export function CustomerRepeatTemplateSection({
           <div className="space-y-1">
             <CardTitle className="text-lg">Repeat-order templates</CardTitle>
             <CardDescription>
-              Saved build definitions for fast reorders for {customerName}.
+              Saved manufacturing definitions for specific parts made for {customerName}.
             </CardDescription>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => void loadTemplates()}>
@@ -115,6 +115,13 @@ export function CustomerRepeatTemplateSection({
                     </Badge>
                   </div>
                   <div className="space-y-1 text-sm text-muted-foreground">
+                    <p>
+                      Part:{' '}
+                      <span className="font-medium text-foreground">
+                        {template.primaryPartNumber ?? 'Legacy multi-part template'}
+                        {template.primaryPartName ? ` — ${template.primaryPartName}` : ''}
+                      </span>
+                    </p>
                     <p>Business: {template.business}</p>
                     <p>
                       Source order:{' '}
@@ -134,7 +141,7 @@ export function CustomerRepeatTemplateSection({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button asChild size="sm" className="rounded-full">
-                    <Link href={`/orders/new?templateId=${template.id}`}>Create repeat order</Link>
+                    <Link href={`/orders/new?templateId=${template.id}`}>Create again</Link>
                   </Button>
                   {template.sourceOrderId ? (
                     <Button asChild variant="outline" size="sm" className="rounded-full">
@@ -147,7 +154,7 @@ export function CustomerRepeatTemplateSection({
           ))
         ) : (
           <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 px-4 py-6 text-sm text-muted-foreground">
-            No repeat templates saved yet. Save a proven order as a repeat template, then launch reorders here in one click.
+            No customer-part templates saved yet. Open a proven order, select the part, and choose Create again or Save repeat template.
           </div>
         )}
       </CardContent>

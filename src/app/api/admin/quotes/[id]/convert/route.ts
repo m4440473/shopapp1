@@ -109,6 +109,7 @@ function buildConversionWorkInstructions(quote: any, part: any): string | null {
   };
 
   const sections = [
+    buildSection('Required reading', part?.workInstructions),
     buildSection('Quote requirements', quote?.requirements),
     buildSection('Quote notes', quote?.notes),
     buildSection('Materials', quote?.materialSummary),

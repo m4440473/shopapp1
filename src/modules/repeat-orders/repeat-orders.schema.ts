@@ -7,6 +7,7 @@ export const RepeatOrderTemplateListQuery = z.object({
 
 export const RepeatOrderTemplateCreateFromOrder = z.object({
   name: z.string().trim().min(1).max(200).optional(),
+  partId: z.string().trim().min(1).optional(),
 });
 
 export const RepeatOrderTemplateCreateOrder = z.object({

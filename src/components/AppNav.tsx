@@ -9,6 +9,7 @@ import {
   Calculator,
   LayoutDashboard,
   Menu,
+  Repeat2,
   Search,
   UserRound,
   Users,
@@ -61,6 +62,7 @@ export default function AppNav({ companyName, initials, logoUrl }: AppNavProps) 
       items.push({ href: "/auth/signin", label: "Sign In", icon: UserRound });
     }
     if (user && canAccessAdmin(user)) {
+      items.push({ href: "/repeat-orders", label: "Repeat Orders", icon: Repeat2 });
       items.push({ href: "/admin", label: "Admin", icon: BadgeCheck });
     }
     return items;

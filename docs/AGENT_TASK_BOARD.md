@@ -12,6 +12,10 @@ Use with:
 
 ## Session Status Notes
 
+- 2026-08-24: Completed the Shop Floor open-canvas visual correction: removed the full-page/results navy shells, placed the heading and production content directly on the gradient, reduced bubble-like radii, and passed live QA, 10/10 focused tests, lint, type-check, and a clean 62-page build.
+- 2026-08-24: Completed daily sequential quote numbers in `DDMMYY-###` format with first-of-day `001`, next-highest sequencing, legacy edit preservation, 3/3 focused tests, lint, type-check, and a clean 62-page production build.
+- 2026-08-24: Completed customer-part repeat-order launch from old orders and a new Repeat Orders page, plus explicit quote/order required-reading authoring and per-user acknowledged/not-acknowledged roster; focused tests 31/31, type-check, lint, build, migrations, and live QA passed.
+- 2026-07-20: Rebuilt the quote-to-order tutorial as a genuine 3:10 live-action walkthrough with natural narration, captions, visible pointer/click/typing/upload activity, saved workflow transitions, quote editing, conversion, and order editing; verified 1080p H.264/AAC output is in `artifacts/quote-tutorial/`.
 - 2026-07-17: Retired the separate PIN-kiosk user flow: the existing TV dashboard is now labeled Shop Floor, `/kiosk` redirects there, Kiosk navigation and employee PIN setup are removed, and trusted-console audit/Read Me First behavior is preserved.
 - 2026-07-17: Completed authoritative Read Me First enforcement: dispatch starts require a persisted versioned receipt, the trusted console shows the full brief and records worker/operator separately without repeated worker PIN entry, and the kiosk resolves the same gate for its PIN-unlocked worker. Evidence is recorded in `tasks/todo.md`, `PROGRESS_LOG.md`, and `docs/AGENT_HANDOFF.md`.
 - 2026-07-17: Completed unplanned production feeds-and-speeds correction for the owner's Haas VF-2SS: explicit 12,000 RPM / 833 IPM caps, operation-specific FSWizard geometry, honest validation/unavailable states, and branch-complete regression coverage. Evidence is recorded in `tasks/todo.md`, `PROGRESS_LOG.md`, and `docs/AGENT_HANDOFF.md`.
@@ -282,3 +286,28 @@ Example assignment:
 - `FLOOR-I3`: complete for timer identity/surface consolidation. Order detail uses explicit labor owner plus authenticated console actor; the TV dashboard is the primary status surface and the optional PIN kiosk delegates to the same timer invariants.
 - `BUILD-B1`: complete. Root type-check, full lint, 127 tests, and production build pass.
 - Browser evidence: 1920x1080 TV dashboard, live running-worker card, direct part navigation, employee timer dialog, Pause/Finish dialog, employee-grouped labor history, assignment labels, part-switch URL state, and Shipping/complete timer guard all verified.
+
+### Shop Floor display customization completion evidence — 2026-08-24
+- Live Production now owns a persisted, admin-editable display profile for layout, broad sorting, and ordered translucent color rules.
+- The requested default `days past due >= 7` red rule is validated and applied across every order-centric Shop Floor layout.
+- Focused tests passed (9/9), targeted lint and TypeScript passed, the production build passed with 62 pages, and live browser QA covered saving, sorting, collapse persistence, and both queue/grid tile styling.
+
+### Shop Floor glass visual completion evidence — 2026-08-24
+- The dashboard now uses a route-scoped atmospheric glass system across controls, tiles, metrics, and lower summaries; other routes are unchanged.
+- The overdue default is the deeper `#7f1d1d` oxblood, with a guarded compatibility promotion that does not overwrite custom colors.
+- Focused tests passed (10/10), targeted lint and TypeScript passed, the production build passed with 62 pages, and live visual QA covered expanded/collapsed controls and deep-red overdue tiles.
+
+### Shop Floor black/navy palette correction evidence — 2026-08-24
+- Replaced the page-wide cyan/green/amber cast with black, navy, royal-blue, and restrained indigo ambient layers while preserving the existing glass surface hierarchy.
+- Added an opaque-enough dark dashboard backing to prevent the global cyan body glow from bleeding through; semantic green and oxblood red remain localized.
+- Targeted lint and TypeScript passed, the production build passed with 62 pages, and live QA covered expanded/collapsed dashboard states plus the deep-red overdue style.
+
+### Shop Floor Quick View and Working now collapse evidence — 2026-08-24
+- The compact select-only Quick View strip is outside the configuration collapse and directly precedes the chosen results view; layout/advanced filters/rules/save remain inside configuration.
+- Department queue filtering now occurs before sorting, live timer counts participate in order sorting, Working now collapses independently, and the duplicate Unassigned filter option is removed.
+- Targeted lint and TypeScript passed, focused tests passed (10/10), the clean production build passed with 62 pages, and live QA covered sort reversal, filtered queue membership, both remembered collapses, and the final clean hierarchy.
+
+### Shop Floor exact control-row placement evidence — 2026-08-24
+- Status, Priority, Sort, and Direction now replace the old department-pill row directly before every chosen results view; there is no separate Quick View surface.
+- Department selection and Show completed items live inside the collapsible configuration area and disappear when Customize is collapsed.
+- Targeted lint and TypeScript passed, focused tests passed (10/10), the clean production build passed with 62 pages, and live QA confirmed exact placement, department switching, collapse behavior, and descending order-number results.

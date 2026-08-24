@@ -47,6 +47,7 @@ export const QuotePartInput = z.object({
   quantity: z.coerce.number().int().min(1).default(1),
   pieceCount: z.coerce.number().int().min(1).default(1),
   notes: z.string().trim().max(2000).optional(),
+  workInstructions: z.string().trim().max(4000).optional(),
   addonSelections: z.array(QuoteAddonSelectionInput).default([]),
   attachments: z.array(QuotePartAttachmentInput).optional(),
 });

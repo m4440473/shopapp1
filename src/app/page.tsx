@@ -21,6 +21,8 @@ import {
 import { getInitials } from '@/lib/get-initials';
 import { cn } from '@/lib/utils';
 import { getRunningWorkerSummary } from '@/modules/time/time.service';
+import { canAccessAdmin } from '@/lib/rbac';
+import { getShopFloorDisplayOptions } from '@/modules/shop-floor/shop-floor.service';
 
 export default async function Home() {
   const session = await getServerAuthSession();
@@ -39,6 +41,7 @@ export default async function Home() {
   const { totalOrders, closedOrders, activeOrders, recentOrders } = dashboardResult.data;
   const runningWorkersResult = await getRunningWorkerSummary();
   const runningWorkers = runningWorkersResult.ok ? runningWorkersResult.data.items : [];
+  const displayOptions = await getShopFloorDisplayOptions();
   const departmentsResult = await getDepartmentsOrdered();
   const departments = departmentsResult.ok ? departmentsResult.data.items : [];
   const initialDepartmentId = departments[0]?.id ?? null;
@@ -82,10 +85,8 @@ export default async function Home() {
       }
       return acc;
     }, []);
-  machinistList.unshift({ id: null, name: 'Unassigned', email: null });
-
   return (
-    <div className="flex flex-col gap-8">
+    <div className="shop-floor-glass relative flex flex-col gap-8 px-1 py-2 sm:px-2">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.4em] text-primary/70">Live production</p>
@@ -96,8 +97,19 @@ export default async function Home() {
         </div>
       </div>
 
+      <ShopFloorLayouts
+        orders={decoratedActiveOrders}
+        machinists={machinistList}
+        departments={departments}
+        initialDepartmentId={initialDepartmentId}
+        initialDepartmentFeed={departmentFeedItems}
+        runningWorkers={runningWorkers}
+        initialDisplayOptions={displayOptions}
+        canEditDisplay={canAccessAdmin(session.user as any)}
+      />
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
+        <Card className="shop-glass h-full rounded-lg transition duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:shadow-xl hover:shadow-primary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active orders</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
@@ -107,7 +119,7 @@ export default async function Home() {
             <p className="text-xs text-muted-foreground">{totalOrders} total records in the shop</p>
           </CardContent>
         </Card>
-        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
+        <Card className="shop-glass h-full rounded-lg transition duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:shadow-xl hover:shadow-primary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Due within 7 days</CardTitle>
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
@@ -117,7 +129,7 @@ export default async function Home() {
             <p className="text-xs text-muted-foreground">Stay ahead of the hot jobs</p>
           </CardContent>
         </Card>
-        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
+        <Card className="shop-glass h-full rounded-lg transition duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:shadow-xl hover:shadow-primary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Unassigned tickets</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
@@ -127,7 +139,7 @@ export default async function Home() {
             <p className="text-xs text-muted-foreground">Waiting for a machinist</p>
           </CardContent>
         </Card>
-        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
+        <Card className="shop-glass h-full rounded-lg transition duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:shadow-xl hover:shadow-primary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Completed jobs</CardTitle>
             <CircleCheck className="h-4 w-4 text-muted-foreground" />
@@ -139,23 +151,14 @@ export default async function Home() {
         </Card>
       </div>
 
-      <ShopFloorLayouts
-        orders={decoratedActiveOrders}
-        machinists={machinistList}
-        departments={departments}
-        initialDepartmentId={initialDepartmentId}
-        initialDepartmentFeed={departmentFeedItems}
-        runningWorkers={runningWorkers}
-      />
-
       <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
+        <Card className="shop-glass rounded-lg xl:col-span-2">
           <CardHeader className="flex flex-row items-center">
             <div className="grid gap-1">
               <CardTitle className="text-lg">Orders overview</CardTitle>
               <CardDescription>Latest order activity pulled straight from the floor.</CardDescription>
             </div>
-            <Button asChild size="sm" className="ml-auto gap-1 rounded-full bg-primary/90 text-primary-foreground">
+            <Button asChild size="sm" className="ml-auto gap-1 rounded-md bg-primary/90 text-primary-foreground">
               <Link href="/">
                 View dashboard
                 <ArrowUpRight className="h-4 w-4" />
@@ -167,7 +170,7 @@ export default async function Home() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="shop-glass rounded-lg">
           <CardHeader>
             <CardTitle>Machinist workload</CardTitle>
             <CardDescription>Top assignments across active jobs.</CardDescription>
@@ -196,7 +199,7 @@ export default async function Home() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="shop-glass rounded-lg">
           <CardHeader>
             <CardTitle>Status pulse</CardTitle>
             <CardDescription>Where every open job sits in the pipeline.</CardDescription>

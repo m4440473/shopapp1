@@ -18,6 +18,7 @@ import {
   createOrderFromRepeatTemplate,
   createRepeatOrderTemplate,
   findOrderTemplateSource,
+  findRepeatOrderTemplateBySourcePart,
   findRepeatOrderTemplateById,
   listRepeatOrderTemplates,
 } from './repeat-orders.repo';
@@ -33,6 +34,7 @@ function fail<T>(status: number, error: string | object): ServiceResult<T> {
 }
 
 function mapTemplateSummary(item: any) {
+  const primaryPart = Array.isArray(item.parts) ? item.parts[0] : null;
   return {
     id: item.id,
     name: item.name,
@@ -40,6 +42,9 @@ function mapTemplateSummary(item: any) {
     customerName: item.customer?.name ?? null,
     sourceOrderId: item.sourceOrderId ?? null,
     sourceOrderNumber: item.sourceOrder?.orderNumber ?? null,
+    sourcePartId: item.sourcePartId ?? null,
+    primaryPartNumber: primaryPart?.partNumber ?? null,
+    primaryPartName: primaryPart?.partName ?? null,
     business: item.business,
     priority: item.priority,
     createdAt: item.createdAt,
@@ -51,6 +56,13 @@ function mapTemplateSummary(item: any) {
 function buildDefaultTemplateName(order: any) {
   const customerName = order.customer?.name?.trim() || 'Customer';
   return `${customerName} - ${order.orderNumber}`;
+}
+
+function buildPartTemplateName(order: any, part: any) {
+  const customerName = order.customer?.name?.trim() || 'Customer';
+  const partNumber = part.partNumber?.trim() || 'Part';
+  const partName = part.partName?.trim();
+  return `${customerName} - ${partNumber}${partName ? ` - ${partName}` : ''}`;
 }
 
 function validateProvidedOrderNumber(orderNumber: string, business: string) {
@@ -70,10 +82,23 @@ export async function snapshotRepeatOrderTemplateFromOrder(
   const order = await findOrderTemplateSource(orderId);
   if (!order) return fail(404, 'Order not found');
 
+  const sourcePart = payload.partId
+    ? (order.parts ?? []).find((part: any) => part.id === payload.partId)
+    : null;
+  if (payload.partId && !sourcePart) return fail(404, 'Part not found on this order');
+
+  if (sourcePart) {
+    const existing = await findRepeatOrderTemplateBySourcePart(sourcePart.id);
+    if (existing) return ok({ template: mapTemplateSummary(existing), created: false });
+  }
+
+  const sourceParts = sourcePart ? [sourcePart] : (order.parts ?? []);
+
   const template = await createRepeatOrderTemplate({
     customerId: order.customerId,
     sourceOrderId: order.id,
-    name: payload.name?.trim() || buildDefaultTemplateName(order),
+    sourcePartId: sourcePart?.id ?? null,
+    name: payload.name?.trim() || (sourcePart ? buildPartTemplateName(order, sourcePart) : buildDefaultTemplateName(order)),
     business: order.business,
     vendorId: order.vendorId ?? null,
     materialNeeded: Boolean(order.materialNeeded),
@@ -82,7 +107,7 @@ export async function snapshotRepeatOrderTemplateFromOrder(
     priority: order.priority,
     notes: null,
     createdById: userId ?? null,
-    parts: (order.parts ?? []).map((part: any, index: number) => ({
+    parts: sourceParts.map((part: any, index: number) => ({
       partNumber: part.partNumber,
       partName: part.partName ?? null,
       quantity: part.quantity,
@@ -122,7 +147,7 @@ export async function snapshotRepeatOrderTemplateFromOrder(
     })),
   });
 
-  return ok({ template: mapTemplateSummary(template) });
+  return ok({ template: mapTemplateSummary(template), created: true });
 }
 
 export async function listRepeatOrderTemplateSummaries(query: RepeatOrderTemplateListQueryInput) {

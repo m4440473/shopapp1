@@ -173,6 +173,7 @@ const buildConversionWorkInstructions = (quote: any, part: any) => {
   };
 
   const sections = [
+    buildSection('Required reading', part?.workInstructions),
     buildSection('Quote requirements', quote?.requirements),
     buildSection('Quote notes', quote?.notes),
     buildSection('Materials', quote?.materialSummary),
@@ -891,6 +892,7 @@ function NewOrderForm() {
         stockSize: part.stockSize?.trim() ? part.stockSize.trim() : undefined,
         cutLength: part.cutLength?.trim() ? part.cutLength.trim() : undefined,
         notes: part.notes?.trim() ? part.notes.trim() : undefined,
+        workInstructions: part.workInstructions?.trim() ? part.workInstructions.trim() : undefined,
         addonSelections: part.addonSelections
           .filter((selection) => selection.addonId)
           .map((selection) => {
@@ -1678,26 +1680,20 @@ function NewOrderForm() {
                             className="min-h-[100px]"
                           />
                         </div>
-                        <div className="grid gap-2 md:col-span-2">
-                          <Label>Work instructions</Label>
+                        <div className="grid gap-2 rounded-lg border border-amber-500/35 bg-amber-500/5 p-4 md:col-span-2">
+                          <div className="space-y-1">
+                            <Label className="text-amber-100">Required reading / Read Me First</Label>
+                            <p className="text-xs text-muted-foreground">
+                              If this has text, whichever employee is selected to start the timer must read and acknowledge it first. Acknowledgements are recorded per user, department, and version.
+                            </p>
+                          </div>
                           <Textarea
                             value={activePart.workInstructions || ''}
                             onChange={(e) => updatePart(activePart.key, { workInstructions: e.target.value })}
-                            placeholder="Must-read floor instructions for this part."
-                            className="min-h-[120px]"
+                            placeholder="Example: Review rev C print; use fixture 207-B; first piece inspection required before continuing."
+                            className="min-h-[140px] border-amber-500/25 bg-background/80"
                           />
                         </div>
-                        {templateMode && (
-                          <div className="grid gap-2 md:col-span-2">
-                            <Label>Work instructions</Label>
-                            <Textarea
-                              value={activePart.workInstructions || ''}
-                              onChange={(e) => updatePart(activePart.key, { workInstructions: e.target.value })}
-                              placeholder="Required setup or must-read instructions for this part"
-                              className="min-h-[140px]"
-                            />
-                          </div>
-                        )}
                       </div>
                     </div>
                     {templateMode ? (

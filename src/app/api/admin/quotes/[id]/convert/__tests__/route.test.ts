@@ -153,6 +153,7 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
           cutLength: null,
           description: 'Lathe then mill flats',
           notes: 'Use soft jaws',
+          workInstructions: 'Verify fixture 207-B before cycle start',
           pieceCount: 1,
           partNumber: 'A-1',
         },
@@ -184,6 +185,8 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
     const args = mockConvertQuoteToOrder.mock.calls[0][0];
     expect(args.normalizedCustomFieldValues).toEqual([{ fieldId: 'cf-allowed', value: '"yes"' }]);
     expect(args.partsData[0].workInstructions).toContain('Quote requirements:');
+    expect(args.partsData[0].workInstructions).toContain('Required reading:');
+    expect(args.partsData[0].workInstructions).toContain('- Verify fixture 207-B before cycle start');
     expect(args.partsData[0].workInstructions).toContain('- Hold bore within .001');
     expect(args.partsData[0].workInstructions).toContain('Part-specific notes:');
     expect(args.partsData[0].workInstructions).toContain('- Use soft jaws');

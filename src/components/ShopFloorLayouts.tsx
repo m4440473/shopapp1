@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpDown, LayoutGrid, LayoutList, Rows3, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronUp, LayoutGrid, LayoutList, Plus, Rows3, Save, SlidersHorizontal, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
@@ -32,6 +32,17 @@ import {
   RunningWorkersStrip,
   type RunningWorkerSummary,
 } from '@/components/work-queue/RunningWorkersStrip';
+import {
+  compareShopFloorOrders,
+  getMatchingShopFloorRule,
+  translucentRuleStyle,
+  type ShopFloorComparableOrder,
+} from '@/modules/shop-floor/shop-floor.shared';
+import type {
+  ShopFloorColorRuleInput,
+  ShopFloorDisplayOptionsInput,
+  ShopFloorRuleFieldInput,
+} from '@/modules/shop-floor/shop-floor.schema';
 
 type LayoutOption = 'grid' | 'machinist' | 'workQueue';
 
@@ -42,33 +53,52 @@ type Props = {
   initialDepartmentId: string | null;
   initialDepartmentFeed: DepartmentFeedOrder[];
   runningWorkers?: RunningWorkerSummary[];
+  initialDisplayOptions: ShopFloorDisplayOptionsInput;
+  canEditDisplay: boolean;
 };
 
-const SORT_KEYS = ['dueDate', 'priority', 'status', 'quantity'] as const;
+const SORT_OPTIONS = [
+  ['dueDate', 'Due date'], ['daysPastDue', 'Days past due'], ['receivedDate', 'Received date'],
+  ['orderNumber', 'Order number'], ['business', 'Business'], ['customer', 'Customer'], ['machinist', 'Machinist'], ['department', 'Current department'],
+  ['priority', 'Priority'], ['status', 'Status'], ['quantity', 'Total quantity'],
+  ['partCount', 'Part count'], ['openAddons', 'Open checklist items'], ['activeTimers', 'Active timers'],
+] as const;
 
-function SortButton({
-  label,
-  column,
-  current,
-  dir,
-  onChange,
-}: {
-  label: string;
-  column: (typeof SORT_KEYS)[number];
-  current: string;
-  dir: 'asc' | 'desc';
-  onChange: (column: (typeof SORT_KEYS)[number]) => void;
-}) {
-  const active = current === column;
-  return (
-    <button
-      onClick={() => onChange(column)}
-      className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs uppercase tracking-wide transition hover:text-primary ${active ? 'bg-primary/10 text-primary' : 'text-muted-foreground'}`}
-    >
-      <ArrowUpDown className="h-3.5 w-3.5" />
-      {label} {active ? (dir === 'asc' ? '↑' : '↓') : ''}
-    </button>
-  );
+const RULE_FIELD_OPTIONS = [
+  ['daysPastDue', 'Days past due'], ['priority', 'Priority'], ['status', 'Status'],
+  ['business', 'Business'], ['customer', 'Customer'], ['machinist', 'Machinist'], ['department', 'Current department'], ['quantity', 'Total quantity'],
+  ['partCount', 'Part count'], ['openAddons', 'Open checklist items'], ['activeTimers', 'Active timers'],
+] as const;
+
+const NUMERIC_RULE_FIELDS = new Set<ShopFloorRuleFieldInput>([
+  'daysPastDue', 'quantity', 'partCount', 'openAddons', 'activeTimers',
+]);
+
+function comparableOrder(
+  order: OrderWithMeta,
+  activeTimers = 0,
+  departmentNames?: Map<string, string>,
+): ShopFloorComparableOrder {
+  const department = Array.from(new Set(
+    (order.parts ?? [])
+      .map((part) => part.currentDepartmentId ? departmentNames?.get(part.currentDepartmentId) ?? part.currentDepartmentId : null)
+      .filter((value): value is string => Boolean(value)),
+  )).join(', ');
+  return {
+    orderNumber: order.orderNumber,
+    business: order.business,
+    dueDate: order.dueDate,
+    receivedDate: order.receivedDate,
+    customer: order.customer?.name,
+    machinist: order.assignedMachinist?.name ?? order.assignedMachinist?.email,
+    department,
+    priority: order.priority,
+    status: order.status,
+    quantity: order.totalQuantity,
+    partCount: order.parts?.length ?? 0,
+    openAddons: order.openAddonCount,
+    activeTimers,
+  };
 }
 
 export function ShopFloorLayouts({
@@ -78,20 +108,36 @@ export function ShopFloorLayouts({
   initialDepartmentId,
   initialDepartmentFeed,
   runningWorkers = [],
+  initialDisplayOptions,
+  canEditDisplay,
 }: Props) {
-  const [layout, setLayout] = useState<LayoutOption>('workQueue');
+  const [displayOptions, setDisplayOptions] = useState(initialDisplayOptions);
+  const [controlsExpanded, setControlsExpanded] = useState(true);
+  const [savingDisplay, setSavingDisplay] = useState(false);
+  const [displayMessage, setDisplayMessage] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'closed'>('active');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'HOT' | 'RUSH' | 'NORMAL' | 'LOW'>('all');
   const [filters, setFilters] = useState({ ...DEFAULT_ORDER_FILTERS });
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [sortKey, setSortKey] = useState<(typeof SORT_KEYS)[number]>('dueDate');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [departmentId, setDepartmentId] = useState(initialDepartmentId ?? '');
   const [departmentFeed, setDepartmentFeed] = useState(initialDepartmentFeed ?? []);
   const [departmentLoading, setDepartmentLoading] = useState(false);
   const [departmentError, setDepartmentError] = useState<string | null>(null);
   const [includeCompleted, setIncludeCompleted] = useState(false);
   const [liveRunningWorkers, setLiveRunningWorkers] = useState(runningWorkers);
+
+  const layout: LayoutOption = displayOptions.layout;
+
+  useEffect(() => {
+    setControlsExpanded(window.localStorage.getItem('shop-floor-controls-collapsed') !== 'true');
+  }, []);
+
+  const toggleControls = () => {
+    setControlsExpanded((current) => {
+      window.localStorage.setItem('shop-floor-controls-collapsed', String(current));
+      return !current;
+    });
+  };
 
   useEffect(() => {
     setDepartmentId(initialDepartmentId ?? '');
@@ -198,6 +244,29 @@ export function ShopFloorLayouts({
 
   const selectedDepartmentName = departmentNameById.get(departmentId) ?? 'Unassigned';
 
+  const activeTimerCountsByOrder = useMemo(() => {
+    const counts = new Map<string, number>();
+    liveRunningWorkers.forEach((worker) => {
+      counts.set(worker.orderId, (counts.get(worker.orderId) ?? 0) + 1);
+    });
+    return counts;
+  }, [liveRunningWorkers]);
+
+  const advancedFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.machinistId && filters.machinistId !== 'all') count += 1;
+    if (filters.statuses?.length) count += 1;
+    if (filters.createdFrom) count += 1;
+    if (filters.createdTo) count += 1;
+    if (filters.dueFrom) count += 1;
+    if (filters.dueTo) count += 1;
+    if (filters.minQty !== undefined) count += 1;
+    if (filters.maxQty !== undefined) count += 1;
+    if (filters.requiresAddons) count += 1;
+    if (filters.staleStatus) count += 1;
+    return count;
+  }, [filters]);
+
   const filtered = useMemo(() => {
     const decoratedOrders = orders.map((order) => decorateOrder(order));
     return decoratedOrders.filter((order) =>
@@ -207,20 +276,42 @@ export function ShopFloorLayouts({
 
   const sorted = useMemo(() => {
     const list = [...filtered];
-    list.sort((a, b) => {
-      const dir = sortDir === 'asc' ? 1 : -1;
-      if (sortKey === 'dueDate') {
-        const aDue = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-        const bDue = b.dueDate ? new Date(b.dueDate).getTime() : 0;
-        return (aDue - bDue) * dir;
-      }
-      if (sortKey === 'quantity') {
-        return ((a.totalQuantity ?? 0) - (b.totalQuantity ?? 0)) * dir;
-      }
-      return String(a[sortKey]).localeCompare(String(b[sortKey])) * dir;
-    });
+    list.sort((a, b) => compareShopFloorOrders(
+      comparableOrder(a, activeTimerCountsByOrder.get(a.id) ?? 0, departmentNameById),
+      comparableOrder(b, activeTimerCountsByOrder.get(b.id) ?? 0, departmentNameById),
+      displayOptions,
+    ));
     return list;
-  }, [filtered, sortKey, sortDir]);
+  }, [activeTimerCountsByOrder, departmentNameById, displayOptions, filtered]);
+
+  const ordersById = useMemo(() => new Map(orders.map((order) => [order.id, order] as const)), [orders]);
+  const filteredOrderIds = useMemo(() => new Set(filtered.map((order) => order.id)), [filtered]);
+
+  const sortedDepartmentFeed = useMemo(() => {
+    return departmentFeed.filter((order) => {
+      const fullOrder = ordersById.get(order.orderId);
+      if (fullOrder) return filteredOrderIds.has(order.orderId);
+      const status = String(order.status ?? '').toUpperCase();
+      const matchesStatus = statusFilter === 'all'
+        || (statusFilter === 'closed' ? status === 'CLOSED' : status !== 'CLOSED');
+      return matchesStatus && priorityFilter === 'all' && advancedFilterCount === 0;
+    }).sort((a, b) => {
+      const aOrder = ordersById.get(a.orderId);
+      const bOrder = ordersById.get(b.orderId);
+      const aComparable = aOrder
+        ? comparableOrder(aOrder, a.activeTimerCount, departmentNameById)
+        : { orderNumber: a.orderNumber, dueDate: a.dueDate, customer: a.customerName, machinist: a.assignedMachinistName, status: a.status, activeTimers: a.activeTimerCount, partCount: a.parts.length, openAddons: a.openChecklistCount };
+      const bComparable = bOrder
+        ? comparableOrder(bOrder, b.activeTimerCount, departmentNameById)
+        : { orderNumber: b.orderNumber, dueDate: b.dueDate, customer: b.customerName, machinist: b.assignedMachinistName, status: b.status, activeTimers: b.activeTimerCount, partCount: b.parts.length, openAddons: b.openChecklistCount };
+      return compareShopFloorOrders(aComparable, bComparable, displayOptions);
+    });
+  }, [advancedFilterCount, departmentFeed, departmentNameById, displayOptions, filteredOrderIds, ordersById, priorityFilter, statusFilter]);
+
+  const styleForOrder = useCallback((order: OrderWithMeta, activeTimers = 0) => {
+    const rule = getMatchingShopFloorRule(displayOptions.colorRules, comparableOrder(order, activeTimers || activeTimerCountsByOrder.get(order.id) || 0, departmentNameById));
+    return translucentRuleStyle(rule);
+  }, [activeTimerCountsByOrder, departmentNameById, displayOptions.colorRules]);
 
 
   const machinistBuckets = useMemo(() => {
@@ -268,56 +359,145 @@ export function ShopFloorLayouts({
     );
   }, [departmentNameById, firstDepartmentName, sorted]);
 
-  const handleSortChange = (column: (typeof SORT_KEYS)[number]) => {
-    setSortKey((prev) => {
-      if (prev === column) {
-        setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
-        return prev;
-      }
-      setSortDir('asc');
-      return column;
-    });
+  const updateColorRule = (id: string, patch: Partial<ShopFloorColorRuleInput>) => {
+    setDisplayMessage(null);
+    setDisplayOptions((current) => ({
+      ...current,
+      colorRules: current.colorRules.map((rule) => rule.id === id ? { ...rule, ...patch } : rule),
+    }));
   };
 
-  return (
-    <div className="space-y-4 rounded-xl border border-border/60 bg-card/70 p-4 backdrop-blur">
-      <RunningWorkersStrip workers={liveRunningWorkers} />
+  const addColorRule = () => {
+    const id = `rule-${Date.now()}`;
+    setDisplayOptions((current) => ({
+      ...current,
+      colorRules: [...current.colorRules, {
+        id,
+        label: 'New tile rule',
+        field: 'priority',
+        operator: 'equals',
+        value: 'HOT',
+        color: '#f59e0b',
+        opacity: 0.24,
+        enabled: true,
+      }],
+    }));
+  };
 
+  const saveDisplayOptions = async () => {
+    setSavingDisplay(true);
+    setDisplayMessage(null);
+    try {
+      const response = await fetch('/api/shop-floor/display-options', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(displayOptions),
+      });
+      if (!response.ok) throw new Error(await response.text() || 'Could not save display settings.');
+      const payload = await response.json();
+      setDisplayOptions(payload.options);
+      setDisplayMessage('Display settings saved for this shop floor.');
+    } catch (error) {
+      setDisplayMessage(error instanceof Error ? error.message : 'Could not save display settings.');
+    } finally {
+      setSavingDisplay(false);
+    }
+  };
+
+  const quickViewControls = (
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="space-y-1">
+          <Label className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Status</Label>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
+            <SelectTrigger aria-label="Quick status filter" className="h-8 w-28 rounded-md border-white/10 bg-background/35 px-3 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="closed">Closed</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Priority</Label>
+          <Select value={priorityFilter} onValueChange={(value) => setPriorityFilter(value as typeof priorityFilter)}>
+            <SelectTrigger aria-label="Quick priority filter" className="h-8 w-28 rounded-md border-white/10 bg-background/35 px-3 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem><SelectItem value="HOT">HOT</SelectItem><SelectItem value="RUSH">RUSH</SelectItem><SelectItem value="NORMAL">NORMAL</SelectItem><SelectItem value="LOW">LOW</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Sort</Label>
+          <Select value={displayOptions.sortField} onValueChange={(value) => setDisplayOptions((current) => ({ ...current, sortField: value as ShopFloorDisplayOptionsInput['sortField'] }))}>
+            <SelectTrigger aria-label="Quick sort field" className="h-8 w-40 rounded-md border-white/10 bg-background/35 px-3 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>{SORT_OPTIONS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Direction</Label>
+          <Select value={displayOptions.sortDirection} onValueChange={(value) => setDisplayOptions((current) => ({ ...current, sortDirection: value as 'asc' | 'desc' }))}>
+            <SelectTrigger aria-label="Quick sort direction" className="h-8 w-32 rounded-md border-white/10 bg-background/35 px-3 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="asc">Ascending</SelectItem><SelectItem value="desc">Descending</SelectItem></SelectContent>
+          </Select>
+        </div>
+      </div>
+      <p className="pb-1 text-[0.7rem] text-muted-foreground">
+        {layout === 'workQueue' ? sortedDepartmentFeed.length : sorted.length} shown · {SORT_OPTIONS.find(([value]) => value === displayOptions.sortField)?.[1]} {displayOptions.sortDirection === 'asc' ? 'ascending' : 'descending'}{advancedFilterCount ? ` · ${advancedFilterCount} advanced filter${advancedFilterCount === 1 ? '' : 's'}` : ''}
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="shop-glass overflow-hidden rounded-lg border">
+        <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.35em] text-primary/70">Live production controls</p>
+            <h2 className="text-xl font-semibold text-foreground">Customize this shop floor</h2>
+            <p className="text-sm text-muted-foreground">Layout, advanced filters, shared tile colors, and saved TV defaults.</p>
+          </div>
+          <Button variant="outline" size="sm" className="rounded-md" onClick={toggleControls} aria-expanded={controlsExpanded}>
+            {controlsExpanded ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
+            {controlsExpanded ? 'Collapse controls' : 'Show controls'}
+          </Button>
+        </div>
+
+        {controlsExpanded ? <div className="space-y-5 border-t border-white/10 px-4 py-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-primary/70">Displays</p>
-          <h2 className="text-xl font-semibold text-foreground">Shop floor layouts</h2>
-          <p className="text-sm text-muted-foreground">Tune filters and switch layouts to match the TV on the floor.</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Display layout</p>
+          <p className="text-sm text-muted-foreground">Changes preview immediately. Save when this is how the TV should stay.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant={layout === 'grid' ? 'default' : 'secondary'}
-            className="rounded-full"
+            className="rounded-md"
             size="sm"
-            onClick={() => setLayout('grid')}
+            onClick={() => setDisplayOptions((current) => ({ ...current, layout: 'grid' }))}
           >
             <LayoutGrid className="mr-2 h-4 w-4" /> Grid digest
           </Button>
           <Button
             variant={layout === 'machinist' ? 'default' : 'secondary'}
-            className="rounded-full"
+            className="rounded-md"
             size="sm"
-            onClick={() => setLayout('machinist')}
+            onClick={() => setDisplayOptions((current) => ({ ...current, layout: 'machinist' }))}
           >
             <LayoutList className="mr-2 h-4 w-4" /> By machinist
           </Button>
           <Button
             variant={layout === 'workQueue' ? 'default' : 'secondary'}
-            className="rounded-full"
+            className="rounded-md"
             size="sm"
-            onClick={() => setLayout('workQueue')}
+            onClick={() => setDisplayOptions((current) => ({ ...current, layout: 'workQueue' }))}
           >
             <Rows3 className="mr-2 h-4 w-4" /> Work queue
           </Button>
           <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="rounded-full border-border/60 bg-background/60">
+              <Button variant="outline" size="sm" className="rounded-md border-border/60 bg-background/60">
                 <SlidersHorizontal className="mr-2 h-4 w-4" /> Filters
+                {advancedFilterCount ? <Badge variant="secondary" className="ml-2 rounded-full px-2">{advancedFilterCount}</Badge> : null}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-3xl">
@@ -470,12 +650,12 @@ export function ShopFloorLayouts({
         </div>
       </div>
 
-      {layout === 'workQueue' && (
-        <div className="space-y-3 rounded-lg bg-transparent p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+      {layout === 'workQueue' ? (
+        <div className="shop-glass-soft space-y-3 rounded-lg border p-4">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Department work queue</p>
-              <p className="text-sm text-foreground">Focus the shop queue by the department in charge.</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Work queue department</p>
+              <p className="text-sm text-muted-foreground">Choose which department owns the tile view.</p>
             </div>
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <Checkbox checked={includeCompleted} onCheckedChange={(value) => setIncludeCompleted(value === true)} />
@@ -484,11 +664,94 @@ export function ShopFloorLayouts({
           </div>
           <div className="flex flex-wrap gap-2">
             {departments.map((department) => (
-              <Button key={department.id} size="sm" className="rounded-full" variant={departmentId === department.id ? 'default' : 'secondary'} onClick={() => setDepartmentId(department.id)}>
+              <Button key={department.id} size="sm" className="rounded-md" variant={departmentId === department.id ? 'default' : 'secondary'} onClick={() => setDepartmentId(department.id)}>
                 {department.name}
               </Button>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      <div className="space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Conditional tile colors</p>
+            <p className="text-sm text-muted-foreground">Rules run top to bottom; the first match controls the translucent tile color.</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={addColorRule} disabled={displayOptions.colorRules.length >= 12}>
+            <Plus className="mr-2 h-4 w-4" /> Add color rule
+          </Button>
+        </div>
+        <div className="space-y-3">
+          {displayOptions.colorRules.map((rule) => {
+            const numeric = NUMERIC_RULE_FIELDS.has(rule.field);
+            return (
+              <div key={rule.id} className="shop-glass-soft grid gap-3 rounded-md border p-3 lg:grid-cols-[auto_1.3fr_1fr_0.8fr_1fr_auto_auto] lg:items-end">
+                <div className="flex h-10 items-center gap-2">
+                  <Checkbox id={`rule-${rule.id}`} checked={rule.enabled} onCheckedChange={(checked) => updateColorRule(rule.id, { enabled: checked === true })} />
+                  <Label htmlFor={`rule-${rule.id}`} className="text-xs">On</Label>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Rule name</Label>
+                  <Input value={rule.label} onChange={(event) => updateColorRule(rule.id, { label: event.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Field</Label>
+                  <Select value={rule.field} onValueChange={(value) => {
+                    const field = value as ShopFloorRuleFieldInput;
+                    updateColorRule(rule.id, { field, operator: NUMERIC_RULE_FIELDS.has(field) ? 'gte' : 'equals' });
+                  }}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{RULE_FIELD_OPTIONS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Match</Label>
+                  <Select value={rule.operator} onValueChange={(value) => updateColorRule(rule.id, { operator: value as ShopFloorColorRuleInput['operator'] })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {numeric ? <><SelectItem value="gte">At least</SelectItem><SelectItem value="lte">At most</SelectItem><SelectItem value="equals">Exactly</SelectItem></> : <><SelectItem value="equals">Equals</SelectItem><SelectItem value="contains">Contains</SelectItem></>}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Value</Label>
+                  <Input type={numeric ? 'number' : 'text'} value={rule.value} onChange={(event) => updateColorRule(rule.id, { value: event.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Color</Label>
+                  <Input className="h-10 w-16 p-1" type="color" value={rule.color} onChange={(event) => updateColorRule(rule.id, { color: event.target.value })} aria-label={`${rule.label} color`} />
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setDisplayOptions((current) => ({ ...current, colorRules: current.colorRules.filter((item) => item.id !== rule.id) }))} aria-label={`Delete ${rule.label}`}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            );
+          })}
+          {!displayOptions.colorRules.length ? <p className="rounded-lg border border-dashed border-border/60 p-4 text-sm text-muted-foreground">No tile-color rules. Add one to highlight orders that need attention.</p> : null}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-border/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          {canEditDisplay ? (displayMessage ?? 'Your changes are previewed live on this page.') : 'Only an administrator can permanently save shop-floor display settings.'}
+        </p>
+        <Button type="button" onClick={saveDisplayOptions} disabled={!canEditDisplay || savingDisplay}>
+          <Save className="mr-2 h-4 w-4" /> {savingDisplay ? 'Saving…' : 'Save for shop floor'}
+        </Button>
+      </div>
+        </div> : null}
+      </div>
+
+      <RunningWorkersStrip workers={liveRunningWorkers} />
+
+      {layout === 'workQueue' && (
+        <div className="space-y-3 rounded-lg bg-transparent p-4">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{selectedDepartmentName} work queue</p>
+            <p className="text-sm text-foreground">Orders currently owned by this department.</p>
+          </div>
+          {quickViewControls}
           {departmentError ? (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {departmentError}
@@ -498,11 +761,12 @@ export function ShopFloorLayouts({
             <p className="text-sm text-muted-foreground">Loading department feed…</p>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {departmentFeed.map((order) => (
+              {sortedDepartmentFeed.map((order) => (
                 <WorkQueueOrderCard
                   key={order.orderId}
                   order={order}
                   selectedDepartmentName={selectedDepartmentName}
+                  style={ordersById.get(order.orderId) ? styleForOrder(ordersById.get(order.orderId)!, order.activeTimerCount) : undefined}
                 />
               ))}
               {!departmentFeed.length && !departmentError && (
@@ -513,45 +777,15 @@ export function ShopFloorLayouts({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Status</Label>
-        <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
-          <SelectTrigger className="w-[160px] border-border/60 bg-background/80">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="closed">Closed</SelectItem>
-          </SelectContent>
-        </Select>
-        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Priority</Label>
-        <Select value={priorityFilter} onValueChange={(value) => setPriorityFilter(value as typeof priorityFilter)}>
-          <SelectTrigger className="w-[160px] border-border/60 bg-background/80">
-            <SelectValue placeholder="Priority" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="HOT">HOT</SelectItem>
-            <SelectItem value="RUSH">RUSH</SelectItem>
-            <SelectItem value="NORMAL">NORMAL</SelectItem>
-            <SelectItem value="LOW">LOW</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="flex flex-wrap items-center gap-2">
-          <SortButton label="Due" column="dueDate" current={sortKey} dir={sortDir} onChange={handleSortChange} />
-          <SortButton label="Priority" column="priority" current={sortKey} dir={sortDir} onChange={handleSortChange} />
-          <SortButton label="Status" column="status" current={sortKey} dir={sortDir} onChange={handleSortChange} />
-          <SortButton label="Qty" column="quantity" current={sortKey} dir={sortDir} onChange={handleSortChange} />
-        </div>
-      </div>
-
       {layout === 'grid' && (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="space-y-3 rounded-lg bg-transparent p-4">
+          {quickViewControls}
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {sorted.map((order) => (
             <div
               key={order.id}
-              className="flex flex-col gap-3 rounded-lg border border-border/60 bg-background/70 p-4 shadow-sm shadow-primary/5"
+              className="shop-glass flex flex-col gap-3 rounded-lg border p-4 transition duration-300 hover:-translate-y-0.5 hover:border-white/25"
+              style={styleForOrder(order)}
             >
               <div className="flex items-center justify-between gap-3">
                 <Link href={`/orders/${order.id}`} className="text-lg font-semibold text-primary hover:underline">
@@ -613,13 +847,15 @@ export function ShopFloorLayouts({
             </div>
           ))}
           {!sorted.length && <p className="col-span-full text-sm text-muted-foreground">No orders match the filters.</p>}
+          </div>
         </div>
       )}
 
       {layout === 'machinist' && (
-        <div className="space-y-4">
+        <div className="space-y-4 rounded-lg bg-transparent p-4">
+          {quickViewControls}
           {Object.entries(machinistBuckets).map(([name, bucket]) => (
-            <div key={name} className="space-y-2 rounded-lg border border-border/60 bg-background/70 p-4">
+            <div key={name} className="shop-glass space-y-2 rounded-lg border p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-full border border-primary/40 bg-secondary/40" />
@@ -642,7 +878,7 @@ export function ShopFloorLayouts({
                   </TableHeader>
                   <TableBody>
                     {bucket.map((order) => (
-                      <TableRow key={order.id} className="border-border/60">
+                      <TableRow key={order.id} className="border-border/60" style={styleForOrder(order)}>
                         <TableCell className="font-semibold text-primary">
                           <Link href={`/orders/${order.id}`} className="hover:underline">
                             #{order.orderNumber}

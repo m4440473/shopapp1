@@ -168,3 +168,31 @@ Record lessons after user corrections or process failures.
 - Mistake pattern: Treating a request-time boolean as equivalent to a durable, attributable acknowledgement.
 - Preventive rule: Any work-blocking instruction must be shown in full and acknowledged into a versioned receipt before the protected service action; protected services must verify the receipt and never manufacture it from a confirmation flag.
 - Applied in next session where: 2026-07-17 authoritative Read Me First timer gate.
+## 2026-07-20 — A tutorial video must demonstrate continuous interaction
+- Trigger: The owner correctly rejected the first tutorial because it was a narrated slideshow of held screenshots rather than a video showing ShopApp being used.
+- Mistake pattern: I treated an MP4 container plus narration as satisfying “show on screen what you are doing,” even though there was no cursor movement, clicking, typing, uploading, or visible workflow progression.
+- Preventive rule: For software tutorials, define acceptance in observable actions before production: continuous application footage, visible pointer/click feedback, visible field entry, real page transitions, and at least one completed end-to-end workflow. Static screenshots may be used only for brief titles or emphasis, never as the primary demonstration.
+- Applied in next session where: Same-session live-action quote tutorial rebuild.
+## 2026-08-24 — Enforced floor gates need an obvious authoring field
+- Trigger: The owner clarified that quote/order creators need a clearly indicated place to enter notes that workers must acknowledge.
+- Mistake pattern: Treating backend persistence and floor enforcement as complete while leaving the authoring surface labeled generically as work instructions or deriving required reading from unrelated notes.
+- Preventive rule: Every enforced floor gate must have an explicit, visually distinct authoring field at each creation entry point, with concise text explaining who must acknowledge it and what action it blocks.
+- Applied in next session where: Same-session quote, direct-order, and repeat-order required-reading authoring pass.
+
+## 2026-08-24 — Validate glass material and color cast separately
+- Trigger: The owner liked the glass direction but strongly disliked the cyan cast produced by the ambient lights and transparent backing.
+- Mistake pattern: Matching blur, translucency, and edge depth from a reference without separately confirming the dominant palette that results after the page background shines through.
+- Preventive rule: For glassmorphism work, validate two independent acceptance points in the live screenshot: surface material (blur/edge/depth) and overall color cast. Keep operational status colors local to their components instead of using them as page-wide ambient light.
+- Applied in next session where: Same-session black/navy Live Production palette correction.
+
+## 2026-08-24 — Separate view controls from configuration controls
+- Trigger: The first quick-sort pass placed everyday view controls inside the collapsible Live Production configuration shell and styled direction/reset/save as prominent buttons.
+- Mistake pattern: Treating frequently used view manipulation as another settings surface instead of placing it next to the content it directly affects.
+- Preventive rule: Keep compact, reversible view controls adjacent to the governed results; reserve collapsible settings panels and action buttons for structural configuration and persistence. For big-screen dashboards, validate hierarchy and density after controls are collapsed.
+- Applied in next session where: Same-session select-only Quick View strip above the chosen Shop Floor tile view.
+
+## 2026-08-24 — “Above the tiles” means the tile view's existing control row
+- Trigger: The corrected Quick View strip was outside configuration but still introduced its own glass surface above the department-view header, while the owner meant the existing department-selector row itself.
+- Mistake pattern: Satisfying relative ordering in the DOM without preserving the precise visual slot, size, and density named by the owner.
+- Preventive rule: When a user identifies an existing control's location as the target, replace that exact visual slot and compare its bounding row/density in live QA; do not add a nearby wrapper or interpret “above” loosely.
+- Applied in next session where: Same-session replacement of department pills with compact Status/Priority/Sort/Direction selects and relocation of department selection into configuration.

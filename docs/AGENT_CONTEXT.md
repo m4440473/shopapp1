@@ -60,6 +60,30 @@ Goal: a scalable foundation that can grow.
 
 ## Decision Log (append newest at top)
 
+### 2026-08-24 - Shop Floor glass uses an open canvas and restrained geometry
+Decision: Keep the black/navy atmospheric gradient as the Shop Floor canvas, but remove both the full-page dark backing sheet and the large glass wrapper around production results. Place the Live Production heading directly on the gradient and use modest `rounded-lg`/`rounded-md` geometry for functional panels, tiles, controls, and nested rows; reserve pills/circles for semantic badges and live indicators.
+Reason: The stacked dark shells and large radii made the dashboard feel bubbly and consumer-oriented. An open canvas with tighter geometry keeps useful depth while reading as a sleeker professional production system.
+
+### 2026-08-24 - Quote numbers are daily shop-wide sequences
+Decision: Automatically assign quote numbers as `DDMMYY-###`, using the server's local calendar date and the next sequence across all businesses for that day. Preserve already assigned numbers, including legacy formats, when editing existing quotes.
+Reason: The owner identifies quotes by the date they were created and their order within that workday; business-prefixed random identifiers were backwards for that workflow, while renumbering historical quotes would break existing references.
+
+### 2026-08-24 - Shop Floor Quick View controls live with the governed results
+Decision: Replace the chosen tile view's former department-pill row with the persistent, compact status, priority, sort-field, and direction selects, without a separate Quick View panel. Keep layout, department selection, completed-item inclusion, advanced filters, conditional colors, and shared saving inside the independent Live Production configuration collapse. Apply filters before sorting in every layout, and let Working now collapse independently with device-local persistence.
+Reason: Everyday view manipulation must remain available in the exact pre-tile control slot when configuration is collapsed, while department choice changes the configured work-queue view and belongs with the other structural settings. The independent timer collapse preserves big-screen space without hiding sorting.
+
+### 2026-08-24 - Live Production glass atmosphere is black and navy
+Decision: Use black, near-black navy, and restrained royal-blue light for the Shop Floor's ambient glass layers, with enough backing opacity to mask the application's global cyan glow. Keep cyan limited to existing brand/action accents and keep green/red localized to operational state and alert surfaces.
+Reason: The owner liked the dimensional glass material but strongly disliked the overall cyan cast. Treating material, ambient palette, and semantic status colors as separate concerns preserves the glass depth without tinting the entire production screen cyan.
+
+### 2026-08-24 - Live Production owns a scoped three-depth glass surface system
+Decision: Style only the Shop Floor dashboard with a layered glassmorphism system: atmospheric brand-color light behind the page, strong glass for the dispatch/control shell, regular glass for primary cards, and soft glass for nested rows. Conditional order-color rules retain inline priority over the glass surface. Promote only the untouched legacy seven-day overdue red to the deeper oxblood default; preserve user-customized rule colors.
+Reason: The owner supplied a glass-interface reference and wants the shared TV dashboard to feel dimensional and modern without changing the visual contract of quote, order, or admin screens or weakening urgent status colors.
+
+### 2026-08-24 - Repeat orders are customer-part definitions and required reading has explicit authoring/status surfaces
+Decision: A newly saved repeat-order template represents one selected source part for one customer, carries stable source-part identity, and is reused by both the old-order `Create again` action and the dedicated Repeat Orders page. Required reading is authored explicitly per part during quote/direct/repeat order creation, persists through quote conversion, blocks timer start for the selected worker until that worker has a current receipt, and displays the active-user roster split into acknowledged/not acknowledged for the current part, department, and instruction version.
+Reason: The owner is repeating a proven customer/part manufacturing package, not selecting a generic order-document layout. The enforcement gate also needs a conspicuous input for the boss and a visible accountability roster or required notes can be omitted or their status cannot be managed confidently.
+
 ### 2026-07-17 - The TV dashboard is the Shop Floor station; the separate PIN kiosk is retired
 Decision: Treat the signed-in production dashboard at `/` as the single trusted Shop Floor station. It may select employees and control their timers using the existing actor/worker audit split, with Read Me First receipts as the safety gate and no employee PIN. Remove the Kiosk navigation entry and employee kiosk/PIN setup; redirect the legacy `/kiosk` URL to Shop Floor.
 Reason: The owner intended “kiosk” to mean the shared 80-inch TV computer, not a second employee-unlock application. Two floor-control surfaces and repeated PIN entry created redundant concepts and unnecessary friction for the actual small-shop deployment.
@@ -273,4 +297,8 @@ Reason: Management needs actual employee time per part for estimating and pricin
 ### 2026-07-17 — Cross-platform standalone packaging
 Decision: Run standalone asset packaging through dependency-free Node filesystem APIs instead of invoking a Bash-only copy script from `npm run build`.
 Reason: The application is developed and verified on Windows but deployed through standalone/Docker output. The packaging step must behave identically on both platforms so a successful Next.js compile is also a successful production build.
+
+### 2026-08-24 — Shop Floor display profiles are shared, rules-based configuration
+Decision: Persist one validated Shop Floor display profile in application settings. The profile owns the default layout, broad order sort field/direction, and an ordered list of conditional translucent tile-color rules; the first enabled matching rule wins. All signed-in floor users may preview changes in place, while only administrators may save the shared profile. Collapse state remains device-local because it describes the individual TV/browser, not shop-wide business policy.
+Reason: The large Live Production screen must be adaptable without code changes, including attention rules such as “7 or more days overdue = red,” while preventing an accidental worker edit from silently changing every display.
 

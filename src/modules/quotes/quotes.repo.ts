@@ -44,6 +44,13 @@ export async function findQuoteByNumber(quoteNumber: string) {
   return prisma.quote.findUnique({ where: { quoteNumber } });
 }
 
+export async function listQuoteNumbersForDateStamp(dateStamp: string) {
+  return prisma.quote.findMany({
+    where: { quoteNumber: { startsWith: `${dateStamp}-` } },
+    select: { quoteNumber: true },
+  });
+}
+
 
 export async function findQuoteAttachmentByStoragePath(storagePath: string) {
   return prisma.quoteAttachment.findFirst({
@@ -176,6 +183,7 @@ export async function createQuoteWithDetails({
             quantity: part.quantity,
             pieceCount: part.pieceCount,
             notes: part.notes,
+            workInstructions: part.workInstructions,
           },
           select: { id: true },
         })
@@ -452,6 +460,7 @@ export async function updateQuoteWithDetails({
           quantity: part.quantity,
           pieceCount: part.pieceCount,
           notes: part.notes,
+          workInstructions: part.workInstructions,
         };
         return part.id
           ? tx.quotePart.update({ where: { id: part.id }, data: partData, select: { id: true } })

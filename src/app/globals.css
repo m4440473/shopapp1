@@ -139,3 +139,70 @@
     @apply mx-auto w-full max-w-screen-2xl px-4 lg:px-8;
   }
 }
+
+@layer components {
+  .shop-floor-glass {
+    isolation: isolate;
+  }
+
+  .shop-floor-glass::before {
+    content: '';
+    position: absolute;
+    inset: -7rem -3rem -4rem;
+    z-index: -2;
+    pointer-events: none;
+    border-radius: 3rem;
+    background:
+      radial-gradient(circle at 8% 16%, rgba(37, 99, 235, 0.26), transparent 30%),
+      radial-gradient(circle at 78% 10%, rgba(30, 58, 138, 0.24), transparent 32%),
+      radial-gradient(circle at 96% 44%, rgba(15, 23, 42, 0.78), transparent 34%),
+      radial-gradient(circle at 42% 68%, rgba(49, 46, 129, 0.14), transparent 36%);
+    filter: blur(38px) saturate(108%);
+    opacity: 0.78;
+  }
+
+  .shop-floor-glass .shop-glass,
+  .shop-floor-glass .shop-glass-strong,
+  .shop-floor-glass .shop-glass-soft {
+    border-color: rgba(255, 255, 255, 0.15);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.025));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      0 18px 48px rgba(0, 0, 0, 0.2);
+    -webkit-backdrop-filter: blur(22px) saturate(135%);
+    backdrop-filter: blur(22px) saturate(135%);
+  }
+
+  .shop-floor-glass .shop-glass-strong {
+    border-color: rgba(255, 255, 255, 0.18);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.035));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      0 24px 70px rgba(0, 0, 0, 0.28);
+    -webkit-backdrop-filter: blur(28px) saturate(145%);
+    backdrop-filter: blur(28px) saturate(145%);
+  }
+
+  .shop-floor-glass .shop-glass-soft {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    -webkit-backdrop-filter: blur(14px) saturate(125%);
+    backdrop-filter: blur(14px) saturate(125%);
+  }
+
+  .shop-floor-glass .shop-glass-emerald {
+    border-color: rgba(52, 211, 153, 0.28);
+    background: linear-gradient(120deg, rgba(16, 185, 129, 0.075), rgba(15, 23, 42, 0.26) 48%, rgba(30, 64, 175, 0.08));
+  }
+
+  .light .shop-floor-glass .shop-glass,
+  .light .shop-floor-glass .shop-glass-strong,
+  .light .shop-floor-glass .shop-glass-soft {
+    border-color: rgba(255, 255, 255, 0.68);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.28));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 18px 48px rgba(15, 23, 42, 0.12);
+  }
+}
