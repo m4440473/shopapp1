@@ -3,7 +3,7 @@
 - [x] Export only source-controlled production content, excluding secrets, databases, uploads, logs, dependencies, build output, caches, and generated archives.
 - [x] Mirror the server source into a new synchronization branch, preserving repository-only GitHub metadata, and audit additions, modifications, deletions, large files, and secret patterns.
 - [x] Verify the candidate matches the included production source, install dependencies, run tests/lint/build appropriate to the full checkpoint, and resolve only synchronization defects.
-- [ ] Commit and push the verified checkpoint to a new GitHub branch, open a PR to `main`, and record exact commit/branch/rollback evidence.
+- [x] Commit and push the verified checkpoint to a new GitHub branch, open a PR to `main`, and record exact commit/branch/rollback evidence.
 - Scope guard: do not change production application behavior, database, configuration, uploads, or running build during reconciliation.
 - Replan: the first `npm run test` attempt was blocked before config load by sandboxed esbuild `spawn EPERM`; rerun the identical command with execution permission, then continue only if the real suite passes.
 - Replan: the first isolated Prisma URL targeted a missing ignored nested directory and the schema engine exited before migration; use an absolute SQLite file in the isolated synchronization temp root, validate first, and keep it outside the candidate repository.
@@ -12,6 +12,7 @@
 - Verification: source archive SHA-256 `4E412BB60A59DD4D2384778086DA9B86FA1A3F05716CB8DB7DA5C171F85BCE4`; 573 included production files matched byte-for-byte before test/config hygiene; no runtime data or secrets included.
 - Verification: `npm ci`, Prisma validation/generation, disposable-schema `prisma db push`, full tests (369 passed, 4 skipped), lint, `tsc --noEmit`, and clean 66-page standalone production build passed.
 - Audit follow-up: `npm audit --omit=dev` reports 9 production vulnerabilities (1 critical, 7 high, 1 moderate). Dependency upgrades are intentionally excluded from this exact production checkpoint and require a separately tested release.
+- GitHub: branch `codex/production-sync-2026-09-02`, source checkpoint commit `542d333`, PR `https://github.com/m4440473/shopapp1/pull/179`.
 
 ---
 

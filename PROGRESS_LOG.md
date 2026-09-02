@@ -2750,3 +2750,4 @@ Verification evidence:
 - Excluded secrets, databases, uploads/storage, logs, dependencies, build output, caches, and archives. Sanitized the example NextAuth secret, removed generated tracked database/build-info artifacts, and aligned stale drawing/phone test fixtures with the unchanged production importer contract.
 - Verification: archive SHA-256 `4E412BB60A59DD4D2384778086DA9B86FA1A3F05716CB8DB7DA5C171F85BCE4`; Prisma schema creation passed; full tests 369 passed / 4 skipped; lint and TypeScript passed; clean standalone build generated 66 pages.
 - Follow-up: production dependency audit reports 9 vulnerabilities (1 critical, 7 high, 1 moderate); upgrade and regression-test dependencies as a separate release rather than altering this checkpoint.
+- GitHub checkpoint: branch `codex/production-sync-2026-09-02`, commit `542d333`, PR `https://github.com/m4440473/shopapp1/pull/179`.

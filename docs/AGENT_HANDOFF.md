@@ -5264,5 +5264,5 @@ Goal: Capture the exact current production source in GitHub without changing or 
 - `npm audit --omit=dev`: 9 production vulnerabilities (1 critical, 7 high, 1 moderate). No dependency versions were changed in this checkpoint.
 
 ### Next
-- Complete final secret/large-file/status review, push the branch, and open a PR to `main`.
+- Review and merge PR `https://github.com/m4440473/shopapp1/pull/179` from branch `codex/production-sync-2026-09-02` (source checkpoint commit `542d333`).
 - Handle dependency upgrades in a separate tested release.
