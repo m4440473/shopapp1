@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronUp, LayoutGrid, LayoutList, Plus, Rows3, Save, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Activity, CalendarDays, ChevronDown, ChevronUp, Flame, LayoutGrid, LayoutList, MoreVertical, PackageCheck, Plus, Save, SlidersHorizontal, Trash2, Users } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -25,7 +28,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters } from '@/modules/orders/orders.shared';
+import { BUSINESS_OPTIONS } from '@/lib/businesses';
+import { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, getOrderMachinistLabel, orderMatchesFilters } from '@/modules/orders/orders.shared';
 import type { DepartmentFeedOrder, OrderWithMeta } from '@/modules/orders/orders.types';
 import { WorkQueueOrderCard } from '@/components/work-queue/WorkQueueOrderCard';
 import {
@@ -35,6 +39,7 @@ import {
 import {
   compareShopFloorOrders,
   getMatchingShopFloorRule,
+  matchesShopFloorBusiness,
   translucentRuleStyle,
   type ShopFloorComparableOrder,
 } from '@/modules/shop-floor/shop-floor.shared';
@@ -43,6 +48,7 @@ import type {
   ShopFloorDisplayOptionsInput,
   ShopFloorRuleFieldInput,
 } from '@/modules/shop-floor/shop-floor.schema';
+import type { ShopFloorSummary } from '@/modules/shop-floor/shop-floor.service';
 
 type LayoutOption = 'grid' | 'machinist' | 'workQueue';
 
@@ -54,11 +60,19 @@ type Props = {
   initialDepartmentFeed: DepartmentFeedOrder[];
   runningWorkers?: RunningWorkerSummary[];
   initialDisplayOptions: ShopFloorDisplayOptionsInput;
+  initialSummary: ShopFloorSummary;
   canEditDisplay: boolean;
+  listSummary: {
+    activeOrders: number;
+    totalOrders: number;
+    dueSoon: number;
+    unassigned: number;
+    machinistWorkload: Array<{ name: string; count: number }>;
+  };
 };
 
 const SORT_OPTIONS = [
-  ['dueDate', 'Due date'], ['daysPastDue', 'Days past due'], ['receivedDate', 'Received date'],
+  ['createdAt', 'Created date'], ['dueDate', 'Due date'], ['daysPastDue', 'Days past due'], ['receivedDate', 'Received date'],
   ['orderNumber', 'Order number'], ['business', 'Business'], ['customer', 'Customer'], ['machinist', 'Machinist'], ['department', 'Current department'],
   ['priority', 'Priority'], ['status', 'Status'], ['quantity', 'Total quantity'],
   ['partCount', 'Part count'], ['openAddons', 'Open checklist items'], ['activeTimers', 'Active timers'],
@@ -86,11 +100,12 @@ function comparableOrder(
   )).join(', ');
   return {
     orderNumber: order.orderNumber,
+    createdAt: order.createdAt,
     business: order.business,
     dueDate: order.dueDate,
     receivedDate: order.receivedDate,
     customer: order.customer?.name,
-    machinist: order.assignedMachinist?.name ?? order.assignedMachinist?.email,
+    machinist: getOrderMachinistLabel(order),
     department,
     priority: order.priority,
     status: order.status,
@@ -109,13 +124,26 @@ export function ShopFloorLayouts({
   initialDepartmentFeed,
   runningWorkers = [],
   initialDisplayOptions,
+  initialSummary,
   canEditDisplay,
+  listSummary,
 }: Props) {
-  const [displayOptions, setDisplayOptions] = useState(initialDisplayOptions);
-  const [controlsExpanded, setControlsExpanded] = useState(true);
+  const router = useRouter();
+  const [displayOptions, setDisplayOptions] = useState<ShopFloorDisplayOptionsInput>({
+    ...initialDisplayOptions,
+    layout: 'grid',
+  });
+  const [timersExpanded, setTimersExpanded] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [moreExpanded, setMoreExpanded] = useState(false);
+  const [liveSummary, setLiveSummary] = useState(initialSummary);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [savingDisplay, setSavingDisplay] = useState(false);
   const [displayMessage, setDisplayMessage] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'closed'>('active');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [businessFilter, setBusinessFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'HOT' | 'RUSH' | 'NORMAL' | 'LOW'>('all');
   const [filters, setFilters] = useState({ ...DEFAULT_ORDER_FILTERS });
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -125,19 +153,19 @@ export function ShopFloorLayouts({
   const [departmentError, setDepartmentError] = useState<string | null>(null);
   const [includeCompleted, setIncludeCompleted] = useState(false);
   const [liveRunningWorkers, setLiveRunningWorkers] = useState(runningWorkers);
+  const [adminMachinists, setAdminMachinists] = useState(machinists);
+  const [tileEditor, setTileEditor] = useState({
+    open: false,
+    orderId: '',
+    priority: 'NORMAL',
+    status: 'RECEIVED',
+    machinistId: '',
+    reason: '',
+    saving: false,
+    error: null as string | null,
+  });
 
   const layout: LayoutOption = displayOptions.layout;
-
-  useEffect(() => {
-    setControlsExpanded(window.localStorage.getItem('shop-floor-controls-collapsed') !== 'true');
-  }, []);
-
-  const toggleControls = () => {
-    setControlsExpanded((current) => {
-      window.localStorage.setItem('shop-floor-controls-collapsed', String(current));
-      return !current;
-    });
-  };
 
   useEffect(() => {
     setDepartmentId(initialDepartmentId ?? '');
@@ -147,6 +175,61 @@ export function ShopFloorLayouts({
   useEffect(() => {
     setLiveRunningWorkers(runningWorkers);
   }, [runningWorkers]);
+
+  useEffect(() => {
+    setLiveSummary(initialSummary);
+  }, [initialSummary]);
+
+  const loadSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    try {
+      const response = await fetch('/api/shop-floor/summary', { credentials: 'include' });
+      if (!response.ok) throw new Error('Could not refresh the shop floor summary.');
+      const payload = await response.json();
+      if (payload?.summary) setLiveSummary(payload.summary);
+      setSummaryError(null);
+    } catch (error) {
+      setSummaryError(error instanceof Error ? error.message : 'Could not refresh the shop floor summary.');
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!summaryExpanded) return;
+    void loadSummary();
+    const timer = window.setInterval(() => void loadSummary(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [loadSummary, summaryExpanded]);
+
+  useEffect(() => {
+    if (!canEditDisplay) return;
+    let active = true;
+    const loadMachinists = async () => {
+      try {
+        const res = await fetch('/api/admin/users?role=MACHINIST&take=100', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        const raw = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        if (!active) return;
+        setAdminMachinists(
+          raw
+            .map((user: any) => ({
+              id: String(user?.id ?? ''),
+              name: typeof user?.name === 'string' ? user.name : null,
+              email: typeof user?.email === 'string' ? user.email : null,
+            }))
+            .filter((user: { id: string }) => user.id.length > 0),
+        );
+      } catch {
+        if (active) setAdminMachinists(machinists);
+      }
+    };
+    void loadMachinists();
+    return () => {
+      active = false;
+    };
+  }, [canEditDisplay, machinists]);
 
   useEffect(() => {
     let cancelled = false;
@@ -269,10 +352,24 @@ export function ShopFloorLayouts({
 
   const filtered = useMemo(() => {
     const decoratedOrders = orders.map((order) => decorateOrder(order));
-    return decoratedOrders.filter((order) =>
-      orderMatchesFilters(order, { ...filters, machinistId: filters.machinistId ?? 'all' }, statusFilter, priorityFilter),
-    );
-  }, [orders, filters, statusFilter, priorityFilter]);
+    const firstDepartmentId = departments[0]?.id ?? null;
+    return decoratedOrders.filter((order) => {
+      if (!orderMatchesFilters(order, { ...filters, machinistId: filters.machinistId ?? 'all' }, statusFilter, priorityFilter)) {
+        return false;
+      }
+      if (!matchesShopFloorBusiness(order.business, businessFilter)) return false;
+      if (departmentFilter === 'all') return true;
+
+      const orderIsComplete = ['COMPLETE', 'CLOSED'].includes(String(order.status ?? '').toUpperCase());
+      const currentDepartmentIds = new Set(
+        (order.parts ?? [])
+          .map((part) => part.currentDepartmentId ?? (!orderIsComplete ? firstDepartmentId : null))
+          .filter((value): value is string => Boolean(value)),
+      );
+      if (departmentFilter === '__unassigned__') return currentDepartmentIds.size === 0;
+      return currentDepartmentIds.has(departmentFilter);
+    });
+  }, [businessFilter, departmentFilter, departments, filters, orders, priorityFilter, statusFilter]);
 
   const sorted = useMemo(() => {
     const list = [...filtered];
@@ -313,15 +410,6 @@ export function ShopFloorLayouts({
     return translucentRuleStyle(rule);
   }, [activeTimerCountsByOrder, departmentNameById, displayOptions.colorRules]);
 
-
-  const machinistBuckets = useMemo(() => {
-    const buckets: Record<string, OrderWithMeta[]> = {};
-    sorted.forEach((order) => {
-      const key = order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned';
-      buckets[key] = buckets[key] ? [...buckets[key], order] : [order];
-    });
-    return buckets;
-  }, [sorted]);
 
   const departmentTouchesByOrder = useMemo(() => {
     return new Map(
@@ -405,6 +493,70 @@ export function ShopFloorLayouts({
     }
   };
 
+  const openTileEditor = (order: OrderWithMeta) => {
+    setTileEditor({
+      open: true,
+      orderId: order.id,
+      priority: order.priority ?? 'NORMAL',
+      status: order.status ?? 'RECEIVED',
+      machinistId: order.assignedMachinist?.id ?? '',
+      reason: '',
+      saving: false,
+      error: null,
+    });
+  };
+
+  const saveTileEditor = async () => {
+    const original = orders.find((order) => order.id === tileEditor.orderId);
+    if (!original || tileEditor.saving) return;
+    const statusChanged = tileEditor.status !== original.status;
+    if (statusChanged && !tileEditor.reason.trim()) {
+      setTileEditor((current) => ({ ...current, error: 'A reason is required when changing status.' }));
+      return;
+    }
+    setTileEditor((current) => ({ ...current, saving: true, error: null }));
+    try {
+      if (tileEditor.priority !== original.priority) {
+        const response = await fetch(`/api/orders/${original.id}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ priority: tileEditor.priority }),
+        });
+        if (!response.ok) throw new Error('Could not update priority.');
+      }
+      if ((tileEditor.machinistId || '') !== (original.assignedMachinist?.id || '')) {
+        const response = await fetch(`/api/orders/${original.id}/assign`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ machinistId: tileEditor.machinistId }),
+        });
+        if (!response.ok) throw new Error('Could not update assigned machinist.');
+      }
+      if (statusChanged) {
+        const response = await fetch(`/api/orders/${original.id}/status`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: tileEditor.status, reason: tileEditor.reason.trim() }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          throw new Error(typeof body?.error === 'string' ? body.error : 'Could not update status.');
+        }
+      }
+      setTileEditor((current) => ({ ...current, open: false, saving: false, error: null }));
+      router.refresh();
+    } catch (error) {
+      setTileEditor((current) => ({
+        ...current,
+        saving: false,
+        error: error instanceof Error ? error.message : 'Could not update this order.',
+      }));
+    }
+  };
+
   const quickViewControls = (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
       <div className="flex flex-wrap items-end gap-2">
@@ -414,6 +566,31 @@ export function ShopFloorLayouts({
             <SelectTrigger aria-label="Quick status filter" className="h-8 w-28 rounded-md border-white/10 bg-background/35 px-3 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="closed">Closed</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Department</Label>
+          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+            <SelectTrigger aria-label="Quick department filter" className="h-8 w-36 rounded-md border-white/10 bg-background/35 px-3 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="__unassigned__">Unassigned</SelectItem>
+              {departments.map((department) => (
+                <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Business</Label>
+          <Select value={businessFilter} onValueChange={setBusinessFilter}>
+            <SelectTrigger aria-label="Quick business filter" className="h-8 w-40 rounded-md border-white/10 bg-background/35 px-3 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {BUSINESS_OPTIONS.map((business) => (
+                <SelectItem key={business.code} value={business.code}>{business.name}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -440,59 +617,269 @@ export function ShopFloorLayouts({
             <SelectContent><SelectItem value="asc">Ascending</SelectItem><SelectItem value="desc">Descending</SelectItem></SelectContent>
           </Select>
         </div>
+        <div className="space-y-1">
+          <Label className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">View</Label>
+          <div className="flex h-8 overflow-hidden rounded-md border border-white/10 bg-background/35" role="group" aria-label="Shop floor view">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={`h-8 rounded-none border-r border-white/10 px-3 text-xs ${layout === 'grid' ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground' : ''}`}
+              onClick={() => setDisplayOptions((current) => ({ ...current, layout: 'grid' }))}
+              aria-pressed={layout === 'grid'}
+            >
+              <LayoutGrid className="mr-1.5 h-3.5 w-3.5" /> Tiles
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={`h-8 rounded-none border-r border-white/10 px-3 text-xs ${layout === 'machinist' ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground' : ''}`}
+              onClick={() => setDisplayOptions((current) => ({ ...current, layout: 'machinist' }))}
+              aria-pressed={layout === 'machinist'}
+            >
+              <LayoutList className="mr-1.5 h-3.5 w-3.5" /> List
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={`h-8 rounded-none border-r border-white/10 px-3 text-xs ${timersExpanded ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground' : ''}`}
+              onClick={() => setTimersExpanded((current) => !current)}
+              aria-expanded={timersExpanded}
+              aria-controls="shop-floor-timers"
+            >
+              <Activity className="mr-1.5 h-3.5 w-3.5" /> Timers
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={`h-8 rounded-none border-r border-white/10 px-3 text-xs ${summaryExpanded ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground' : ''}`}
+              onClick={() => setSummaryExpanded((current) => !current)}
+              aria-expanded={summaryExpanded}
+              aria-controls="shop-floor-summary"
+            >
+              <PackageCheck className="mr-1.5 h-3.5 w-3.5" /> Summary
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={`h-8 rounded-none px-3 text-xs ${moreExpanded ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground' : ''}`}
+              onClick={() => setMoreExpanded((current) => !current)}
+              aria-expanded={moreExpanded}
+              aria-controls="shop-floor-more"
+            >
+              More {moreExpanded ? <ChevronUp className="ml-1.5 h-3.5 w-3.5" /> : <ChevronDown className="ml-1.5 h-3.5 w-3.5" />}
+            </Button>
+          </div>
+        </div>
       </div>
       <p className="pb-1 text-[0.7rem] text-muted-foreground">
-        {layout === 'workQueue' ? sortedDepartmentFeed.length : sorted.length} shown · {SORT_OPTIONS.find(([value]) => value === displayOptions.sortField)?.[1]} {displayOptions.sortDirection === 'asc' ? 'ascending' : 'descending'}{advancedFilterCount ? ` · ${advancedFilterCount} advanced filter${advancedFilterCount === 1 ? '' : 's'}` : ''}
+        {sorted.length} shown · {SORT_OPTIONS.find(([value]) => value === displayOptions.sortField)?.[1]} {displayOptions.sortDirection === 'asc' ? 'ascending' : 'descending'}{advancedFilterCount ? ` · ${advancedFilterCount} advanced filter${advancedFilterCount === 1 ? '' : 's'}` : ''}
       </p>
     </div>
   );
 
   return (
     <div className="space-y-4">
+      {quickViewControls}
+
+      <Dialog
+        open={tileEditor.open}
+        onOpenChange={(open) => setTileEditor((current) => ({ ...current, open, error: null }))}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Manage order</DialogTitle>
+            <DialogDescription>
+              Admin tile actions update priority, workflow status, and the order coordinator.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="tile-order-priority">Priority</Label>
+                <Select value={tileEditor.priority} onValueChange={(priority) => setTileEditor((current) => ({ ...current, priority, error: null }))}>
+                  <SelectTrigger id="tile-order-priority"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">Low</SelectItem>
+                    <SelectItem value="NORMAL">Normal</SelectItem>
+                    <SelectItem value="RUSH">Rush</SelectItem>
+                    <SelectItem value="HOT">Hot</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="tile-order-status">Status</Label>
+                <Select value={tileEditor.status} onValueChange={(status) => setTileEditor((current) => ({ ...current, status, error: null }))}>
+                  <SelectTrigger id="tile-order-status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="RECEIVED">Received</SelectItem>
+                    <SelectItem value="IN_PROGRESS">In progress</SelectItem>
+                    <SelectItem value="COMPLETE">Complete</SelectItem>
+                    <SelectItem value="CLOSED">Closed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="tile-order-machinist">Assigned machinist</Label>
+              <Select value={tileEditor.machinistId || '__none__'} onValueChange={(machinistId) => setTileEditor((current) => ({ ...current, machinistId: machinistId === '__none__' ? '' : machinistId, error: null }))}>
+                <SelectTrigger id="tile-order-machinist"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Unassigned</SelectItem>
+                  {adminMachinists.map((machinist) => (
+                    <SelectItem key={machinist.id} value={machinist.id}>
+                      {machinist.name ?? machinist.email ?? 'Unnamed machinist'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {orders.find((order) => order.id === tileEditor.orderId)?.status !== tileEditor.status ? (
+              <div className="grid gap-2">
+                <Label htmlFor="tile-order-status-reason">Reason for status change</Label>
+                <Input
+                  id="tile-order-status-reason"
+                  value={tileEditor.reason}
+                  onChange={(event) => setTileEditor((current) => ({ ...current, reason: event.target.value, error: null }))}
+                  placeholder="Required for the order history"
+                />
+              </div>
+            ) : null}
+            {tileEditor.error ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{tileEditor.error}</div>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={() => setTileEditor((current) => ({ ...current, open: false, error: null }))} disabled={tileEditor.saving}>Cancel</Button>
+            <Button
+              type="button"
+              onClick={() => void saveTileEditor()}
+              disabled={
+                tileEditor.saving ||
+                (orders.find((order) => order.id === tileEditor.orderId)?.status !== tileEditor.status && !tileEditor.reason.trim())
+              }
+            >
+              {tileEditor.saving ? 'Saving…' : 'Save changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {timersExpanded ? (
+        <div id="shop-floor-timers">
+          <RunningWorkersStrip workers={liveRunningWorkers} />
+        </div>
+      ) : null}
+
+      {summaryExpanded ? (
+        <section id="shop-floor-summary" className="shop-glass overflow-hidden rounded-lg border" aria-label="Recent shop floor summary">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-primary/70">Recent shop movement</p>
+              <h2 className="text-lg font-semibold text-foreground">Shop Floor summary</h2>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span>{liveSummary.waitingStock.count} waiting on stock</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => void loadSummary()} disabled={summaryLoading}>
+                {summaryLoading ? 'Refreshing…' : 'Refresh'}
+              </Button>
+            </div>
+          </div>
+          {summaryError ? (
+            <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{summaryError}</div>
+          ) : null}
+          <div className="grid gap-0 lg:grid-cols-[minmax(18rem,0.8fr)_minmax(24rem,1.2fr)]">
+            <div className="border-b border-white/10 p-4 lg:border-b-0 lg:border-r">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-foreground">Waiting on stock to arrive</h3>
+                <Badge variant="outline" className="border-amber-400/40 bg-amber-400/10 text-amber-100">{liveSummary.waitingStock.count}</Badge>
+              </div>
+              <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                {liveSummary.waitingStock.items.map((part) => (
+                  <Link
+                    key={part.partId}
+                    href={`/orders/${part.orderId}?part=${part.partId}`}
+                    className="shop-glass-soft block rounded-md border p-3 transition hover:border-amber-300/40"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">#{part.orderNumber} · {part.partNumber}</p>
+                        <p className="truncate text-xs text-muted-foreground">{part.partName || part.customerName || 'Unnamed part'}</p>
+                      </div>
+                      <span className="shrink-0 text-[0.68rem] text-amber-100">{part.vendorName || 'Vendor not set'}</span>
+                    </div>
+                    <p className="mt-2 text-[0.68rem] text-muted-foreground">
+                      {part.dueDate ? `Due ${new Date(part.dueDate).toLocaleDateString()}` : 'No due date'}
+                    </p>
+                  </Link>
+                ))}
+                {!liveSummary.waitingStock.items.length ? (
+                  <p className="rounded-md border border-dashed border-white/10 px-3 py-5 text-center text-sm text-muted-foreground">No active parts are waiting on stock.</p>
+                ) : null}
+                {liveSummary.waitingStock.count > liveSummary.waitingStock.items.length ? (
+                  <p className="text-center text-xs text-muted-foreground">
+                    Showing {liveSummary.waitingStock.items.length} of {liveSummary.waitingStock.count}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <div className="p-4">
+              <h3 className="mb-3 text-sm font-semibold text-foreground">Department changes and material arrivals</h3>
+              <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                {liveSummary.recentChanges.map((change) => (
+                  <Link
+                    key={change.id}
+                    href={`/orders/${change.orderId}?part=${change.partId}`}
+                    className="shop-glass-soft flex flex-col gap-2 rounded-md border p-3 transition hover:border-primary/40 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className={change.kind === 'MATERIAL_ARRIVED' ? 'bg-emerald-500/15 text-emerald-100' : 'bg-primary/15 text-primary-foreground'}>
+                          {change.kind === 'MATERIAL_ARRIVED' ? 'Stock arrived' : 'Department'}
+                        </Badge>
+                        <span className="text-sm font-semibold text-foreground">#{change.orderNumber} · {change.partNumber}</span>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {change.fromLabel} → {change.toLabel}
+                        {change.kind === 'MATERIAL_ARRIVED' && change.vendorName ? ` · ${change.vendorName}` : ''}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-left text-[0.68rem] text-muted-foreground sm:text-right">
+                      <p>{change.actorName}</p>
+                      <p>{new Date(change.createdAt).toLocaleString()}</p>
+                    </div>
+                  </Link>
+                ))}
+                {!liveSummary.recentChanges.length ? (
+                  <p className="rounded-md border border-dashed border-white/10 px-3 py-5 text-center text-sm text-muted-foreground">No department changes or stock arrivals in the last seven days.</p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {moreExpanded ? <div id="shop-floor-more" className="space-y-4">
       <div className="shop-glass overflow-hidden rounded-lg border">
         <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-primary/70">Live production controls</p>
             <h2 className="text-xl font-semibold text-foreground">Customize this shop floor</h2>
-            <p className="text-sm text-muted-foreground">Layout, advanced filters, shared tile colors, and saved TV defaults.</p>
+            <p className="text-sm text-muted-foreground">Advanced filters, shared tile colors, and saved TV defaults.</p>
           </div>
-          <Button variant="outline" size="sm" className="rounded-md" onClick={toggleControls} aria-expanded={controlsExpanded}>
-            {controlsExpanded ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
-            {controlsExpanded ? 'Collapse controls' : 'Show controls'}
-          </Button>
         </div>
 
-        {controlsExpanded ? <div className="space-y-5 border-t border-white/10 px-4 py-5">
+        <div className="space-y-5 border-t border-white/10 px-4 py-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Display layout</p>
-          <p className="text-sm text-muted-foreground">Changes preview immediately. Save when this is how the TV should stay.</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Advanced display</p>
+          <p className="text-sm text-muted-foreground">Filters and color changes preview immediately. Save when this is how the TV should stay.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant={layout === 'grid' ? 'default' : 'secondary'}
-            className="rounded-md"
-            size="sm"
-            onClick={() => setDisplayOptions((current) => ({ ...current, layout: 'grid' }))}
-          >
-            <LayoutGrid className="mr-2 h-4 w-4" /> Grid digest
-          </Button>
-          <Button
-            variant={layout === 'machinist' ? 'default' : 'secondary'}
-            className="rounded-md"
-            size="sm"
-            onClick={() => setDisplayOptions((current) => ({ ...current, layout: 'machinist' }))}
-          >
-            <LayoutList className="mr-2 h-4 w-4" /> By machinist
-          </Button>
-          <Button
-            variant={layout === 'workQueue' ? 'default' : 'secondary'}
-            className="rounded-md"
-            size="sm"
-            onClick={() => setDisplayOptions((current) => ({ ...current, layout: 'workQueue' }))}
-          >
-            <Rows3 className="mr-2 h-4 w-4" /> Work queue
-          </Button>
           <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="rounded-md border-border/60 bg-background/60">
@@ -640,7 +1027,7 @@ export function ShopFloorLayouts({
                 </div>
               </div>
               <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border/60 bg-background/60 px-4 py-3 text-sm text-muted-foreground">
-                <span>Filters combine with the quick status and priority pickers.</span>
+                <span>Filters combine with the quick status, department, and priority pickers.</span>
                 <Button variant="ghost" size="sm" onClick={() => setFilters({ ...DEFAULT_ORDER_FILTERS })}>
                   Reset all
                 </Button>
@@ -740,10 +1127,9 @@ export function ShopFloorLayouts({
           <Save className="mr-2 h-4 w-4" /> {savingDisplay ? 'Saving…' : 'Save for shop floor'}
         </Button>
       </div>
-        </div> : null}
+        </div>
       </div>
-
-      <RunningWorkersStrip workers={liveRunningWorkers} />
+      </div> : null}
 
       {layout === 'workQueue' && (
         <div className="space-y-3 rounded-lg bg-transparent p-4">
@@ -751,7 +1137,6 @@ export function ShopFloorLayouts({
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{selectedDepartmentName} work queue</p>
             <p className="text-sm text-foreground">Orders currently owned by this department.</p>
           </div>
-          {quickViewControls}
           {departmentError ? (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {departmentError}
@@ -779,7 +1164,6 @@ export function ShopFloorLayouts({
 
       {layout === 'grid' && (
         <div className="space-y-3 rounded-lg bg-transparent p-4">
-          {quickViewControls}
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {sorted.map((order) => (
             <div
@@ -791,9 +1175,26 @@ export function ShopFloorLayouts({
                 <Link href={`/orders/${order.id}`} className="text-lg font-semibold text-primary hover:underline">
                   #{order.orderNumber}
                 </Link>
-                <Badge variant="outline" className="rounded-full px-3 py-1 text-[0.7rem] uppercase tracking-wide">
-                  {formatStatusLabel(order.status)}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  {order.priority === 'HOT' ? (
+                    <Flame className="h-5 w-5 fill-orange-500/25 text-orange-400" aria-label="Hot priority" />
+                  ) : null}
+                  <Badge variant="outline" className="rounded-full px-3 py-1 text-[0.7rem] uppercase tracking-wide">
+                    {formatStatusLabel(order.status)}
+                  </Badge>
+                  {canEditDisplay ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 rounded-md p-0 text-muted-foreground hover:text-foreground"
+                      onClick={() => openTileEditor(order)}
+                      aria-label={`Manage order ${order.orderNumber}`}
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  ) : null}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
                 <div>
@@ -802,9 +1203,7 @@ export function ShopFloorLayouts({
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide">Machinist</p>
-                  <p className="text-foreground">
-                    {order.assignedMachinist?.name ?? order.assignedMachinist?.email ?? 'Unassigned'}
-                  </p>
+                  <p className="text-foreground">{getOrderMachinistLabel(order)}</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide">Due</p>
@@ -852,56 +1251,112 @@ export function ShopFloorLayouts({
       )}
 
       {layout === 'machinist' && (
-        <div className="space-y-4 rounded-lg bg-transparent p-4">
-          {quickViewControls}
-          {Object.entries(machinistBuckets).map(([name, bucket]) => (
-            <div key={name} className="shop-glass space-y-2 rounded-lg border p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full border border-primary/40 bg-secondary/40" />
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{name}</p>
-                    <p className="text-xs text-muted-foreground">{bucket.length} order(s)</p>
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <Card className="shop-glass h-full min-h-[7rem] rounded-lg">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4 pb-1 pt-3">
+                <CardTitle className="text-xs font-medium">Active orders</CardTitle>
+                <Activity className="h-3.5 w-3.5 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <div className="text-xl font-semibold">{listSummary.activeOrders}</div>
+                <p className="text-[0.7rem] leading-4 text-muted-foreground">{listSummary.totalOrders} total records in the shop</p>
+              </CardContent>
+            </Card>
+            <Card className="shop-glass h-full min-h-[7rem] rounded-lg">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4 pb-1 pt-3">
+                <CardTitle className="text-xs font-medium">Due within 7 days</CardTitle>
+                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <div className="text-xl font-semibold">{listSummary.dueSoon}</div>
+                <p className="text-[0.7rem] leading-4 text-muted-foreground">Stay ahead of the hot jobs</p>
+              </CardContent>
+            </Card>
+            <Card className="shop-glass h-full min-h-[7rem] rounded-lg">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4 pb-1 pt-3">
+                <CardTitle className="text-xs font-medium">Unassigned tickets</CardTitle>
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <div className="text-xl font-semibold">{listSummary.unassigned}</div>
+                <p className="text-[0.7rem] leading-4 text-muted-foreground">Waiting for a machinist</p>
+              </CardContent>
+            </Card>
+            <Card className="shop-glass h-full min-h-[7rem] rounded-lg">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4 pb-1 pt-3">
+                <CardTitle className="text-xs font-medium">Machinist workload</CardTitle>
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="space-y-0.5 px-4 pb-3">
+                {listSummary.machinistWorkload.slice(0, 3).map((machinist) => (
+                  <div key={machinist.name} className="flex items-center justify-between gap-3 text-[0.7rem] leading-4">
+                    <span className="truncate text-muted-foreground">{machinist.name}</span>
+                    <span className="shrink-0 font-semibold text-foreground">{machinist.count}</span>
                   </div>
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-border/60">
-                      <TableHead>Order</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Due</TableHead>
-                      <TableHead>Qty</TableHead>
-                      <TableHead>Addons</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {bucket.map((order) => (
-                      <TableRow key={order.id} className="border-border/60" style={styleForOrder(order)}>
-                        <TableCell className="font-semibold text-primary">
-                          <Link href={`/orders/${order.id}`} className="hover:underline">
-                            #{order.orderNumber}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="text-xs uppercase text-muted-foreground">{formatStatusLabel(order.status)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : 'TBD'}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{order.totalQuantity ?? 0}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {order.checklist?.length
-                            ? `${order.checklist.length - (order.openAddonCount ?? 0)}/${order.checklist.length} complete`
-                            : 'None'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          ))}
-          {!Object.keys(machinistBuckets).length && <p className="text-sm text-muted-foreground">No assignments to display.</p>}
+                ))}
+                {!listSummary.machinistWorkload.length ? (
+                  <p className="text-[0.7rem] leading-4 text-muted-foreground">No assigned work</p>
+                ) : null}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="shop-glass overflow-x-auto rounded-lg border">
+            <Table>
+            <TableHeader>
+              <TableRow className="border-white/10">
+                <TableHead>Order</TableHead>
+                <TableHead className="hidden md:table-cell">Customer</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="hidden lg:table-cell">Machinist</TableHead>
+                <TableHead className="hidden xl:table-cell">Priority</TableHead>
+                <TableHead className="text-right">Due</TableHead>
+                <TableHead className="hidden sm:table-cell text-right">Qty</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sorted.map((order) => (
+                <TableRow key={order.id} className="border-white/10 transition hover:bg-white/[0.045]" style={styleForOrder(order)}>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <Link href={`/orders/${order.id}`} className="text-sm font-semibold text-primary hover:underline">
+                        #{order.orderNumber}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        Received {order.receivedDate ? new Date(order.receivedDate).toLocaleDateString() : 'TBD'}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{order.customer?.name ?? '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="border-primary/40 bg-primary/10 text-[0.7rem] uppercase tracking-wide">
+                      {formatStatusLabel(order.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+                    {getOrderMachinistLabel(order)}
+                  </TableCell>
+                  <TableCell className="hidden xl:table-cell text-sm text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      {order.priority === 'HOT' ? <Flame className="h-4 w-4 fill-orange-500/25 text-orange-400" aria-label="Hot priority" /> : null}
+                      {order.priority}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right text-sm text-muted-foreground">
+                    {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : 'TBD'}
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell text-right text-sm text-muted-foreground">{order.totalQuantity ?? 0}</TableCell>
+                </TableRow>
+              ))}
+              {!sorted.length ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">No orders match the filters.</TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+            </Table>
+          </div>
         </div>
       )}
     </div>

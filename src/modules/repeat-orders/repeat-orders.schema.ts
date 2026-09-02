@@ -11,6 +11,7 @@ export const RepeatOrderTemplateCreateFromOrder = z.object({
 });
 
 export const RepeatOrderTemplateCreateOrder = z.object({
+  customerId: z.string().trim().min(1).optional(),
   orderNumber: z.string().trim().optional(),
   dueDate: z.string().trim().optional(),
   priority: z.enum(['LOW', 'NORMAL', 'RUSH', 'HOT']).optional(),
@@ -30,6 +31,8 @@ export const RepeatOrderTemplateCreateOrder = z.object({
       materialId: z.string().trim().nullable().optional(),
       stockSize: z.string().trim().max(200).nullable().optional(),
       cutLength: z.string().trim().max(200).nullable().optional(),
+      partWidth: z.string().trim().max(200).nullable().optional(),
+      partThickness: z.string().trim().max(200).nullable().optional(),
       notes: z.string().trim().max(2000).nullable().optional(),
       workInstructions: z.string().trim().max(4000).nullable().optional(),
     })

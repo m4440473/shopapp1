@@ -151,6 +151,8 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
           procurementVendorId: 'vendor-1',
           stockSize: null,
           cutLength: null,
+          partWidth: '2.5',
+          partThickness: '0.25',
           description: 'Lathe then mill flats',
           notes: 'Use soft jaws',
           workInstructions: 'Verify fixture 207-B before cycle start',
@@ -175,6 +177,7 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
             { fieldId: 'cf-allowed', value: 'yes' },
             { fieldId: 'cf-denied', value: 'no' },
           ],
+          assignedWorkerIds: ['worker-1', 'worker-2', 'worker-1'],
         }),
       }) as any,
       { params: Promise.resolve({ id: 'q1' }) }
@@ -183,6 +186,8 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
     expect(response.status).toBe(200);
     expect(mockConvertQuoteToOrder).toHaveBeenCalledTimes(1);
     const args = mockConvertQuoteToOrder.mock.calls[0][0];
+    expect(args.assignedMachinistId).toBeNull();
+    expect(args.assignedWorkerIds).toEqual(['worker-1', 'worker-2']);
     expect(args.normalizedCustomFieldValues).toEqual([{ fieldId: 'cf-allowed', value: '"yes"' }]);
     expect(args.partsData[0].workInstructions).toContain('Quote requirements:');
     expect(args.partsData[0].workInstructions).toContain('Required reading:');
@@ -190,6 +195,7 @@ describe('POST /api/admin/quotes/[id]/convert', () => {
     expect(args.partsData[0].workInstructions).toContain('- Hold bore within .001');
     expect(args.partsData[0].workInstructions).toContain('Part-specific notes:');
     expect(args.partsData[0].workInstructions).toContain('- Use soft jaws');
+    expect(args.partsData[0]).toMatchObject({ partWidth: '2.5', partThickness: '0.25' });
     expect(args.partsData[0]).toMatchObject({
       sourceQuotePartId: 'qp1',
       drawingMaterialText: 'C.R.S.',

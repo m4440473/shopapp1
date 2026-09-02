@@ -9,6 +9,7 @@ import { BUSINESS_PREFIX_BY_CODE, businessNameFromCode, slugifyName, type Busine
 import { getAppSettings } from '@/lib/app-settings';
 import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
+import { isDrawingPartAttachment } from '@/lib/attachment-visibility';
 import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
 import {
   OrderAttachmentCreate,
@@ -22,7 +23,7 @@ import {
   PartAttachmentUpdate,
 } from './orders.schema';
 import type { DepartmentFeedOrder, DepartmentFeedPart, OrderFilterState, OrderListItem, OrderWithMeta } from './orders.types';
-import { isPartReadyForDepartment } from './department-routing';
+import { findNextDepartmentWithOpenChecklist, isPartReadyForDepartment } from './department-routing';
 import {
   LEGACY_IN_PROGRESS_ORDER_STATUSES,
   normalizeOrderWorkflowStatus,
@@ -110,6 +111,7 @@ import {
   syncChecklistForOrder,
 } from '@/repos/orders';
 import { listActiveTimeEntriesForPart, listTimeEntriesForPartsDetailed } from '@/repos/time';
+import { resolveCustomerContactSnapshot } from '@/modules/customers/customers.service';
 
 export { generateNextOrderNumber, syncChecklistForOrder };
 export type { OrderFilterState, OrderListItem, OrderWithMeta };
@@ -527,12 +529,23 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
     isChecklistItem: boolean;
   };
 
+  let selectedContact = null;
+  try {
+    selectedContact = await resolveCustomerContactSnapshot(body.customerId, body.customerContactId);
+  } catch (error) {
+    return fail(400, error instanceof Error ? error.message : 'Invalid customer contact.');
+  }
+  const assignedWorkerIds = Array.from(new Set(body.assignedWorkerIds ?? []));
   const created = await createOrderWithCustomFields({
     orderData: {
       data: {
         orderNumber,
         business: body.business,
         customerId: body.customerId,
+        customerContactId: selectedContact?.customerContactId ?? null,
+        contactName: selectedContact?.contactName ?? body.contactName ?? null,
+        contactEmail: selectedContact?.contactEmail ?? body.contactEmail ?? null,
+        contactPhone: selectedContact?.contactPhone ?? body.contactPhone ?? null,
         modelIncluded: body.modelIncluded,
         receivedDate: new Date(body.receivedDate),
         dueDate: new Date(body.dueDate),
@@ -558,8 +571,21 @@ export async function createOrderFromPayload(body: OrderCreateInput, userId?: st
             procurementVendorId: optionalId(p.procurementVendorId),
             stockSize: p.stockSize ?? null,
             cutLength: p.cutLength ?? null,
+            finalPartLength: p.finalPartLength ?? null,
+            partWidth: p.partWidth ?? null,
+            partThickness: p.partThickness ?? null,
             notes: p.notes ?? null,
             workInstructions: p.workInstructions ?? null,
+            assignments: assignedWorkerIds.length
+              ? {
+                  create: assignedWorkerIds.map((assignedUserId) => ({
+                    userId: assignedUserId,
+                    assignedById: userId ?? null,
+                    assignmentType: 'WORKER',
+                    isActive: true,
+                  })),
+                }
+              : undefined,
           })),
         },
         attachments: body.attachments.length
@@ -788,6 +814,12 @@ export async function getOrderDetails(
     : {};
 
   const sanitized = sanitizePricingForNonAdmin(order, options.isAdmin) as any;
+  if (!options.isAdmin) {
+    sanitized.attachments = [];
+    sanitized.partAttachments = Array.isArray(sanitized.partAttachments)
+      ? sanitized.partAttachments.filter(isDrawingPartAttachment)
+      : [];
+  }
   sanitized.status = normalizeOrderWorkflowStatus(sanitized.status);
   sanitized.parts = Array.isArray(sanitized.parts)
     ? sanitized.parts.map((part: any) => {
@@ -798,6 +830,9 @@ export async function getOrderDetails(
             : part.currentDepartmentId ?? departments[0]?.id ?? null;
         return {
           ...part,
+          attachments: options.isAdmin
+            ? (Array.isArray(part.attachments) ? part.attachments : [])
+            : (Array.isArray(part.attachments) ? part.attachments.filter(isDrawingPartAttachment) : []),
           currentDepartmentId: fallbackDepartmentId,
           status: isComplete ? 'COMPLETE' : 'IN_PROGRESS',
           instructionsVersion: Math.max(1, Number(part.instructionsVersion ?? 1)),
@@ -1606,9 +1641,19 @@ export async function addOrderPart({
       partNumber: payload.partNumber,
       partName: payload.partName ?? null,
       quantity: payload.quantity,
-      materialId: payload.materialId ?? null,
+      materialId: optionalId(payload.materialId),
+      drawingMaterialText: payload.drawingMaterialText ?? null,
+      drawingFinishText: payload.drawingFinishText ?? null,
+      finish: payload.finish ?? null,
+      materialStatus: payload.materialStatus ?? 'UNREVIEWED',
+      inventoryLocation: payload.inventoryLocation ?? null,
+      materialNotes: payload.materialNotes ?? null,
+      procurementVendorId: optionalId(payload.procurementVendorId),
       stockSize: payload.stockSize ?? null,
       cutLength: payload.cutLength ?? null,
+      finalPartLength: payload.finalPartLength ?? null,
+      partWidth: payload.partWidth ?? null,
+      partThickness: payload.partThickness ?? null,
       notes: payload.notes ?? null,
       workInstructions: payload.workInstructions ?? null,
     },
@@ -1646,9 +1691,19 @@ export async function updateOrderPartDetails({
   if (payload.partNumber !== undefined) data.partNumber = payload.partNumber;
   if (payload.partName !== undefined) data.partName = payload.partName;
   if (payload.quantity !== undefined) data.quantity = payload.quantity;
-  if (payload.materialId !== undefined) data.materialId = payload.materialId;
+  if (payload.materialId !== undefined) data.materialId = optionalId(payload.materialId);
+  if (payload.drawingMaterialText !== undefined) data.drawingMaterialText = payload.drawingMaterialText;
+  if (payload.drawingFinishText !== undefined) data.drawingFinishText = payload.drawingFinishText;
+  if (payload.finish !== undefined) data.finish = payload.finish;
+  if (payload.materialStatus !== undefined) data.materialStatus = payload.materialStatus;
+  if (payload.inventoryLocation !== undefined) data.inventoryLocation = payload.inventoryLocation;
+  if (payload.materialNotes !== undefined) data.materialNotes = payload.materialNotes;
+  if (payload.procurementVendorId !== undefined) data.procurementVendorId = optionalId(payload.procurementVendorId);
   if (payload.stockSize !== undefined) data.stockSize = payload.stockSize;
   if (payload.cutLength !== undefined) data.cutLength = payload.cutLength;
+  if (payload.finalPartLength !== undefined) data.finalPartLength = payload.finalPartLength;
+  if (payload.partWidth !== undefined) data.partWidth = payload.partWidth;
+  if (payload.partThickness !== undefined) data.partThickness = payload.partThickness;
   if (payload.notes !== undefined) data.notes = payload.notes;
   if (payload.workInstructions !== undefined) {
     data.workInstructions = payload.workInstructions;
@@ -1657,7 +1712,34 @@ export async function updateOrderPartDetails({
     }
   }
 
-  const part = await updateOrderPart(partId, data);
+  const materialStatusChanged =
+    payload.materialStatus !== undefined && payload.materialStatus !== existing.materialStatus;
+  // Capture the audit inputs before the repository update. The production Prisma
+  // client returns a new object, but the in-memory repository intentionally mutates
+  // its record; keeping an immutable snapshot makes the event accurate in both.
+  const priorMaterialStatus = existing.materialStatus ?? 'UNREVIEWED';
+  const priorProcurementVendorId = existing.procurementVendorId ?? null;
+  const part = materialStatusChanged
+    ? await runInTransaction(async (tx) => {
+        const updated = await updateOrderPart(partId, data, tx);
+        await recordPartEvent({
+          orderId,
+          partId,
+          userId: userId ?? null,
+          type: 'MATERIAL_STATUS_CHANGED',
+          message: `Material status changed from ${priorMaterialStatus} to ${payload.materialStatus}.`,
+          meta: {
+            fromMaterialStatus: priorMaterialStatus,
+            toMaterialStatus: payload.materialStatus,
+            procurementVendorId:
+              payload.procurementVendorId !== undefined
+                ? optionalId(payload.procurementVendorId)
+                : priorProcurementVendorId,
+          },
+        }, tx);
+        return updated;
+      })
+    : await updateOrderPart(partId, data);
 
   if (userId) {
     await createOrderNote(orderId, userId, `Updated part ${part.partNumber}.`);
@@ -1853,11 +1935,12 @@ export async function createAttachmentForOrder({
   return ok({ attachment });
 }
 
-export async function listAttachmentsForPart(partId: string) {
+export async function listAttachmentsForPart(partId: string, isAdmin: boolean) {
   const part = await findPartById(partId);
   if (!part) return fail(404, 'Part not found');
 
-  const attachments = await listPartAttachments(partId);
+  const storedAttachments = await listPartAttachments(partId);
+  const attachments = isAdmin ? storedAttachments : storedAttachments.filter(isDrawingPartAttachment);
   return ok({ attachments });
 }
 
@@ -1938,18 +2021,6 @@ export async function deleteAttachmentForPart(partId: string, attachmentId: stri
 }
 
 
-
-function findNextDepartmentWithOpenChecklist(
-  checklistItems: Array<{ departmentId?: string | null; isActive?: boolean | null; completed?: boolean | null }>,
-  departments: DepartmentSortEntry[],
-) {
-  for (const department of departments) {
-    const items = checklistItems.filter((item) => item.isActive !== false && item.departmentId === department.id);
-    if (!items.length) continue;
-    if (items.some((item) => item.completed === false)) return department.id;
-  }
-  return null;
-}
 
 export async function submitDepartmentComplete({
   orderId,
@@ -2337,6 +2408,11 @@ export async function getOrderDepartmentFeed(
     })
     .map((order) => ({
       ...order,
+      assignedMachinistName: order.assignedMachinistName ?? (
+        Array.from(new Set(
+          order.parts.flatMap((part) => part.assignedWorkers.map((worker) => worker.name)),
+        )).join(', ') || null
+      ),
       activeTimers: [...order.activeTimers]
         .sort((a, b) => {
           if (b.elapsedSeconds !== a.elapsedSeconds) return b.elapsedSeconds - a.elapsedSeconds;

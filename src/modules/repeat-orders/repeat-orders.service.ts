@@ -20,6 +20,7 @@ import {
   findOrderTemplateSource,
   findRepeatOrderTemplateBySourcePart,
   findRepeatOrderTemplateById,
+  findRepeatOrderCustomer,
   listRepeatOrderTemplates,
 } from './repeat-orders.repo';
 
@@ -114,6 +115,8 @@ export async function snapshotRepeatOrderTemplateFromOrder(
       materialId: part.materialId ?? null,
       stockSize: part.stockSize ?? null,
       cutLength: part.cutLength ?? null,
+      partWidth: part.partWidth ?? null,
+      partThickness: part.partThickness ?? null,
       notes: part.notes ?? null,
       workInstructions: part.workInstructions ?? null,
       instructionsVersion: part.instructionsVersion ?? 1,
@@ -188,6 +191,8 @@ export async function getRepeatOrderTemplate(templateId: string) {
         materialId: part.materialId ?? null,
         stockSize: part.stockSize ?? null,
         cutLength: part.cutLength ?? null,
+        partWidth: part.partWidth ?? null,
+        partThickness: part.partThickness ?? null,
         notes: part.notes ?? null,
         workInstructions: part.workInstructions ?? null,
         instructionsVersion: part.instructionsVersion ?? 1,
@@ -228,6 +233,11 @@ export async function createOrderFromRepeatOrderTemplate(
     return fail(409, 'Repeat-order template has no parts to create.');
   }
 
+  const customerId = payload.customerId?.trim() || template.customerId;
+  if (!customerId || !(await findRepeatOrderCustomer(customerId))) {
+    return fail(400, 'Please choose an existing customer or add a customer before creating the order.');
+  }
+
   const dueDate = payload.dueDate ? new Date(payload.dueDate) : (() => {
     const next = new Date();
     next.setDate(next.getDate() + 14);
@@ -260,6 +270,8 @@ export async function createOrderFromRepeatOrderTemplate(
       materialId: override?.materialId === undefined ? part.materialId ?? null : override.materialId ?? null,
       stockSize: override?.stockSize === undefined ? part.stockSize ?? null : override.stockSize ?? null,
       cutLength: override?.cutLength === undefined ? part.cutLength ?? null : override.cutLength ?? null,
+      partWidth: override?.partWidth === undefined ? part.partWidth ?? null : override.partWidth ?? null,
+      partThickness: override?.partThickness === undefined ? part.partThickness ?? null : override.partThickness ?? null,
       notes: override?.notes === undefined ? part.notes ?? null : override.notes ?? null,
       workInstructions:
         override?.workInstructions === undefined ? part.workInstructions ?? null : override.workInstructions ?? null,
@@ -296,7 +308,7 @@ export async function createOrderFromRepeatOrderTemplate(
   const result = await createOrderFromRepeatTemplate({
     orderNumber,
     business: template.business,
-    customerId: template.customerId,
+    customerId,
     receivedDate: new Date(),
     dueDate,
     priority: payload.priority ?? template.priority,

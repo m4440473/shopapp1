@@ -1,3 +1,21 @@
+## 2026-09-01 — Freeze a working owner-edited subsystem during review
+- Trigger: The owner had already repaired and built the drawing importer, then clarified that review and suggestions were welcome but further agent fixes were not.
+- Mistake pattern: I continued reasoning toward implementation after the owner had established the current server build as the working authority.
+- Preventive rule: When an owner says a subsystem is working and requests review-only, immediately freeze its source, configuration, runtime jobs, and build artifacts; keep unrelated implementation isolated and report suggestions without applying them.
+- Applied in next session where: 2026-09-01 stock-status control isolated to the order-detail page while drawing import remained read-only.
+
+## 2026-09-01 — Do not attribute a regression to a nearby user configuration change
+- Trigger: I initially framed the slow phone import around the Mini model change, but the owner clarified Mini worked until my later deployment.
+- Mistake pattern: I inferred causation from timing before comparing the last known-good deployment with my exact code/config changes.
+- Preventive rule: For a fresh production regression, first compare the failing attempt timestamp and behavior with the pre-deployment backup and last successful attempts; treat owner-reported last-known-good behavior as primary evidence until disproved.
+- Applied in next session where: 2026-09-01 phone drawing timeout investigation against the `intake-admin-model-20260901-114407` backup.
+
+## 2026-09-01 — Admin tabs must land on a complete workflow
+- Trigger: The owner called out the new Orders admin tab as lazy because it only redirected to the Shop Floor and did not expose the primary order action.
+- Mistake pattern: I treated adding a navigation label as completion without validating whether its destination was a useful admin page.
+- Preventive rule: Every new admin tab must land on a purposeful page with a clear title, the primary action for that area, and a useful onward path; a redirect-only placeholder is not a finished tab.
+- Applied in next session where: 2026-09-01 dedicated Admin Orders page with a prominent `Make a new order` action.
+
 ## 2026-04-09 — UI action labels must follow active selection state
 - Trigger: User caught the move dialog showing `Submit to Fab` while the selected destination was `Shipping`.
 - Mistake pattern: I left the confirm-button label bound to a derived default/next-step value instead of the dialog's actual selected destination state.
@@ -196,3 +214,14 @@ Record lessons after user corrections or process failures.
 - Mistake pattern: Satisfying relative ordering in the DOM without preserving the precise visual slot, size, and density named by the owner.
 - Preventive rule: When a user identifies an existing control's location as the target, replace that exact visual slot and compare its bounding row/density in live QA; do not add a nearby wrapper or interpret “above” loosely.
 - Applied in next session where: Same-session replacement of department pills with compact Status/Priority/Sort/Direction selects and relocation of department selection into configuration.
+## 2026-09-01 — Route context through a current-state map
+
+- Do not make every task ingest full chronological decision, progress, and handoff files.
+- Always orient from `AGENTS.md`, `CANON.md`, `ROADMAP.md`, `docs/ARCHITECTURE.md`, and `tasks/lessons.md`; then search historical files narrowly for the affected subsystem or decision.
+- `docs/ARCHITECTURE.md` describes current implementation only. Update it in the same change whenever structural reality changes; never turn it into another chronological log.
+- Historical decisions are rationale, not current authority. Later source/current decisions supersede older entries.
+## 2026-09-02 — Server-first releases still require a GitHub checkpoint
+
+- A production deployment is not fully closed while its source exists only on the server or a dirty workstation checkout.
+- After verified server-first work, reconcile source-controlled files to an isolated clean branch, exclude runtime/customer/secret data, verify the candidate, and push a recoverable GitHub checkpoint unless the owner explicitly defers it.
+- Never use the dirty workstation tree as an implicit merge source; production is the implementation snapshot and Git history supplies repository-only metadata.

@@ -4,6 +4,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
 import {
@@ -34,7 +35,8 @@ type MachinistOption = { id: string; name: string };
 type QuickConvertPayload = {
   dueDate: string;
   priority: Priority;
-  assignedMachinistId: string;
+  assignedMachinistId?: string;
+  assignedWorkerIds: string[];
   poNumber?: string;
 };
 
@@ -42,14 +44,11 @@ export function validateQuickConvertPayload(input: {
   dueDate: string;
   priority: string;
   assignedMachinistId: string;
+  assignedWorkerIds: string[];
   poNumber: string;
 }): { payload: QuickConvertPayload | null; error: string | null } {
   if (!input.dueDate.trim()) {
     return { payload: null, error: 'Due date is required.' };
-  }
-
-  if (!input.assignedMachinistId.trim()) {
-    return { payload: null, error: 'Assigned machinist is required.' };
   }
 
   const parsedDueDate = new Date(input.dueDate);
@@ -62,8 +61,12 @@ export function validateQuickConvertPayload(input: {
   const payload: QuickConvertPayload = {
     dueDate: input.dueDate.trim(),
     priority,
-    assignedMachinistId: input.assignedMachinistId.trim(),
+    assignedWorkerIds: Array.from(new Set(input.assignedWorkerIds.map((id) => id.trim()).filter(Boolean))),
   };
+
+  if (input.assignedMachinistId.trim()) {
+    payload.assignedMachinistId = input.assignedMachinistId.trim();
+  }
 
   if (input.poNumber.trim()) {
     payload.poNumber = input.poNumber.trim();
@@ -108,6 +111,7 @@ export default function QuoteQuickConvertDialog({
     PRIORITIES.includes((initialPriority ?? '') as Priority) ? (initialPriority as Priority) : 'NORMAL',
   );
   const [assignedMachinistId, setAssignedMachinistId] = React.useState(initialAssignedMachinistId ?? '');
+  const [assignedWorkerIds, setAssignedWorkerIds] = React.useState<string[]>([]);
   const [poNumber, setPoNumber] = React.useState(initialPoNumber ?? '');
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
@@ -115,22 +119,37 @@ export default function QuoteQuickConvertDialog({
   React.useEffect(() => {
     if (!open || machinists.length > 0) return;
     setLoadingMachinists(true);
-    fetch('/api/admin/users?role=MACHINIST&take=100', { credentials: 'include' })
+    fetch('/api/admin/users?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
         const rows = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-        const next = rows.map((m: any) => ({
-          id: m.id,
-          name: m.name || m.email || 'Unnamed machinist',
-        }));
+        const next = rows
+          .filter((m: any) => m?.active !== false && m?.role !== 'VIEWER')
+          .map((m: any) => ({
+            id: m.id,
+            name: m.name || m.email || 'Unnamed employee',
+          }));
         setMachinists(next);
-        if (!assignedMachinistId && next[0]?.id) {
-          setAssignedMachinistId(next[0].id);
-        }
       })
       .catch(() => setMachinists([]))
       .finally(() => setLoadingMachinists(false));
-  }, [open, machinists.length, assignedMachinistId]);
+  }, [open, machinists.length]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    let active = true;
+    fetch(`/api/admin/quotes/${quoteId}/detect-po`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const detected = typeof data?.poNumber === 'string' ? data.poNumber.trim() : '';
+        if (!active || !detected) return;
+        setPoNumber((current) => current.trim() ? current : detected);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [open, quoteId]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -140,6 +159,7 @@ export default function QuoteQuickConvertDialog({
       dueDate,
       priority,
       assignedMachinistId,
+      assignedWorkerIds,
       poNumber,
     });
 
@@ -213,14 +233,18 @@ export default function QuoteQuickConvertDialog({
             </div>
 
             <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="quick-convert-machinist">Assigned machinist</Label>
-              <Select value={assignedMachinistId || undefined} onValueChange={setAssignedMachinistId}>
+              <Label htmlFor="quick-convert-machinist">Coordinator (optional)</Label>
+              <Select
+                value={assignedMachinistId || '__none__'}
+                onValueChange={(value) => setAssignedMachinistId(value === '__none__' ? '' : value)}
+              >
                 <SelectTrigger id="quick-convert-machinist">
                   <SelectValue
-                    placeholder={loadingMachinists ? 'Loading machinists…' : 'Select machinist'}
+                    placeholder={loadingMachinists ? 'Loading machinists…' : 'Select coordinator'}
                   />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__none__">No coordinator</SelectItem>
                   {machinists.map((machinist) => (
                     <SelectItem key={machinist.id} value={machinist.id}>
                       {machinist.name}
@@ -228,6 +252,37 @@ export default function QuoteQuickConvertDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="grid gap-2 sm:col-span-2">
+              <Label>Assigned workers (optional)</Label>
+              <p className="text-xs text-muted-foreground">
+                Selected workers will be assigned to every part and can be adjusted per part later.
+              </p>
+              <div className="grid gap-2 rounded-lg border border-border/60 p-3 sm:grid-cols-2">
+                {machinists.length ? (
+                  machinists.map((machinist) => {
+                    const checked = assignedWorkerIds.includes(machinist.id);
+                    return (
+                      <label key={machinist.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) =>
+                            setAssignedWorkerIds((current) =>
+                              value === true
+                                ? Array.from(new Set([...current, machinist.id]))
+                                : current.filter((id) => id !== machinist.id),
+                            )
+                          }
+                        />
+                        <span className="text-sm">{machinist.name}</span>
+                      </label>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm text-muted-foreground">No active employees are available.</p>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-2 sm:col-span-2">

@@ -155,11 +155,28 @@ export function createMockOrdersRepo() {
           description: (part.notes as string) ?? null,
           status: null,
           materialId: (part.materialId as string) ?? null,
+          stockSize: (part.stockSize as string) ?? null,
+          cutLength: (part.cutLength as string) ?? null,
+          partWidth: (part.partWidth as string) ?? null,
+          partThickness: (part.partThickness as string) ?? null,
           currentDepartmentId: null,
           workInstructions: (part.workInstructions as string) ?? null,
           instructionsVersion: 1,
         };
         state.orderParts.push(createdPart);
+        const assignmentCreates = (part as any)?.assignments?.create ?? [];
+        for (const assignment of assignmentCreates) {
+          state.orderPartAssignments.push({
+            id: nextId('assignment'),
+            partId,
+            userId: assignment.userId,
+            assignedById: assignment.assignedById ?? null,
+            assignmentType: assignment.assignmentType ?? 'WORKER',
+            isActive: assignment.isActive !== false,
+            removedAt: null,
+            createdAt,
+          });
+        }
         return createdPart;
       });
       const response: Record<string, unknown> = { id: order.id };
@@ -578,6 +595,8 @@ export function createMockOrdersRepo() {
         materialId?: string | null;
         stockSize?: string | null;
         cutLength?: string | null;
+        partWidth?: string | null;
+        partThickness?: string | null;
         notes?: string | null;
         workInstructions?: string | null;
       };
@@ -594,6 +613,10 @@ export function createMockOrdersRepo() {
         description: partData.notes ?? null,
         status: null,
         materialId: partData.materialId ?? null,
+        stockSize: partData.stockSize ?? null,
+        cutLength: partData.cutLength ?? null,
+        partWidth: partData.partWidth ?? null,
+        partThickness: partData.partThickness ?? null,
         currentDepartmentId: null,
         workInstructions: partData.workInstructions ?? null,
         instructionsVersion: 1,

@@ -16,8 +16,8 @@ describe('generateQuoteNumber', () => {
   it('assigns 001 to the first quote of the day using DDMMYY', async () => {
     listQuoteNumbersForDateStamp.mockResolvedValue([]);
 
-    await expect(generateQuoteNumber(new Date(2026, 7, 24, 9, 30))).resolves.toBe('240826-001');
-    expect(listQuoteNumbersForDateStamp).toHaveBeenCalledWith('240826');
+    await expect(generateQuoteNumber(new Date(2026, 7, 25, 9, 30))).resolves.toBe('250826-001');
+    expect(listQuoteNumbersForDateStamp).toHaveBeenCalledWith('250826');
   });
 
   it('assigns the next sequence after the highest valid quote number that day', async () => {

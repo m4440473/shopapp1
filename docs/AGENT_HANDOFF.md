@@ -1,3 +1,47 @@
+## 2026-09-01 — Admin Orders page correction
+
+Goal: Finish the admin Orders navigation as a useful workflow rather than a redirect-only tab.
+
+### What changed
+- Changed the admin Orders tab target from `/orders` to protected `/admin/orders`.
+- Added a dedicated Orders landing page with a primary `Make a new order` button to `/orders/new`.
+- Added an `Open active orders` link back to the Shop Floor.
+- Recorded the owner's correction in `tasks/lessons.md` so new admin tabs require a complete destination.
+
+### Verification
+- `npx.cmd eslint src/app/admin/orders/page.tsx src/components/Admin/NavTabs.tsx` passed on production.
+- `npm.cmd run build` passed with 66 generated pages and standalone assets copied.
+- The compiled `/admin/orders` bundle contains both `Make a new order` and `/orders/new`.
+- Unauthenticated runtime request returns 307 to `/auth/signin`, confirming the admin layout guard.
+- `ShopApp` is Running; `/api/health` returns 200; `ShopApp Health Monitor` is Ready with last result 0; the ShopApp error log remains empty.
+- Rollback: `C:\ShopApp\backups\pre-update\admin-orders-action-20260901-121105`.
+
+## 2026-09-01 — Production intake flexibility and Mini/Luna controls
+- `STD-1003` business corrected to CRM; order edit now exposes business while preserving the number.
+- Quote/direct-order intake choices remain switchable; historical part search is shop-wide; admin has Orders; phone selections upload immediately.
+- Main model is `gpt-5.4-mini` medium with high dimension refinement. Saved high-`gpt-5.6-luna` uncertainty fallback is OFF.
+- Evidence: 25/25 focused tests, targeted lint, migration current, clean 66-page standalone build, source mismatch count 0, Running/Ready tasks, local/LAN health 200.
+- Rollback: `C:\ShopApp\backups\pre-update\intake-admin-model-20260901-114407`.
+
+## 2026-08-31 â€” Spurious login prompts repaired
+- AuthRequiredDialog plus auth-required-response helper/test deployed. Forbidden403 and optional locked-kiosk GET401 no longer claim desktop login is expired; genuine protected desktop401 still prompts. No API authentication/role rules changed.
+- Five server tests and 63-page build passed. Rollback auth-prompts-20260831-150433 contains prior source/build. Local phone-origin fix passed 23 related tests and actual link/photo/finish/claim200; phone feature still local-only.
+- Repeat Orders list-only client crash is not reproduced/claimed fixed. Original order Create again works; same target URL. Owner asked to hard refresh to distinguish stale scripts after build; console evidence needed if persistent.
+
+## Prior repair
+
+## 2026-08-31 â€” Repeat-template / Create again production repair
+- Both actions shared a failing nested attachment write (Prisma: Argument template is missing). Only src/modules/repeat-orders/repeat-orders.repo.ts changed: explicit template UUID links part drawings to both required parents; top-level attachment reads exclude part drawings to prevent duplicate files on repeat orders.
+- Three real SQLite/API regression tests passed on this server: save + repeat reuse + new-order prefill, attachment ownership, atomic rollback. Synthetic isolated test data only. 63-page production build passed; ShopApp Running, monitor Ready, health OK. No schema/historical data/department behavior changes.
+- Rollback: C:\ShopApp\backups\pre-update\repeat-template-20260831-145454 (previous source and full build). SHA256: 1504B6A1ED821546EC5DA597072DFF9BBEC5A3234E0EBFF38244268289401577.
+- Source reconciled to workstation. Pending global search, phone QR and direct-order current-reader changes remain workstation-only. Local preview restored at http://localhost:3001 with normal auth and isolated data. Real customer click-through still belongs to owner; no duplicate production order was created for testing.
+
+## 2026-08-31 â€” Repeat-template / Create again production repair
+- Both actions shared a failing nested attachment write (Prisma: Argument template is missing). Only src/modules/repeat-orders/repeat-orders.repo.ts changed: explicit template UUID links part drawings to both required parents; top-level attachment reads exclude part drawings to prevent duplicate files on repeat orders.
+- Three real SQLite/API regression tests passed on this server: save + repeat reuse + new-order prefill, attachment ownership, atomic rollback. Synthetic isolated test data only. 63-page production build passed; ShopApp Running, monitor Ready, health OK. No schema/historical data/department behavior changes.
+- Rollback: C:\ShopApp\backups\pre-update\repeat-template-20260831-145454 (previous source and full build). SHA256: 1504B6A1ED821546EC5DA597072DFF9BBEC5A3234E0EBFF38244268289401577.
+- Source reconciled to workstation. Pending global search, phone QR and direct-order current-reader changes remain workstation-only. Local preview restored at http://localhost:3001 with normal auth and isolated data. Real customer click-through still belongs to owner; no duplicate production order was created for testing.
+
 ## Session Handoff — 2026-08-24 (Sleeker open-canvas Shop Floor styling, latest)
 
 Goal: Remove the bubble-like dark enclosure from Live Production and give the Shop Floor a flatter, more professional visual hierarchy.
@@ -3658,6 +3702,29 @@ Goal (1 sentence): Execute P3-T3 and P3-T4 only by closing Phase 3 with explicit
 ---
 
 ---
+## 2026-08-24 — Temporary `/setup` server-bootstrap page
+
+### Goal
+Let the new Windows 11 Pro server open a LAN page and copy the one-time OpenSSH/key-authentication bootstrap without transferring a password or private key through chat.
+
+### Scope and touched files
+- Added `src/app/(public)/setup/page.tsx` as a hidden public route with a copy button and the approved PowerShell script.
+- Updated `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` for continuity.
+- Did not alter navigation, authentication, dependencies, database state, or domain behavior.
+
+### Commands and verification
+- `npx eslint "src/app/(public)/setup/page.tsx"` — passed.
+- `npx tsc --noEmit --pretty false` — passed.
+- Initial sandboxed `npm run dev -- --hostname 0.0.0.0 --port 3000` — blocked by known `spawn EPERM`; recorded before retry.
+- Unrestricted start attempt established that port 3000 was already owned by the existing ShopApp process.
+- `Invoke-WebRequest` returned HTTP 200 and the expected title for both `http://127.0.0.1:3000/setup` and `http://192.168.254.132:3000/setup`.
+
+### Next
+- Open `http://192.168.254.132:3000/setup` on the new server, copy/run the script as Administrator, and verify SSH from the workstation.
+- Remove the temporary `/setup` page after SSH setup succeeds.
+
+---
+
 **Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
 
 # Agent Handoff (Update Every Session)
@@ -5110,3 +5177,92 @@ Goal: Use the former department-selector slot for the four everyday view control
 
 ### Next
 - No required follow-up. Treat this exact pre-tile row as the owner-approved location for reversible status/priority/sort/direction controls.
+## 2026-09-01 — Production intake flexibility, order business edit, and Mini/Luna controls
+
+Goal: Fix the misassigned first order of the day and remove intake dead ends while reducing normal drawing-model latency/cost.
+
+### Scope and result
+- `STD-1003` remains the immutable order number but its business is now `CRM`; the order edit panel can change business through the existing validated PATCH service.
+- Quote and direct-order intake can switch among drawings, manual parts, and historical parts at any time. Historical lookup is global across customers/businesses and exposes source context.
+- Admin navigation includes Orders. Phone photo selection uploads immediately with existing bounded concurrency and retry behavior.
+- Main drawing reads use `gpt-5.4-mini`; high-reasoning `gpt-5.6-luna` is a persisted admin toggle and is OFF. Only explicit unreadable/conflicting/unusual conditions qualify when enabled.
+
+### Data/schema
+- Applied `20260901155000_drawing_import_luna_fallback_setting_v1`, adding one non-null false-default AppSettings boolean.
+- Corrected only order `cmtimwac4000y7rqogu80qxr1` business `STD → CRM`; order number, customer, parts, files, and all other data were unchanged.
+
+### Verification
+- Focused Vitest: 5 files / 25 tests passed.
+- Targeted ESLint: passed with exit 0.
+- Production build: compiled, passed Next type validation, generated 66 pages, and copied standalone assets.
+- Migration status: all 43 migrations applied. Saved Luna toggle returned `false`; protected config returned Mini/medium and Luna/high with escalation disabled.
+- Runtime: ShopApp Running, Health Monitor Ready, local health HTTP 200.
+- Known baseline: standalone `tsc --noEmit` reports only the pre-existing drawing-review fixture dimension fields and legacy non-exported `extractTitleBlock` test reference. The production build type gate passed; neither unrelated test was modified.
+
+### Rollback
+- `C:\ShopApp\backups\pre-update\intake-admin-model-20260901-114407` contains the pre-change database, protected/app env files, targeted source, deployment archive, and prior compiled `.next` build.
+## 2026-09-01 — Quick part stock-status control
+
+Goal: Make the existing stock/material state simple to change near the top of an order without altering the owner-fixed drawing importer.
+
+### Scope and files
+- Changed only `src/app/orders/[id]/page.tsx` for product behavior: admins now get an immediate Material status selector in the selected part Overview.
+- Updated continuity artifacts: `tasks/todo.md`, `tasks/lessons.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md`.
+- Reused the existing part status PATCH/service/audit flow and its five established states; no schema, API, or drawing-import source/config changes.
+
+### Verification
+- Targeted ESLint passed for `src/app/orders/[id]/page.tsx`.
+- `src/modules/orders/__tests__/orders.service.test.ts`: 19/19 passed.
+- Production `npm run build` passed with 66 generated pages and standalone assets copied.
+- Compiled `/orders/[id]` bundle contains the quick-status save implementation.
+- Runtime: node listening on `0.0.0.0:3000`, server-local `/api/health` 200, Health Monitor Ready/result 0, no populated app error log. A workstation direct port-3000 probe timed out and is not counted as a LAN pass.
+- Drawing importer service, adapter, schema, and config SHA-256 hashes matched the pre-build baseline exactly. No import was reprocessed.
+- No real part status was changed during verification.
+
+### Rollback
+- `C:\ShopApp\backups\pre-update\stock-status-control-20260901-132215` contains the previous order page, continuity files, and full prior `.next` build.
+
+### Read-only drawing-import review
+- The running build uses `gpt-5.4-mini` with medium reasoning and low verbosity, direct image input for phone photos, a compact photo schema, no image dimension-refinement second pass, and Luna fallback disabled. These match the owner's intended fast path.
+- Follow-up suggestions only: confirm the apparent `/app/storage` database setting versus Windows storage paths, preserve richer user-facing upstream timeout diagnostics, and manually sanity-check unusually large extracted quantities. Do not change this subsystem without an explicit owner request.
+## 2026-09-01 — Project README refresh
+
+Goal: Make the repository landing document describe the running application and its actual operating constraints.
+
+### What changed
+- Rewrote `README.md` around the part-centered product model, current features, architecture boundaries, setup, commands, LAN use, persistent data, Windows production process, drawing-import review expectations, troubleshooting, and canonical documentation links.
+- No app code, dependencies, schema, database, environment configuration, runtime, or drawing importer changed.
+
+### Verification
+- Confirmed all twelve Markdown references resolve to eight existing server files.
+- Confirmed the README contains neither the previous example secret nor an assigned OpenAI key.
+- Deployed as documentation only; exact server/local SHA-256 checked after upload.
+- Rollback: `C:\ShopApp\backups\pre-update\readme-refresh-20260901-221500`.
+
+### Context7 assessment
+- Do not add Context7 to ShopApp dependencies or the production host. If approved later, configure it as developer/agent MCP or CLI tooling, restrict queries to public library/version topics, and never send customer, drawing, production, internal-code, credential, or business data.
+## 2026-09-01 — Compressed current-state architecture context
+
+- Added `docs/ARCHITECTURE.md` from the running server source (233 lines) and made it mandatory/current with structural changes.
+- Changed required reading to current authority/map/lessons first; chronological context, progress, and handoff are now searched narrowly as relevant.
+- Reframed `docs/AGENT_CONTEXT.md` as history and decision rationale, not a single source of truth; README links the new map.
+- No application, configuration, database, build, or drawing-import behavior changed.
+- Evidence: 17 architecture references exist, six deployed document hashes match, `/api/health` 200. Rollback: `C:\ShopApp\backups\pre-update\architecture-context-20260901-224000`.
+## 2026-09-02 — Production-to-GitHub source checkpoint
+
+Goal: Capture the exact current production source in GitHub without changing or restarting the running application.
+
+### Scope and result
+- Built an isolated worktree from commit `9cd2bb2` on branch `codex/production-sync-2026-09-02`; the user's dirty checkout was not used or modified.
+- Mirrored 573 production source files and preserved repository-only GitHub metadata. Runtime/private state was excluded.
+- Test-only synchronization fixes updated current compact drawing-response fixtures and removed a disabled legacy accuracy eval that referenced a non-exported retired helper. Runtime drawing-import code was not changed during reconciliation.
+
+### Verification
+- Production export: `C:\ShopApp\backups\production-source-sync-20260902.zip`; SHA-256 `4E412BB60A59DD4D2384778086DA9B86FA1A3F05716CB8DB7DA5C171F85BCE4`.
+- `npm ci`, `npx prisma validate`, `npx prisma generate`, disposable-schema `npx prisma db push --skip-generate`, `npm run test`, `npm run lint`, `npx tsc --noEmit`, and `npm run build` passed.
+- Full test result: 369 passed, 4 skipped. Production build: 66 pages, standalone assets copied.
+- `npm audit --omit=dev`: 9 production vulnerabilities (1 critical, 7 high, 1 moderate). No dependency versions were changed in this checkpoint.
+
+### Next
+- Complete final secret/large-file/status review, push the branch, and open a PR to `main`.
+- Handle dependency upgrades in a separate tested release.

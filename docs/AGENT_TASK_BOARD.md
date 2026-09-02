@@ -1,3 +1,31 @@
+## 2026-09-01 — Admin Orders destination completed
+- Completed and deployed: `/admin/orders` is now a real protected page with a prominent `Make a new order` action and an active-orders path.
+- Evidence: focused lint, clean 66-page build, compiled action/target check, auth-guard redirect, Running app, health 200, monitor result 0.
+- Rollback: `C:\ShopApp\backups\pre-update\admin-orders-action-20260901-121105`.
+
+## 2026-09-01 — Production intake flexibility and model-cost control completed
+- Completed and deployed: order business correction/editing, switchable intake modes, shop-wide prior parts, admin Orders tab, immediate phone uploads, Mini-first reads, and off-by-default high-Luna fallback.
+- Evidence: 25/25 tests, targeted lint, migration, 66-page build, exact hashes, Running/Ready, health 200. Rollback `C:\ShopApp\backups\pre-update\intake-admin-model-20260901-114407`.
+
+## 2026-08-31 â€” Spurious login prompts repaired
+- AuthRequiredDialog plus auth-required-response helper/test deployed. Forbidden403 and optional locked-kiosk GET401 no longer claim desktop login is expired; genuine protected desktop401 still prompts. No API authentication/role rules changed.
+- Five server tests and 63-page build passed. Rollback auth-prompts-20260831-150433 contains prior source/build. Local phone-origin fix passed 23 related tests and actual link/photo/finish/claim200; phone feature still local-only.
+- Repeat Orders list-only client crash is not reproduced/claimed fixed. Original order Create again works; same target URL. Owner asked to hard refresh to distinguish stale scripts after build; console evidence needed if persistent.
+
+## Prior repair
+
+## 2026-08-31 â€” Repeat-template / Create again production repair
+- Both actions shared a failing nested attachment write (Prisma: Argument template is missing). Only src/modules/repeat-orders/repeat-orders.repo.ts changed: explicit template UUID links part drawings to both required parents; top-level attachment reads exclude part drawings to prevent duplicate files on repeat orders.
+- Three real SQLite/API regression tests passed on this server: save + repeat reuse + new-order prefill, attachment ownership, atomic rollback. Synthetic isolated test data only. 63-page production build passed; ShopApp Running, monitor Ready, health OK. No schema/historical data/department behavior changes.
+- Rollback: C:\ShopApp\backups\pre-update\repeat-template-20260831-145454 (previous source and full build). SHA256: 1504B6A1ED821546EC5DA597072DFF9BBEC5A3234E0EBFF38244268289401577.
+- Source reconciled to workstation. Pending global search, phone QR and direct-order current-reader changes remain workstation-only. Local preview restored at http://localhost:3001 with normal auth and isolated data. Real customer click-through still belongs to owner; no duplicate production order was created for testing.
+
+## 2026-08-31 â€” Repeat-template / Create again production repair
+- Both actions shared a failing nested attachment write (Prisma: Argument template is missing). Only src/modules/repeat-orders/repeat-orders.repo.ts changed: explicit template UUID links part drawings to both required parents; top-level attachment reads exclude part drawings to prevent duplicate files on repeat orders.
+- Three real SQLite/API regression tests passed on this server: save + repeat reuse + new-order prefill, attachment ownership, atomic rollback. Synthetic isolated test data only. 63-page production build passed; ShopApp Running, monitor Ready, health OK. No schema/historical data/department behavior changes.
+- Rollback: C:\ShopApp\backups\pre-update\repeat-template-20260831-145454 (previous source and full build). SHA256: 1504B6A1ED821546EC5DA597072DFF9BBEC5A3234E0EBFF38244268289401577.
+- Source reconciled to workstation. Pending global search, phone QR and direct-order current-reader changes remain workstation-only. Local preview restored at http://localhost:3001 with normal auth and isolated data. Real customer click-through still belongs to owner; no duplicate production order was created for testing.
+
 # Agent Task Board (Ticket-Sized Execution)
 
 This board turns ROADMAP phases into strict, ticket-sized tasks so work can be delegated safely.
@@ -12,6 +40,11 @@ Use with:
 
 ## Session Status Notes
 
+- 2026-09-02: Prepared an isolated GitHub checkpoint from the current production source, excluding all runtime/private state. Full tests (369 passed, 4 skipped), lint, TypeScript, and a clean 66-page standalone build pass; dependency audit follow-up is recorded separately.
+- 2026-09-01: Added a 233-line current-state `docs/ARCHITECTURE.md`, routed required reading through current authority/map/lessons, and made chronological context opt-in by relevance. Reframed AGENT_CONTEXT as history. Documentation-only; paths, hashes, and health verified.
+- 2026-09-01: Replaced the stale starter README with a running-system overview covering product model, current workflows, architecture, setup, production/data boundaries, drawing review, troubleshooting, and canonical docs. Documentation-only; links and secret patterns verified. Context7 evaluated but not installed.
+- 2026-09-01: Completed an admin-only, immediate material-status selector in the selected part Overview using the existing five-state workflow and audited part update path. Focused lint, 19/19 order tests, clean 66-page build, server-local health, monitor result 0, and unchanged drawing-import hashes verified. Drawing imports remain owner-controlled and review-only.
+- 2026-08-24: Added and verified a temporary hidden `/setup` page for bootstrapping the new Windows ShopApp server over the LAN; targeted lint/type-check and loopback/LAN HTTP checks passed. Remove the page after SSH key access succeeds.
 - 2026-08-24: Completed the Shop Floor open-canvas visual correction: removed the full-page/results navy shells, placed the heading and production content directly on the gradient, reduced bubble-like radii, and passed live QA, 10/10 focused tests, lint, type-check, and a clean 62-page build.
 - 2026-08-24: Completed daily sequential quote numbers in `DDMMYY-###` format with first-of-day `001`, next-highest sequencing, legacy edit preservation, 3/3 focused tests, lint, type-check, and a clean 62-page production build.
 - 2026-08-24: Completed customer-part repeat-order launch from old orders and a new Repeat Orders page, plus explicit quote/order required-reading authoring and per-user acknowledged/not-acknowledged roster; focused tests 31/31, type-check, lint, build, migrations, and live QA passed.
@@ -311,3 +344,8 @@ Example assignment:
 - Status, Priority, Sort, and Direction now replace the old department-pill row directly before every chosen results view; there is no separate Quick View surface.
 - Department selection and Show completed items live inside the collapsible configuration area and disappear when Customize is collapsed.
 - Targeted lint and TypeScript passed, focused tests passed (10/10), the clean production build passed with 62 pages, and live QA confirmed exact placement, department switching, collapse behavior, and descending order-number results.
+## 2026-09-01 — Production intake flexibility and model-cost control completed
+- Corrected `STD-1003` to CRM and exposed validated business editing without renumbering.
+- Removed intake dead ends, made reusable-part discovery shop-wide, added Orders to admin tabs, and made phone selection upload immediately.
+- Deployed Mini-first drawing intake with an off-by-default persisted high-Luna uncertainty toggle.
+- Evidence: 25/25 focused tests, targeted ESLint, additive migration, clean 66-page production build, Running task, Ready monitor, HTTP 200 health. Rollback `C:\ShopApp\backups\pre-update\intake-admin-model-20260901-114407`.

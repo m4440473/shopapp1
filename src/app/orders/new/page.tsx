@@ -54,8 +54,18 @@ import {
 } from '@/modules/pricing/work-item-pricing';
 import { calculatePartLotTotal, type PartPricingMode } from '@/modules/pricing/part-pricing';
 import type { RepeatOrderTemplateDetail } from '@/modules/repeat-orders/repeat-orders.types';
+import { resolveRepeatOrderCustomer } from '@/modules/repeat-orders/repeat-order-customer';
 import { DrawingImportPanel, type ReviewedDrawingPart } from '@/components/orders/DrawingImportPanel';
+import { QuoteDrawingImportV2Panel } from '@/components/orders/drawing-import/QuoteDrawingImportV2Panel';
+import { createQuoteDrawingImportV2ApiClient } from '@/components/orders/drawing-import/drawing-import-v2-api-client';
 import { buildFinishPartNotes } from '@/modules/drawing-import/drawing-import.materials';
+import { clearDrawingImportDraft } from '@/modules/drawing-import/drawing-import.draft';
+import { normalizeOrderQuantityInput } from '@/modules/orders/order-input';
+import { AddCustomerContactDialog } from '@/components/customers/AddCustomerContactDialog';
+import { clearIntakeDraft, intakeDraftKey, readIntakeDraft, writeIntakeDraft } from '@/modules/intake-drafts/intake-draft';
+import { CustomerPartPicker } from '@/components/customer-parts/CustomerPartPicker';
+import { CustomerPartNoteSuggestions, appendSuggestedNote } from '@/components/customer-parts/CustomerPartNoteSuggestions';
+import type { CustomerPartNoteSuggestion, CustomerPartReusableDraft } from '@/modules/customer-parts/customer-parts.types';
 
 const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 const OPTIONAL_VALUE = '__none__';
@@ -71,7 +81,18 @@ const DEFAULT_BUSINESS_CODE = (DEFAULT_BUSINESS_OPTION?.code ?? 'STD') as Busine
 const formatCurrency = (cents: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format((cents || 0) / 100);
 
-type Option = { id: string; name: string };
+type Option = {
+  id: string;
+  name: string;
+  contacts?: Array<{
+    id: string;
+    name: string;
+    title?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    isPrimary?: boolean;
+  }>;
+};
 type AddonOption = {
   id: string;
   name: string;
@@ -94,16 +115,23 @@ type PartInput = {
   templatePartId?: string;
   partNumber: string;
   partName: string;
-  quantity: number;
+  quantity: string;
   materialId?: string;
   stockSize?: string;
   cutLength?: string;
+  finalPartLength?: string;
+  drawingMaterialText?: string;
+  drawingFinishText?: string;
+  finish?: string;
+  partWidth?: string;
+  partThickness?: string;
   notes?: string;
   workInstructions?: string;
+  noteSuggestions?: CustomerPartNoteSuggestion[];
   addonSelections: PartAddonSelection[];
   templateCharges?: RepeatOrderTemplateDetail['parts'][number]['charges'];
   templateAttachments?: RepeatOrderTemplateDetail['parts'][number]['attachments'];
-  attachments: Array<{ kind: 'PRINT' | 'PDF' | 'IMAGE'; storagePath: string; label: string; mimeType: string }>;
+  attachments: Array<{ kind: 'DWG' | 'STEP' | 'PRINT' | 'PDF' | 'IMAGE'; storagePath: string; label: string; mimeType: string }>;
 };
 
 type PartPricingState = {
@@ -118,10 +146,12 @@ const emptyPart = (): PartInput => ({
   templatePartId: undefined,
   partNumber: '',
   partName: '',
-  quantity: 1,
+  quantity: '1',
   materialId: '',
   stockSize: '',
   cutLength: '',
+  partWidth: '',
+  partThickness: '',
   notes: '',
   workInstructions: '',
   addonSelections: [],
@@ -141,7 +171,7 @@ const buildPartNotes = (part: {
   const lines: string[] = [];
   if (part.description) lines.push(part.description.trim());
   if (part.pieceCount > 1) lines.push(`Pieces: ${part.pieceCount}`);
-  if (part.stockSize) lines.push(`Stock size: ${part.stockSize}`);
+  if (part.stockSize) lines.push(`Total stock dimensions: ${part.stockSize}`);
   if (part.cutLength) lines.push(`Cut length: ${part.cutLength}`);
   if (part.notes) lines.push(part.notes.trim());
   const combined = lines.join('\n').trim();
@@ -238,13 +268,19 @@ async function runImportedBomAnalyses({
 function NewOrderForm() {
   const searchParams = useSearchParams();
   const [customerId, setCustomerId] = React.useState('');
+  const [customerContactId, setCustomerContactId] = React.useState('');
   const [customers, setCustomers] = React.useState<Option[]>([]);
   const [customerDialogOpen, setCustomerDialogOpen] = React.useState(false);
   const [newCustomerName, setNewCustomerName] = React.useState('');
   const [newCustomerContact, setNewCustomerContact] = React.useState('');
   const [newCustomerPhone, setNewCustomerPhone] = React.useState('');
   const [newCustomerEmail, setNewCustomerEmail] = React.useState('');
-  const [newCustomerAddress, setNewCustomerAddress] = React.useState('');
+  const [newCustomerAddressLine1, setNewCustomerAddressLine1] = React.useState('');
+  const [newCustomerAddressLine2, setNewCustomerAddressLine2] = React.useState('');
+  const [newCustomerCity, setNewCustomerCity] = React.useState('');
+  const [newCustomerState, setNewCustomerState] = React.useState('');
+  const [newCustomerPostalCode, setNewCustomerPostalCode] = React.useState('');
+  const [newCustomerCountry, setNewCustomerCountry] = React.useState('United States');
   const [vendors, setVendors] = React.useState<Option[]>([]);
   const [materials, setMaterials] = React.useState<Option[]>([]);
   const [machinists, setMachinists] = React.useState<Option[]>([]);
@@ -252,6 +288,7 @@ function NewOrderForm() {
   const [vendorId, setVendorId] = React.useState('');
   const [poNumber, setPoNumber] = React.useState('');
   const [assignedMachinistId, setAssignedMachinistId] = React.useState('');
+  const [assignedWorkerIds, setAssignedWorkerIds] = React.useState<string[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = React.useState<string[]>([]);
   const [dueDate, setDueDate] = React.useState('');
   const [priority, setPriority] = React.useState('NORMAL');
@@ -261,7 +298,7 @@ function NewOrderForm() {
   const [activePartKey, setActivePartKey] = React.useState(parts[0]?.key ?? createKey());
   const [attachments, setAttachments] = React.useState<AttachmentInput[]>([emptyAttachment()]);
   const [attachmentBusiness, setAttachmentBusiness] = React.useState<BusinessName>(DEFAULT_BUSINESS_NAME);
-  const [draftAttachmentReference] = React.useState(() => createKey());
+  const [draftAttachmentReference, setDraftAttachmentReference] = React.useState(() => createKey());
   const [materialNeeded, setMaterialNeeded] = React.useState(false);
   const [materialOrdered, setMaterialOrdered] = React.useState(false);
   const [modelIncluded, setModelIncluded] = React.useState(false);
@@ -276,12 +313,20 @@ function NewOrderForm() {
   const [repeatTemplate, setRepeatTemplate] = React.useState<RepeatOrderTemplateDetail | null>(null);
   const [repeatTemplateError, setRepeatTemplateError] = React.useState<string | null>(null);
   const [repeatTemplateLoading, setRepeatTemplateLoading] = React.useState(false);
+  const [repeatTemplateRetry, setRepeatTemplateRetry] = React.useState(0);
   const [currentStep, setCurrentStep] = React.useState(0);
-  const [partEntryMode, setPartEntryMode] = React.useState<'manual' | 'drawing' | null>(null);
+  const [partEntryMode, setPartEntryMode] = React.useState<'manual' | 'drawing' | 'existing' | null>(null);
+  const [legacyDrawingReader, setLegacyDrawingReader] = React.useState(false);
+  const currentDrawingReader = React.useMemo(() => createQuoteDrawingImportV2ApiClient('order'), []);
   const templateId = searchParams.get('templateId');
   const quoteId = searchParams.get('quoteId');
   const templateMode = Boolean(templateId);
   const conversionMode = !templateMode && Boolean(quoteId);
+  const freshOrderMode = !templateMode && !conversionMode;
+  const orderDraftStorageKey = React.useMemo(() => intakeDraftKey('order'), []);
+  const [orderDraftReady, setOrderDraftReady] = React.useState(false);
+  const [orderDraftSavedAt, setOrderDraftSavedAt] = React.useState<number | null>(null);
+  const suppressOrderDraft = React.useRef(false);
   const steps = [
     { key: 'info', label: 'Order info' },
     { key: 'parts', label: 'Parts' },
@@ -293,7 +338,7 @@ function NewOrderForm() {
     window.open(`/orders/${createdOrderId}/print`, '_blank', 'noopener,noreferrer');
   }, [createdOrderId]);
   React.useEffect(() => {
-    fetch('/api/admin/customers?take=100', { credentials: 'include' })
+    fetch('/api/admin/customers?take=5000', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => setCustomers(data.items ?? data ?? []))
       .catch(() => setCustomers([]));
@@ -308,7 +353,7 @@ function NewOrderForm() {
       .then((data) => setMaterials(data.items ?? []))
       .catch(() => setMaterials([]));
 
-    fetch('/api/admin/users?role=MACHINIST&take=100', { credentials: 'include' })
+    fetch('/api/admin/users?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
         const raw = Array.isArray(data?.items)
@@ -317,10 +362,12 @@ function NewOrderForm() {
           ? data
           : [];
         setMachinists(
-          raw.map((m: any) => ({
-            id: m.id,
-            name: m.name || m.email || 'Unnamed machinist',
-          }))
+          raw
+            .filter((m: any) => m?.active !== false && m?.role !== 'VIEWER')
+            .map((m: any) => ({
+              id: m.id,
+              name: m.name || m.email || 'Unnamed employee',
+            }))
         );
       })
       .catch(() => setMachinists([]));
@@ -332,6 +379,56 @@ function NewOrderForm() {
   }, []);
 
   React.useEffect(() => {
+    if (!freshOrderMode) { setOrderDraftReady(true); return; }
+    const saved = readIntakeDraft<any>(window.localStorage, orderDraftStorageKey);
+    if (saved?.data && typeof saved.data === 'object') {
+      const draft = saved.data;
+      if (typeof draft.draftAttachmentReference === 'string' && draft.draftAttachmentReference) setDraftAttachmentReference(draft.draftAttachmentReference);
+      if (typeof draft.customerId === 'string') setCustomerId(draft.customerId);
+      if (typeof draft.customerContactId === 'string') setCustomerContactId(draft.customerContactId);
+      if (typeof draft.vendorId === 'string') setVendorId(draft.vendorId);
+      if (typeof draft.poNumber === 'string') setPoNumber(draft.poNumber);
+      if (typeof draft.assignedMachinistId === 'string') setAssignedMachinistId(draft.assignedMachinistId);
+      if (Array.isArray(draft.assignedWorkerIds)) setAssignedWorkerIds(draft.assignedWorkerIds.filter((value: unknown) => typeof value === 'string'));
+      if (Array.isArray(draft.selectedAddonIds)) setSelectedAddonIds(draft.selectedAddonIds.filter((value: unknown) => typeof value === 'string'));
+      if (typeof draft.dueDate === 'string') setDueDate(draft.dueDate);
+      if (priorities.includes(draft.priority)) setPriority(draft.priority);
+      if (BUSINESS_OPTIONS.some((option) => option.code === draft.business)) setBusiness(draft.business);
+      if (Array.isArray(draft.parts) && draft.parts.length) setParts(draft.parts);
+      if (Array.isArray(draft.partPricing)) setPartPricing(draft.partPricing);
+      if (typeof draft.activePartKey === 'string') setActivePartKey(draft.activePartKey);
+      if (Array.isArray(draft.attachments)) setAttachments(draft.attachments.map((attachment: AttachmentInput) => ({ ...attachment, uploading: false })));
+      if (typeof draft.attachmentBusiness === 'string') setAttachmentBusiness(draft.attachmentBusiness);
+      setMaterialNeeded(Boolean(draft.materialNeeded)); setMaterialOrdered(Boolean(draft.materialOrdered)); setModelIncluded(Boolean(draft.modelIncluded));
+      if (typeof draft.notes === 'string') setNotes(draft.notes);
+      if (draft.customFieldValues && typeof draft.customFieldValues === 'object') setCustomFieldValues(draft.customFieldValues);
+      if (Number.isInteger(draft.currentStep)) setCurrentStep(Math.max(0, Math.min(2, draft.currentStep)));
+      if (draft.partEntryMode === 'manual' || draft.partEntryMode === 'drawing' || draft.partEntryMode === 'existing') setPartEntryMode(draft.partEntryMode);
+      setOrderDraftSavedAt(saved.updatedAt);
+      setMessage('Recovered your autosaved order draft.');
+    }
+    setOrderDraftReady(true);
+  // Restore once before autosave begins.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [freshOrderMode, orderDraftStorageKey]);
+
+  React.useEffect(() => {
+    if (!freshOrderMode || !orderDraftReady || suppressOrderDraft.current) return;
+    const timer = window.setTimeout(() => {
+      try {
+        const savedAt = writeIntakeDraft(window.localStorage, orderDraftStorageKey, {
+          draftAttachmentReference, customerId, customerContactId, vendorId, poNumber, assignedMachinistId, assignedWorkerIds,
+          selectedAddonIds, dueDate, priority, business, parts, partPricing, activePartKey,
+          attachments: attachments.map((attachment) => ({ ...attachment, uploading: false })), attachmentBusiness,
+          materialNeeded, materialOrdered, modelIncluded, notes, customFieldValues, currentStep, partEntryMode,
+        });
+        setOrderDraftSavedAt(savedAt);
+      } catch { /* Browser storage can be unavailable; server submission remains authoritative. */ }
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [activePartKey, assignedMachinistId, assignedWorkerIds, attachmentBusiness, attachments, business, currentStep, customFieldValues, customerContactId, customerId, draftAttachmentReference, dueDate, freshOrderMode, materialNeeded, materialOrdered, modelIncluded, notes, orderDraftReady, orderDraftStorageKey, partEntryMode, partPricing, parts, poNumber, priority, selectedAddonIds, vendorId]);
+
+  React.useEffect(() => {
     const option = getBusinessOptionByCode(business);
     if (option) {
       setAttachmentBusiness(option.name as BusinessName);
@@ -339,7 +436,6 @@ function NewOrderForm() {
   }, [business]);
 
   React.useEffect(() => {
-    setCustomFieldValues({});
     fetch(`/api/custom-fields?entityType=ORDER&businessCode=${business}&isActive=true`, {
       credentials: 'include',
     })
@@ -348,11 +444,10 @@ function NewOrderForm() {
         const nextFields = data.items ?? [];
         setCustomFields(nextFields);
         setCustomFieldValues((prev) => {
-          const next = { ...prev };
+          const next: Record<string, unknown> = {};
           nextFields.forEach((field: CustomFieldDefinition) => {
-            if (next[field.id] === undefined && field.defaultValue !== undefined) {
-              next[field.id] = field.defaultValue;
-            }
+            if (prev[field.id] !== undefined) next[field.id] = prev[field.id];
+            else if (field.defaultValue !== undefined) next[field.id] = field.defaultValue;
           });
           return next;
         });
@@ -369,7 +464,8 @@ function NewOrderForm() {
     }
     setRepeatTemplateLoading(true);
     setRepeatTemplateError(null);
-    fetch(`/api/repeat-order-templates/${templateId}`, { credentials: 'include' })
+    const controller = new AbortController();
+    fetch(`/api/repeat-order-templates/${templateId}`, { credentials: 'include', signal: controller.signal })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
         const template = data?.template;
@@ -397,10 +493,12 @@ function NewOrderForm() {
                   templatePartId: part.id,
                   partNumber: part.partNumber ?? '',
                   partName: part.partName ?? '',
-                  quantity: part.quantity ?? 1,
+                  quantity: String(part.quantity ?? 1),
                   materialId: part.materialId ?? '',
                   stockSize: part.stockSize ?? '',
                   cutLength: part.cutLength ?? '',
+                  partWidth: part.partWidth ?? '',
+                  partThickness: part.partThickness ?? '',
                   notes: part.notes ?? '',
                   workInstructions: part.workInstructions ?? '',
                   addonSelections: [],
@@ -411,12 +509,14 @@ function NewOrderForm() {
             : [emptyPart()]
         );
       })
-      .catch(() => {
+      .catch((problem) => {
+        if (problem instanceof DOMException && problem.name === 'AbortError') return;
         setRepeatTemplate(null);
-        setRepeatTemplateError('Unable to prefill from repeat template. You can choose another template or start a manual order.');
+        setRepeatTemplateError('The repeat template did not load. Retry it before creating this order.');
       })
-      .finally(() => setRepeatTemplateLoading(false));
-  }, [templateId]);
+      .finally(() => { if (!controller.signal.aborted) setRepeatTemplateLoading(false); });
+    return () => controller.abort();
+  }, [templateId, repeatTemplateRetry]);
 
   React.useEffect(() => {
     if (templateMode || !quoteId) return;
@@ -429,6 +529,7 @@ function NewOrderForm() {
         if (!quote) throw new Error('Quote not found');
         setBusiness(quote.business);
         setCustomerId(quote.customer?.id ?? '');
+        setCustomerContactId(quote.customerContactId ?? '');
         setModelIncluded(Boolean(quote.multiPiece));
         setParts(
           (quote.parts ?? []).length
@@ -444,10 +545,12 @@ function NewOrderForm() {
                     key: createKey(),
                     partNumber: part.partNumber ?? part.name ?? '',
                     partName: part.name ?? '',
-                    quantity: part.quantity ?? 1,
+                    quantity: String(part.quantity ?? 1),
                     materialId: part.materialId ?? '',
                     stockSize: part.stockSize ?? '',
                     cutLength: part.cutLength ?? '',
+                    partWidth: part.partWidth ?? '',
+                    partThickness: part.partThickness ?? '',
                     notes: buildPartNotes({
                       description: part.description ?? null,
                       notes: part.notes ?? null,
@@ -572,6 +675,22 @@ function NewOrderForm() {
   }, [activePartKey, parts]);
 
   React.useEffect(() => {
+    if (!conversionMode || !quoteId) return;
+    let active = true;
+    fetch(`/api/admin/quotes/${quoteId}/detect-po`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const detected = typeof data?.poNumber === 'string' ? data.poNumber.trim() : '';
+        if (!active || !detected) return;
+        setPoNumber((current) => current.trim() ? current : detected);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [conversionMode, quoteId]);
+
+  React.useEffect(() => {
     setPartPricing((prev) => {
       const byPartKey = new Map(prev.map((entry) => [entry.partKey, entry]));
       return parts.map((part) => byPartKey.get(part.key) ?? { partKey: part.key, price: '0.00', pricingMode: 'LOT_TOTAL' });
@@ -653,7 +772,7 @@ function NewOrderForm() {
     () =>
       partPricing.reduce((sum, entry) => {
         const part = parts.find((candidate) => candidate.key === entry.partKey);
-        const quantity = Number.isFinite(part?.quantity) ? Number(part?.quantity) : 1;
+        const quantity = normalizeOrderQuantityInput(part?.quantity);
         return (
           sum +
           calculatePartLotTotal({
@@ -740,11 +859,18 @@ function NewOrderForm() {
       key: part.key,
       partNumber: part.partNumber,
       partName: part.partName,
-      quantity: part.quantity,
+      quantity: String(part.quantity),
       materialId: part.materialId,
       stockSize: part.stockSize,
       cutLength: part.cutLength,
+      finalPartLength: part.finalPartLength,
+      drawingMaterialText: part.drawingMaterialText,
+      drawingFinishText: part.drawingFinishText,
+      finish: part.finish,
+      partWidth: part.partWidth,
+      partThickness: part.partThickness,
       notes: buildFinishPartNotes(part.finish),
+      noteSuggestions: 'noteSuggestions' in part && Array.isArray(part.noteSuggestions) ? part.noteSuggestions : [],
       attachments: [{
         kind: part.source.mimeType === 'application/pdf' ? 'PDF' : 'IMAGE',
         storagePath: part.source.storagePath,
@@ -771,6 +897,44 @@ function NewOrderForm() {
     setActivePartKey(nextParts[0]?.key ?? '');
     setPartEntryMode('manual');
     setMessage(`${nextParts.length} part drawing${nextParts.length === 1 ? '' : 's'} added${orderFiles.length ? `; ${orderFiles.length} assembly drawing${orderFiles.length === 1 ? '' : 's'} kept with the order files` : ''}. Review the parts below, then continue.`);
+  }
+
+  function addPreexistingOrderParts(drafts: CustomerPartReusableDraft[]) {
+    const nextParts: PartInput[] = drafts.map((draft) => ({
+      ...emptyPart(),
+      key: draft.key,
+      partNumber: draft.partNumber,
+      partName: draft.partName,
+      quantity: '1',
+      materialId: draft.materialId,
+      drawingMaterialText: draft.drawingMaterialText,
+      drawingFinishText: draft.drawingFinishText,
+      finish: draft.finish,
+      stockSize: draft.stockSize,
+      cutLength: draft.cutLength,
+      finalPartLength: draft.finalPartLength,
+      partWidth: draft.partWidth,
+      partThickness: draft.partThickness,
+      notes: '',
+      workInstructions: '',
+      noteSuggestions: draft.noteSuggestions,
+      attachments: draft.attachments
+        .filter((attachment) => Boolean(attachment.storagePath))
+        .map((attachment) => ({
+          kind: attachment.kind,
+          storagePath: attachment.storagePath ?? '',
+          label: attachment.label ?? '',
+          mimeType: attachment.mimeType ?? '',
+        })),
+    }));
+    if (!nextParts.length) return;
+    setParts((current) => {
+      const retained = current.filter((part) => part.partNumber.trim() || part.attachments.length);
+      return [...retained, ...nextParts];
+    });
+    setActivePartKey(nextParts[0].key);
+    setPartEntryMode('manual');
+    setMessage(`${nextParts.length} preexisting customer part${nextParts.length === 1 ? '' : 's'} added for review.`);
   }
 
   function removePart(key: string) {
@@ -882,15 +1046,27 @@ function NewOrderForm() {
     setLoading(true);
     setMessage('');
     setCreatedOrderId(null);
+    if (templateMode && !repeatTemplate) {
+      setMessage('Retry the repeat template before creating this order.');
+      setCurrentStep(0);
+      setLoading(false);
+      return;
+    }
 
     const cleanedParts = parts
       .map((part) => ({
         partNumber: part.partNumber.trim(),
         partName: part.partName.trim() || undefined,
-        quantity: Number.isFinite(part.quantity) ? part.quantity : 1,
+        quantity: normalizeOrderQuantityInput(part.quantity),
         materialId: part.materialId ? part.materialId : undefined,
         stockSize: part.stockSize?.trim() ? part.stockSize.trim() : undefined,
         cutLength: part.cutLength?.trim() ? part.cutLength.trim() : undefined,
+        finalPartLength: part.finalPartLength?.trim() || undefined,
+        drawingMaterialText: part.drawingMaterialText?.trim() || undefined,
+        drawingFinishText: part.drawingFinishText?.trim() || undefined,
+        finish: part.finish?.trim() || undefined,
+        partWidth: part.partWidth?.trim() ? part.partWidth.trim() : undefined,
+        partThickness: part.partThickness?.trim() ? part.partThickness.trim() : undefined,
         notes: part.notes?.trim() ? part.notes.trim() : undefined,
         workInstructions: part.workInstructions?.trim() ? part.workInstructions.trim() : undefined,
         addonSelections: part.addonSelections
@@ -909,14 +1085,16 @@ function NewOrderForm() {
     const cleanedTemplateParts = parts
       .map((part) => ({
         templatePartId: part.templatePartId?.trim() || '',
-        quantity: Number.isFinite(part.quantity) ? part.quantity : 1,
+        quantity: normalizeOrderQuantityInput(part.quantity),
         notes: part.notes?.trim() ? part.notes.trim() : null,
         workInstructions: part.workInstructions?.trim() ? part.workInstructions.trim() : null,
       }))
       .filter((part) => part.templatePartId.length > 0);
 
-    if (!customerId) {
+    const resolvedCustomerId = resolveRepeatOrderCustomer(customerId, templateMode ? repeatTemplate?.customerId : null);
+    if (!resolvedCustomerId) {
       setMessage('Please choose a customer.');
+      setCurrentStep(0);
       setLoading(false);
       return;
     }
@@ -967,6 +1145,7 @@ function NewOrderForm() {
 
     const body = {
       customerId,
+      customerContactId: customerContactId || undefined,
       modelIncluded,
       receivedDate: new Date().toISOString().slice(0, 10),
       dueDate: resolvedDueDate,
@@ -977,6 +1156,7 @@ function NewOrderForm() {
       vendorId: vendorId || undefined,
       poNumber: poNumber || undefined,
       assignedMachinistId: assignedMachinistId || undefined,
+      assignedWorkerIds,
       parts: cleanedParts,
       addonIds: selectedAddonIds,
       attachments: cleanAttachments,
@@ -992,6 +1172,7 @@ function NewOrderForm() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
+          customerId: resolvedCustomerId,
           dueDate: resolvedDueDate,
           priority,
           vendorId: vendorId || undefined,
@@ -1033,6 +1214,7 @@ function NewOrderForm() {
           vendorId: vendorId || undefined,
           poNumber: poNumber || undefined,
           assignedMachinistId: assignedMachinistId || undefined,
+          assignedWorkerIds,
           materialNeeded,
           materialOrdered,
           modelIncluded,
@@ -1081,13 +1263,23 @@ function NewOrderForm() {
           .then((count) => setMessage(`Order created. BOM analysis finished for ${count} drawing${count === 1 ? '' : 's'}.`))
           .catch(() => setMessage('Order created. One or more BOM analyses need to be retried from the order page.'));
       }
+      clearDrawingImportDraft(window.localStorage, {
+        destination: 'order',
+        business: attachmentBusiness,
+        customerName: customers.find((customer) => customer.id === customerId)?.name ?? '',
+      });
+      suppressOrderDraft.current = true;
+      clearIntakeDraft(window.localStorage, orderDraftStorageKey);
+      setOrderDraftSavedAt(null);
       setCustomerId('');
+      setCustomerContactId('');
       setVendorId('');
       setPoNumber('');
       setDueDate('');
       setPriority('NORMAL');
       setBusiness(DEFAULT_BUSINESS_CODE);
       setAssignedMachinistId('');
+      setAssignedWorkerIds([]);
       setParts([emptyPart()]);
       setAttachments([emptyAttachment()]);
       setAttachmentBusiness(DEFAULT_BUSINESS_NAME);
@@ -1112,7 +1304,12 @@ function NewOrderForm() {
       contact: newCustomerContact || undefined,
       phone: newCustomerPhone || undefined,
       email: newCustomerEmail || undefined,
-      address: newCustomerAddress || undefined,
+      addressLine1: newCustomerAddressLine1 || undefined,
+      addressLine2: newCustomerAddressLine2 || undefined,
+      city: newCustomerCity || undefined,
+      stateProvince: newCustomerState || undefined,
+      postalCode: newCustomerPostalCode || undefined,
+      country: newCustomerCountry || undefined,
     };
     const res = await fetch('/api/admin/customers', {
       method: 'POST',
@@ -1124,12 +1321,18 @@ function NewOrderForm() {
       const data = await res.json();
       setCustomers((s) => [data.item, ...s]);
       setCustomerId(data.item.id);
+      setCustomerContactId(data.item.contacts?.[0]?.id ?? '');
       setCustomerDialogOpen(false);
       setNewCustomerName('');
       setNewCustomerContact('');
       setNewCustomerPhone('');
       setNewCustomerEmail('');
-      setNewCustomerAddress('');
+      setNewCustomerAddressLine1('');
+      setNewCustomerAddressLine2('');
+      setNewCustomerCity('');
+      setNewCustomerState('');
+      setNewCustomerPostalCode('');
+      setNewCustomerCountry('United States');
     }
   }
 
@@ -1147,6 +1350,12 @@ function NewOrderForm() {
             ? 'We prefill everything we can from the quote. Review the details and supply the missing order info before creating it.'
             : 'Order numbers are generated for you, starting at 1001. Gather every part, attachment, and add-on service before the job hits the floor.'}
         </p>
+        {freshOrderMode && orderDraftSavedAt ? (
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <span>Autosaved {new Date(orderDraftSavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { clearIntakeDraft(window.localStorage, orderDraftStorageKey); window.location.reload(); }}>Discard autosaved draft</Button>
+          </div>
+        ) : null}
         {templateMode && repeatTemplate && (
           <p className="text-sm text-muted-foreground">
             Template: <code className="rounded bg-muted px-1 py-0.5 text-xs">{repeatTemplate.name}</code>
@@ -1196,7 +1405,7 @@ function NewOrderForm() {
         {repeatTemplateLoading && templateMode && (
           <p className="text-sm text-muted-foreground">Prefilling from repeat template...</p>
         )}
-        {repeatTemplateError && <p className="text-sm text-destructive">{repeatTemplateError}</p>}
+        {repeatTemplateError ? <div className="flex flex-wrap items-center gap-3"><p className="text-sm text-destructive">{repeatTemplateError}</p><Button type="button" size="sm" variant="outline" onClick={() => setRepeatTemplateRetry((value) => value + 1)}>Retry template</Button></div> : null}
         {quotePrefillLoading && conversionMode && (
           <p className="text-sm text-muted-foreground">Prefilling from quote…</p>
         )}
@@ -1212,6 +1421,7 @@ function NewOrderForm() {
               variant="outline"
               size="sm"
               onClick={() => setCurrentStep(index)}
+              disabled={templateMode && !repeatTemplate}
               className={`rounded-full border px-4 py-2 text-sm ${
                 index === currentStep
                   ? 'border-primary bg-primary/10 text-primary'
@@ -1261,11 +1471,22 @@ function NewOrderForm() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="customer">Customer</Label>
-              <Select value={customerId} onValueChange={setCustomerId} disabled={conversionMode || templateMode}>
+              <Select
+                value={resolveRepeatOrderCustomer(customerId, templateMode ? repeatTemplate?.customerId : null)}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  setCustomerId(value);
+                  setCustomerContactId('');
+                }}
+                disabled={conversionMode}
+              >
                 <SelectTrigger id="customer" className="border-border/60 bg-background/80">
                   <SelectValue placeholder="Select a customer" />
                 </SelectTrigger>
                 <SelectContent>
+                  {templateMode && repeatTemplate?.customerId && !customers.some((c) => c.id === repeatTemplate.customerId) ? (
+                    <SelectItem value={repeatTemplate.customerId}>{repeatTemplate.customerName || 'Template customer'}</SelectItem>
+                  ) : null}
                   {customers.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
@@ -1280,7 +1501,7 @@ function NewOrderForm() {
                     variant="ghost"
                     size="sm"
                     className="justify-start px-0 text-sm text-primary"
-                    disabled={conversionMode || templateMode}
+                    disabled={conversionMode}
                   >
                     + Add customer
                   </Button>
@@ -1330,13 +1551,18 @@ function NewOrderForm() {
                       />
                     </div>
                     <div className="grid gap-2">
-                      <Label htmlFor="newCustomerAddress">Address</Label>
-                      <Textarea
-                        id="newCustomerAddress"
-                        value={newCustomerAddress}
-                        onChange={(e) => setNewCustomerAddress(e.target.value)}
-                        placeholder="Shipping address"
-                      />
+                      <Label htmlFor="newCustomerAddressLine1">Shipping address line 1</Label>
+                      <Input id="newCustomerAddressLine1" value={newCustomerAddressLine1} onChange={(e) => setNewCustomerAddressLine1(e.target.value)} placeholder="Street address" />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="newCustomerAddressLine2">Address line 2</Label>
+                      <Input id="newCustomerAddressLine2" value={newCustomerAddressLine2} onChange={(e) => setNewCustomerAddressLine2(e.target.value)} placeholder="Suite, building, attention" />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-2"><Label htmlFor="newCustomerCity">City</Label><Input id="newCustomerCity" value={newCustomerCity} onChange={(e) => setNewCustomerCity(e.target.value)} /></div>
+                      <div className="grid gap-2"><Label htmlFor="newCustomerState">State / province</Label><Input id="newCustomerState" value={newCustomerState} onChange={(e) => setNewCustomerState(e.target.value)} /></div>
+                      <div className="grid gap-2"><Label htmlFor="newCustomerPostalCode">Postal code</Label><Input id="newCustomerPostalCode" value={newCustomerPostalCode} onChange={(e) => setNewCustomerPostalCode(e.target.value)} /></div>
+                      <div className="grid gap-2"><Label htmlFor="newCustomerCountry">Country</Label><Input id="newCustomerCountry" value={newCustomerCountry} onChange={(e) => setNewCustomerCountry(e.target.value)} /></div>
                     </div>
                   </div>
                   <DialogFooter>
@@ -1376,7 +1602,7 @@ function NewOrderForm() {
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="machinist">Assign machinist</Label>
+              <Label htmlFor="machinist">Coordinator (optional)</Label>
               <Select
                 value={assignedMachinistId || OPTIONAL_VALUE}
                 onValueChange={(value) =>
@@ -1387,7 +1613,7 @@ function NewOrderForm() {
                   <SelectValue placeholder="Optional" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={OPTIONAL_VALUE}>Unassigned</SelectItem>
+                  <SelectItem value={OPTIONAL_VALUE}>No coordinator</SelectItem>
                   {machinists.map((m) => (
                     <SelectItem key={m.id} value={m.id}>
                       {m.name}
@@ -1396,6 +1622,72 @@ function NewOrderForm() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid gap-2">
+              <Label htmlFor="customerContact">Customer contact</Label>
+              <Select
+                value={customerContactId || OPTIONAL_VALUE}
+                onValueChange={(value) => setCustomerContactId(value === OPTIONAL_VALUE ? '' : value)}
+                disabled={!customerId || conversionMode || templateMode}
+              >
+                <SelectTrigger id="customerContact" className="border-border/60 bg-background/80">
+                  <SelectValue placeholder="Select the contact for this order" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={OPTIONAL_VALUE}>No contact selected</SelectItem>
+                  {(customers.find((customer) => customer.id === customerId)?.contacts ?? []).map((contact) => (
+                    <SelectItem key={contact.id} value={contact.id}>
+                      {contact.name}{contact.title ? ` — ${contact.title}` : ''}{contact.isPrimary ? ' (Primary)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                The selected contact is saved with this order and printed on its traveler.
+              </p>
+              {customers.some((customer) => customer.id === customerId) ? (
+                <AddCustomerContactDialog
+                  customer={customers.find((customer) => customer.id === customerId)!}
+                  onSaved={(updatedCustomer, newContactId) => {
+                    setCustomers((current) => current.map((customer) => (
+                      customer.id === updatedCustomer.id ? { ...customer, ...updatedCustomer } : customer
+                    )));
+                    setCustomerContactId(newContactId);
+                  }}
+                />
+              ) : null}
+            </div>
+            {!templateMode ? (
+              <div className="grid gap-2 md:col-span-2">
+                <Label>Assigned workers (optional)</Label>
+                <p className="text-xs text-muted-foreground">
+                  Select everyone starting on this job. They will be assigned to every part and can be adjusted per part later.
+                </p>
+                <div className="grid gap-2 rounded-lg border border-border/60 bg-background/60 p-3 sm:grid-cols-2">
+                  {machinists.length ? (
+                    machinists.map((machinist) => {
+                      const checked = assignedWorkerIds.includes(machinist.id);
+                      return (
+                        <label key={machinist.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(value) =>
+                              setAssignedWorkerIds((current) =>
+                                value === true
+                                  ? Array.from(new Set([...current, machinist.id]))
+                                  : current.filter((id) => id !== machinist.id),
+                              )
+                            }
+                          />
+                          <span className="text-sm text-foreground">{machinist.name}</span>
+                        </label>
+                      );
+                    })
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No active employees are available.</p>
+                  )}
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-2">
               <Label htmlFor="poNumber">PO number</Label>
               <Input
@@ -1460,10 +1752,12 @@ function NewOrderForm() {
                 <Checkbox
                   checked={materialOrdered}
                   onCheckedChange={(v) => setMaterialOrdered(v === true)}
-                  disabled={!materialNeeded}
                 />
                 Material ordered / on hand
               </label>
+              <p className="pl-7 text-xs text-muted-foreground">
+                Select this whenever material is already available, even when no purchasing is required.
+              </p>
               <label className="flex items-center gap-3 text-sm text-foreground">
                 <Checkbox checked={modelIncluded} onCheckedChange={(v) => setModelIncluded(v === true)} />
                 CAD model provided with job
@@ -1474,36 +1768,67 @@ function NewOrderForm() {
           </>
         )}
 
-        {currentStep === 1 && !templateMode && !conversionMode && partEntryMode === null && (
+        {currentStep === 1 && !templateMode && !conversionMode && (
           <Card className="border-border/60 bg-card/80">
             <CardHeader>
               <CardTitle>How would you like to add the parts?</CardTitle>
-              <CardDescription>Choose the easiest option. You can switch methods later.</CardDescription>
+              <CardDescription>Read new drawings, reuse a proven customer part, or type the details yourself.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              <button type="button" onClick={() => setPartEntryMode('drawing')} className="rounded-2xl border-2 border-primary bg-primary/10 p-6 text-left transition hover:bg-primary/15">
+            <CardContent className="grid gap-4 md:grid-cols-3">
+              <button type="button" onClick={() => setPartEntryMode('drawing')} className={`rounded-2xl border-2 p-6 text-left transition ${partEntryMode === 'drawing' ? 'border-primary bg-primary/10' : 'border-border bg-background/70 hover:border-primary/50'}`}>
                 <Upload className="mb-4 h-8 w-8 text-primary" />
                 <span className="block text-xl font-semibold text-foreground">Read drawings for me</span>
                 <span className="mt-2 block text-sm text-muted-foreground">Upload one drawing or a ZIP. We will fill in the parts and show you anything that needs checking.</span>
                 <span className="mt-4 inline-block rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">Recommended</span>
               </button>
-              <button type="button" onClick={() => setPartEntryMode('manual')} className="rounded-2xl border border-border bg-background/70 p-6 text-left transition hover:border-primary/50">
+              <button type="button" onClick={() => setPartEntryMode('manual')} className={`rounded-2xl border-2 p-6 text-left transition ${partEntryMode === 'manual' ? 'border-primary bg-primary/10' : 'border-border bg-background/70 hover:border-primary/50'}`}>
                 <PlusCircle className="mb-4 h-8 w-8 text-muted-foreground" />
                 <span className="block text-xl font-semibold text-foreground">Type parts myself</span>
                 <span className="mt-2 block text-sm text-muted-foreground">Continue with the familiar manual part-entry screen.</span>
+              </button>
+              <button type="button" onClick={() => setPartEntryMode('existing')} className={`rounded-2xl border-2 p-6 text-left transition ${partEntryMode === 'existing' ? 'border-sky-400 bg-sky-400/10' : 'border-border bg-background/70 hover:border-sky-400/70'}`}>
+                <PlusCircle className="mb-4 h-8 w-8 text-sky-300" />
+                <span className="block text-xl font-semibold text-foreground">Choose a preexisting part</span>
+                <span className="mt-2 block text-sm text-muted-foreground">Search every saved part, regardless of customer or business.</span>
               </button>
             </CardContent>
           </Card>
         )}
 
         {currentStep === 1 && !templateMode && !conversionMode && partEntryMode === 'drawing' && (
-          <DrawingImportPanel
+          legacyDrawingReader ? <DrawingImportPanel
             business={attachmentBusiness}
             customerName={customers.find((customer) => customer.id === customerId)?.name ?? ''}
             draftReference={draftAttachmentReference}
             materials={materials}
             onContinue={useImportedDrawingParts}
             onSwitchToManual={() => setPartEntryMode('manual')}
+          />
+          : <QuoteDrawingImportV2Panel
+            api={currentDrawingReader}
+            destination="order"
+            business={attachmentBusiness}
+            customerName={customers.find((customer) => customer.id === customerId)?.name ?? ''}
+            draftReference={draftAttachmentReference}
+            materials={materials}
+            onContinue={useImportedDrawingParts}
+            onSwitchToLegacy={() => setLegacyDrawingReader(true)}
+            onCreateMaterial={async name => {
+              const response = await fetch('/api/admin/materials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.error || 'Could not add material.');
+              const material = data.item ?? data;
+              setMaterials(current => [...current, material]);
+              return material;
+            }}
+          />
+        )}
+
+        {currentStep === 1 && !templateMode && !conversionMode && partEntryMode === 'existing' && (
+          <CustomerPartPicker
+            customerId={customerId}
+            business={business}
+            onAddParts={addPreexistingOrderParts}
           />
         )}
 
@@ -1617,7 +1942,11 @@ function NewOrderForm() {
                             type="number"
                             min={1}
                             value={activePart.quantity}
-                            onChange={(e) => updatePart(activePart.key, { quantity: Number(e.target.value) || 1 })}
+                            onFocus={(e) => e.currentTarget.select()}
+                            onChange={(e) => updatePart(activePart.key, { quantity: e.target.value })}
+                            onBlur={() => {
+                              if (!activePart.quantity.trim()) updatePart(activePart.key, { quantity: '1' });
+                            }}
                           />
                         </div>
                         {activePart.attachments.length ? (
@@ -1632,11 +1961,19 @@ function NewOrderForm() {
                           </div>
                         ) : null}
                         <div className="grid gap-2">
-                          <Label>Stock size (optional)</Label>
+                          <Label>Finished part thickness (optional)</Label>
+                          <Input value={activePart.partThickness || ''} onChange={(e) => updatePart(activePart.key, { partThickness: e.target.value })} placeholder="e.g. .25 in" disabled={templateMode} />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Finished part width (optional)</Label>
+                          <Input value={activePart.partWidth || ''} onChange={(e) => updatePart(activePart.key, { partWidth: e.target.value })} placeholder="e.g. 2.5 in" disabled={templateMode} />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Total stock dimensions (optional)</Label>
                           <Input
                             value={activePart.stockSize || ''}
                             onChange={(e) => updatePart(activePart.key, { stockSize: e.target.value })}
-                            placeholder="e.g. 2in x 12in bar"
+                            placeholder="Thickness × width × total length"
                             disabled={templateMode}
                           />
                         </div>
@@ -1692,6 +2029,14 @@ function NewOrderForm() {
                             onChange={(e) => updatePart(activePart.key, { workInstructions: e.target.value })}
                             placeholder="Example: Review rev C print; use fixture 207-B; first piece inspection required before continuing."
                             className="min-h-[140px] border-amber-500/25 bg-background/80"
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <CustomerPartNoteSuggestions
+                            suggestions={activePart.noteSuggestions ?? []}
+                            onApply={(suggestion) => updatePart(activePart.key, {
+                              [suggestion.destination]: appendSuggestedNote(activePart[suggestion.destination] || '', suggestion.text),
+                            })}
                           />
                         </div>
                       </div>
@@ -1842,7 +2187,7 @@ function NewOrderForm() {
                   <div key={part.key} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
                     <div>
                       <p className="font-semibold">{part.partNumber || `Part ${index + 1}`}{part.partName ? ` — ${part.partName}` : ''}</p>
-                      <p className="text-sm text-muted-foreground">Quantity {part.quantity}{part.attachments.length ? ` · ${part.attachments.length} drawing attached` : ''}</p>
+                      <p className="text-sm text-muted-foreground">Quantity {part.quantity || '1'}{part.attachments.length ? ` · ${part.attachments.length} drawing attached` : ''}</p>
                     </div>
                     {part.attachments.length ? <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-900">BOM will run automatically</span> : null}
                   </div>
@@ -1864,7 +2209,7 @@ function NewOrderForm() {
                     price: '0.00',
                     pricingMode: 'LOT_TOTAL' as PartPricingMode,
                   };
-                  const quantity = Number.isFinite(part.quantity) ? Number(part.quantity) : 1;
+                  const quantity = normalizeOrderQuantityInput(part.quantity);
                   const lotTotal = calculatePartLotTotal({
                     enteredPriceCents: Math.round(numberFromString(entry.price) * 100),
                     quantity,
@@ -2194,7 +2539,7 @@ function NewOrderForm() {
                   Orders auto-number starting at 1001
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Button type="submit" disabled={loading || repeatTemplateLoading} className="rounded-full bg-primary px-6 text-primary-foreground shadow-lg shadow-primary/30">
+                  <Button type="submit" disabled={loading || repeatTemplateLoading || (templateMode && !repeatTemplate)} className="rounded-full bg-primary px-6 text-primary-foreground shadow-lg shadow-primary/30">
                     {loading ? 'Submitting…' : 'Create order'}
                   </Button>
                   <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
@@ -2250,7 +2595,7 @@ function NewOrderForm() {
             </Button>
             <Button
               type="button"
-              disabled={currentStep === 1 && !templateMode && !conversionMode && partEntryMode !== 'manual'}
+              disabled={(templateMode && !repeatTemplate) || (currentStep === 1 && !templateMode && !conversionMode && partEntryMode !== 'manual')}
               onClick={() => setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1))}
             >
               Next

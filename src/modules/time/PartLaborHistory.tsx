@@ -54,7 +54,7 @@ export function PartLaborHistory({
 
   return (
     <section className="space-y-3" aria-label={title}>
-      <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-border/70 bg-muted/15 p-4">
+      <div className="order-detail-tile flex flex-wrap items-end justify-between gap-3 rounded-lg border p-4">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
           <div className="mt-1 text-2xl font-bold tabular-nums text-foreground" aria-live="polite">
@@ -72,7 +72,7 @@ export function PartLaborHistory({
       </div>
 
       {summary.employees.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+        <div className="order-detail-tile rounded-lg border border-dashed px-4 py-6 text-center text-sm text-slate-300">
           {emptyMessage}
         </div>
       ) : (
@@ -80,7 +80,7 @@ export function PartLaborHistory({
           {summary.employees.map((employee) => (
             <details
               key={employee.userId || employee.label}
-              className="group rounded-lg border border-border/70 bg-background"
+              className="order-detail-tile group rounded-lg border"
             >
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
                 <div className="min-w-0">
@@ -127,7 +127,7 @@ export function PartLaborHistory({
                     </div>
 
                     {interval.actions.length > 0 ? (
-                      <div className="mt-2 space-y-1 rounded-md bg-muted/25 px-3 py-2">
+                      <div className="order-detail-inset mt-2 space-y-1 rounded-md border px-3 py-2">
                         {interval.actions.map((action, index) => (
                           <div key={`${action.action}:${action.createdAtMs}:${index}`} className="text-xs text-muted-foreground">
                             <span className="font-medium text-foreground">{getActionLabel(action.action)}</span>

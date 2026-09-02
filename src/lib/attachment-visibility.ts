@@ -3,6 +3,8 @@ type AttachmentLike = {
   label?: string | null;
 };
 
+export type StoredAttachmentScope = 'QUOTE' | 'QUOTE_PART' | 'ORDER' | 'PART';
+
 export const RESTRICTED_ATTACHMENT_LABELS = ['quote', 'po', 'purchase order', 'invoice'];
 
 export function matchesRestrictedAttachmentLabel(label?: string | null) {
@@ -21,4 +23,23 @@ export function isRestrictedPartAttachment(attachment?: AttachmentLike | null) {
 export function isRestrictedOrderAttachment(attachment?: AttachmentLike | null) {
   if (!attachment) return false;
   return matchesRestrictedAttachmentLabel(attachment.label);
+}
+
+export function isDrawingPartAttachment(attachment?: AttachmentLike | null) {
+  if (!attachment || isRestrictedPartAttachment(attachment)) return false;
+  const kind = typeof attachment.kind === 'string' ? attachment.kind.trim().toUpperCase() : '';
+  return ['DWG', 'STEP', 'PDF', 'PRINT', 'IMAGE'].includes(kind);
+}
+
+export function canReadStoredAttachment({
+  isAdmin,
+  scope,
+  attachment,
+}: {
+  isAdmin: boolean;
+  scope: StoredAttachmentScope;
+  attachment: AttachmentLike;
+}) {
+  if (isAdmin) return true;
+  return scope === 'PART' && isDrawingPartAttachment(attachment);
 }

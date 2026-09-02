@@ -1,3 +1,119 @@
+# Session Plan — 2026-09-02 — Reconcile production source to GitHub
+- [x] Create an isolated clean Git checkout from the last production-matching commit; preserve the dirty workstation checkout unchanged.
+- [x] Export only source-controlled production content, excluding secrets, databases, uploads, logs, dependencies, build output, caches, and generated archives.
+- [x] Mirror the server source into a new synchronization branch, preserving repository-only GitHub metadata, and audit additions, modifications, deletions, large files, and secret patterns.
+- [x] Verify the candidate matches the included production source, install dependencies, run tests/lint/build appropriate to the full checkpoint, and resolve only synchronization defects.
+- [ ] Commit and push the verified checkpoint to a new GitHub branch, open a PR to `main`, and record exact commit/branch/rollback evidence.
+- Scope guard: do not change production application behavior, database, configuration, uploads, or running build during reconciliation.
+- Replan: the first `npm run test` attempt was blocked before config load by sandboxed esbuild `spawn EPERM`; rerun the identical command with execution permission, then continue only if the real suite passes.
+- Replan: the first isolated Prisma URL targeted a missing ignored nested directory and the schema engine exited before migration; use an absolute SQLite file in the isolated synchronization temp root, validate first, and keep it outside the candidate repository.
+- Replan: Prisma validated the schema and generated its client but rejected the absolute Windows SQLite URL without diagnostics; use a simple schema-relative temporary database in the existing `prisma` directory and keep it ignored/uncommitted.
+- Replan: clean migration replay also fails with the schema-relative SQLite URL before creating a database. Verify the current schema independently with `prisma db push`; keep clean migration replay recorded as a separate release-follow-up if schema creation and application tests pass.
+- Verification: source archive SHA-256 `4E412BB60A59DD4D2384778086DA9B86FA1A3F05716CB8DB7DA5C171F85BCE4`; 573 included production files matched byte-for-byte before test/config hygiene; no runtime data or secrets included.
+- Verification: `npm ci`, Prisma validation/generation, disposable-schema `prisma db push`, full tests (369 passed, 4 skipped), lint, `tsc --noEmit`, and clean 66-page standalone production build passed.
+- Audit follow-up: `npm audit --omit=dev` reports 9 production vulnerabilities (1 critical, 7 high, 1 moderate). Dependency upgrades are intentionally excluded from this exact production checkpoint and require a separately tested release.
+
+---
+
+# Session Plan — 2026-09-01 — Compressed current-state architecture map
+- [x] Build `docs/ARCHITECTURE.md` from the source and deployment currently running on the Windows server; describe current structure only, not history or planned design.
+- [x] Change the agent reading hierarchy so current authority and architecture are always read, while decision logs, progress, and handoffs are read only when relevant.
+- [x] Reframe `docs/AGENT_CONTEXT.md` as non-authoritative operational history and decision rationale with an explicit authority order.
+- [x] Link the new map from the README, add a maintenance rule that keeps it synchronized with structural changes, and record the token-economy lesson.
+- [x] Verify document links, current source paths, size target, exact deployed hashes, runtime non-impact, and rollback assets.
+- Scope guard: documentation/workflow only; do not modify application code, configuration, database, build output, or drawing-import behavior.
+- Verification: architecture map is 233 lines; 17 referenced source/docs paths exist; six deployed document hashes match; `/api/health` remains 200.
+- Rollback: `C:\ShopApp\backups\pre-update\architecture-context-20260901-224000`.
+
+---
+
+# Session Plan — 2026-09-01 — Refresh project README
+- [x] Replace the stale starter README with an accurate product, workflow, architecture, setup, and deployment overview based on the running server.
+- [x] Keep secrets and production data out of documentation; link the canonical repo guidance instead of duplicating it.
+- [x] Deploy README-only, verify the exact server hash/content, and record continuity evidence without rebuilding or changing the application.
+- Context7: evaluate as optional developer tooling only; do not install or add a runtime dependency without explicit owner approval.
+- Rollback: `C:\ShopApp\backups\pre-update\readme-refresh-20260901-221500`.
+
+---
+
+# Session Plan — 2026-09-01 — Quick part stock-status control
+- [x] Reuse the existing part material-status system; do not add a duplicate order-level stock state.
+- [x] Add an immediate status selector near the top of the selected part Overview for admins.
+- [x] Verify the focused order-detail path, production build, runtime health, and rollback assets without changing drawing-import source or configuration.
+- Drawing importer: owner-completed and review-only; no further agent edits, reprocessing, or configuration changes.
+- Verification: targeted ESLint passed; orders service tests passed 19/19; production build generated 66 pages; the compiled order bundle contains the quick-control path; server-local health returned 200; ShopApp Health Monitor is Ready with result 0; drawing source/config hashes are unchanged.
+- Rollback: `C:\ShopApp\backups\pre-update\stock-status-control-20260901-132215`.
+
+---
+
+# Session Plan — 2026-09-01 — Repair slow/failing phone drawing processing
+- Superseded: the owner completed and built this work directly. Agent review is read-only; do not modify or reprocess drawing imports without a new explicit request.
+
+---
+
+# Session Plan — 2026-09-01 — Complete the Admin Orders destination
+- [x] Replace the redirect-based admin tab target with a dedicated, admin-guarded Orders page.
+- [x] Add a prominent `Make a new order` button to `/orders/new` and an active-orders path to the Shop Floor.
+- [x] Pass focused ESLint, a clean 66-page production build, runtime guard/bundle checks, task/monitor checks, and health verification.
+- Rollback: `C:\ShopApp\backups\pre-update\admin-orders-action-20260901-121105`.
+
+---
+
+# Session Plan — 2026-09-01 — Production intake, order editing, and model controls
+- [x] Correct `STD-1003` to CRM and expose business in order edit without renumbering.
+- [x] Keep all three intake choices reachable and search prior parts shop-wide.
+- [x] Add admin Orders, immediate phone upload, Mini defaults, and the disabled high-Luna admin toggle.
+- [x] Pass focused tests/lint, migration, production build, runtime/data/hash/health verification, and continuity handoff.
+- Rollback: `C:\ShopApp\backups\pre-update\intake-admin-model-20260901-114407`.
+
+---
+
+# Session Plan — 2026-08-24 — Windows LAN production deployment
+
+## Goal
+- Deploy the current ShopApp working state to the new Windows 11 Pro server at `192.168.254.72`, keep application code separate from persistent data, and make the app reliably available to local computers.
+
+## Plan
+- [x] Confirm key-based administration and inventory the current repository/data state plus server prerequisites.
+- [ ] Create the agreed `C:\ShopApp` code, configuration, data, storage, logs, backups, and maintenance boundaries without overwriting unrelated server files.
+- [ ] Transfer a clean snapshot of the current application plus the current SQLite database and uploads, excluding caches, dependencies, logs, and unrelated artifacts.
+- [ ] Install only required runtimes, restore production dependencies, apply Prisma migrations, and build the production standalone app.
+- [ ] Configure a boot-persistent Windows launch mechanism and a Private/LAN-only firewall rule.
+- [ ] Verify database/storage paths, health and sign-in pages, restart recovery, and access through `192.168.254.72` from this workstation.
+- [ ] Update continuity records with exact deployment paths, commands, verification evidence, and backup follow-up.
+
+## Scope Guard
+- Do not configure the `.10` secondary backup target in this pass.
+- Do not expose ShopApp, SSH, or RDP through router port forwarding or a Public-profile firewall rule.
+- Preserve the current local database as source data and create a pre-deployment copy before migration/startup.
+
+---
+
+# Session Plan — 2026-08-24 — Temporary server setup page
+
+## Goal
+- Provide a hidden, public `/setup` page that the new LAN server can open to copy the approved OpenSSH bootstrap script.
+
+## Plan
+- [x] Validate current continuity guidance, authoritative product docs, and existing public-route structure.
+- [x] Add the `/setup` page with the non-secret SSH public key and a one-click script copy action.
+- [x] Run targeted lint/type verification and confirm the page is reachable over the LAN.
+- [x] Update continuity records with the files touched, commands run, and removal follow-up.
+
+## Scope Guard
+- Do not add the page to normal navigation, alter authentication behavior, or expose any password/private key.
+- Treat the page as temporary bootstrap material and remove it after the server is configured.
+
+## Replan note
+- The `/setup` page passes targeted ESLint and TypeScript, but the first LAN dev-server start was blocked by the managed Windows sandbox while Next.js spawned its worker (`spawn EPERM`). Retry the same scoped start outside the sandbox, then verify the page over the LAN before completion.
+
+## Verification
+- [x] `npx eslint "src/app/(public)/setup/page.tsx"` passed.
+- [x] `npx tsc --noEmit --pretty false` passed.
+- [x] The existing LAN-bound ShopApp process returned HTTP 200 for both `http://127.0.0.1:3000/setup` and `http://192.168.254.132:3000/setup`, and both responses contained the setup-page title.
+
+---
+
 # Session Plan — 2026-07-17 — Publish accumulated ShopApp work
 
 ## Goal
@@ -3842,5 +3958,31 @@ Put department selection back inside Customize this shop floor and place the com
 - [x] Live browser QA confirms the heading and main tiles sit directly on the gradient without the oversized navy shell.
 - [x] Targeted ESLint, `npx tsc --noEmit`, and focused Shop Floor tests pass (10/10).
 - [x] Production build passes with 62 generated pages and standalone assets copied.
+
+---
+# Session Plan — 2026-09-01 — Production intake, order editing, and model controls
+
+## Goal
+- Correct today’s first order to CRM and make business editable on order detail.
+- Let quote/direct-order intake switch freely among drawing upload, manual entry, and historical parts.
+- Search reusable parts across all customers and businesses, add Orders to admin navigation, and make phone selection begin upload automatically.
+- Use `gpt-5.4-mini` as the drawing model everywhere, with an off-by-default admin toggle for high-reasoning `gpt-5.6-luna` escalation.
+
+## Plan
+- [x] Add and verify the order-business edit control, then correct `STD-1003` after the database backup.
+- [x] Make the three part-entry choices persistently reachable on direct-order and quote intake; make historical search global with source customer/business context.
+- [x] Add Orders to admin navigation and start phone uploads immediately after photo selection with clear progress/retry state.
+- [x] Add the persisted Luna fallback toggle, route only explicitly unresolved/conflicting reads to Luna at high reasoning when enabled, and set Mini defaults/config/pricing consistently.
+- [x] Run focused tests, TypeScript, lint, Prisma migration/build, restart, and production health/data verification.
+- [x] Update continuity records with exact evidence and rollback path.
+
+## Scope Guard
+- Preserve immutable order numbers when correcting business ownership.
+- Luna fallback remains disabled after deployment.
+- Do not alter drawing fidelity, review requirements, attachment storage, customer records, or unrelated workflows.
+
+## Replan Note
+- Focused tests passed 25/25 and targeted ESLint passed. Full `tsc --noEmit` is blocked only by two pre-existing, out-of-scope test contracts: missing `partWidth`/`partThickness` in `drawing-import-review-state.test.ts` and a non-exported legacy `extractTitleBlock` referenced by `drawing-import.accuracy.eval.test.ts`. Do not drive-by fix them; use the clean production build plus focused evidence as this release gate and record the baseline in continuity docs.
+- The first production build compiled and completed its type gate, but prerender correctly rejected the new AppSettings field before its additive migration existed. The previous `.next` build was restored and ShopApp restarted. Apply the backed-up one-column migration first, then rerun the same build; no source rework or unrelated scope expansion is required.
 
 ---

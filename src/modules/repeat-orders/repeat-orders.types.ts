@@ -23,6 +23,8 @@ export type RepeatOrderTemplatePartInput = {
   materialId: string | null;
   stockSize: string | null;
   cutLength: string | null;
+  partWidth?: string | null;
+  partThickness?: string | null;
   notes: string | null;
   workInstructions: string | null;
   instructionsVersion: number;

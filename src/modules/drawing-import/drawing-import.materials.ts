@@ -66,3 +66,68 @@ export function buildFinishPartNotes(finish: string | null | undefined) {
   const normalized = finish?.trim();
   return normalized ? `Finish: ${normalized}` : '';
 }
+
+export function parseInchMeasurement(value: string | null | undefined): number | null {
+  const normalized = value?.trim().replace(/[″"]/g, '').replace(/\s+IN(?:CH(?:ES)?)?\.?$/i, '');
+  if (!normalized) return null;
+  const mixed = normalized.match(/^(-?\d+)\s+(\d+)\/(\d+)$/);
+  if (mixed) {
+    const denominator = Number(mixed[3]);
+    if (!denominator) return null;
+    return Number(mixed[1]) + Number(mixed[2]) / denominator;
+  }
+  const fraction = normalized.match(/^(-?\d+)\/(\d+)$/);
+  if (fraction) {
+    const denominator = Number(fraction[2]);
+    return denominator ? Number(fraction[1]) / denominator : null;
+  }
+  const decimal = Number(normalized);
+  return Number.isFinite(decimal) ? decimal : null;
+}
+
+function formatInches(value: number) {
+  return value.toFixed(3).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+}
+
+export function deriveCutAndStockLength(finalPartLength: string | null | undefined, quantity: number) {
+  const finalLength = parseInchMeasurement(finalPartLength);
+  if (finalLength === null || finalLength < 0) return { cutLength: '', stockLength: '' };
+  const cutLength = finalLength + 0.125;
+  const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : 1;
+  return {
+    cutLength: formatInches(cutLength),
+    stockLength: formatInches(cutLength * safeQuantity),
+  };
+}
+
+export function formatTotalStockDimensions(
+  partThickness: string | null | undefined,
+  partWidth: string | null | undefined,
+  totalStockLength: string | null | undefined,
+) {
+  const thickness = partThickness?.trim();
+  const width = partWidth?.trim();
+  const length = totalStockLength?.trim();
+  if (!thickness || !width || !length) return '';
+  return `${thickness} × ${width} × ${length}`;
+}
+
+export function deriveDrawingStockDimensions(
+  partThickness: string | null | undefined,
+  partWidth: string | null | undefined,
+  finalPartLength: string | null | undefined,
+  quantity: number,
+) {
+  const lengths = deriveCutAndStockLength(finalPartLength, quantity);
+  return {
+    ...lengths,
+    totalStockDimensions: formatTotalStockDimensions(partThickness, partWidth, lengths.stockLength),
+  };
+}
+
+export function parseDrawingQuantityInput(value: string): number | null {
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) return null;
+  const quantity = Number(normalized);
+  return Number.isSafeInteger(quantity) && quantity >= 1 ? quantity : null;
+}

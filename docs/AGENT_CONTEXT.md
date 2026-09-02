@@ -1,9 +1,20 @@
 **Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
 
-# Agent Context — ShopApp1 (Single Source of Truth)
+# Agent Context — ShopApp1
 
-Shared brain for multiple agents.
-If you are working on this repo, follow it and update the Decision Log when needed.
+## Operational History and Decision Log
+
+This document records architectural decisions, rationale, superseded approaches, and operational context. It is not authoritative product truth and it is not the current architecture map.
+
+Authority order:
+
+1. `CANON.md` — product/business truth.
+2. `ROADMAP.md` — approved planned direction.
+3. Current source code and schema — implementation reality.
+4. `docs/ARCHITECTURE.md` — current architecture map.
+5. This decision/operational history.
+
+When an older decision conflicts with CANON, current source, or a later superseding decision, follow the authoritative/current source and record the discrepancy. Read targeted relevant entries rather than loading this full chronological file for every task.
 
 ## Product Intent
 
@@ -59,6 +70,12 @@ Goal: a scalable foundation that can grow.
 - All charge kinds are per-part: `partId` is required for every charge kind.
 
 ## Decision Log (append newest at top)
+
+### 2026-09-01 — Reusable-part discovery is shop-wide; Mini is the default drawing reader
+- Prior-part discovery spans every customer and business because identical manufactured parts can be ordered by different organizations. Results retain source customer/business/order/version context, while reused drafts still reset transaction-specific quantity, price, purchasing state, and assignments.
+- An order’s business may be corrected by an admin after creation without renumbering the order; stable identifiers and existing paperwork links take priority over matching the prefix retroactively.
+- Drawing reads default to `gpt-5.4-mini` at medium reasoning, with high reasoning for the existing unresolved-dimension refinement. Optional `gpt-5.6-luna` high-reasoning escalation is persisted in AppSettings, defaults off, and applies only to explicit unreadable/conflicting/unusual evidence conditions. Model pricing metadata is versioned from official OpenAI documentation.
+- Phone photo selection begins bounded upload immediately; successful finalization continues into desktop review automatically. Fidelity, server processing limits, and per-photo retry remain unchanged.
 
 ### 2026-08-24 - Shop Floor glass uses an open canvas and restrained geometry
 Decision: Keep the black/navy atmospheric gradient as the Shop Floor canvas, but remove both the full-page dark backing sheet and the large glass wrapper around production results. Place the Live Production heading directly on the gradient and use modest `rounded-lg`/`rounded-md` geometry for functional panels, tiles, controls, and nested rows; reserve pills/circles for semantic badges and live indicators.

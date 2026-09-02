@@ -1,90 +1,16 @@
-import React from 'react';
-import { format } from 'date-fns';
 import { headers } from 'next/headers';
-import { redirect, notFound } from 'next/navigation';
-import { getServerAuthSession } from '@/lib/auth-session';
+import { notFound, redirect } from 'next/navigation';
+
+import { OrderTravelerControls } from '@/components/print/OrderTravelerControls';
+import { OrderTravelerDocument } from '@/components/print/OrderTravelerDocument';
+import { getAppSettings } from '@/lib/app-settings';
 import { buildSignInRedirectPath } from '@/lib/auth-redirect';
-
-import {
-  DEFAULT_TEMPLATE_SECTIONS,
-  normalizeSectionName,
-  normalizeTemplateLayout,
-} from '@/lib/document-template-layout';
+import { getServerAuthSession } from '@/lib/auth-session';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
-import { PrintControls } from '@/components/print/PrintControls';
+import { buildOrderTraveler } from '@/modules/orders/order-traveler';
 
-function formatDate(input?: string | Date | null, withTime = false) {
-  if (!input) return '-';
-  const date = input instanceof Date ? input : new Date(input);
-  if (Number.isNaN(date.getTime())) return '-';
-  return format(date, withTime ? 'M/d/yyyy h:mm a' : 'M/d/yyyy');
-}
-
-type SortableAddon = {
-  id: string;
-  name: string;
-};
-
-const addonPriority = [
-  'Anodize',
-  'Program / Setup',
-  'CNC Lathe',
-  'CNC Mill',
-  'Manual Lathe',
-  'Manual Mill',
-  'Saw',
-  'Weld / Fabricate',
-  'Deburr',
-  'Heat Treat',
-  'Grind',
-  'Stamp',
-  'Inspect',
-  'Paint',
-  'Black Oxide',
-  'Shop',
-  'Scrap',
-  'Plating',
-  'Powder Coating',
-  'Wet Paint',
-  'Zinc',
-];
-
-function sortAddons(addons: SortableAddon[]) {
-  return [...addons].sort((a, b) => {
-    const aIndex = addonPriority.indexOf(a.name);
-    const bIndex = addonPriority.indexOf(b.name);
-    if (aIndex !== -1 || bIndex !== -1) {
-      if (aIndex === -1) return 1;
-      if (bIndex === -1) return -1;
-      if (aIndex !== bIndex) return aIndex - bIndex;
-    }
-    return a.name.localeCompare(b.name);
-  });
-}
-
-function formatStepNumber(idx: number) {
-  return String(idx + 1).padStart(3, '0');
-}
-
-function normalizeStringList(input: unknown): string[] {
-  if (Array.isArray(input)) {
-    return input.map((item) => String(item));
-  }
-  if (typeof input === 'string') {
-    return [input];
-  }
-  return [];
-}
-
-export default async function OrderPrintPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams?: Promise<{ templateId?: string }>;
-}) {
+export default async function OrderTravelerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const resolvedSearchParams = await searchParams;
   const session = await getServerAuthSession();
   if (!session) {
     redirect(buildSignInRedirectPath(`/orders/${id}/print`));
@@ -93,274 +19,30 @@ export default async function OrderPrintPage({
   const headerStore = await headers();
   const host = headerStore.get('x-forwarded-host') ?? headerStore.get('host');
   const protocol = headerStore.get('x-forwarded-proto') ?? 'https';
-  const baseUrl = host ? `${protocol}://${host}` : '';
   const cookie = headerStore.get('cookie') ?? '';
+  const baseUrl = host ? `${protocol}://${host}` : '';
 
-  const response = await fetch(`${baseUrl}/api/orders/${id}/print-data`, {
-    headers: { cookie },
-    cache: 'no-store',
-  });
-  if (!response.ok) {
-    if (response.status === 404) {
-      notFound();
-    }
-    throw new Error('Failed to load order print data');
-  }
+  const [response, settings] = await Promise.all([
+    fetch(`${baseUrl}/api/orders/${encodeURIComponent(id)}/print-data`, {
+      headers: { cookie },
+      cache: 'no-store',
+    }),
+    getAppSettings(),
+  ]);
+
+  if (response.status === 404) notFound();
+  if (!response.ok) throw new Error('Failed to load order traveler data');
+
   const payload = await response.json();
-  const order = payload?.order ?? null;
-  const activeAddons = payload?.addons ?? [];
-  const templates = payload?.templates ?? [];
-  const activeTemplate = payload?.activeTemplate ?? null;
+  if (!payload?.order) notFound();
 
-  if (!order) {
-    notFound();
-  }
-
-  const requestedTemplateId = resolvedSearchParams?.templateId;
-  const selectedTemplate =
-    templates.find((template) => template.id === requestedTemplateId) ?? activeTemplate ?? templates[0] ?? null;
-  const layout = normalizeTemplateLayout(selectedTemplate?.layoutJson);
-  const layoutSections = layout.sections.length ? layout.sections : DEFAULT_TEMPLATE_SECTIONS;
-
-  const safeOrder = sanitizePricingForNonAdmin(order);
-  const safeAddons = activeAddons.map(({ rateCents: _rateCents, ...addon }) => addon);
-  const sortedAddons = sortAddons(safeAddons);
-  const selectedAddonIds = new Set(safeOrder.checklist.map((item) => item.addonId));
-  const partSummaries = safeOrder.parts.map((part) => {
-    const details = [
-      `Qty: ${part.quantity}`,
-      part.material?.name ? `Material: ${part.material.name}` : null,
-      part.stockSize ? `Stock: ${part.stockSize}` : null,
-      part.cutLength ? `Cut: ${part.cutLength}` : null,
-    ].filter(Boolean);
-    const identity = part.partName ? `${part.partNumber} — ${part.partName}` : part.partNumber;
-    return `${identity}${details.length ? ` (${details.join(' • ')})` : ''}`;
-  });
-  const totalQuantity = safeOrder.parts.reduce((sum, part) => sum + part.quantity, 0);
-  const materialsUsed: string[] = Array.from(
-    new Set(safeOrder.parts.flatMap((part) => normalizeStringList(part.material?.name))),
-  );
-  const notesContent = safeOrder.notes
-    .map((note) => `${formatDate(note.createdAt)} - ${note.user?.name ?? 'User'}: ${note.content}`)
-    .join('\n');
-  const printableDate = safeOrder.receivedDate ?? safeOrder.dueDate ?? new Date();
-
-  const headerSection = (
-    <header className="flex flex-wrap items-start justify-between gap-4 border-b border-black pb-4">
-      <div>
-        <h1 className="text-xl font-extrabold uppercase">C&amp;R Machine &amp; Fabrication</h1>
-        <p className="text-lg font-semibold uppercase">Job Router</p>
-      </div>
-      <div className="text-right text-xs uppercase text-gray-700">
-        <p className="font-semibold">Order #{safeOrder.orderNumber}</p>
-        <p>Priority: {safeOrder.priority}</p>
-        <p>Due: {formatDate(safeOrder.dueDate)}</p>
-      </div>
-    </header>
-  );
-
-  const customerInfoSection = (
-    <section className="border border-black">
-      <div className="grid grid-cols-[140px,1fr] text-sm">
-        <div className="col-span-2 border-b border-black bg-gray-100 px-2 py-1 text-xs font-semibold uppercase">
-          Customer Info
-        </div>
-        <div className="border-b border-black px-2 py-2 font-semibold">Customer</div>
-        <div className="border-b border-black px-2 py-2">{safeOrder.customer?.name ?? '—'}</div>
-        <div className="border-b border-black px-2 py-2 font-semibold">Contact</div>
-        <div className="border-b border-black px-2 py-2">{safeOrder.customer?.contact ?? '—'}</div>
-        <div className="border-b border-black px-2 py-2 font-semibold">Email</div>
-        <div className="border-b border-black px-2 py-2">{safeOrder.customer?.email ?? '—'}</div>
-        <div className="border-b border-black px-2 py-2 font-semibold">Phone</div>
-        <div className="border-b border-black px-2 py-2">{safeOrder.customer?.phone ?? '—'}</div>
-        <div className="px-2 py-2 font-semibold">Address</div>
-        <div className="px-2 py-2">{safeOrder.customer?.address ?? '—'}</div>
-      </div>
-    </section>
-  );
-
-  const orderSummarySection = (
-    <section className="border border-black">
-      <div className="grid grid-cols-[110px,1fr] text-sm">
-        <div className="col-span-2 border-b border-black bg-gray-100 px-2 py-1 text-xs font-semibold uppercase">
-          Job Details
-        </div>
-        <div className="border-b border-black px-2 py-2 font-semibold">Job #</div>
-        <div className="border-b border-black px-2 py-2">{safeOrder.orderNumber}</div>
-        <div className="border-b border-black px-2 py-2 font-semibold">Due Date</div>
-        <div className="border-b border-black px-2 py-2">{formatDate(safeOrder.dueDate)}</div>
-        <div className="border-b border-black px-2 py-2 font-semibold">P.O. #</div>
-        <div className="border-b border-black px-2 py-2">{safeOrder.poNumber ?? '—'}</div>
-        <div className="px-2 py-2 font-semibold">Machinist</div>
-        <div className="px-2 py-2">
-          {safeOrder.assignedMachinist?.name ?? safeOrder.assignedMachinist?.email ?? 'Unassigned'}
-        </div>
-      </div>
-    </section>
-  );
-
-  const partInfoSection = (
-    <section className="border border-black">
-      <div className="grid grid-cols-[110px,1fr] text-sm">
-        <div className="col-span-2 border-b border-black bg-gray-100 px-2 py-1 text-xs font-semibold uppercase">
-          Part Information
-        </div>
-        <div className="border-b border-black px-2 py-2 font-semibold">Part #(s)</div>
-        <div className="border-b border-black px-2 py-2">
-          {partSummaries.length ? (
-            <ul className="space-y-1">
-              {partSummaries.map((summary) => (
-                <li key={summary} className="flex items-center justify-between gap-2">
-                  <span>{summary}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <span>—</span>
-          )}
-        </div>
-        <div className="border-b border-black px-2 py-2 font-semibold">Quantity</div>
-        <div className="border-b border-black px-2 py-2 font-semibold">{totalQuantity}</div>
-        <div className="px-2 py-2 font-semibold">Date</div>
-        <div className="px-2 py-2">{formatDate(printableDate)}</div>
-      </div>
-    </section>
-  );
-
-  const shippingSection = (
-    <section className="border border-black">
-      <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
-        Shipping Box Information
-      </div>
-      <table className="w-full table-fixed border-collapse text-sm">
-        <thead>
-          <tr>
-            <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Box</th>
-            <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Weight</th>
-            <th className="w-1/4 border-r border-black px-2 py-2 text-left font-semibold">Qty</th>
-            <th className="px-2 py-2 text-left font-semibold">Dimensions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {['Box 1', 'Box 2'].map((label) => (
-            <tr key={label} className="border-t border-black">
-              <td className="border-r border-black px-2 py-2 font-semibold">{label}</td>
-              <td className="border-r border-black px-2 py-2">&nbsp;</td>
-              <td className="border-r border-black px-2 py-2">&nbsp;</td>
-              <td className="px-2 py-2">&nbsp;</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
-  );
-
-  const notesSection = (
-    <section className="border border-black">
-      <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">Notes</div>
-      <div className="min-h-[96px] whitespace-pre-line px-3 py-3">{notesContent ? notesContent : ' '}</div>
-    </section>
-  );
-
-  const checklistSection = (
-    <section className="border border-black">
-      <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
-        Process Checklist
-      </div>
-      <table className="w-full table-fixed border-collapse text-sm">
-        <thead>
-          <tr>
-            <th className="w-16 border-r border-black px-2 py-2 text-left font-semibold">Step</th>
-            <th className="border-r border-black px-2 py-2 text-left font-semibold">Addon / Operation</th>
-            <th className="w-28 px-2 py-2 text-left font-semibold">Planned</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedAddons.map((addon, idx) => {
-            const selected = selectedAddonIds.has(addon.id);
-            return (
-              <tr key={addon.id} className="border-t border-black">
-                <td className="border-r border-black px-2 py-2 font-semibold">{formatStepNumber(idx)}</td>
-                <td className={`border-r border-black px-2 py-2 ${selected ? 'font-semibold' : ''}`}>
-                  {addon.name}
-                </td>
-                <td className="px-2 py-2">{selected ? '✓' : ''}</td>
-              </tr>
-            );
-          })}
-          {sortedAddons.length === 0 && (
-            <tr className="border-t border-black">
-              <td className="border-r border-black px-2 py-2">001</td>
-              <td className="border-r border-black px-2 py-2">No addons configured.</td>
-              <td className="px-2 py-2" />
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </section>
-  );
-
-  const materialsSection = (
-    <section className="border border-black">
-      <div className="border-b border-black bg-gray-100 px-3 py-2 text-xs font-semibold uppercase">
-        Materials Used
-      </div>
-      <div className="min-h-[48px] px-3 py-3">
-        {materialsUsed.length ? (
-          <ul className="list-disc pl-4">
-            {materialsUsed.map((mat) => (
-              <li key={mat}>{mat}</li>
-            ))}
-          </ul>
-        ) : (
-          <span>—</span>
-        )}
-      </div>
-    </section>
-  );
-
-  const sectionContent: Record<string, React.ReactNode> = {
-    header: headerSection,
-    'customer info': customerInfoSection,
-    'total price': orderSummarySection,
-    'job details': orderSummarySection,
-    'part name': partInfoSection,
-    'part info': partInfoSection,
-    'line items': checklistSection,
-    'addons labor': checklistSection,
-    'addons/labor': checklistSection,
-    shipping: shippingSection,
-    notes: notesSection,
-    'process checklist': checklistSection,
-    'materials used': materialsSection,
-  };
+  const safeOrder = sanitizePricingForNonAdmin(payload.order);
+  const traveler = buildOrderTraveler(safeOrder);
 
   return (
-    <div className="mx-auto max-w-5xl bg-white p-6 text-sm text-black print:p-4">
-      <PrintControls
-        templates={templates.map((template) => ({
-          id: template.id,
-          name: template.name,
-          description: template.description,
-        }))}
-        selectedTemplateId={selectedTemplate?.id ?? null}
-        templateLabel="Order print template"
-      />
-      <div className="space-y-6 border border-black p-6">
-        {layoutSections.map((section, index) => {
-          const key = normalizeSectionName(section);
-          const content = sectionContent[key];
-          if (!content) {
-            return (
-              <section key={`${section}-${index}`} className="border border-dashed border-black px-3 py-3">
-                <div className="text-xs font-semibold uppercase text-gray-500">Unmapped section</div>
-                <div className="text-sm">{section}</div>
-              </section>
-            );
-          }
-          return <React.Fragment key={`${section}-${index}`}>{content}</React.Fragment>;
-        })}
-      </div>
+    <div className="mx-auto max-w-[8.5in]">
+      <OrderTravelerControls orderId={id} />
+      <OrderTravelerDocument traveler={traveler} companyName={settings.companyName} />
     </div>
   );
 }

@@ -7,8 +7,9 @@ import { canAccessAdmin } from '@/lib/rbac';
 import { Printer, UserCircle, Phone, Mail, MapPin, Activity, Package2 } from 'lucide-react';
 
 import { CustomerRepeatTemplateSection } from '@/components/repeat-orders/CustomerRepeatTemplateSection';
-import { getCustomerDetail } from '@/modules/customers/customers.service';
+import { formatCustomerShippingAddress, getCustomerDetail } from '@/modules/customers/customers.service';
 import { EditCustomerDialog } from '@/components/EditCustomerDialog';
+import { businessNameFromCode } from '@/lib/businesses';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -67,9 +68,18 @@ export default async function CustomerDetailPage({ params }: CustomerPageProps) 
     name: customer.name,
     contact: customer.contact,
     phone: customer.phone,
+    fax: customer.fax,
     email: customer.email,
     address: customer.address,
+    addressLine1: customer.addressLine1,
+    addressLine2: customer.addressLine2,
+    city: customer.city,
+    stateProvince: customer.stateProvince,
+    postalCode: customer.postalCode,
+    country: customer.country,
+    contacts: customer.contacts,
   };
+  const shippingAddress = formatCustomerShippingAddress(customer);
 
   const orders = customer.orders.map((order) => ({
     ...order,
@@ -82,6 +92,15 @@ export default async function CustomerDetailPage({ params }: CustomerPageProps) 
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.4em] text-primary/70">Customer</p>
           <h1 className="text-4xl font-semibold text-foreground">{customer.name}</h1>
+          {customer.businesses.length ? (
+            <div className="flex flex-wrap gap-2">
+              {customer.businesses.map((membership) => (
+                <Badge key={membership.businessCode} variant="outline">
+                  {businessNameFromCode(membership.businessCode)}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
           <p className="max-w-2xl text-sm text-muted-foreground">
             {summary.activeOrders > 0
               ? `${summary.activeOrders} active ${summary.activeOrders === 1 ? 'order' : 'orders'} on the floor.`
@@ -111,21 +130,29 @@ export default async function CustomerDetailPage({ params }: CustomerPageProps) 
               <CardDescription>Keep sales and shipping aligned.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 text-sm">
-              <div>
-                <p className="text-xs uppercase text-muted-foreground">Primary contact</p>
-                <p className="text-base text-foreground">{customer.contact ?? 'Not provided'}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Phone className="h-4 w-4 text-muted-foreground" />
-                <span>{customer.phone ?? 'No phone on file'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <span>{customer.email ?? 'No email on file'}</span>
-              </div>
+              {(customer.contacts.length
+                ? customer.contacts
+                : customer.contact || customer.phone || customer.fax || customer.email
+                  ? [{ id: 'legacy', name: customer.contact ?? customer.email ?? 'Primary contact', title: null, phone: customer.phone, fax: customer.fax, email: customer.email, isPrimary: true }]
+                  : []
+              ).map((contact) => (
+                <div key={contact.id} className="space-y-1 rounded-md border border-border/50 bg-muted/10 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium text-foreground">{contact.name}</p>
+                    {contact.isPrimary ? <Badge variant="outline">Primary</Badge> : null}
+                  </div>
+                  {contact.title ? <p className="text-xs text-muted-foreground">{contact.title}</p> : null}
+                  {contact.phone ? <div className="flex items-center gap-2"><Phone className="h-3.5 w-3.5 text-muted-foreground" /><span>{contact.phone}</span></div> : null}
+                  {contact.fax ? <div className="flex items-center gap-2"><span className="text-xs font-medium text-muted-foreground">Fax</span><span>{contact.fax}</span></div> : null}
+                  {contact.email ? <div className="flex items-center gap-2"><Mail className="h-3.5 w-3.5 text-muted-foreground" /><span>{contact.email}</span></div> : null}
+                </div>
+              ))}
+              {!customer.contacts.length && !customer.contact && !customer.phone && !customer.fax && !customer.email ? (
+                <p className="text-muted-foreground">No contacts recorded.</p>
+              ) : null}
               <div className="flex items-start gap-2">
                 <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                <span className="whitespace-pre-line">{customer.address ?? 'No address recorded'}</span>
+                <span className="whitespace-pre-line">{shippingAddress ?? 'No address recorded'}</span>
               </div>
             </CardContent>
           </Card>

@@ -24,6 +24,9 @@ import {
 } from '@/modules/orders/orders.service';
 import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 import { convertQuoteToOrder, findActiveOrderCustomFields, findQuoteForConversion } from '@/modules/quotes/quotes.service';
+import {
+  detectPurchaseOrderFromStoredPdfAttachments,
+} from '@/modules/drawing-import/drawing-import.service';
 
 async function requireAdmin() {
   const session = await getServerAuthSession();
@@ -51,6 +54,7 @@ const ConversionOverrides = z.object({
   priority: PriorityEnum.optional(),
   poNumber: z.string().trim().optional(),
   assignedMachinistId: z.string().trim().optional(),
+  assignedWorkerIds: z.array(z.string().trim().min(1)).max(200).default([]),
   notes: z.string().trim().max(1000).optional(),
   customFieldValues: z
     .array(
@@ -82,7 +86,7 @@ function buildPartNotes(part: {
     lines.push(`Pieces: ${part.pieceCount}`);
   }
   if (part.stockSize) {
-    lines.push(`Stock size: ${part.stockSize}`);
+    lines.push(`Total stock dimensions: ${part.stockSize}`);
   }
   if (part.cutLength) {
     lines.push(`Cut length: ${part.cutLength}`);
@@ -307,6 +311,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       materialId: optionalId(part.materialId),
       stockSize: part.stockSize ?? null,
       cutLength: part.cutLength ?? null,
+      finalPartLength: part.finalPartLength ?? null,
+      partWidth: part.partWidth ?? null,
+      partThickness: part.partThickness ?? null,
+      drawingImportPageId: part.drawingImportPageId ?? null,
       notes: buildPartNotes({
         description: part.description ?? null,
         notes: part.notes ?? null,
@@ -331,6 +339,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     procurementVendorId: optionalId(quotePart?.procurementVendorId),
     stockSize: part.stockSize ?? null,
     cutLength: part.cutLength ?? null,
+    finalPartLength: quotePart?.finalPartLength ?? part.finalPartLength ?? null,
+    partWidth: quotePart?.partWidth ?? null,
+    partThickness: quotePart?.partThickness ?? null,
+    drawingImportPageId: quotePart?.drawingImportPageId ?? part.drawingImportPageId ?? null,
     notes: part.notes ?? null,
     workInstructions: part.workInstructions?.trim() ? part.workInstructions.trim() : null,
   });
@@ -362,6 +374,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   );
   const vendorId = procurementVendorIds.length === 1 ? procurementVendorIds[0] : null;
   const customFieldValues = overrides?.customFieldValues ?? [];
+  const poNumber = overrides?.poNumber?.trim()
+    ? overrides.poNumber.trim()
+    : (await detectPurchaseOrderFromStoredPdfAttachments(quote.attachments ?? [], settings.attachmentsDir))?.poNumber ?? null;
   const validCustomFieldValues = customFieldValues.length
     ? await findActiveOrderCustomFields({
         fieldIds: customFieldValues.map((value) => value.fieldId),
@@ -388,8 +403,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       materialNeeded,
       materialOrdered,
       vendorId,
-      poNumber: overrides?.poNumber ?? null,
+      poNumber,
       assignedMachinistId: overrides?.assignedMachinistId ?? null,
+      assignedWorkerIds: Array.from(new Set(overrides?.assignedWorkerIds ?? [])),
       partsData,
       orderAttachments,
       partAttachments: preparedPartAttachments,

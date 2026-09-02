@@ -14,6 +14,7 @@ export type AppSettingsRecord = {
   attachmentsDir: string;
   requirePOForQuoteApproval: boolean;
   requirePOForQuoteToOrder: boolean;
+  drawingImportLunaFallbackEnabled: boolean;
   invoiceTemplateId: string;
   invoiceOptions: string | null;
   updatedAt: Date;

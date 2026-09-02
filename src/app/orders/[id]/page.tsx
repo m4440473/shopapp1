@@ -12,6 +12,7 @@ import {
   ListChecks,
   PauseCircle,
   Play,
+  Printer,
   Square,
   Timer,
   UserPlus,
@@ -29,11 +30,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/Textarea';
 import { useToast } from '@/components/ui/Toast';
+import { BUSINESS_OPTIONS } from '@/lib/businesses';
 import { PartBomTab } from './PartBomTab';
 import { PartLaborHistory } from '@/modules/time/PartLaborHistory';
+import { findNextDepartmentWithOpenChecklist } from '@/modules/orders/department-routing';
 
 const PART_TABS = ['overview', 'notes', 'full-files', 'bom', 'checklist', 'log'] as const;
 const PART_ATTACHMENT_KINDS = ['DWG', 'STEP', 'PDF', 'PO', 'PRINT', 'IMAGE', 'OTHER'] as const;
+const PART_MATERIAL_STATUS_OPTIONS = [
+  ['UNREVIEWED', 'Not reviewed'],
+  ['NEED_TO_ORDER', 'Needs ordering'],
+  ['WAITING_ON_STOCK', 'Waiting on stock to arrive'],
+  ['IN_STOCK', 'Material arrived / on hand'],
+  ['NOT_REQUIRED', 'No stock required'],
+] as const;
+
+function formatPartMaterialStatus(value?: string | null) {
+  return PART_MATERIAL_STATUS_OPTIONS.find(([status]) => status === value)?.[1] ?? 'Not reviewed';
+}
 
 type PartTab = (typeof PART_TABS)[number];
 
@@ -194,6 +208,7 @@ export default function OrderDetailPage() {
   const [activeTab, setActiveTab] = useState<PartTab>('overview');
   const [noteText, setNoteText] = useState('');
   const [canEditParts, setCanEditParts] = useState(false);
+  const [canEditOrderStatus, setCanEditOrderStatus] = useState(false);
   const [canUseTimerControls, setCanUseTimerControls] = useState(true);
   const [kioskSession, setKioskSession] = useState<any | null>(null);
   const [kioskSessionLoading, setKioskSessionLoading] = useState(false);
@@ -233,12 +248,21 @@ export default function OrderDetailPage() {
   const [checklistError, setChecklistError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [savingOrderDetails, setSavingOrderDetails] = useState(false);
+  const [prioritySaving, setPrioritySaving] = useState(false);
+  const [statusChangeDialog, setStatusChangeDialog] = useState({
+    open: false,
+    status: 'RECEIVED',
+    reason: '',
+    saving: false,
+    error: null as string | null,
+  });
   const [savingPartDetails, setSavingPartDetails] = useState(false);
+  const [materialStatusSaving, setMaterialStatusSaving] = useState(false);
   const [orderDraft, setOrderDraft] = useState({
+    business: '',
     customerId: '',
     receivedDate: '',
     dueDate: '',
-    priority: 'NORMAL',
     vendorId: '',
     poNumber: '',
     assignedMachinistId: '',
@@ -251,8 +275,15 @@ export default function OrderDetailPage() {
     partName: '',
     quantity: 1,
     materialId: '',
+    materialStatus: 'UNREVIEWED',
+    procurementVendorId: '',
+    inventoryLocation: '',
+    materialNotes: '',
     stockSize: '',
     cutLength: '',
+    finalPartLength: '',
+    partWidth: '',
+    partThickness: '',
     notes: '',
     workInstructions: '',
   });
@@ -589,6 +620,7 @@ export default function OrderDetailPage() {
           : []
       );
       setCanEditParts(Boolean(data?.permissions?.canEditParts));
+      setCanEditOrderStatus(Boolean(data?.permissions?.canEditOrderStatus));
       setCanUseTimerControls(Boolean(data?.permissions?.canUseTimerControls ?? true));
       setError(null);
       return data.item;
@@ -750,10 +782,10 @@ export default function OrderDetailPage() {
   useEffect(() => {
     if (!item) return;
     setOrderDraft({
+      business: item.business ?? '',
       customerId: item.customerId ?? '',
       receivedDate: item.receivedDate ? String(item.receivedDate).slice(0, 10) : '',
       dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : '',
-      priority: item.priority ?? 'NORMAL',
       vendorId: item.vendorId ?? '',
       poNumber: item.poNumber ?? '',
       assignedMachinistId: item.assignedMachinistId ?? '',
@@ -770,8 +802,15 @@ export default function OrderDetailPage() {
       partName: selectedPart.partName ?? '',
       quantity: Number(selectedPart.quantity ?? 1),
       materialId: selectedPart.materialId ?? '',
+      materialStatus: selectedPart.materialStatus ?? 'UNREVIEWED',
+      procurementVendorId: selectedPart.procurementVendorId ?? '',
+      inventoryLocation: selectedPart.inventoryLocation ?? '',
+      materialNotes: selectedPart.materialNotes ?? '',
       stockSize: selectedPart.stockSize ?? '',
       cutLength: selectedPart.cutLength ?? '',
+      finalPartLength: selectedPart.finalPartLength ?? '',
+      partWidth: selectedPart.partWidth ?? '',
+      partThickness: selectedPart.partThickness ?? '',
       notes: selectedPart.notes ?? '',
       workInstructions: selectedPart.workInstructions ?? '',
     });
@@ -1483,8 +1522,87 @@ export default function OrderDetailPage() {
     });
   };
 
+  const handleMoveDepartment = async (): Promise<boolean> => {
+    if (!id || !selectedPartId) return false;
+    const destinationDepartmentId = moveDepartmentDialog.destinationDepartmentId;
+    const note = moveDepartmentDialog.note.trim();
+    if (!destinationDepartmentId) {
+      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'Choose a destination department.' }));
+      return false;
+    }
+    if (!note) {
+      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'A note is required so this move is recorded clearly.' }));
+      return false;
+    }
+    if (activeOnSelected) {
+      setMoveDepartmentDialog((prev) => ({
+        ...prev,
+        error: 'Pause or finish every active employee timer before moving this part.',
+      }));
+      return false;
+    }
+
+    setTimerSaving(true);
+    setMoveDepartmentDialog((prev) => ({ ...prev, error: null }));
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/assign-department`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          partId: selectedPartId,
+          departmentId: destinationDepartmentId,
+          reasonCode: 'MANUAL_MOVE',
+          reasonText: note,
+        }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        const fieldMessage = payload?.error?.fieldErrors?.reasonText?.[0];
+        throw new Error(
+          typeof payload?.error === 'string'
+            ? payload.error
+            : typeof fieldMessage === 'string'
+              ? fieldMessage
+              : 'Failed to move department.',
+        );
+      }
+
+      const destination = manualMoveDepartments.find((department) => department.id === destinationDepartmentId);
+      await load();
+      await refreshTimerSummary();
+      await loadPartEvents();
+      setMoveDepartmentDialog({
+        open: false,
+        destinationDepartmentId: '',
+        note: '',
+        error: null,
+      });
+      toast.push(
+        selectedPartCurrentDepartmentId
+          ? `Part moved to ${destination?.name ?? 'the selected department'}.`
+          : `Part assigned to ${destination?.name ?? 'the selected department'}.`,
+        'success',
+      );
+      return true;
+    } catch (err: any) {
+      setMoveDepartmentDialog((prev) => ({
+        ...prev,
+        error: err?.message || 'Failed to move department.',
+      }));
+      return false;
+    } finally {
+      setTimerSaving(false);
+    }
+  };
+
   const handleBeginSubmitDepartmentComplete = async (): Promise<boolean> => {
     if (!id || !selectedPartId) return false;
+
+    if (departmentSubmitBlocker) {
+      setTimerError(departmentSubmitBlocker);
+      return false;
+    }
 
     const currentDepartmentId = selectedPart?.currentDepartmentId ?? '';
     const destinationDepartmentId = nextDepartmentOption?.id ?? currentDepartmentId;
@@ -1652,10 +1770,10 @@ export default function OrderDetailPage() {
     setSavingOrderDetails(true);
     try {
       const payload: Record<string, unknown> = {
+        business: orderDraft.business || undefined,
         customerId: orderDraft.customerId || undefined,
         receivedDate: orderDraft.receivedDate || undefined,
         dueDate: orderDraft.dueDate || undefined,
-        priority: orderDraft.priority,
         vendorId: orderDraft.vendorId || '',
         poNumber: orderDraft.poNumber || '',
         assignedMachinistId: orderDraft.assignedMachinistId || '',
@@ -1682,6 +1800,58 @@ export default function OrderDetailPage() {
     }
   };
 
+  const handlePriorityChange = async (priority: string) => {
+    if (!id || !canEditOrderStatus || prioritySaving || priority === item?.priority) return;
+    setPrioritySaving(true);
+    try {
+      const res = await fetch(`/api/orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ priority }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to update priority.');
+      }
+      setItem((current: any) => current ? { ...current, priority } : current);
+      toast.push(`Priority changed to ${priority}.`, 'success');
+    } catch (err: any) {
+      toast.push(err?.message || 'Failed to update priority.', 'error');
+    } finally {
+      setPrioritySaving(false);
+    }
+  };
+
+  const handleStatusChange = async () => {
+    if (!id || !canEditOrderStatus || statusChangeDialog.saving || !statusChangeDialog.reason.trim()) return;
+    setStatusChangeDialog((current) => ({ ...current, saving: true, error: null }));
+    try {
+      const res = await fetch(`/api/orders/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          status: statusChangeDialog.status,
+          reason: statusChangeDialog.reason.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to update order status.');
+      }
+      await load();
+      setStatusChangeDialog({ open: false, status: 'RECEIVED', reason: '', saving: false, error: null });
+      toast.push('Order status updated and recorded in history.', 'success');
+    } catch (err: any) {
+      setStatusChangeDialog((current) => ({
+        ...current,
+        saving: false,
+        error: err?.message || 'Failed to update order status.',
+      }));
+    }
+  };
+
   const handleSavePartDetails = async () => {
     if (!id || !selectedPartId || !canEditParts) return;
     setSavingPartDetails(true);
@@ -1691,8 +1861,15 @@ export default function OrderDetailPage() {
         partName: partDraft.partName || null,
         quantity: Number(partDraft.quantity),
         materialId: partDraft.materialId || null,
+        materialStatus: partDraft.materialStatus,
+        procurementVendorId: partDraft.procurementVendorId || null,
+        inventoryLocation: partDraft.inventoryLocation || null,
+        materialNotes: partDraft.materialNotes || null,
         stockSize: partDraft.stockSize || null,
         cutLength: partDraft.cutLength || null,
+        finalPartLength: partDraft.finalPartLength || null,
+        partWidth: partDraft.partWidth || null,
+        partThickness: partDraft.partThickness || null,
         notes: partDraft.notes || null,
         workInstructions: partDraft.workInstructions || null,
       };
@@ -1712,6 +1889,35 @@ export default function OrderDetailPage() {
       toast.push(err?.message || 'Failed to update part.', 'error');
     } finally {
       setSavingPartDetails(false);
+    }
+  };
+
+  const handleQuickMaterialStatusChange = async (materialStatus: string) => {
+    if (!id || !selectedPartId || !canEditParts || materialStatusSaving) return;
+    setMaterialStatusSaving(true);
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ materialStatus }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to update material status.');
+      }
+      setItem((current: any) => current ? {
+        ...current,
+        parts: (current.parts ?? []).map((part: any) => (
+          part.id === selectedPartId ? { ...part, ...(body?.part ?? {}), materialStatus } : part
+        )),
+      } : current);
+      setPartDraft((current) => ({ ...current, materialStatus }));
+      toast.push(`Material status changed to ${formatPartMaterialStatus(materialStatus)}.`, 'success');
+    } catch (err: any) {
+      toast.push(err?.message || 'Failed to update material status.', 'error');
+    } finally {
+      setMaterialStatusSaving(false);
     }
   };
 
@@ -2075,13 +2281,33 @@ export default function OrderDetailPage() {
   const kioskHelperLabel = kioskDefaultDepartmentName
     ? `Choose a worker, choose a department, and enter that worker's PIN to time this order. ${kioskDefaultDepartmentName} is the current default department for the selected worker.`
     : 'Choose a worker, choose a department, and enter that worker\'s PIN to time this order.';
-  const selectedCurrentDepartmentIndex = selectedCurrentDepartment
-    ? manualMoveDepartments.findIndex((department) => department.id === selectedCurrentDepartment.id)
-    : -1;
+  const currentDepartmentChecklistItems = selectedChecklist.filter(
+    (entry: any) =>
+      entry.isActive !== false && entry.departmentId === selectedPartCurrentDepartmentId,
+  );
+  const currentDepartmentOpenItemCount = currentDepartmentChecklistItems.filter(
+    (entry: any) => entry.completed === false,
+  ).length;
+  const nextDepartmentId = findNextDepartmentWithOpenChecklist(selectedChecklist, manualMoveDepartments);
   const nextDepartmentOption =
-    selectedCurrentDepartmentIndex >= 0
-      ? manualMoveDepartments[selectedCurrentDepartmentIndex + 1] ?? null
-      : manualMoveDepartments[0] ?? null;
+    currentDepartmentChecklistItems.length > 0 && currentDepartmentOpenItemCount === 0
+      ? manualMoveDepartments.find((department) => department.id === nextDepartmentId) ?? null
+      : null;
+  const departmentCompletionPreview = !currentDepartmentChecklistItems.length
+    ? 'Cannot submit: this department has no checklist items.'
+    : currentDepartmentOpenItemCount > 0
+      ? `Finish ${currentDepartmentOpenItemCount} open checklist item${currentDepartmentOpenItemCount === 1 ? '' : 's'} first.`
+      : nextDepartmentOption
+        ? `Move to ${nextDepartmentOption.name}`
+        : 'Mark the part complete';
+  const departmentSubmitBlocker = activeOnSelected
+    ? 'Pause or finish every active employee timer before submitting this department complete.'
+    : !currentDepartmentChecklistItems.length
+      ? 'This department cannot be submitted because it has no checklist items. Use Move department if the part needs to go elsewhere.'
+      : currentDepartmentOpenItemCount > 0
+        ? `Complete ${currentDepartmentOpenItemCount} remaining checklist item${currentDepartmentOpenItemCount === 1 ? '' : 's'} before submitting this department.`
+        : null;
+  const canSubmitCurrentDepartment = Boolean(selectedPartCurrentDepartmentId) && !departmentSubmitBlocker;
   const canMarkPartComplete = (selectedCurrentDepartment?.name ?? '').trim().toLowerCase() === 'shipping';
   const canStartSelectedPartTimer =
     selectedPart?.status !== 'COMPLETE' &&
@@ -2091,7 +2317,7 @@ export default function OrderDetailPage() {
     : 'New timers are unavailable after a part reaches Shipping or is complete. Existing timers can still be paused or finished above.';
 
   return (
-    <div className="space-y-6">
+    <div className="order-detail-page -mt-4 space-y-4 sm:mt-0 sm:space-y-6">
       <Dialog open={conflictState.open} onOpenChange={(open) => setConflictState((prev) => ({ ...prev, open }))}>
         <DialogContent>
           <DialogHeader>
@@ -2264,6 +2490,77 @@ export default function OrderDetailPage() {
         </DialogContent>
       </Dialog>
       <Dialog
+        open={statusChangeDialog.open}
+        onOpenChange={(open) =>
+          setStatusChangeDialog((current) => ({
+            ...current,
+            open,
+            status: open ? current.status : item?.status ?? 'RECEIVED',
+            reason: open ? current.reason : '',
+            error: null,
+          }))
+        }
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Change order status</DialogTitle>
+            <DialogDescription>
+              This is an administrative override. Normal Received, In progress, and Complete changes are derived from part activity.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="order-status-override">Status</Label>
+              <Select
+                value={statusChangeDialog.status}
+                onValueChange={(status) => setStatusChangeDialog((current) => ({ ...current, status, error: null }))}
+              >
+                <SelectTrigger id="order-status-override"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="RECEIVED">Received</SelectItem>
+                  <SelectItem value="IN_PROGRESS">In progress</SelectItem>
+                  <SelectItem value="COMPLETE">Complete</SelectItem>
+                  <SelectItem value="CLOSED">Closed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="order-status-reason">Reason for status change</Label>
+              <Textarea
+                id="order-status-reason"
+                value={statusChangeDialog.reason}
+                onChange={(event) => setStatusChangeDialog((current) => ({ ...current, reason: event.target.value, error: null }))}
+                placeholder="Why is this administrative override needed?"
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">Required. The selected status, administrator, and reason are saved in order history.</p>
+            </div>
+            {statusChangeDialog.error ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {statusChangeDialog.error}
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setStatusChangeDialog({ open: false, status: item?.status ?? 'RECEIVED', reason: '', saving: false, error: null })}
+              disabled={statusChangeDialog.saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleStatusChange()}
+              disabled={statusChangeDialog.saving || !statusChangeDialog.reason.trim()}
+            >
+              {statusChangeDialog.saving ? 'Saving…' : 'Save status'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={repeatTemplateDialogOpen}
         onOpenChange={(open) => {
           setRepeatTemplateDialogOpen(open);
@@ -2326,9 +2623,14 @@ export default function OrderDetailPage() {
           }))
         }
       >
-        <DialogContent>
+        <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Submit {selectedCurrentDepartment?.name ?? 'department'} complete</DialogTitle>
+            <DialogTitle>{selectedPartCurrentDepartmentId ? 'Move department' : 'Assign department'}</DialogTitle>
+            <DialogDescription>
+              {selectedPartCurrentDepartmentId
+                ? 'Move this part without marking the current department complete. The destination and note are recorded in the part log.'
+                : 'Choose the starting department for this part. The assignment and note are recorded in the part log.'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm">
@@ -2337,19 +2639,48 @@ export default function OrderDetailPage() {
                 {selectedCurrentDepartment?.name ?? selectedPart?.currentDepartmentId ?? 'Unassigned'}
               </div>
             </div>
-            <div className="rounded-md border border-border/60 bg-background/70 px-3 py-3 text-sm">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                What happens next
-              </div>
-              <div className="mt-1 font-semibold text-foreground">
-                {nextDepartmentOption
-                  ? `Move to ${nextDepartmentOption.name}`
-                  : 'Mark the part complete'}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Every checklist item must be complete and all employee timers must be paused or finished.
+            <div className="grid gap-2">
+              <Label htmlFor="move-department-destination">Destination department</Label>
+              <Select
+                value={moveDepartmentDialog.destinationDepartmentId}
+                onValueChange={(destinationDepartmentId) =>
+                  setMoveDepartmentDialog((prev) => ({ ...prev, destinationDepartmentId, error: null }))
+                }
+              >
+                <SelectTrigger id="move-department-destination">
+                  <SelectValue placeholder="Choose a department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {submitDestinationOptions.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="move-department-note">
+                {selectedPartCurrentDepartmentId ? 'Reason for move' : 'Reason for assignment'}
+              </Label>
+              <Textarea
+                id="move-department-note"
+                value={moveDepartmentDialog.note}
+                onChange={(event) =>
+                  setMoveDepartmentDialog((prev) => ({ ...prev, note: event.target.value, error: null }))
+                }
+                placeholder={selectedPartCurrentDepartmentId ? 'Why is this part moving departments?' : 'Why is this the correct starting department?'}
+                rows={3}
+              />
+              <div className="text-xs text-muted-foreground">
+                Required for the audit log. Moving backward is automatically flagged as rework.
               </div>
             </div>
+            {activeOnSelected ? (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                Pause or finish every active employee timer before moving this part.
+              </div>
+            ) : null}
             {moveDepartmentDialog.error ? (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                 {moveDepartmentDialog.error}
@@ -2371,8 +2702,19 @@ export default function OrderDetailPage() {
             >
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleBeginSubmitDepartmentComplete()} disabled={timerSaving}>
-              {timerSaving ? 'Reviewing…' : `Review ${selectedCurrentDepartment?.name ?? 'department'} completion`}
+            <Button
+              type="button"
+              onClick={() => void handleMoveDepartment()}
+              disabled={
+                timerSaving ||
+                activeOnSelected ||
+                !moveDepartmentDialog.destinationDepartmentId ||
+                !moveDepartmentDialog.note.trim()
+              }
+            >
+              {timerSaving
+                ? (selectedPartCurrentDepartmentId ? 'Moving…' : 'Assigning…')
+                : (selectedPartCurrentDepartmentId ? 'Move department' : 'Assign department')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2582,7 +2924,7 @@ export default function OrderDetailPage() {
             <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm">
               <div className="text-xs uppercase tracking-wide text-muted-foreground">Next production state</div>
               <div className="font-medium text-foreground">
-                {nextDepartmentOption ? `Move to ${nextDepartmentOption.name}` : 'Mark the part complete'}
+                {departmentCompletionPreview}
               </div>
             </div>
             {submitConfirmDialog.error ? (
@@ -2602,20 +2944,22 @@ export default function OrderDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <Card className="flex min-h-0 flex-col">
-          <div className="sticky top-0 z-10 border-b border-border/60 bg-background/95 p-4">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span className="uppercase tracking-wide">Parts</span>
-              {timerLoading ? <span>Refreshing…</span> : <span>{parts.length} total</span>}
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-6">
+        <div className="flex min-h-0 flex-col">
+          <div className="pb-2 lg:sticky lg:top-0 lg:z-10 lg:pb-3">
+            <div className="flex items-end justify-between gap-3 lg:min-h-[70px]">
+              <span className="text-2xl font-semibold text-foreground">PARTS</span>
+              <span className="pb-1 text-xs text-muted-foreground">
+                {timerLoading ? 'Refreshing…' : `${parts.length} total`}
+              </span>
             </div>
           </div>
-          <CardContent className="flex-1 min-h-0 space-y-3 overflow-hidden p-4">
+          <div className="min-h-0 flex-1 space-y-2 lg:space-y-3 lg:overflow-hidden">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>Parts</span>
               <span>{selectedPartId ? 'Select a part to inspect details' : 'Choose a part to begin'}</span>
             </div>
-            <div className="max-h-[calc(100vh-260px)] space-y-2 overflow-y-auto pr-1">
+            <div className="flex gap-2 overflow-x-auto pb-1 pr-1 lg:block lg:max-h-[calc(100vh-260px)] lg:space-y-2 lg:overflow-x-hidden lg:overflow-y-auto lg:pb-0">
               {parts.map((part: any, index: number) => {
                 const isSelected = part.id === selectedPartId;
                 const partLabel = part.partNumber || `Part ${index + 1}`;
@@ -2633,22 +2977,22 @@ export default function OrderDetailPage() {
                     key={part.id}
                     type="button"
                     onClick={() => selectPart(part.id)}
-                    className={`w-full rounded-lg border px-3 py-3 text-left transition ${
+                    className={`relative isolate w-full min-w-[min(18rem,calc(100vw-2rem))] rounded-lg border px-3 py-3 text-left transition-[border-color,box-shadow,background-color] duration-200 lg:min-w-0 ${
                       isSelected
-                        ? 'border-primary/60 bg-primary/10'
-                        : 'border-border/60 bg-muted/10 hover:bg-muted/20'
+                        ? 'border-sky-400/80 bg-[linear-gradient(145deg,rgba(38,82,162,0.96),rgba(17,52,106,0.96))] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_12px_30px_rgba(0,0,0,0.22)]'
+                        : 'border-white/20 bg-[linear-gradient(145deg,rgba(21,55,104,0.94),rgba(8,34,68,0.96))] shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_10px_24px_rgba(0,0,0,0.18)] hover:border-sky-300/50 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_12px_26px_rgba(0,0,0,0.22)]'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-sm font-medium text-foreground">{partLabel}</div>
-                        <div className="text-xs text-muted-foreground">Qty {part.quantity ?? 1}</div>
-                        <div className="text-xs text-muted-foreground">Current dept: {partCurrentDepartment}</div>
+                        <div className="text-sm font-semibold text-white">{partLabel}</div>
+                        <div className="text-xs text-slate-300">Qty {part.quantity ?? 1}</div>
+                        <div className="text-xs text-slate-300">Current dept: {partCurrentDepartment}</div>
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <Badge className={statusBadgeStyles[status] || 'bg-muted text-foreground'}>{status}</Badge>
                         {flagged ? <Badge variant="destructive" title={typeof latestMeta?.reasonText === 'string' ? latestMeta.reasonText : 'Rework / manual backward move'}>REWORK</Badge> : null}
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-slate-300">
                           {formatDuration(totalSeconds)}
                         </span>
                       </div>
@@ -2657,46 +3001,84 @@ export default function OrderDetailPage() {
                 );
               })}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="flex flex-col">
-          <CardHeader className="space-y-3">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+        <Card className="min-w-0 flex flex-col rounded-none border-0 bg-transparent shadow-none">
+          <CardHeader className="space-y-3 px-0 pb-0 pt-1 sm:px-6 sm:pb-0 sm:pt-6">
+            <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-start sm:justify-between sm:gap-4">
               <div>
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">{orderTitle}</div>
                 <div className="text-2xl font-semibold text-foreground">{item.customer?.name ?? 'Customer'}</div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="grid w-full grid-cols-2 gap-2 [&>*:last-child]:col-span-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:[&>*:last-child]:col-span-1">
                 {canEditParts ? (
                   <Button
                     type="button"
                     size="sm"
                     onClick={() => void handleSaveRepeatTemplate({ launch: true })}
                     disabled={repeatTemplateSaving || !selectedPartId}
+                    className="h-auto min-h-9 w-full whitespace-normal sm:w-auto"
                   >
                     {repeatTemplateSaving ? 'Preparing...' : 'Create again'}
                   </Button>
                 ) : null}
                 {canEditParts ? (
-                  <Button type="button" variant="outline" size="sm" onClick={() => setRepeatTemplateDialogOpen(true)}>
+                  <Button type="button" variant="outline" size="sm" className="h-auto min-h-9 w-full whitespace-normal sm:w-auto" onClick={() => setRepeatTemplateDialogOpen(true)}>
                     Save repeat template
                   </Button>
                 ) : null}
+                <Button asChild variant="outline" size="sm" className="h-auto min-h-9 w-full whitespace-normal sm:w-auto">
+                  <Link href={`/orders/${id}/print`}>
+                    <Printer className="h-4 w-4" />
+                    Print traveler
+                  </Link>
+                </Button>
                 {canEditParts ? (
-                  <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => setEditMode((prev) => !prev)}>
+                  <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" className="h-auto min-h-9 w-full whitespace-normal sm:w-auto" onClick={() => setEditMode((prev) => !prev)}>
                     {editMode ? 'Exit edit mode' : 'Edit order'}
                   </Button>
                 ) : null}
-                <Button asChild variant="outline" size="sm">
+                <Button asChild variant="outline" size="sm" className="h-auto min-h-9 w-full whitespace-normal sm:w-auto">
                   <Link href="/">Exit Order</Link>
                 </Button>
               </div>
             </div>
-            <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/10 p-3">
-              <div className="flex flex-wrap items-center gap-3">
+            <div className="order-detail-tile flex flex-col gap-3 rounded-lg border p-3">
+              <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap sm:gap-3">
                 <Badge className={statusBadgeStyles[item.status || 'RECEIVED'] || 'bg-primary/10 text-primary'}>{statusLabel}</Badge>
                 <span className="text-sm text-muted-foreground">Due {dueDateLabel}</span>
+                {canEditOrderStatus ? (
+                  <>
+                    <div className="col-span-2 flex w-full items-center gap-2 rounded-md border border-border/60 bg-background/70 px-2 py-1 sm:col-span-1 sm:w-auto">
+                      <Label htmlFor="order-header-priority" className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Priority</Label>
+                      <Select value={item.priority ?? 'NORMAL'} onValueChange={(value) => void handlePriorityChange(value)} disabled={prioritySaving}>
+                        <SelectTrigger id="order-header-priority" className="h-7 flex-1 border-0 bg-transparent px-2 text-xs shadow-none sm:w-28 sm:flex-none"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="LOW">Low</SelectItem>
+                          <SelectItem value="NORMAL">Normal</SelectItem>
+                          <SelectItem value="RUSH">Rush</SelectItem>
+                          <SelectItem value="HOT">Hot</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="col-span-2 h-9 w-full sm:col-span-1 sm:w-auto"
+                      onClick={() => setStatusChangeDialog({
+                        open: true,
+                        status: item.status ?? 'RECEIVED',
+                        reason: '',
+                        saving: false,
+                        error: null,
+                      })}
+                    >
+                      Change status
+                    </Button>
+                  </>
+                ) : null}
               </div>
               {savedRepeatTemplate ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-sm">
@@ -2711,7 +3093,7 @@ export default function OrderDetailPage() {
                   </Button>
                 </div>
               ) : null}
-              <div className="space-y-3 rounded-lg border border-border/60 bg-background/70 p-4">
+              <div className="order-detail-tile space-y-3 rounded-lg border p-3 sm:p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="space-y-1">
                     <div className="text-xs uppercase tracking-wide text-muted-foreground">Part Controls</div>
@@ -2738,7 +3120,7 @@ export default function OrderDetailPage() {
                 </div>
 
                 {selectedPartId ? (
-                  <div className="rounded-md border border-border/60 bg-muted/10 p-3">
+                  <div className="order-detail-inset rounded-md border p-3">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <span className="font-medium text-foreground">Active timers:</span>
                       {selectedPartActiveTimers.length ? (
@@ -2807,7 +3189,7 @@ export default function OrderDetailPage() {
                   </Select>
                 </div>
 
-                <div className="grid gap-2 lg:grid-cols-[repeat(2,minmax(0,1fr))_220px]">
+                <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-4">
                   <Button
                     type="button"
                     size="sm"
@@ -2822,12 +3204,29 @@ export default function OrderDetailPage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={!selectedPartId || timerSaving || !selectedPartCurrentDepartmentId}
+                    disabled={!selectedPartId || timerSaving || !canSubmitCurrentDepartment}
+                    onClick={() => void handleBeginSubmitDepartmentComplete()}
+                    className="justify-center gap-2"
+                    title={departmentSubmitBlocker ?? undefined}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Submit {selectedCurrentDepartment?.name ?? 'department'} complete
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      !selectedPartId ||
+                      timerSaving ||
+                      submitDestinationOptions.length === 0
+                    }
                     onClick={openMoveDepartmentDialog}
                     className="justify-center gap-2"
+                    title={activeOnSelected ? 'Pause or finish every active timer before moving this part.' : undefined}
                   >
                     <ArrowRightLeft className="h-4 w-4" />
-                    Submit {selectedCurrentDepartment?.name ?? 'department'} complete
+                    {selectedPartCurrentDepartmentId ? 'Move department' : 'Assign department'}
                   </Button>
                   <Button
                     type="button"
@@ -2845,6 +3244,13 @@ export default function OrderDetailPage() {
                     <span>Mark Shipped</span>
                   </Button>
                 </div>
+
+                {selectedPartCurrentDepartmentId && departmentSubmitBlocker ? (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                    <span className="font-medium">Department completion unavailable:</span>{' '}
+                    {departmentSubmitBlocker}
+                  </div>
+                ) : null}
 
                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
                   <span className="text-muted-foreground">{timerReadOnlyMessage}</span>
@@ -2866,7 +3272,7 @@ export default function OrderDetailPage() {
                 ) : null}
                 {showTimerDetails && (
                   <>
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
+                    <div className="order-detail-inset flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-xs text-slate-300">
                       <div className="flex items-start gap-2">
                         <ArrowRightLeft className="mt-0.5 h-3.5 w-3.5" />
                         <span>{canUseTimerControls ? startHelperLabel : kioskHelperLabel}</span>
@@ -2880,7 +3286,7 @@ export default function OrderDetailPage() {
                       ) : null}
                     </div>
                     {selectedPartId ? (
-                      <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+                      <div className="order-detail-inset rounded-md border px-3 py-2 text-xs text-slate-300">
                     <div><span className="font-medium text-foreground">Total time:</span> {formatDuration(selectedPartStoredSeconds)}</div>
                     <div>Timer time: {formatDuration(selectedPartTimerSeconds)}</div>
                     <div className="flex items-center justify-between gap-3">
@@ -2900,7 +3306,7 @@ export default function OrderDetailPage() {
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Department history totals</div>
                         <div className="grid gap-2 md:grid-cols-2">
                           {selectedPartDepartmentHistory.map((group) => (
-                            <div key={group.departmentId ?? '__none__'} className="rounded border border-border/60 bg-background/70 p-2">
+                            <div key={group.departmentId ?? '__none__'} className="order-detail-inset rounded border p-2">
                               <div className="text-[11px] text-muted-foreground">{group.departmentName}</div>
                               <div className="text-sm font-semibold text-foreground">{formatDuration(group.totalSeconds)}</div>
                             </div>
@@ -2908,7 +3314,7 @@ export default function OrderDetailPage() {
                         </div>
                         <div className="space-y-1">
                           {selectedPartDepartmentHistory.map((group) => (
-                            <div key={`${group.departmentId ?? '__none__'}_rows`} className="rounded border border-border/50 bg-background/50 p-2">
+                            <div key={`${group.departmentId ?? '__none__'}_rows`} className="order-detail-inset rounded border p-2">
                               <div className="mb-1 text-[11px] font-medium text-foreground">{group.departmentName}</div>
                               {group.entries.slice(0, 3).map((entry: any) => (
                                 <div key={entry.id} className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
@@ -2937,7 +3343,7 @@ export default function OrderDetailPage() {
                 )}
               </div>
             </div>
-            <div className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-md bg-muted/20 p-1">
+            <div className="flex max-w-full gap-1 overflow-x-auto whitespace-nowrap rounded-md bg-muted/20 p-1 sm:gap-2">
               {visibleTabs.map((tab) => {
                 const label =
                   tab === 'overview'
@@ -2969,10 +3375,10 @@ export default function OrderDetailPage() {
               })}
             </div>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-6 px-0 pb-6 pt-4 sm:px-6 sm:pt-6">
             {activeTab === 'overview' && (
               <div className="space-y-4 text-sm">
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="order-detail-tile grid gap-3 rounded-lg border p-4 md:grid-cols-2">
                   <div>
                     <div className="text-xs uppercase tracking-wide text-muted-foreground">Part</div>
                     <div className="text-base font-medium text-foreground">
@@ -2998,8 +3404,16 @@ export default function OrderDetailPage() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Stock length</div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Total stock dimensions</div>
                     <div className="text-foreground">{selectedPart?.stockSize || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Finished thickness</div>
+                    <div className="text-foreground">{selectedPart?.partThickness || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Finished width</div>
+                    <div className="text-foreground">{selectedPart?.partWidth || '—'}</div>
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-wide text-muted-foreground">Cut length</div>
@@ -3008,6 +3422,34 @@ export default function OrderDetailPage() {
                   <div>
                     <div className="text-xs uppercase tracking-wide text-muted-foreground">Material</div>
                     <div className="text-foreground">{selectedPart?.material?.name || '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Material status</div>
+                    {selectedPart && canEditParts ? (
+                      <div className="mt-1 flex items-center gap-2">
+                        <Select
+                          value={selectedPart.materialStatus ?? 'UNREVIEWED'}
+                          onValueChange={(value) => void handleQuickMaterialStatusChange(value)}
+                          disabled={materialStatusSaving}
+                        >
+                          <SelectTrigger className="h-9 max-w-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PART_MATERIAL_STATUS_OPTIONS.map(([value, label]) => (
+                              <SelectItem key={value} value={value}>{label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {materialStatusSaving ? <span className="text-xs text-muted-foreground">Saving...</span> : null}
+                      </div>
+                    ) : (
+                      <div className="text-foreground">{formatPartMaterialStatus(selectedPart?.materialStatus)}</div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Procurement vendor</div>
+                    <div className="text-foreground">{selectedPart?.procurementVendor?.name || '—'}</div>
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-wide text-muted-foreground">Priority</div>
@@ -3019,7 +3461,7 @@ export default function OrderDetailPage() {
                   </div>
                 </div>
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="space-y-3 rounded-lg border border-border/60 bg-muted/10 p-4">
+                  <div className="order-detail-tile space-y-3 rounded-lg border p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground">Read me first</div>
@@ -3038,7 +3480,7 @@ export default function OrderDetailPage() {
                       </span>
                     </div>
                     {selectedPartInstructions ? (
-                      <div className="rounded-md border border-border/60 bg-background/70 p-3 text-sm text-foreground">
+                      <div className="order-detail-inset rounded-md border p-3 text-sm text-foreground">
                         <div className="space-y-4">
                           {selectedPartInstructionSections.map((section, index) => (
                             <div key={`${section.heading ?? 'notes'}-${index}`} className="space-y-2">
@@ -3064,7 +3506,7 @@ export default function OrderDetailPage() {
                       </div>
                     )}
                     {selectedPartInstructions ? (
-                    <div className="grid gap-3 rounded-md border border-border/60 bg-background/60 p-3 sm:grid-cols-2">
+                    <div className="order-detail-inset grid gap-3 rounded-md border p-3 sm:grid-cols-2">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-wide text-muted-foreground">
                           <span>Acknowledged</span>
@@ -3120,7 +3562,7 @@ export default function OrderDetailPage() {
                       ) : null}
                     </div>
                   </div>
-                  <div className="space-y-3 rounded-lg border border-border/60 bg-muted/10 p-4">
+                  <div className="order-detail-tile space-y-3 rounded-lg border p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <div className="text-xs uppercase tracking-wide text-muted-foreground">Part workers</div>
@@ -3131,13 +3573,13 @@ export default function OrderDetailPage() {
                         {selectedPartAssignments.length} assigned
                       </Badge>
                     </div>
-                    <div className="rounded-md border border-border/50 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+                    <div className="order-detail-inset rounded-md border px-3 py-2 text-xs text-slate-300">
                       Use this roster for the people actually touching this part. The order-level assigned machinist stays as coordinator only.
                     </div>
                     {selectedPartAssignments.length ? (
                       <div className="space-y-2">
                         {selectedPartAssignments.map((assignment: any) => (
-                          <div key={assignment.id} className="rounded-md border border-border/60 bg-background/70 p-3 text-sm">
+                          <div key={assignment.id} className="order-detail-inset rounded-md border p-3 text-sm">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
                                 <div className="font-medium text-foreground">
@@ -3164,12 +3606,12 @@ export default function OrderDetailPage() {
                         ))}
                       </div>
                     ) : (
-                      <div className="rounded-md border border-dashed border-border/70 bg-background/60 p-3 text-sm text-muted-foreground">
+                      <div className="order-detail-inset rounded-md border border-dashed p-3 text-sm text-slate-300">
                         No workers are assigned yet. Add the machinists, floaters, or helpers actually working this part.
                       </div>
                     )}
                     {canEditParts ? (
-                      <div className="space-y-3 rounded-md border border-border/50 bg-background/60 p-3">
+                      <div className="order-detail-inset space-y-3 rounded-md border p-3">
                         <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-end">
                           <div className="grid gap-2">
                             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Add worker</Label>
@@ -3206,7 +3648,7 @@ export default function OrderDetailPage() {
                   </div>
                 </div>
                 {editMode && canEditParts ? (
-                  <div className="space-y-4 rounded-lg border border-border/60 bg-muted/10 p-4">
+                  <div className="order-detail-tile space-y-4 rounded-lg border p-4">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-semibold text-foreground">Edit order details</p>
                       <Button size="sm" onClick={handleSaveOrderDetails} disabled={savingOrderDetails}>
@@ -3214,6 +3656,18 @@ export default function OrderDetailPage() {
                       </Button>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label>Business</Label>
+                        <Select value={orderDraft.business} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, business: value }))}>
+                          <SelectTrigger><SelectValue placeholder="Select business" /></SelectTrigger>
+                          <SelectContent>
+                            {BUSINESS_OPTIONS.map((business) => (
+                              <SelectItem key={business.code} value={business.code}>{business.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">The order number stays unchanged so existing paperwork and links remain valid.</p>
+                      </div>
                       <div className="grid gap-2">
                         <Label>Customer</Label>
                         <Select value={orderDraft.customerId || '__none__'} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, customerId: value === '__none__' ? '' : value }))}>
@@ -3247,19 +3701,7 @@ export default function OrderDetailPage() {
                         <Input type="date" value={orderDraft.dueDate} onChange={(e) => setOrderDraft((prev) => ({ ...prev, dueDate: e.target.value }))} />
                       </div>
                       <div className="grid gap-2">
-                        <Label>Priority</Label>
-                        <Select value={orderDraft.priority} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, priority: value }))}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="LOW">LOW</SelectItem>
-                            <SelectItem value="NORMAL">NORMAL</SelectItem>
-                            <SelectItem value="RUSH">RUSH</SelectItem>
-                            <SelectItem value="HOT">HOT</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Assigned machinist</Label>
+                        <Label>Coordinator</Label>
                         <Select value={orderDraft.assignedMachinistId || '__none__'} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, assignedMachinistId: value === '__none__' ? '' : value }))}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
@@ -3288,7 +3730,7 @@ export default function OrderDetailPage() {
                       </label>
                     </div>
                     {selectedPart ? (
-                      <div className="space-y-3 rounded-md border border-border/50 bg-background/40 p-3">
+                      <div className="order-detail-inset space-y-3 rounded-md border p-3">
                         <div className="flex items-center justify-between">
                           <p className="text-sm font-semibold text-foreground">Edit selected part</p>
                           <div className="flex items-center gap-2">
@@ -3310,7 +3752,13 @@ export default function OrderDetailPage() {
                           </div>
                           <div className="grid gap-2">
                             <Label>Quantity</Label>
-                            <Input type="number" min={1} value={partDraft.quantity} onChange={(e) => setPartDraft((prev) => ({ ...prev, quantity: Number(e.target.value || 1) }))} />
+                            <Input
+                              type="number"
+                              min={1}
+                              value={partDraft.quantity}
+                              onFocus={(e) => e.currentTarget.select()}
+                              onChange={(e) => setPartDraft((prev) => ({ ...prev, quantity: Number(e.target.value || 1) }))}
+                            />
                           </div>
                           <div className="grid gap-2">
                             <Label>Material</Label>
@@ -3325,12 +3773,55 @@ export default function OrderDetailPage() {
                             </Select>
                           </div>
                           <div className="grid gap-2">
-                            <Label>Stock size</Label>
+                            <Label>Material status</Label>
+                            <Select value={partDraft.materialStatus} onValueChange={(value) => setPartDraft((prev) => ({ ...prev, materialStatus: value }))}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {PART_MATERIAL_STATUS_OPTIONS.map(([value, label]) => (
+                                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Procurement vendor</Label>
+                            <Select value={partDraft.procurementVendorId || '__none__'} onValueChange={(value) => setPartDraft((prev) => ({ ...prev, procurementVendorId: value === '__none__' ? '' : value }))}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">No vendor</SelectItem>
+                                {vendors.map((vendor) => (
+                                  <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Inventory location</Label>
+                            <Input value={partDraft.inventoryLocation} onChange={(e) => setPartDraft((prev) => ({ ...prev, inventoryLocation: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Total stock dimensions</Label>
                             <Input value={partDraft.stockSize} onChange={(e) => setPartDraft((prev) => ({ ...prev, stockSize: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Finished part thickness</Label>
+                            <Input value={partDraft.partThickness} onChange={(e) => setPartDraft((prev) => ({ ...prev, partThickness: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Finished part width</Label>
+                            <Input value={partDraft.partWidth} onChange={(e) => setPartDraft((prev) => ({ ...prev, partWidth: e.target.value }))} />
                           </div>
                           <div className="grid gap-2">
                             <Label>Cut length</Label>
                             <Input value={partDraft.cutLength} onChange={(e) => setPartDraft((prev) => ({ ...prev, cutLength: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Finished part length</Label>
+                            <Input value={partDraft.finalPartLength} onChange={(e) => setPartDraft((prev) => ({ ...prev, finalPartLength: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2 md:col-span-2">
+                            <Label>Material / purchasing notes</Label>
+                            <Textarea rows={3} value={partDraft.materialNotes} onChange={(e) => setPartDraft((prev) => ({ ...prev, materialNotes: e.target.value }))} />
                           </div>
                           <div className="grid gap-2 md:col-span-2">
                             <Label>Part notes</Label>
@@ -3359,7 +3850,7 @@ export default function OrderDetailPage() {
                   <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                     <ClipboardList className="h-4 w-4 text-muted-foreground" /> Notes
                   </div>
-                  <div className="max-h-72 space-y-3 overflow-auto rounded-lg border border-border/60 bg-muted/10 p-3">
+                  <div className="order-detail-tile max-h-72 space-y-3 overflow-auto rounded-lg border p-3">
                     {item.notes?.length ? (
                       item.notes.map((note: any) => (
                         <div key={note.id} className="space-y-1 text-sm">
@@ -3402,7 +3893,7 @@ export default function OrderDetailPage() {
                         return (
                           <div
                             key={attachment.id}
-                            className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
+                            className="order-detail-tile rounded-lg border p-3 text-sm"
                           >
                             <div className="font-medium text-foreground">{attachment.label || 'Attachment'}</div>
                             <div className="text-xs text-muted-foreground">{attachment.mimeType || 'Unknown type'}</div>
@@ -3518,7 +4009,7 @@ export default function OrderDetailPage() {
                       </div>
                     </form>
                   ) : (
-                    <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+                    <div className="order-detail-tile rounded-lg border px-3 py-2 text-xs text-slate-300">
                       Admin access required to upload files.
                     </div>
                   )}
@@ -3528,7 +4019,7 @@ export default function OrderDetailPage() {
 
             {activeTab === 'full-files' && canEditParts && (
               <div className="space-y-4">
-                <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
+                <div className="order-detail-tile rounded-lg border p-3 text-xs text-slate-300">
                   Full Order Files is admin-only and includes order-level + part-level files for this order.
                 </div>
                 <div className="space-y-3">
@@ -3536,7 +4027,7 @@ export default function OrderDetailPage() {
                     fullOrderFiles.map((attachment: any) => {
                       const href = attachment.storagePath ? `/attachments/${attachment.storagePath}` : attachment.url;
                       return (
-                        <div key={`${attachment.source}-${attachment.id}`} className="rounded-lg border border-border/60 bg-muted/10 p-3">
+                        <div key={`${attachment.source}-${attachment.id}`} className="order-detail-tile rounded-lg border p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-sm font-medium text-foreground">{attachment.label || 'Attachment'}</p>
                             <Badge variant="outline">{attachment.sourceLabel}</Badge>
@@ -3589,7 +4080,7 @@ export default function OrderDetailPage() {
                         return (
                           <label
                             key={entry.id}
-                            className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
+                            className="order-detail-tile flex items-start justify-between gap-3 rounded-lg border p-3 text-sm"
                           >
                             <div className="flex items-start gap-3">
                               <Checkbox
@@ -3641,7 +4132,7 @@ export default function OrderDetailPage() {
                   <div className="text-xs text-muted-foreground">Loading log…</div>
                 ) : partEvents.length ? (
                   partEvents.map((event) => (
-                    <div key={event.id} className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm">
+                    <div key={event.id} className="order-detail-tile rounded-lg border p-3 text-sm">
                       {(() => {
                         const actorLabel = event.user?.name || event.user?.email || 'System';
                         const performerLabel =

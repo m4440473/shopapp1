@@ -8,23 +8,23 @@ datasource db {
 }
 
 model User {
-  id           String  @id @default(cuid())
-  email        String  @unique
-  name         String?
-  role         String  @default("MACHINIST")
-  active       Boolean @default(true)
-  kioskEnabled Boolean @default(false)
-  kioskPinHash String?
+  id                  String  @id @default(cuid())
+  email               String  @unique
+  name                String?
+  role                String  @default("MACHINIST")
+  active              Boolean @default(true)
+  kioskEnabled        Boolean @default(false)
+  kioskPinHash        String?
   primaryDepartmentId String?
   // Credentials provider (nullable)
-  passwordHash String?
+  passwordHash        String?
 
   orders               Order[]                  @relation("AssignedOrders")
   quotes               Quote[]
   notes                Note[]
   timeLogs             TimeLog[]
   timeEntries          TimeEntry[]
-  timeEntryActions     TimeEntryAction[]          @relation("TimeEntryActionActor")
+  timeEntryActions     TimeEntryAction[]        @relation("TimeEntryActionActor")
   checklistToggles     OrderChecklist[]         @relation("ChecklistToggledBy")
   uploadedAttachments  Attachment[]             @relation("UserAttachments")
   statusHistories      StatusHistory[]          @relation("UserStatusHistory")
@@ -36,6 +36,8 @@ model User {
   assignedPartWork     OrderPartAssignment[]    @relation("PartAssignmentAssignedBy")
   instructionReceipts  PartInstructionReceipt[]
   repeatOrderTemplates RepeatOrderTemplate[]    @relation("RepeatOrderTemplateCreatedBy")
+  drawingImportJobs    DrawingImportJob[]       @relation("DrawingImportJobCreator")
+  drawingProfiles      DrawingTitleBlockProfile[] @relation("DrawingTitleBlockProfileCreator")
   primaryDepartment    Department?              @relation("UserPrimaryDepartment", fields: [primaryDepartmentId], references: [id])
 
   createdAt DateTime @default(now())
@@ -43,19 +45,62 @@ model User {
 }
 
 model Customer {
-  id      String  @id @default(cuid())
-  name    String
-  contact String?
-  phone   String?
-  email   String?
-  address String?
+  id            String  @id @default(cuid())
+  name          String
+  contact       String?
+  phone         String?
+  fax           String?
+  email         String?
+  address       String?
+  addressLine1  String?
+  addressLine2  String?
+  city          String?
+  stateProvince String?
+  postalCode    String?
+  country       String?
 
   orders               Order[]
   quotes               Quote[]
+  contacts             CustomerContact[]
+  businesses           CustomerBusiness[]
   repeatOrderTemplates RepeatOrderTemplate[]
+  drawingProfiles      DrawingTitleBlockProfile[]
 
   @@unique([name])
   @@index([name])
+}
+
+model CustomerBusiness {
+  id           String   @id @default(cuid())
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  businessCode String
+  sourceFile   String?
+  createdAt    DateTime @default(now())
+
+  @@unique([customerId, businessCode])
+  @@index([businessCode])
+}
+
+model CustomerContact {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  name       String
+  title      String?
+  phone      String?
+  fax        String?
+  email      String?
+  isPrimary  Boolean  @default(false)
+  sortOrder  Int      @default(0)
+  quotes     Quote[]
+  orders     Order[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([customerId, sortOrder])
+  @@index([customerId, name])
+  @@index([email])
 }
 
 model Material {
@@ -78,11 +123,11 @@ model Vendor {
   materials String?
   notes     String?
 
-  orders               Order[]
-  orderPartProcurements OrderPart[] @relation("OrderPartProcurementVendor")
-  quoteVendorItems     QuoteVendorItem[]
-  quotePartProcurements QuotePart[] @relation("QuotePartProcurementVendor")
-  repeatOrderTemplates RepeatOrderTemplate[]
+  orders                Order[]
+  orderPartProcurements OrderPart[]           @relation("OrderPartProcurementVendor")
+  quoteVendorItems      QuoteVendorItem[]
+  quotePartProcurements QuotePart[]           @relation("QuotePartProcurementVendor")
+  repeatOrderTemplates  RepeatOrderTemplate[]
 }
 
 model Order {
@@ -93,6 +138,11 @@ model Order {
   business             String                @default("STD")
   customerId           String
   customer             Customer              @relation(fields: [customerId], references: [id])
+  customerContactId    String?
+  customerContact      CustomerContact?      @relation(fields: [customerContactId], references: [id], onDelete: SetNull)
+  contactName          String?
+  contactEmail         String?
+  contactPhone         String?
   status               String
   priority             String
   dueDate              DateTime
@@ -118,6 +168,9 @@ model Order {
   partTimeAdjustments  PartTimeAdjustment[]
   bomAnalyses          PartBomAnalysis[]
   repeatOrderTemplates RepeatOrderTemplate[]
+  createdAt            DateTime              @default(now())
+
+  @@index([customerContactId])
 }
 
 model OrderPart {
@@ -144,6 +197,11 @@ model OrderPart {
   instructionsVersion Int                      @default(1)
   stockSize           String?
   cutLength           String?
+  partWidth           String?
+  partThickness       String?
+  finalPartLength     String?
+  drawingImportPageId String?
+  drawingImportPage   DrawingImportPage?          @relation("OrderPartDrawingImportPage", fields: [drawingImportPageId], references: [id], onDelete: SetNull)
   status              String                   @default("IN_PROGRESS")
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
@@ -156,6 +214,8 @@ model OrderPart {
   bomAnalyses         PartBomAnalysis[]
   assignments         OrderPartAssignment[]
   instructionReceipts PartInstructionReceipt[]
+
+  @@index([drawingImportPageId])
 }
 
 model OrderChecklist {
@@ -205,20 +265,20 @@ model TimeLog {
 }
 
 model TimeEntry {
-  id           String      @id @default(cuid())
+  id           String            @id @default(cuid())
   orderId      String
-  order        Order       @relation(fields: [orderId], references: [id])
+  order        Order             @relation(fields: [orderId], references: [id])
   partId       String?
-  part         OrderPart?  @relation(fields: [partId], references: [id])
+  part         OrderPart?        @relation(fields: [partId], references: [id])
   departmentId String?
-  department   Department? @relation(fields: [departmentId], references: [id])
+  department   Department?       @relation(fields: [departmentId], references: [id])
   userId       String
-  user         User        @relation(fields: [userId], references: [id])
+  user         User              @relation(fields: [userId], references: [id])
   operation    String
-  startedAt    DateTime    @default(now())
+  startedAt    DateTime          @default(now())
   endedAt      DateTime?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
   actions      TimeEntryAction[]
 
   @@index([userId, endedAt])
@@ -334,9 +394,9 @@ model Addon {
   departmentId    String
   department      Department @relation(fields: [departmentId], references: [id])
 
-  quoteSelections QuoteAddonSelection[]
-  orderChecklist  OrderChecklist[]
-  orderCharges    OrderCharge[]
+  quoteSelections            QuoteAddonSelection[]
+  orderChecklist             OrderChecklist[]
+  orderCharges               OrderCharge[]
   repeatOrderTemplateCharges RepeatOrderTemplateCharge[] @relation("RepeatTemplateChargeAddon")
 
   createdAt DateTime @default(now())
@@ -486,6 +546,8 @@ model RepeatOrderTemplatePart {
   notes               String?
   stockSize           String?
   cutLength           String?
+  partWidth           String?
+  partThickness       String?
   sortOrder           Int                             @default(0)
   charges             RepeatOrderTemplateCharge[]
   attachments         RepeatOrderTemplateAttachment[]
@@ -538,27 +600,29 @@ model RepeatOrderTemplateAttachment {
 }
 
 model Quote {
-  id               String    @id @default(cuid())
-  quoteNumber      String
-  business         String    @default("STD")
-  companyName      String
-  contactName      String?
-  contactEmail     String?
-  contactPhone     String?
-  customerId       String?
-  customer         Customer? @relation(fields: [customerId], references: [id])
-  status           String    @default("DRAFT")
-  materialSummary  String?
-  purchaseItems    String?
-  requirements     String?
-  notes            String?
-  multiPiece       Boolean   @default(false)
-  basePriceCents   Int       @default(0)
-  addonsTotalCents Int       @default(0)
-  vendorTotalCents Int       @default(0)
-  totalCents       Int       @default(0)
-  workflowStep     Int       @default(0)
-  metadata         String?
+  id                String           @id @default(cuid())
+  quoteNumber       String
+  business          String           @default("STD")
+  companyName       String
+  contactName       String?
+  contactEmail      String?
+  contactPhone      String?
+  customerId        String?
+  customer          Customer?        @relation(fields: [customerId], references: [id])
+  customerContactId String?
+  customerContact   CustomerContact? @relation(fields: [customerContactId], references: [id], onDelete: SetNull)
+  status            String           @default("DRAFT")
+  materialSummary   String?
+  purchaseItems     String?
+  requirements      String?
+  notes             String?
+  multiPiece        Boolean          @default(false)
+  basePriceCents    Int              @default(0)
+  addonsTotalCents  Int              @default(0)
+  vendorTotalCents  Int              @default(0)
+  totalCents        Int              @default(0)
+  workflowStep      Int              @default(0)
+  metadata          String?
 
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id])
@@ -568,7 +632,7 @@ model Quote {
   addonSelections QuoteAddonSelection[]
   attachments     QuoteAttachment[]
   partAttachments QuotePartAttachment[]
-  convertedOrder  Order?                  @relation("ConvertedQuoteOrder")
+  convertedOrder  Order?                @relation("ConvertedQuoteOrder")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -576,39 +640,46 @@ model Quote {
   @@unique([quoteNumber])
   @@index([status])
   @@index([companyName])
+  @@index([customerContactId])
 }
 
 model QuotePart {
-  id              String                @id @default(cuid())
-  quoteId         String
-  quote           Quote                 @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  name            String
-  description     String?
-  quantity        Int                   @default(1)
-  pieceCount      Int                   @default(1)
-  notes           String?
-  workInstructions String?
-  partNumber      String?
-  materialId      String?
-  material        Material?             @relation("QuotePartMaterial", fields: [materialId], references: [id])
-  drawingMaterialText String?
-  drawingFinishText   String?
-  finish              String?
-  stockSize       String?
-  cutLength       String?
-  materialStatus      String   @default("UNREVIEWED")
-  inventoryLocation   String?
-  materialNotes       String?
-  procurementVendorId String?
-  procurementVendor   Vendor?  @relation("QuotePartProcurementVendor", fields: [procurementVendorId], references: [id], onDelete: SetNull)
-  procurementCostCents Int?
+  id                       String                @id @default(cuid())
+  quoteId                  String
+  quote                    Quote                 @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  name                     String
+  description              String?
+  quantity                 Int                   @default(1)
+  pieceCount               Int                   @default(1)
+  notes                    String?
+  workInstructions         String?
+  partNumber               String?
+  materialId               String?
+  material                 Material?             @relation("QuotePartMaterial", fields: [materialId], references: [id])
+  drawingMaterialText      String?
+  drawingFinishText        String?
+  finish                   String?
+  stockSize                String?
+  cutLength                String?
+  partWidth                String?
+  partThickness            String?
+  finalPartLength          String?
+  drawingImportPageId      String?
+  drawingImportPage        DrawingImportPage?     @relation("QuotePartDrawingImportPage", fields: [drawingImportPageId], references: [id], onDelete: SetNull)
+  materialStatus           String                @default("UNREVIEWED")
+  inventoryLocation        String?
+  materialNotes            String?
+  procurementVendorId      String?
+  procurementVendor        Vendor?               @relation("QuotePartProcurementVendor", fields: [procurementVendorId], references: [id], onDelete: SetNull)
+  procurementCostCents     Int?
   procurementMarkupPercent Float?
-  sortOrder           Int      @default(0)
-  addonSelections QuoteAddonSelection[]
-  attachments     QuotePartAttachment[]
+  sortOrder                Int                   @default(0)
+  addonSelections          QuoteAddonSelection[]
+  attachments              QuotePartAttachment[]
 
   @@index([quoteId, sortOrder])
   @@index([procurementVendorId])
+  @@index([drawingImportPageId])
 }
 
 model QuoteVendorItem {
@@ -627,25 +698,25 @@ model QuoteVendorItem {
 }
 
 model QuoteAddonSelection {
-  id               String     @id @default(cuid())
-  quoteId          String
-  quote            Quote      @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  quotePartId      String?
-  quotePart        QuotePart? @relation(fields: [quotePartId], references: [id], onDelete: Cascade)
-  addonId          String
-  addon            Addon      @relation(fields: [addonId], references: [id])
-  units            Float      @default(0)
-  rateTypeSnapshot String
-  rateCents        Int
-  totalCents       Int
-  affectsPriceSnapshot    Boolean @default(true)
-  isChecklistItemSnapshot Boolean @default(true)
+  id                      String     @id @default(cuid())
+  quoteId                 String
+  quote                   Quote      @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quotePartId             String?
+  quotePart               QuotePart? @relation(fields: [quotePartId], references: [id], onDelete: Cascade)
+  addonId                 String
+  addon                   Addon      @relation(fields: [addonId], references: [id])
+  units                   Float      @default(0)
+  rateTypeSnapshot        String
+  rateCents               Int
+  totalCents              Int
+  affectsPriceSnapshot    Boolean    @default(true)
+  isChecklistItemSnapshot Boolean    @default(true)
   departmentIdSnapshot    String?
   nameSnapshot            String?
-  notes            String?
+  notes                   String?
 
-  @@index([quotePartId])
   @@unique([quotePartId, addonId])
+  @@index([quotePartId])
 }
 
 model QuoteAttachment {
@@ -688,6 +759,7 @@ model AppSettings {
   attachmentsDir            String   @default("/app/storage")
   requirePOForQuoteApproval Boolean  @default(true)
   requirePOForQuoteToOrder  Boolean  @default(false)
+  drawingImportLunaFallbackEnabled Boolean @default(false)
   invoiceTemplateId         String   @default("classic")
   invoiceOptions            String?
   shopFloorDisplayOptions   String?
@@ -774,4 +846,213 @@ model DocumentTemplateVersion {
 
   @@unique([templateId, version])
   @@index([templateId])
+}
+
+model DrawingImportJob {
+  id                    String                @id @default(cuid())
+  idempotencyKey        String                @unique
+  createdById           String?
+  createdBy             User?                 @relation("DrawingImportJobCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  destination           String
+  business              String
+  customerName          String
+  draftReference        String
+  intakeMode            String
+  assemblyMultiplier    Int                   @default(1)
+  pipelineVersion       String
+  mode                   String
+  status                 String                @default("QUEUED")
+  stage                  String                @default("queued")
+  configJson             String
+  countsJson             String?
+  timingJson             String?
+  estimatedCostUsd       Float                 @default(0)
+  actualCostUsd          Float                 @default(0)
+  softBudgetUsd          Float
+  hardBudgetUsd          Float
+  errorSummary           String?
+  cancelRequestedAt      DateTime?
+  startedAt              DateTime?
+  firstPageReadyAt       DateTime?
+  completedAt            DateTime?
+  lastHeartbeatAt        DateTime?
+  sources                DrawingImportSource[]
+  pages                  DrawingImportPage[]
+  bomRows                DrawingImportBomRow[]
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([createdById, createdAt])
+  @@index([draftReference])
+}
+
+model DrawingImportSource {
+  id                String              @id @default(cuid())
+  jobId             String
+  job               DrawingImportJob    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  sourceKind        String
+  originalFilename  String
+  archivePath       String?
+  mimeType          String
+  sizeBytes         Int
+  sha256            String
+  storagePath       String
+  pageCount         Int?
+  warningsJson      String?
+  pages             DrawingImportPage[]
+  createdAt         DateTime            @default(now())
+
+  @@index([jobId])
+  @@index([sha256])
+  @@index([storagePath])
+}
+
+model DrawingImportPage {
+  id                       String                    @id @default(cuid())
+  jobId                    String
+  job                      DrawingImportJob          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  sourceId                 String
+  source                   DrawingImportSource       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourcePageNumber         Int
+  sourceFilename           String
+  canonicalPdfStoragePath  String?
+  previewStoragePath       String?
+  contentSha256            String
+  perceptualHash           String?
+  width                    Float
+  height                   Float
+  rotation                 Int                       @default(0)
+  classification           String                    @default("uncertain")
+  classificationConfidence Float                     @default(0)
+  localExtractionJson      String?
+  finalExtractionJson      String?
+  reviewStatus             String                    @default("PENDING")
+  routeTier                String                    @default("local")
+  warningsJson             String?
+  duplicateOfPageId        String?
+  duplicateOfPage          DrawingImportPage?        @relation("DrawingImportPageDuplicate", fields: [duplicateOfPageId], references: [id], onDelete: SetNull)
+  duplicates               DrawingImportPage[]       @relation("DrawingImportPageDuplicate")
+  attempts                 DrawingExtractionAttempt[]
+  bomRows                  DrawingImportBomRow[]
+  parentEdges              DrawingImportBomEdge[]    @relation("DrawingImportParentPage")
+  childEdges               DrawingImportBomEdge[]    @relation("DrawingImportChildPage")
+  quoteParts               QuotePart[]               @relation("QuotePartDrawingImportPage")
+  orderParts               OrderPart[]               @relation("OrderPartDrawingImportPage")
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+
+  @@unique([sourceId, sourcePageNumber])
+  @@index([jobId, reviewStatus])
+  @@index([contentSha256])
+  @@index([duplicateOfPageId])
+}
+
+model DrawingExtractionAttempt {
+  id                  String                     @id @default(cuid())
+  pageId              String
+  page                DrawingImportPage          @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  stage               String
+  sourceType          String
+  routeTier           String
+  parserVersion       String?
+  profileVersion      String?
+  promptVersion       String?
+  requestedModel      String?
+  resolvedModel       String?
+  reasoningEffort     String?
+  serviceTier         String?
+  idempotencyKey      String                     @unique
+  requestHash         String?
+  inputTokens         Int                        @default(0)
+  cachedInputTokens   Int                        @default(0)
+  cacheWriteTokens    Int?
+  outputTokens        Int                        @default(0)
+  reasoningTokens     Int                        @default(0)
+  estimatedCostUsd    Float                      @default(0)
+  calculatedCostUsd   Float                      @default(0)
+  latencyMs           Int                        @default(0)
+  retryCount          Int                        @default(0)
+  status              String
+  responseId          String?
+  resultJson          String?
+  warningsJson        String?
+  errorSummary        String?
+  supersedesAttemptId String?
+  supersedesAttempt   DrawingExtractionAttempt?  @relation("DrawingExtractionAttemptSupersedes", fields: [supersedesAttemptId], references: [id], onDelete: SetNull)
+  supersededBy        DrawingExtractionAttempt[] @relation("DrawingExtractionAttemptSupersedes")
+  createdAt           DateTime                   @default(now())
+
+  @@index([pageId, stage])
+  @@index([requestedModel])
+  @@index([supersedesAttemptId])
+}
+
+model DrawingImportBomRow {
+  id                       String                @id @default(cuid())
+  jobId                    String
+  job                      DrawingImportJob      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  sourcePageId             String
+  sourcePage               DrawingImportPage     @relation(fields: [sourcePageId], references: [id], onDelete: Cascade)
+  rowIndex                 Int
+  item                     String?
+  childPartNumber          String?
+  description              String?
+  quantityPerParent        Int?
+  material                 String?
+  revision                 String?
+  parentAssemblyPartNumber String?
+  sourceRegionJson         String
+  rawCellsJson             String
+  warningsJson             String?
+  edge                     DrawingImportBomEdge?
+  createdAt                DateTime              @default(now())
+
+  @@unique([sourcePageId, rowIndex])
+  @@index([jobId])
+  @@index([childPartNumber])
+  @@index([parentAssemblyPartNumber])
+}
+
+model DrawingImportBomEdge {
+  id                String            @id @default(cuid())
+  bomRowId          String            @unique
+  bomRow            DrawingImportBomRow @relation(fields: [bomRowId], references: [id], onDelete: Cascade)
+  parentPageId      String?
+  parentPage        DrawingImportPage? @relation("DrawingImportParentPage", fields: [parentPageId], references: [id], onDelete: SetNull)
+  childPageId       String?
+  childPage         DrawingImportPage? @relation("DrawingImportChildPage", fields: [childPageId], references: [id], onDelete: SetNull)
+  quantityPerParent Int?
+  status            String
+  warningsJson      String?
+  createdAt         DateTime           @default(now())
+
+  @@index([parentPageId])
+  @@index([childPageId])
+  @@index([status])
+}
+
+model DrawingTitleBlockProfile {
+  id                  String    @id @default(cuid())
+  profileIdentifier   String
+  version             Int
+  name                String
+  businessCode        String?
+  customerId          String?
+  customer            Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  expectedLayoutJson  String
+  anchorsJson         String
+  fieldRulesJson      String
+  validationStatsJson String?
+  validationState     String    @default("PROPOSED")
+  isActive            Boolean   @default(false)
+  createdById         String?
+  createdBy           User?     @relation("DrawingTitleBlockProfileCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([profileIdentifier, version])
+  @@index([customerId, isActive])
+  @@index([businessCode, isActive])
+  @@index([validationState])
 }

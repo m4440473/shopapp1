@@ -180,6 +180,7 @@ export async function listOrders({
       business: true,
       dueDate: true,
       receivedDate: true,
+      createdAt: true,
       priority: true,
       status: true,
       customer: { select: { id: true, name: true } },
@@ -268,6 +269,8 @@ export async function findOrderWithDetails(id: string) {
       parts: {
         include: {
           material: true,
+          procurementVendor: { select: { id: true, name: true } },
+          currentDepartment: { select: { id: true, name: true } },
           attachments: true,
           charges: { include: { department: true } },
           partEvents: { orderBy: { createdAt: 'desc' }, take: 1 },
@@ -690,12 +693,22 @@ export async function createOrderPartWithCharges({
       partNumber: string;
       partName?: string | null;
       quantity: number;
-    materialId?: string | null;
-    stockSize?: string | null;
-    cutLength?: string | null;
-    notes?: string | null;
-    workInstructions?: string | null;
-  };
+      materialId?: string | null;
+      drawingMaterialText?: string | null;
+      drawingFinishText?: string | null;
+      finish?: string | null;
+      materialStatus?: string;
+      inventoryLocation?: string | null;
+      materialNotes?: string | null;
+      procurementVendorId?: string | null;
+      stockSize?: string | null;
+      cutLength?: string | null;
+      finalPartLength?: string | null;
+      partWidth?: string | null;
+      partThickness?: string | null;
+      notes?: string | null;
+      workInstructions?: string | null;
+    };
   sourcePartId?: string | null;
   userId?: string | null;
   noteBuilder?: (input: { part: { partNumber: string; quantity: number }; copiedCharges: number }) => string | null;
@@ -708,8 +721,18 @@ export async function createOrderPartWithCharges({
         partName: partData.partName ?? null,
         quantity: partData.quantity,
         materialId: partData.materialId ?? null,
+        drawingMaterialText: partData.drawingMaterialText ?? null,
+        drawingFinishText: partData.drawingFinishText ?? null,
+        finish: partData.finish ?? null,
+        materialStatus: partData.materialStatus ?? 'UNREVIEWED',
+        inventoryLocation: partData.inventoryLocation ?? null,
+        materialNotes: partData.materialNotes ?? null,
+        procurementVendorId: partData.procurementVendorId ?? null,
         stockSize: partData.stockSize ?? null,
         cutLength: partData.cutLength ?? null,
+        finalPartLength: partData.finalPartLength ?? null,
+        partWidth: partData.partWidth ?? null,
+        partThickness: partData.partThickness ?? null,
         notes: partData.notes ?? null,
         workInstructions: partData.workInstructions ?? null,
       },
@@ -834,8 +857,8 @@ export async function moveOrderPartsToDepartment({
   });
 }
 
-export async function updateOrderPart(partId: string, data: Record<string, unknown>) {
-  return prisma.orderPart.update({ where: { id: partId }, data });
+export async function updateOrderPart(partId: string, data: Record<string, unknown>, db: DbClient = prisma) {
+  return db.orderPart.update({ where: { id: partId }, data });
 }
 
 export async function countOrderParts(orderId: string) {
@@ -1286,11 +1309,21 @@ export async function getDashboardOrderOverview() {
       include: {
         customer: { select: { name: true } },
         assignedMachinist: { select: { id: true, name: true, email: true } },
-        parts: { select: { quantity: true, currentDepartmentId: true, partNumber: true } },
+        parts: {
+          select: {
+            quantity: true,
+            currentDepartmentId: true,
+            partNumber: true,
+            assignments: {
+              where: { isActive: true },
+              select: { user: { select: { id: true, name: true, email: true, active: true } } },
+            },
+          },
+        },
         checklist: { select: { completed: true, departmentId: true, addon: { select: { name: true } } } },
         statusHistory: { select: { createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 },
       },
-      orderBy: [{ dueDate: 'asc' }, { orderNumber: 'asc' }],
+      orderBy: [{ createdAt: 'desc' }, { orderNumber: 'desc' }],
       take: 50,
     }),
     prisma.order.findMany({

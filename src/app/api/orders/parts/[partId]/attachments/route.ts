@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ part
   const { partId } = await params;
   if (!partId) return NextResponse.json({ error: 'Missing part id' }, { status: 400 });
 
-  const result = await listAttachmentsForPart(partId);
+  const result = await listAttachmentsForPart(partId, canAccessAdmin(session.user as any));
   if (result.ok === false) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

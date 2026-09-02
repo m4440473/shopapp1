@@ -94,6 +94,7 @@ type AppSettingsProps = {
   attachmentsDir: string;
   requirePOForQuoteApproval: boolean;
   requirePOForQuoteToOrder: boolean;
+  drawingImportLunaFallbackEnabled: boolean;
   invoiceTemplateId: string;
   invoiceOptions: string | null;
 };
@@ -119,6 +120,9 @@ export default function Client({ settings }: { settings: AppSettingsProps }) {
   );
   const [requirePOForQuoteToOrder, setRequirePOForQuoteToOrder] = React.useState(
     settings.requirePOForQuoteToOrder,
+  );
+  const [drawingImportLunaFallbackEnabled, setDrawingImportLunaFallbackEnabled] = React.useState(
+    settings.drawingImportLunaFallbackEnabled,
   );
   const [invoiceTemplateId, setInvoiceTemplateId] = React.useState<InvoiceTemplateId>(
     (settings.invoiceTemplateId as InvoiceTemplateId) ?? 'classic',
@@ -209,6 +213,7 @@ export default function Client({ settings }: { settings: AppSettingsProps }) {
           attachmentsDir,
           requirePOForQuoteApproval,
           requirePOForQuoteToOrder,
+          drawingImportLunaFallbackEnabled,
           invoiceTemplateId,
           invoiceOptions,
         }),
@@ -452,6 +457,16 @@ export default function Client({ settings }: { settings: AppSettingsProps }) {
                   onCheckedChange={(checked) => setRequirePOForQuoteToOrder(checked === true)}
                 />
                 Require PO or approval attachment before converting a quote to an order.
+              </label>
+              <label className="flex items-start gap-3 text-sm">
+                <Checkbox
+                  checked={drawingImportLunaFallbackEnabled}
+                  onCheckedChange={(checked) => setDrawingImportLunaFallbackEnabled(checked === true)}
+                />
+                <span>
+                  <span className="block font-medium">Use Luna fallback for uncertain drawings</span>
+                  <span className="block text-xs text-muted-foreground">Off by default. When enabled, only unreadable, conflicting, or unusually poor Mini results get one high-reasoning GPT-5.6 Luna pass.</span>
+                </span>
               </label>
             </CardContent>
           </Card>

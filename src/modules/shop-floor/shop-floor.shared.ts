@@ -7,6 +7,7 @@ import type {
 
 export type ShopFloorComparableOrder = {
   orderNumber: string;
+  createdAt?: string | Date | null;
   business?: string | null;
   dueDate?: string | Date | null;
   receivedDate?: string | Date | null;
@@ -31,6 +32,14 @@ const NUMERIC_FIELDS = new Set<ShopFloorRuleFieldInput>([
 
 const PRIORITY_RANK: Record<string, number> = { HOT: 0, RUSH: 1, NORMAL: 2, LOW: 3 };
 
+export function matchesShopFloorBusiness(
+  orderBusiness: string | null | undefined,
+  businessFilter: string,
+) {
+  if (businessFilter === 'all') return true;
+  return String(orderBusiness ?? '').trim().toUpperCase() === businessFilter.trim().toUpperCase();
+}
+
 function timestamp(value: string | Date | null | undefined) {
   if (!value) return null;
   const parsed = new Date(value).getTime();
@@ -49,6 +58,7 @@ export function getShopFloorFieldValue(
   now = new Date(),
 ): string | number {
   switch (field) {
+    case 'createdAt': return timestamp(order.createdAt) ?? Number.MAX_SAFE_INTEGER;
     case 'daysPastDue': return daysPastDue(order, now);
     case 'dueDate': return timestamp(order.dueDate) ?? Number.MAX_SAFE_INTEGER;
     case 'receivedDate': return timestamp(order.receivedDate) ?? Number.MAX_SAFE_INTEGER;
@@ -77,7 +87,13 @@ export function compareShopFloorOrders(
   const comparison = typeof aValue === 'number' && typeof bValue === 'number'
     ? aValue - bValue
     : String(aValue).localeCompare(String(bValue), undefined, { numeric: true, sensitivity: 'base' });
-  return comparison * (options.sortDirection === 'asc' ? 1 : -1);
+  const direction = options.sortDirection === 'asc' ? 1 : -1;
+  if (comparison !== 0) return comparison * direction;
+  if (options.sortField !== 'createdAt') return 0;
+  return String(a.orderNumber).localeCompare(String(b.orderNumber), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  }) * direction;
 }
 
 export function shopFloorRuleMatches(

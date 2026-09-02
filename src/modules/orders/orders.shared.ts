@@ -23,6 +23,13 @@ export function decorateOrder(order: OrderListItem): OrderWithMeta {
   const openAddonCount = order.checklist?.filter((item) => !item.completed).length ?? 0;
   const latestStatusHistory = order.statusHistory?.[0];
   const lastStatusChange = latestStatusHistory ? parseDate(latestStatusHistory.createdAt) : parseDate(order.receivedDate);
+  const assignedWorkers = Array.from(new Map(
+    (order.parts ?? [])
+      .flatMap((part) => part.assignments ?? [])
+      .map((assignment) => assignment.user)
+      .filter((user): user is NonNullable<typeof user> => Boolean(user?.id) && user?.active !== false)
+      .map((user) => [String(user.id), { id: String(user.id), name: user.name ?? user.email ?? 'Unnamed worker' }]),
+  ).values());
 
   return {
     ...order,
@@ -32,7 +39,14 @@ export function decorateOrder(order: OrderListItem): OrderWithMeta {
     openAddonCount,
     hasAddons: addonCount > 0,
     lastStatusChange,
+    assignedWorkers,
   };
+}
+
+export function getOrderMachinistLabel(order: Pick<OrderWithMeta, 'assignedMachinist' | 'assignedWorkers'>) {
+  const coordinator = order.assignedMachinist?.name ?? order.assignedMachinist?.email;
+  if (coordinator) return coordinator;
+  return order.assignedWorkers.map((worker) => worker.name).join(', ') || 'Unassigned';
 }
 
 export function formatStatusLabel(status: string) {
@@ -53,8 +67,12 @@ export function orderMatchesFilters(
   if (filters.priorities.length > 0 && !filters.priorities.includes(order.priority)) return false;
 
   if (filters.machinistId !== 'all') {
-    if (filters.machinistId === '__unassigned__' && order.assignedMachinist?.id) return false;
-    if (filters.machinistId !== '__unassigned__' && order.assignedMachinist?.id !== filters.machinistId) return false;
+    const assigneeIds = new Set([
+      ...(order.assignedMachinist?.id ? [order.assignedMachinist.id] : []),
+      ...order.assignedWorkers.map((worker) => worker.id),
+    ]);
+    if (filters.machinistId === '__unassigned__' && assigneeIds.size) return false;
+    if (filters.machinistId !== '__unassigned__' && !assigneeIds.has(filters.machinistId)) return false;
   }
 
   const created = parseDate(order.receivedDate);

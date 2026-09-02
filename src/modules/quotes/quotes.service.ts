@@ -84,6 +84,10 @@ export interface PreparedQuoteComponents {
     finish: string | null;
     stockSize: string | null;
     cutLength: string | null;
+    finalPartLength: string | null;
+    partWidth: string | null;
+    partThickness: string | null;
+    drawingImportPageId: string | null;
     materialStatus: 'UNREVIEWED' | 'IN_STOCK' | 'NEED_TO_ORDER' | 'NOT_REQUIRED';
     inventoryLocation: string | null;
     materialNotes: string | null;
@@ -397,6 +401,10 @@ export async function prepareQuoteComponents(
     finish: part.finish ?? null,
     stockSize: part.stockSize ?? null,
     cutLength: part.cutLength ?? null,
+    finalPartLength: part.finalPartLength ?? null,
+    partWidth: part.partWidth ?? null,
+    partThickness: part.partThickness ?? null,
+    drawingImportPageId: optionalId(part.drawingImportPageId),
     materialStatus: part.materialStatus ?? 'UNREVIEWED',
     inventoryLocation: part.inventoryLocation ?? null,
     materialNotes: part.materialNotes ?? null,

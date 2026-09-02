@@ -457,13 +457,13 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 <div className="text-right text-muted-foreground">
                   <p>Qty {part.quantity}</p>
                   <p>Pieces {part.pieceCount}</p>
-                  {part.stockSize && <p className="text-xs">Stock: {part.stockSize}</p>}
+                  {part.stockSize && <p className="text-xs">Total stock dimensions: {part.stockSize}</p>}
                   {part.cutLength && <p className="text-xs">Cut: {part.cutLength}</p>}
                 </div>
               </div>
               <div className="mt-3 grid gap-2 rounded border border-border/50 bg-muted/20 p-3 text-xs sm:grid-cols-4">
                 <div>
-                  <p className="text-muted-foreground">Unit price</p>
+                  <p className="text-muted-foreground">Price per part</p>
                   <p className="font-medium text-foreground">{formatCurrency(partPricingByPartId.get(part.id)?.unitPriceCents ?? 0)}</p>
                 </div>
                 <div>
@@ -471,13 +471,17 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                   <p className="font-medium text-foreground">{partPricingByPartId.get(part.id)?.quantity ?? part.quantity}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Line total</p>
+                  <p className="text-muted-foreground">Whole quantity total</p>
                   <p className="font-medium text-foreground">{formatCurrency(partPricingByPartId.get(part.id)?.lineTotalCents ?? 0)}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Price choice</p>
                   <p className="font-medium text-foreground">
-                    {partPricingByPartId.get(part.id)?.priceSource === 'MANUAL' ? 'Final price adjusted' : 'Using suggestion'}
+                    {partPricingByPartId.get(part.id)?.priceSource === 'MANUAL'
+                      ? partPricingByPartId.get(part.id)?.pricingMode === 'LOT_TOTAL'
+                        ? 'Manual · whole quantity'
+                        : 'Manual · each part'
+                      : 'Calculated · each part'}
                   </p>
                 </div>
               </div>

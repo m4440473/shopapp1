@@ -6,6 +6,7 @@ import {
   Package,
   ReceiptText,
   Settings,
+  Activity,
   Shapes,
   Users,
   Wrench,
@@ -35,6 +36,12 @@ const shopSetupLinks = [
 ];
 
 const systemSetupLinks = [
+  {
+    href: '/admin/system-health',
+    label: 'Server monitor',
+    detail: 'Live application health, drawing imports, uptime and recent activity.',
+    icon: Activity,
+  },
   {
     href: '/admin/users',
     label: 'Users',

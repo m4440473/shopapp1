@@ -33,13 +33,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="bg-background text-foreground font-sans antialiased">
         <Providers>
           <div className="flex min-h-screen w-full flex-col">
-            <header className="sticky top-0 z-30 flex h-16 items-center gap-6 border-b border-border/60 bg-background/70 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/50 md:px-8">
+            <header
+              data-app-chrome
+              className="sticky top-0 z-30 flex h-16 items-center gap-6 border-b border-border/60 bg-background/70 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/50 md:px-8"
+            >
               <AppNav companyName={settings.companyName} initials={initials} logoUrl={logoUrl} />
             </header>
             <main className="flex-1">
               <div className="container py-10">{children}</div>
             </main>
-            <footer className="border-t border-border/60 bg-background/80 py-6 text-center text-xs uppercase tracking-[0.3em] text-muted-foreground">
+            <footer
+              data-app-chrome
+              className="border-t border-border/60 bg-background/80 py-6 text-center text-xs uppercase tracking-[0.3em] text-muted-foreground"
+            >
               {settings.companyName} - built with care
             </footer>
           </div>

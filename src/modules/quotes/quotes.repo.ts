@@ -16,6 +16,7 @@ import {
   buildOrderChargeEntriesFromQuoteData,
   buildQuoteSelectionKey,
 } from './quote-work-items';
+import { getNewQuoteOriginDepartmentId } from './quote-departments';
 
 export async function listQuotes({
   where,
@@ -110,6 +111,7 @@ export async function createQuoteWithDetails({
   userId: string;
 }) {
   return prisma.$transaction(async (tx) => {
+    const originDepartmentId = await resolveQuoteOriginDepartmentId(tx, data.originDepartmentId);
     const quote = await tx.quote.create({
       data: {
         quoteNumber: prepared.quoteNumber,
@@ -119,6 +121,7 @@ export async function createQuoteWithDetails({
         contactEmail: data.contactEmail ?? null,
         contactPhone: data.contactPhone ?? null,
         customerId: data.customerId ?? null,
+        customerContactId: data.customerContactId ?? null,
         status: data.status ?? 'DRAFT',
         materialSummary: data.materialSummary ?? null,
         purchaseItems: data.purchaseItems ?? null,
@@ -132,7 +135,7 @@ export async function createQuoteWithDetails({
         workflowStep: data.workflowStep ?? 0,
         metadata: stringifyQuoteMetadata({
           ...DEFAULT_QUOTE_METADATA,
-          originDepartmentId: data.originDepartmentId ?? null,
+          originDepartmentId,
           partPricing: data.partPricing?.map((entry: any) => ({
             name: entry.name ?? null,
             partNumber: entry.partNumber ?? null,
@@ -172,6 +175,10 @@ export async function createQuoteWithDetails({
             finish: part.finish,
             stockSize: part.stockSize,
             cutLength: part.cutLength,
+            finalPartLength: part.finalPartLength,
+            partWidth: part.partWidth,
+            partThickness: part.partThickness,
+            drawingImportPageId: part.drawingImportPageId,
             materialStatus: part.materialStatus,
             inventoryLocation: part.inventoryLocation,
             materialNotes: part.materialNotes,
@@ -195,7 +202,7 @@ export async function createQuoteWithDetails({
       data: {
         metadata: stringifyQuoteMetadata({
           ...DEFAULT_QUOTE_METADATA,
-          originDepartmentId: data.originDepartmentId ?? null,
+          originDepartmentId,
           partPricing: prepared.partPricing.map((entry: any, index: number) => ({
             ...entry,
             quotePartId: createdParts[index]?.id ?? null,
@@ -310,7 +317,19 @@ export async function findQuoteById(id: string) {
   return prisma.quote.findUnique({
     where: { id },
     include: {
-      customer: { select: { id: true, name: true } },
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          addressLine1: true,
+          addressLine2: true,
+          city: true,
+          stateProvince: true,
+          postalCode: true,
+          country: true,
+        },
+      },
       createdBy: { select: { id: true, name: true, email: true } },
       parts: {
         orderBy: { sortOrder: 'asc' },
@@ -397,6 +416,7 @@ export async function updateQuoteWithDetails({
         contactEmail: data.contactEmail ?? null,
         contactPhone: data.contactPhone ?? null,
         customerId: data.customerId ?? null,
+        customerContactId: data.customerContactId ?? null,
         status: data.status ?? 'DRAFT',
         materialSummary: data.materialSummary ?? null,
         purchaseItems: data.purchaseItems ?? null,
@@ -449,6 +469,10 @@ export async function updateQuoteWithDetails({
           finish: part.finish,
           stockSize: part.stockSize,
           cutLength: part.cutLength,
+          finalPartLength: part.finalPartLength,
+          partWidth: part.partWidth,
+          partThickness: part.partThickness,
+          drawingImportPageId: part.drawingImportPageId,
           materialStatus: part.materialStatus,
           inventoryLocation: part.inventoryLocation,
           materialNotes: part.materialNotes,
@@ -784,13 +808,9 @@ async function resolveQuoteOriginDepartmentId(tx: any, preferredDepartmentId: st
   const departments = await tx.department.findMany({
     where: { isActive: true },
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-    select: { id: true },
+    select: { id: true, name: true, isActive: true, sortOrder: true },
   });
-  if (!departments.length) return null;
-  if (preferredDepartmentId && departments.some((department: { id: string }) => department.id === preferredDepartmentId)) {
-    return preferredDepartmentId;
-  }
-  return departments[0]?.id ?? null;
+  return getNewQuoteOriginDepartmentId(preferredDepartmentId ?? '', departments) || null;
 }
 
 export async function convertQuoteToOrder({
@@ -805,6 +825,7 @@ export async function convertQuoteToOrder({
   vendorId,
   poNumber,
   assignedMachinistId,
+  assignedWorkerIds,
   partsData,
   orderAttachments,
   partAttachments,
@@ -823,6 +844,7 @@ export async function convertQuoteToOrder({
   vendorId: string | null;
   poNumber: string | null;
   assignedMachinistId: string | null;
+  assignedWorkerIds: string[];
   partsData: Array<{
     sourceQuotePartId?: string | null;
     partNumber: string | null;
@@ -838,6 +860,10 @@ export async function convertQuoteToOrder({
     procurementVendorId?: string | null;
     stockSize?: string | null;
     cutLength?: string | null;
+    finalPartLength?: string | null;
+    partWidth?: string | null;
+    partThickness?: string | null;
+    drawingImportPageId?: string | null;
     notes?: string | null;
     workInstructions?: string | null;
   }>;
@@ -872,6 +898,10 @@ export async function convertQuoteToOrder({
         orderNumber,
         business: quote.business,
         customerId: quote.customerId,
+        customerContactId: quote.customerContactId ?? null,
+        contactName: quote.contactName ?? null,
+        contactEmail: quote.contactEmail ?? null,
+        contactPhone: quote.contactPhone ?? null,
         modelIncluded,
         receivedDate: now,
         dueDate,
@@ -915,6 +945,10 @@ export async function convertQuoteToOrder({
             currentDepartmentId: originDepartmentId,
             stockSize: part.stockSize ?? null,
             cutLength: part.cutLength ?? null,
+            finalPartLength: part.finalPartLength ?? null,
+            partWidth: part.partWidth ?? null,
+            partThickness: part.partThickness ?? null,
+            drawingImportPageId: part.drawingImportPageId ?? null,
             notes: part.notes ?? undefined,
             workInstructions: part.workInstructions ?? null,
           },
@@ -922,6 +956,21 @@ export async function convertQuoteToOrder({
         })
       )
     );
+
+    const uniqueAssignedWorkerIds = Array.from(new Set(assignedWorkerIds));
+    if (orderParts.length && uniqueAssignedWorkerIds.length) {
+      await tx.orderPartAssignment.createMany({
+        data: orderParts.flatMap((part) =>
+          uniqueAssignedWorkerIds.map((assignedUserId) => ({
+            partId: part.id,
+            userId: assignedUserId,
+            assignedById: userId ?? null,
+            assignmentType: 'WORKER',
+            isActive: true,
+          })),
+        ),
+      });
+    }
 
     const orderPartIdByQuotePartId = new Map<string, string>();
     partsData.forEach((part, index) => {

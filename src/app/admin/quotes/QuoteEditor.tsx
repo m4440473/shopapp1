@@ -71,8 +71,25 @@ import {
   type QuoteAddonPreset,
   type QuoteAddonPresetItem,
 } from '@/modules/quotes/quote-addon-bulk';
+import {
+  getActiveQuoteDepartments,
+  getNewQuoteOriginDepartmentId,
+} from '@/modules/quotes/quote-departments';
 import { sumQuoteCustomAmountsCents, type QuoteCustomAmountEntry } from '@/lib/quote-metadata';
 import { DrawingImportPanel, type ReviewedDrawingPart } from '@/components/orders/DrawingImportPanel';
+import {
+  QuoteDrawingImportV2Panel,
+  createQuoteDrawingImportV2ApiClient,
+  type DrawingImportReviewFile,
+  type ResolveDrawingImportEvidenceUrls,
+  type ReviewedQuoteDrawingPartV2,
+} from '@/components/orders/drawing-import';
+import { clearDrawingImportDraft } from '@/modules/drawing-import/drawing-import.draft';
+import { AddCustomerContactDialog } from '@/components/customers/AddCustomerContactDialog';
+import { clearIntakeDraft, intakeDraftKey, readIntakeDraft, writeIntakeDraft } from '@/modules/intake-drafts/intake-draft';
+import { CustomerPartPicker } from '@/components/customer-parts/CustomerPartPicker';
+import { CustomerPartNoteSuggestions, appendSuggestedNote } from '@/components/customer-parts/CustomerPartNoteSuggestions';
+import type { CustomerPartNoteSuggestion, CustomerPartReusableDraft } from '@/modules/customer-parts/customer-parts.types';
 
 import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
 
@@ -85,6 +102,14 @@ type Option = {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  contacts?: Array<{
+    id: string;
+    name: string;
+    title?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    isPrimary?: boolean;
+  }>;
 };
 
 type AddonOption = {
@@ -117,6 +142,10 @@ type QuotePartState = {
   finish: string;
   stockSize: string;
   cutLength: string;
+  finalPartLength: string;
+  partWidth: string;
+  partThickness: string;
+  drawingImportPageId?: string;
   materialStatus: 'UNREVIEWED' | 'IN_STOCK' | 'NEED_TO_ORDER' | 'NOT_REQUIRED';
   inventoryLocation: string;
   materialNotes: string;
@@ -128,6 +157,7 @@ type QuotePartState = {
   pieceCount: string;
   notes: string;
   workInstructions: string;
+  noteSuggestions?: CustomerPartNoteSuggestion[];
   addonSelections: QuoteAddonState[];
   attachments: Array<{
     id?: string;
@@ -199,6 +229,7 @@ type QuoteDetail = {
   contactEmail?: string | null;
   contactPhone?: string | null;
   customerId?: string | null;
+  customerContactId?: string | null;
   status: string;
   workflowStep?: number;
   updatedAt?: string;
@@ -219,6 +250,10 @@ type QuoteDetail = {
     material?: { id: string; name: string; spec?: string | null } | null;
     stockSize?: string | null;
     cutLength?: string | null;
+    finalPartLength?: string | null;
+    drawingImportPageId?: string | null;
+    partWidth?: string | null;
+    partThickness?: string | null;
     drawingMaterialText?: string | null;
     drawingFinishText?: string | null;
     finish?: string | null;
@@ -338,10 +373,14 @@ const createKey = () =>
 export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const router = useRouter();
   const toast = useToast();
+  const drawingImportV2Api = useMemo(() => createQuoteDrawingImportV2ApiClient(), []);
+  const [useLegacyDrawingImporter, setUseLegacyDrawingImporter] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addons, setAddons] = useState<AddonOption[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
+  const [departmentsLoaded, setDepartmentsLoaded] = useState(false);
+  const [departmentsLoadFailed, setDepartmentsLoadFailed] = useState(false);
   const [vendors, setVendors] = useState<Option[]>([]);
   const [customers, setCustomers] = useState<Option[]>([]);
   const [materials, setMaterials] = useState<Option[]>([]);
@@ -350,7 +389,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [newCustomerContact, setNewCustomerContact] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerEmail, setNewCustomerEmail] = useState('');
-  const [newCustomerAddress, setNewCustomerAddress] = useState('');
+  const [newCustomerAddressLine1, setNewCustomerAddressLine1] = useState('');
+  const [newCustomerAddressLine2, setNewCustomerAddressLine2] = useState('');
+  const [newCustomerCity, setNewCustomerCity] = useState('');
+  const [newCustomerState, setNewCustomerState] = useState('');
+  const [newCustomerPostalCode, setNewCustomerPostalCode] = useState('');
+  const [newCustomerCountry, setNewCustomerCountry] = useState('United States');
 
   const initialBusinessCode = (initialQuote?.business ?? BUSINESS_OPTIONS[0]?.code ?? 'STD') as BusinessCode;
 
@@ -362,6 +406,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     contactEmail: initialQuote?.contactEmail ?? '',
     contactPhone: initialQuote?.contactPhone ?? '',
     customerId: initialQuote?.customerId ?? '',
+    customerContactId: initialQuote?.customerContactId ?? '',
     status: initialQuote?.status ?? 'DRAFT',
     materialSummary: initialQuote?.materialSummary ?? '',
     purchaseItems: initialQuote?.purchaseItems ?? '',
@@ -383,6 +428,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         finish: '',
         stockSize: '',
         cutLength: '',
+        finalPartLength: '',
+        partWidth: '',
+        partThickness: '',
         materialStatus: 'UNREVIEWED',
         inventoryLocation: '',
         materialNotes: '',
@@ -423,6 +471,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               finish: part.finish ?? '',
               stockSize: part.stockSize ?? '',
               cutLength: part.cutLength ?? '',
+              finalPartLength: part.finalPartLength ?? '',
+              partWidth: part.partWidth ?? '',
+              partThickness: part.partThickness ?? '',
+              drawingImportPageId: part.drawingImportPageId ?? undefined,
               materialStatus: part.materialStatus ?? 'UNREVIEWED',
               inventoryLocation: part.inventoryLocation ?? '',
               materialNotes: part.materialNotes ?? '',
@@ -516,7 +568,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [currentStep, setCurrentStep] = useState(() => Math.min(4, Math.max(0, initialQuote?.workflowStep ?? 0)));
   const [furthestStep, setFurthestStep] = useState(() => Math.min(4, Math.max(0, initialQuote?.workflowStep ?? 0)));
   const [savedAt, setSavedAt] = useState<string | null>(initialQuote?.updatedAt ?? null);
-  const [partEntryMode, setPartEntryMode] = useState<'manual' | 'drawing' | null>(() =>
+  const [partEntryMode, setPartEntryMode] = useState<'manual' | 'drawing' | 'existing' | null>(() =>
     (initialQuote?.parts?.length ?? 0) > 0 ? 'manual' : null
   );
 
@@ -533,21 +585,16 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     });
     return parts.map((part, index) => {
       const entry = initialPartPricing[index];
-      const quantity = Math.max(1, Number.parseInt(part.quantity || '1', 10) || 1);
-      const enteredUnitPriceCents =
-        entry?.pricingMode === 'LOT_TOTAL'
-          ? calculatePartUnitPrice({
-              enteredPriceCents: entry?.priceCents ?? 0,
-              quantity,
-              pricingMode: 'LOT_TOTAL',
-            })
-          : entry?.priceCents ?? 0;
+      const isManual = entry?.priceSource === 'MANUAL';
+      const enteredPriceCents = isManual
+        ? entry?.priceCents ?? 0
+        : entry?.suggestedUnitPriceCents ?? entry?.priceCents ?? 0;
       return {
         partKey: part.key,
-        price: (enteredUnitPriceCents / 100).toFixed(2),
-        pricingMode: 'PER_UNIT',
-        priceSource: entry?.priceSource === 'MANUAL' ? 'MANUAL' : 'CALCULATED',
-        suggestedUnitPriceCents: entry?.suggestedUnitPriceCents ?? enteredUnitPriceCents,
+        price: (enteredPriceCents / 100).toFixed(2),
+        pricingMode: isManual && entry?.pricingMode === 'LOT_TOTAL' ? 'LOT_TOTAL' : 'PER_UNIT',
+        priceSource: isManual ? 'MANUAL' : 'CALCULATED',
+        suggestedUnitPriceCents: entry?.suggestedUnitPriceCents ?? enteredPriceCents,
       } satisfies PartPricingState;
     });
   });
@@ -597,9 +644,6 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   }, [form.business, initialQuote?.attachments?.length, mode]);
 
   useEffect(() => {
-    setCustomFieldValues((prev) =>
-      form.business === initialQuote?.business ? prev : {}
-    );
     fetch(`/api/custom-fields?entityType=QUOTE&businessCode=${form.business}&isActive=true`, {
       credentials: 'include',
     })
@@ -608,11 +652,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         const nextFields = data.items ?? [];
         setCustomFields(nextFields);
         setCustomFieldValues((prev) => {
-          const next = { ...prev };
+          const next: Record<string, unknown> = {};
           nextFields.forEach((field: CustomFieldDefinition) => {
-            if (next[field.id] === undefined && field.defaultValue !== undefined) {
-              next[field.id] = field.defaultValue;
-            }
+            if (prev[field.id] !== undefined) next[field.id] = prev[field.id];
+            else if (field.defaultValue !== undefined) next[field.id] = field.defaultValue;
           });
           return next;
         });
@@ -723,7 +766,52 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     window.localStorage.setItem(QUOTE_ADDON_PRESETS_STORAGE_KEY, JSON.stringify(savedPresets));
   }, [savedPresets]);
 
-  const [draftReference] = useState(() => createKey());
+  const [draftReference, setDraftReference] = useState(() => createKey());
+  const quoteDraftStorageKey = useMemo(() => intakeDraftKey('quote'), []);
+  const [quoteDraftReady, setQuoteDraftReady] = useState(false);
+  const [quoteDraftSavedAt, setQuoteDraftSavedAt] = useState<number | null>(null);
+  const suppressQuoteDraft = React.useRef(false);
+
+  useEffect(() => {
+    if (mode !== 'create') { setQuoteDraftReady(true); return; }
+    const saved = readIntakeDraft<any>(window.localStorage, quoteDraftStorageKey);
+    if (saved?.data && typeof saved.data === 'object') {
+      const draft = saved.data;
+      if (typeof draft.draftReference === 'string' && draft.draftReference) setDraftReference(draft.draftReference);
+      if (draft.form && typeof draft.form === 'object') setForm((current) => ({ ...current, ...draft.form, quoteNumber: '' }));
+      if (Array.isArray(draft.parts) && draft.parts.length) setParts(draft.parts);
+      if (typeof draft.activePartKey === 'string') setActivePartKey(draft.activePartKey);
+      if (Array.isArray(draft.vendorItems)) setVendorItems(draft.vendorItems);
+      if (Array.isArray(draft.attachments)) setAttachments(draft.attachments.map((attachment: AttachmentState) => ({ ...attachment, uploading: false, persistedId: undefined })));
+      if (typeof draft.attachmentBusiness === 'string') setAttachmentBusiness(draft.attachmentBusiness);
+      if (draft.customFieldValues && typeof draft.customFieldValues === 'object') setCustomFieldValues(draft.customFieldValues);
+      if (Number.isInteger(draft.currentStep)) setCurrentStep(Math.max(0, Math.min(4, draft.currentStep)));
+      if (Number.isInteger(draft.furthestStep)) setFurthestStep(Math.max(0, Math.min(4, draft.furthestStep)));
+      if (draft.partEntryMode === 'manual' || draft.partEntryMode === 'drawing' || draft.partEntryMode === 'existing') setPartEntryMode(draft.partEntryMode);
+      if (Array.isArray(draft.partPricing)) setPartPricing(draft.partPricing);
+      if (typeof draft.originDepartmentId === 'string') setOriginDepartmentId(draft.originDepartmentId);
+      if (Array.isArray(draft.customAmounts)) setCustomAmounts(draft.customAmounts);
+      setQuoteDraftSavedAt(saved.updatedAt);
+    }
+    setQuoteDraftReady(true);
+  // Restore once before autosave begins.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, quoteDraftStorageKey]);
+
+  useEffect(() => {
+    if (mode !== 'create' || !quoteDraftReady || suppressQuoteDraft.current) return;
+    const timer = window.setTimeout(() => {
+      try {
+        const savedAt = writeIntakeDraft(window.localStorage, quoteDraftStorageKey, {
+          draftReference, form: { ...form, quoteNumber: '' }, parts: parts.map((part) => ({ ...part, persistedId: undefined })),
+          activePartKey, vendorItems, attachments: attachments.map((attachment) => ({ ...attachment, uploading: false, persistedId: undefined })),
+          attachmentBusiness, customFieldValues, currentStep, furthestStep, partEntryMode, partPricing, originDepartmentId, customAmounts,
+        });
+        setQuoteDraftSavedAt(savedAt);
+      } catch { /* Browser storage can be unavailable; manual/server save still works. */ }
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [activePartKey, attachmentBusiness, attachments, currentStep, customAmounts, customFieldValues, draftReference, form, furthestStep, mode, originDepartmentId, partEntryMode, partPricing, parts, quoteDraftReady, quoteDraftStorageKey, vendorItems]);
 
   const selectedBusinessOption = useMemo(() => {
     return BUSINESS_OPTIONS.find((option) => option.name === attachmentBusiness) ?? BUSINESS_OPTIONS[0];
@@ -760,8 +848,15 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
 
     fetch('/api/admin/departments', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => setDepartments(data.items ?? []))
-      .catch(() => setDepartments([]));
+      .then((data) => {
+        setDepartments(Array.isArray(data?.items) ? data.items : []);
+        setDepartmentsLoadFailed(false);
+      })
+      .catch(() => {
+        setDepartments([]);
+        setDepartmentsLoadFailed(true);
+      })
+      .finally(() => setDepartmentsLoaded(true));
 
     fetch('/api/admin/vendors?take=100', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
@@ -776,7 +871,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       .then((data) => setMaterials(data.items ?? []))
       .catch(() => setMaterials([]));
 
-    fetch('/api/admin/customers?take=100', { credentials: 'include' })
+    fetch('/api/admin/customers?take=5000', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
         const list = Array.isArray(data?.items) ? data.items : data;
@@ -788,6 +883,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             phone: item.phone ?? null,
             email: item.email ?? null,
             address: item.address ?? null,
+            contacts: Array.isArray(item.contacts) ? item.contacts : [],
           })),
         );
       })
@@ -795,14 +891,28 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   }, []);
 
   const handleCustomerSelect = (customerId: string) => {
+    if (!customerId) return;
     const selected = customers.find((customer) => customer.id === customerId);
     setForm((prev) => ({
       ...prev,
       customerId,
       companyName: selected?.name ?? prev.companyName,
-      contactName: selected?.contact ?? prev.contactName,
-      contactEmail: selected?.email ?? prev.contactEmail,
-      contactPhone: selected?.phone ?? prev.contactPhone,
+      customerContactId: '',
+      contactName: '',
+      contactEmail: '',
+      contactPhone: '',
+    }));
+  };
+
+  const handleCustomerContactSelect = (contactId: string) => {
+    const selectedCustomer = customers.find((customer) => customer.id === form.customerId);
+    const selectedContact = selectedCustomer?.contacts?.find((contact) => contact.id === contactId);
+    setForm((prev) => ({
+      ...prev,
+      customerContactId: selectedContact?.id ?? '',
+      contactName: selectedContact?.name ?? '',
+      contactEmail: selectedContact?.email ?? '',
+      contactPhone: selectedContact?.phone ?? '',
     }));
   };
 
@@ -813,7 +923,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       contact: newCustomerContact || undefined,
       phone: newCustomerPhone || undefined,
       email: newCustomerEmail || undefined,
-      address: newCustomerAddress || undefined,
+      addressLine1: newCustomerAddressLine1 || undefined,
+      addressLine2: newCustomerAddressLine2 || undefined,
+      city: newCustomerCity || undefined,
+      stateProvince: newCustomerState || undefined,
+      postalCode: newCustomerPostalCode || undefined,
+      country: newCustomerCountry || undefined,
     };
     const res = await fetch('/api/admin/customers', {
       method: 'POST',
@@ -830,15 +945,30 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         phone: data.item.phone ?? null,
         email: data.item.email ?? null,
         address: data.item.address ?? null,
+        contacts: Array.isArray(data.item.contacts) ? data.item.contacts : [],
       };
       setCustomers((s) => [newCustomer, ...s]);
-      handleCustomerSelect(newCustomer.id);
+      const primaryContact = newCustomer.contacts?.find((contact) => contact.isPrimary) ?? newCustomer.contacts?.[0];
+      setForm((current) => ({
+        ...current,
+        customerId: newCustomer.id,
+        companyName: newCustomer.name,
+        customerContactId: primaryContact?.id ?? '',
+        contactName: primaryContact?.name ?? newCustomer.contact ?? '',
+        contactEmail: primaryContact?.email ?? newCustomer.email ?? '',
+        contactPhone: primaryContact?.phone ?? newCustomer.phone ?? '',
+      }));
       setCustomerDialogOpen(false);
       setNewCustomerName('');
       setNewCustomerContact('');
       setNewCustomerPhone('');
       setNewCustomerEmail('');
-      setNewCustomerAddress('');
+      setNewCustomerAddressLine1('');
+      setNewCustomerAddressLine2('');
+      setNewCustomerCity('');
+      setNewCustomerState('');
+      setNewCustomerPostalCode('');
+      setNewCustomerCountry('United States');
     }
   }
 
@@ -857,6 +987,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       finish: part.finish,
       stockSize: part.stockSize,
       cutLength: part.cutLength,
+      finalPartLength: part.finalPartLength,
+      partWidth: part.partWidth,
+      partThickness: part.partThickness,
       materialStatus: 'UNREVIEWED',
       inventoryLocation: '',
       materialNotes: '',
@@ -868,6 +1001,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       pieceCount: '1',
       notes: part.finish ? `Finish: ${part.finish}` : '',
       workInstructions: '',
+      noteSuggestions: [],
       addonSelections: [],
       attachments: [{
         kind: 'DWG',
@@ -893,6 +1027,128 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     ]);
     setPartEntryMode('manual');
     toast.push(`${nextParts.length} drawing part${nextParts.length === 1 ? '' : 's'} added to this quote.`, 'success');
+  }
+
+  function applyImportedDrawingsV2(importedParts: ReviewedQuoteDrawingPartV2[], quoteFiles: DrawingImportReviewFile[]) {
+    const nextParts: QuotePartState[] = importedParts.map((part, index) => ({
+      key: part.key,
+      drawingImportPageId: part.importPageId,
+      name: part.partName || part.partNumber || `Part ${index + 1}`,
+      partNumber: part.partNumber,
+      materialId: part.materialId,
+      drawingMaterialText: part.drawingMaterialText,
+      drawingFinishText: part.drawingFinishText,
+      finish: part.finish,
+      stockSize: part.stockSize,
+      cutLength: part.cutLength,
+      finalPartLength: part.finalPartLength,
+      partWidth: part.partWidth,
+      partThickness: part.partThickness,
+      materialStatus: 'UNREVIEWED',
+      inventoryLocation: '',
+      materialNotes: '',
+      procurementVendorId: '',
+      procurementCost: '',
+      procurementMarkupPercent: '20',
+      description: '',
+      quantity: String(part.quantity || 1),
+      pieceCount: '1',
+      notes: [part.finish ? `Finish: ${part.finish}` : '', part.revision ? `Revision: ${part.revision}` : ''].filter(Boolean).join('\n'),
+      workInstructions: '',
+      noteSuggestions: part.noteSuggestions,
+      addonSelections: [],
+      attachments: [{
+        kind: 'DWG',
+        url: '',
+        storagePath: part.source.storagePath,
+        label: part.source.label,
+        mimeType: part.source.mimeType,
+      }],
+    }));
+    setParts(nextParts);
+    setActivePartKey(nextParts[0]?.key ?? createKey());
+    setAttachments((current) => [
+      ...current,
+      ...quoteFiles.map((file) => ({
+        key: createKey(),
+        url: '',
+        storagePath: file.storagePath,
+        label: file.label,
+        mimeType: file.mimeType,
+        isPrintForBom: false,
+        uploading: false,
+      })),
+    ]);
+    setPartEntryMode('manual');
+    toast.push(`${nextParts.length} evidence-backed drawing part${nextParts.length === 1 ? '' : 's'} added to this quote.`, 'success');
+  }
+
+  function addPreexistingQuoteParts(drafts: CustomerPartReusableDraft[]) {
+    const nextParts: QuotePartState[] = drafts.map((draft) => ({
+      key: draft.key,
+      name: draft.partName || draft.partNumber,
+      partNumber: draft.partNumber,
+      materialId: draft.materialId,
+      drawingMaterialText: draft.drawingMaterialText,
+      drawingFinishText: draft.drawingFinishText,
+      finish: draft.finish,
+      stockSize: draft.stockSize,
+      cutLength: draft.cutLength,
+      finalPartLength: draft.finalPartLength,
+      partWidth: draft.partWidth,
+      partThickness: draft.partThickness,
+      drawingImportPageId: draft.drawingImportPageId,
+      materialStatus: 'UNREVIEWED',
+      inventoryLocation: '',
+      materialNotes: '',
+      procurementVendorId: '',
+      procurementCost: '',
+      procurementMarkupPercent: '20',
+      description: '',
+      quantity: '1',
+      pieceCount: '1',
+      notes: '',
+      workInstructions: '',
+      noteSuggestions: draft.noteSuggestions,
+      addonSelections: [],
+      attachments: draft.attachments
+        .filter((attachment) => Boolean(attachment.storagePath || attachment.url))
+        .map((attachment) => ({
+          kind: attachment.kind,
+          url: attachment.url ?? '',
+          storagePath: attachment.storagePath ?? '',
+          label: attachment.label ?? '',
+          mimeType: attachment.mimeType ?? '',
+        })),
+    }));
+    if (!nextParts.length) return;
+    setParts((current) => {
+      const retained = current.filter((part) => part.name.trim() || part.partNumber.trim() || part.attachments.length);
+      return [...retained, ...nextParts];
+    });
+    setActivePartKey(nextParts[0].key);
+    setPartEntryMode('manual');
+    toast.push(`${nextParts.length} preexisting customer part${nextParts.length === 1 ? '' : 's'} added for review.`, 'success');
+  }
+
+  const resolveDrawingImportEvidenceUrls = React.useCallback<ResolveDrawingImportEvidenceUrls>((page, evidence) => {
+    const cropUrl = evidence.sourceCropId && page.exactPageHref
+      ? `${page.exactPageHref.replace(/\?kind=canonical$/, '')}?kind=crop&path=${encodeURIComponent(evidence.sourceCropId)}`
+      : null;
+    return { previewUrl: page.previewUrl, cropUrl, exactPageHref: page.exactPageHref };
+  }, []);
+
+  async function createDetectedMaterial(name: string) {
+    const response = await fetch('/api/admin/materials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim(), active: true }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'Could not create material.');
+    const material = { id: String(payload.item.id), name: String(payload.item.name) };
+    setMaterials((current) => [...new Map([...current, material].map((entry) => [entry.id, entry])).values()]);
+    return material;
   }
 
   function updatePart(partKey: string, patch: Partial<QuotePartState>) {
@@ -1254,6 +1510,15 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     () => departments.find((department) => department.id === originDepartmentId) ?? null,
     [departments, originDepartmentId]
   );
+  const activeDepartments = useMemo(
+    () => getActiveQuoteDepartments(departments),
+    [departments]
+  );
+
+  useEffect(() => {
+    if (mode !== 'create' || !departmentsLoaded) return;
+    setOriginDepartmentId((current) => getNewQuoteOriginDepartmentId(current, departments));
+  }, [departments, departmentsLoaded, mode]);
   const normalizedCustomAmounts = useMemo(
     () =>
       customAmounts
@@ -1304,7 +1569,13 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       return {
         workItemsSubtotalCents: rawWorkItemsSubtotalCents,
         partPricingSubtotalCents:
-          (entry?.priceSource === 'MANUAL' ? enteredPriceCents : suggestedUnitPriceCents) * Math.max(1, quantity),
+          entry?.priceSource === 'MANUAL'
+            ? calculatePartLotTotal({
+                enteredPriceCents,
+                quantity,
+                pricingMode: entry.pricingMode,
+              })
+            : suggestedUnitPriceCents * Math.max(1, quantity),
         hasPartPricingOverride: true,
       };
     }),
@@ -1323,6 +1594,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     contactEmail: form.contactEmail || undefined,
     contactPhone: form.contactPhone || undefined,
     customerId: form.customerId || undefined,
+    customerContactId: form.customerContactId || undefined,
     status: form.status || 'DRAFT',
     workflowStep,
     materialSummary: form.materialSummary || undefined,
@@ -1343,6 +1615,10 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         finish: part.finish || undefined,
         stockSize: part.stockSize || undefined,
         cutLength: part.cutLength || undefined,
+        finalPartLength: part.finalPartLength || undefined,
+        partWidth: part.partWidth || undefined,
+        partThickness: part.partThickness || undefined,
+        drawingImportPageId: part.drawingImportPageId || undefined,
         materialStatus: part.materialStatus,
         inventoryLocation: part.inventoryLocation || undefined,
         materialNotes: part.materialNotes || undefined,
@@ -1411,7 +1687,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         name: part.name || undefined,
         partNumber: part.partNumber || undefined,
         priceCents: centsFromString(entry?.price || '0'),
-        pricingMode: 'PER_UNIT' as const,
+        pricingMode: entry?.priceSource === 'MANUAL' ? entry.pricingMode : 'PER_UNIT',
         priceSource: entry?.priceSource ?? 'CALCULATED',
         suggestedUnitPriceCents: entry?.suggestedUnitPriceCents ?? 0,
       };
@@ -1468,6 +1744,16 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   }
 
   const saveQuote = async ({ nextStep = currentStep, finish = false }: { nextStep?: number; finish?: boolean } = {}) => {
+    if (mode === 'create' && !originDepartmentId) {
+      setError(
+        departmentsLoadFailed
+          ? 'Departments could not be loaded. Refresh the page before saving this quote.'
+          : departmentsLoaded
+            ? 'Create an active department before saving this quote.'
+            : 'Wait for the default department to finish loading before saving this quote.'
+      );
+      return false;
+    }
     setLoading(true);
     setError(null);
     const payload = buildPayload(nextStep);
@@ -1486,6 +1772,16 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             });
 
       applySavedIdentity(response.item);
+      if (mode === 'create') {
+        suppressQuoteDraft.current = true;
+        clearIntakeDraft(window.localStorage, quoteDraftStorageKey);
+        setQuoteDraftSavedAt(null);
+      }
+      clearDrawingImportDraft(window.localStorage, {
+        destination: 'quote',
+        business: getBusinessOptionByCode(form.business)?.name ?? BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die',
+        customerName: form.companyName,
+      });
       setSavedAt(response.item.updatedAt ?? new Date().toISOString());
       setFurthestStep((current) => Math.max(current, nextStep));
       toast.push(finish ? 'Quote saved' : 'Progress saved', 'success');
@@ -1519,10 +1815,18 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       setError('Save the customer and parts first so the printout has a quote number.');
       return;
     }
-    const saved = await saveQuote({ nextStep: currentStep });
-    if (saved) {
-      window.open(`/admin/quotes/${initialQuote.id}/material-check/print`, '_blank', 'noopener,noreferrer');
+    // Open during the click event; browsers block pop-ups created only after an async save.
+    const printWindow = window.open('about:blank', '_blank');
+    if (!printWindow) {
+      setError('Your browser blocked the print window. Allow pop-ups for ShopApp and try again.');
+      return;
     }
+    printWindow.opener = null;
+    printWindow.document.title = 'Preparing shop walkdown…';
+    printWindow.document.body.textContent = 'Saving the quote and preparing the shop walkdown sheet…';
+    const saved = await saveQuote({ nextStep: currentStep });
+    if (saved) printWindow.location.replace(`/admin/quotes/${initialQuote.id}/material-check/print`);
+    else printWindow.close();
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -1557,7 +1861,8 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold">Quote progress</p>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span>{savedAt ? `Saved ${new Date(savedAt).toLocaleString()}` : 'Not saved yet'}</span>
+            <span>{savedAt ? `Saved ${new Date(savedAt).toLocaleString()}` : quoteDraftSavedAt ? `Autosaved ${new Date(quoteDraftSavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Not saved yet'}</span>
+            {mode === 'create' && quoteDraftSavedAt ? <Button type="button" size="sm" variant="ghost" onClick={() => { clearIntakeDraft(window.localStorage, quoteDraftStorageKey); window.location.reload(); }}>Discard autosaved draft</Button> : null}
             <Button type="button" size="sm" variant="outline" onClick={() => void saveQuote()} disabled={loading || !form.companyName.trim() || !form.customerId}>
               {loading ? 'Saving…' : 'Save progress'}
             </Button>
@@ -1626,6 +1931,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                 <SelectValue placeholder="Select a company" />
               </SelectTrigger>
               <SelectContent>
+                {form.customerId && !customers.some((customer) => customer.id === form.customerId) ? (
+                  <SelectItem value={form.customerId}>{form.companyName || 'Saved customer'}</SelectItem>
+                ) : null}
                 {customers.map((customer) => (
                   <SelectItem key={customer.id} value={customer.id}>
                     {customer.name}
@@ -1684,13 +1992,18 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="newCustomerAddress">Address</Label>
-                    <Textarea
-                      id="newCustomerAddress"
-                      value={newCustomerAddress}
-                      onChange={(e) => setNewCustomerAddress(e.target.value)}
-                      placeholder="Shipping address"
-                    />
+                    <Label htmlFor="newCustomerAddressLine1">Shipping address line 1</Label>
+                    <Input id="newCustomerAddressLine1" value={newCustomerAddressLine1} onChange={(e) => setNewCustomerAddressLine1(e.target.value)} placeholder="Street address" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="newCustomerAddressLine2">Address line 2</Label>
+                    <Input id="newCustomerAddressLine2" value={newCustomerAddressLine2} onChange={(e) => setNewCustomerAddressLine2(e.target.value)} placeholder="Suite, building, attention" />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-2"><Label htmlFor="newCustomerCity">City</Label><Input id="newCustomerCity" value={newCustomerCity} onChange={(e) => setNewCustomerCity(e.target.value)} /></div>
+                    <div className="grid gap-2"><Label htmlFor="newCustomerState">State / province</Label><Input id="newCustomerState" value={newCustomerState} onChange={(e) => setNewCustomerState(e.target.value)} /></div>
+                    <div className="grid gap-2"><Label htmlFor="newCustomerPostalCode">Postal code</Label><Input id="newCustomerPostalCode" value={newCustomerPostalCode} onChange={(e) => setNewCustomerPostalCode(e.target.value)} /></div>
+                    <div className="grid gap-2"><Label htmlFor="newCustomerCountry">Country</Label><Input id="newCustomerCountry" value={newCustomerCountry} onChange={(e) => setNewCustomerCountry(e.target.value)} /></div>
                   </div>
                 </div>
                 <DialogFooter>
@@ -1719,6 +2032,40 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             <div className="rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-muted-foreground">
               {form.quoteNumber || 'Assigned automatically when this draft is saved'}
             </div>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="quoteCustomerContact">Customer contact</Label>
+            <Select
+              value={form.customerContactId || '__no_contact__'}
+              onValueChange={(value) => handleCustomerContactSelect(value === '__no_contact__' ? '' : value)}
+              disabled={!form.customerId}
+            >
+              <SelectTrigger id="quoteCustomerContact" className="border border-border bg-background px-3 py-2 text-sm">
+                <SelectValue placeholder="Select the contact for this quote" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__no_contact__">No contact selected</SelectItem>
+                {(customers.find((customer) => customer.id === form.customerId)?.contacts ?? []).map((contact) => (
+                  <SelectItem key={contact.id} value={contact.id}>
+                    {contact.name}{contact.title ? ` — ${contact.title}` : ''}{contact.isPrimary ? ' (Primary)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Choose the Toyota contact for this specific quote. The details below are saved as a historical snapshot.
+            </p>
+            {customers.some((customer) => customer.id === form.customerId) ? (
+              <AddCustomerContactDialog
+                customer={customers.find((customer) => customer.id === form.customerId)!}
+                onSaved={(updatedCustomer, newContactId) => {
+                  setCustomers((current) => current.map((customer) => (
+                    customer.id === updatedCustomer.id ? { ...customer, ...updatedCustomer } : customer
+                  )));
+                  handleCustomerContactSelect(newContactId);
+                }}
+              />
+            ) : null}
           </div>
           <div className="grid gap-2">
             <Label htmlFor="quoteContact">Contact / Engineer</Label>
@@ -1773,12 +2120,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           <Card>
             <CardHeader>
               <CardTitle>How would you like to add the parts?</CardTitle>
-              <CardDescription>Let the drawings do the typing, or enter the list yourself.</CardDescription>
+            <CardDescription>Read new drawings, reuse a proven customer part, or enter the list yourself.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-2">
+            <CardContent className="grid gap-3 md:grid-cols-3">
               <button
                 type="button"
-                onClick={() => setPartEntryMode('drawing')}
+                onClick={() => { setUseLegacyDrawingImporter(false); setPartEntryMode('drawing'); }}
                 className={`rounded-xl border-2 p-5 text-left transition ${partEntryMode === 'drawing' ? 'border-[#ff5a00] bg-[#ff5a00]/10' : 'border-border/60 hover:border-[#ff5a00]/70'}`}
               >
                 <span className="block text-lg font-semibold">Read drawings for me</span>
@@ -1792,10 +2139,30 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                 <span className="block text-lg font-semibold">Type parts myself</span>
                 <span className={`mt-1 block text-sm ${partEntryMode === 'manual' ? 'text-white/75' : 'text-muted-foreground'}`}>Use the familiar manual part form.</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setPartEntryMode('existing')}
+                className={`rounded-xl border-2 p-5 text-left transition ${partEntryMode === 'existing' ? 'border-sky-400 bg-sky-400/10' : 'border-border/60 hover:border-sky-400/70'}`}
+              >
+                <span className="block text-lg font-semibold">Choose a preexisting part</span>
+                <span className="mt-1 block text-sm text-muted-foreground">Search every saved part, regardless of customer or business.</span>
+              </button>
             </CardContent>
           </Card>
 
-          {partEntryMode === 'drawing' ? (
+          {partEntryMode === 'drawing' && !useLegacyDrawingImporter ? (
+            <QuoteDrawingImportV2Panel
+              api={drawingImportV2Api}
+              business={getBusinessOptionByCode(form.business)?.name ?? BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die'}
+              customerName={form.companyName}
+              draftReference={form.quoteNumber || initialQuote?.quoteNumber || draftReference}
+              materials={materials}
+              onContinue={(importedParts, quoteFiles) => applyImportedDrawingsV2(importedParts, quoteFiles)}
+              onSwitchToLegacy={() => setUseLegacyDrawingImporter(true)}
+              onCreateMaterial={createDetectedMaterial}
+              resolveEvidenceUrls={resolveDrawingImportEvidenceUrls}
+            />
+          ) : partEntryMode === 'drawing' ? (
             <DrawingImportPanel
               business={getBusinessOptionByCode(form.business)?.name ?? BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die'}
               customerName={form.companyName}
@@ -1804,6 +2171,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               destinationLabel="quote"
               onContinue={useImportedDrawings}
               onSwitchToManual={() => setPartEntryMode('manual')}
+            />
+          ) : partEntryMode === 'existing' ? (
+            <CustomerPartPicker
+              customerId={form.customerId}
+              business={form.business}
+              onAddParts={addPreexistingQuoteParts}
             />
           ) : partEntryMode === 'manual' ? (
         <Card>
@@ -1911,6 +2284,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                         type="number"
                         min="1"
                         value={activePart.quantity}
+                        onFocus={(event) => event.currentTarget.select()}
                         onChange={(event) => updatePart(activePart.key, { quantity: event.target.value })}
                       />
                     </div>
@@ -1920,6 +2294,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                         type="number"
                         min="1"
                         value={activePart.pieceCount}
+                        onFocus={(event) => event.currentTarget.select()}
                         onChange={(event) => updatePart(activePart.key, { pieceCount: event.target.value })}
                       />
                     </div>
@@ -1947,12 +2322,20 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                       </Select>
                     </div>
                     <div className="grid gap-2">
-                      <Label>Stock size</Label>
+                      <Label>Total stock dimensions</Label>
                       <Input
                         value={activePart.stockSize}
                         onChange={(event) => updatePart(activePart.key, { stockSize: event.target.value })}
-                        placeholder='e.g. "2in x 12in bar"'
+                        placeholder='Thickness × width × total length'
                       />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Finished part thickness</Label>
+                      <Input value={activePart.partThickness} onChange={(event) => updatePart(activePart.key, { partThickness: event.target.value })} placeholder='e.g. .25 in' />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Finished part width</Label>
+                      <Input value={activePart.partWidth} onChange={(event) => updatePart(activePart.key, { partWidth: event.target.value })} placeholder='e.g. 2.5 in' />
                     </div>
                     <div className="grid gap-2">
                       <Label>Cut length</Label>
@@ -2034,7 +2417,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Part {index + 1}</p>
                       <CardTitle>{part.partNumber || 'No part number'} — {part.name}</CardTitle>
-                      <CardDescription>Qty {part.quantity || '1'} · {materialName} · Stock {part.stockSize || 'not shown'} · Cut {part.cutLength || 'not shown'}</CardDescription>
+                      <CardDescription>Qty {part.quantity || '1'} · {materialName} · Total stock {part.stockSize || 'not shown'} · Cut {part.cutLength || 'not shown'}</CardDescription>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${materialResolved ? 'border-[#0b1f3a] bg-[#0b1f3a] text-white' : 'border-[#ff5a00] bg-[#ff5a00]/10 text-[#ff5a00]'}`}>
@@ -2054,6 +2437,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Drawing says</p>
                       <p className="mt-1 font-medium">Material: {part.drawingMaterialText || 'Not shown'}</p>
                       <p className="mt-1 font-medium">Finish: {part.drawingFinishText || part.finish || 'Not shown'}</p>
+                      <p className="mt-1 font-medium">Finished thickness: {part.partThickness || 'Not shown'}</p>
+                      <p className="mt-1 font-medium">Finished width: {part.partWidth || 'Not shown'}</p>
+                      <p className="mt-1 font-medium">Total stock dimensions: {part.stockSize || 'Not shown'}</p>
                     </div>
                     <div className="grid gap-2">
                       <Label>Stock check / purchasing note</Label>
@@ -2213,6 +2599,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                           className="min-h-[130px] border-amber-500/25 bg-background/80"
                         />
                       </div>
+                      <CustomerPartNoteSuggestions
+                        suggestions={activePart.noteSuggestions ?? []}
+                        onApply={(suggestion) => updatePart(activePart.key, {
+                          [suggestion.destination]: appendSuggestedNote(activePart[suggestion.destination], suggestion.text),
+                        })}
+                      />
                     </div>
                     <AssignedItemsPanel
                       title="Work steps for this part"
@@ -2601,19 +2993,29 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             <CardContent className="grid gap-4 md:grid-cols-[minmax(0,320px)_1fr] md:items-start">
               <div className="grid gap-2">
                 <Label>Origin / default department</Label>
-                <Select value={originDepartmentId || '__auto__'} onValueChange={(value) => setOriginDepartmentId(value === '__auto__' ? '' : value)}>
+                <Select value={originDepartmentId || undefined} onValueChange={setOriginDepartmentId}>
                   <SelectTrigger className="border border-border bg-background px-3 py-2 text-sm">
-                    <SelectValue placeholder="Use first active department" />
+                    <SelectValue
+                      placeholder={
+                        departmentsLoaded
+                          ? departmentsLoadFailed
+                            ? 'Departments unavailable'
+                            : 'No active departments'
+                          : 'Loading departments…'
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__auto__">Use first active department</SelectItem>
-                    {departments
-                      .filter((department) => department.isActive)
-                      .map((department) => (
-                        <SelectItem key={department.id} value={department.id}>
-                          {department.name}
-                        </SelectItem>
-                      ))}
+                    {activeDepartments.map((department) => (
+                      <SelectItem key={department.id} value={department.id}>
+                        {department.name}
+                      </SelectItem>
+                    ))}
+                    {selectedOriginDepartment && !selectedOriginDepartment.isActive ? (
+                      <SelectItem value={selectedOriginDepartment.id} disabled>
+                        {selectedOriginDepartment.name} (inactive — saved)
+                      </SelectItem>
+                    ) : null}
                   </SelectContent>
                 </Select>
               </div>
@@ -2622,9 +3024,11 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                   <p>
                     Converted orders from this quote will start in <span className="font-medium text-foreground">{selectedOriginDepartment.name}</span> unless a later workflow move changes them.
                   </p>
+                ) : departmentsLoadFailed ? (
+                  <p>Departments could not be loaded. Refresh the page before saving this quote.</p>
                 ) : (
                   <p>
-                    Leaving this blank keeps the current standard behavior: the order starts in the first active department.
+                    The first active department will be selected and saved as soon as departments finish loading.
                   </p>
                 )}
               </div>
@@ -2885,10 +3289,20 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                   suggestedUnitPriceCents: 0,
                 };
                 const quantity = Number.parseInt(part.quantity || '1', 10) || 1;
-                const unitPrice = entry.priceSource === 'MANUAL'
+                const enteredPriceCents = entry.priceSource === 'MANUAL'
                   ? centsFromString(entry.price)
                   : entry.suggestedUnitPriceCents;
-                const lotTotal = unitPrice * quantity;
+                const pricingMode = entry.priceSource === 'MANUAL' ? entry.pricingMode : 'PER_UNIT';
+                const unitPrice = calculatePartUnitPrice({
+                  enteredPriceCents,
+                  quantity,
+                  pricingMode,
+                });
+                const lotTotal = calculatePartLotTotal({
+                  enteredPriceCents,
+                  quantity,
+                  pricingMode,
+                });
                 const workStepBreakdown = part.addonSelections.map((selection) => {
                   const addon = addonMap.get(selection.addonId);
                   const rateType = selection.rateTypeSnapshot ?? addon?.rateType ?? 'HOURLY';
@@ -2972,22 +3386,47 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                           Use a different final price
                       </Label>
                         {entry.priceSource === 'MANUAL' ? (
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Final unit price</Label>
-                      <Input
-                        inputMode="decimal"
-                        value={entry.price}
-                        onChange={(event) =>
-                          setPartPricing((prev) =>
-                            prev.map((row) =>
-                              row.partKey === part.key
-                                      ? { ...row, price: event.target.value, priceSource: 'MANUAL', pricingMode: 'PER_UNIT' }
-                                : row
-                            )
-                          )
-                        }
-                        placeholder="0.00"
-                      />
+                          <div className="space-y-2">
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Manual price applies to</Label>
+                              <Select
+                                value={entry.pricingMode}
+                                onValueChange={(value) =>
+                                  setPartPricing((prev) =>
+                                    prev.map((row) =>
+                                      row.partKey === part.key
+                                        ? { ...row, pricingMode: value as PartPricingMode }
+                                        : row,
+                                    ),
+                                  )
+                                }
+                              >
+                                <SelectTrigger aria-label="Manual price basis"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="PER_UNIT">Each part</SelectItem>
+                                  <SelectItem value="LOT_TOTAL">Whole quantity / lot</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-muted-foreground">
+                                {entry.pricingMode === 'PER_UNIT' ? 'Final price per part' : 'Final price for the whole quantity'}
+                              </Label>
+                              <Input
+                                inputMode="decimal"
+                                value={entry.price}
+                                onChange={(event) =>
+                                  setPartPricing((prev) =>
+                                    prev.map((row) =>
+                                      row.partKey === part.key
+                                        ? { ...row, price: event.target.value, priceSource: 'MANUAL' }
+                                        : row,
+                                    ),
+                                  )
+                                }
+                                placeholder="0.00"
+                              />
+                            </div>
                           </div>
                         ) : (
                           <p className="text-xs text-muted-foreground">The suggestion will update if estimated hours or rates change.</p>
@@ -2995,8 +3434,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                     </div>
                       <div className="min-w-[170px] rounded-lg border border-border/60 bg-card p-3 text-sm">
                         <div className="flex justify-between gap-4"><span className="text-muted-foreground">Qty</span><span>{quantity}</span></div>
-                        <div className="mt-1 flex justify-between gap-4"><span className="text-muted-foreground">Unit</span><span>{formatCurrency(unitPrice)}</span></div>
-                        <div className="mt-2 flex justify-between gap-4 border-t border-border/60 pt-2 font-semibold"><span>Part total</span><span>{formatCurrency(lotTotal)}</span></div>
+                        <div className="mt-1 flex justify-between gap-4"><span className="text-muted-foreground">Per part</span><span>{formatCurrency(unitPrice)}</span></div>
+                        <div className="mt-1 flex justify-between gap-4"><span className="text-muted-foreground">Price basis</span><span>{pricingMode === 'PER_UNIT' ? 'Each part' : 'Whole lot'}</span></div>
+                        <div className="mt-2 flex justify-between gap-4 border-t border-border/60 pt-2 font-semibold"><span>Whole quantity</span><span>{formatCurrency(lotTotal)}</span></div>
                       </div>
                     </div>
                     {isExpanded ? (
@@ -3004,7 +3444,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
                         <div className="flex items-center justify-between gap-3">
                           <p className="font-medium">Price details</p>
                           <span className="text-xs text-muted-foreground">
-                            {entry.priceSource === 'MANUAL' ? 'Manual final price selected' : 'Calculated from the items below'}
+                            {entry.priceSource === 'MANUAL'
+                              ? `Manual price for ${entry.pricingMode === 'PER_UNIT' ? 'each part' : 'the whole quantity'}`
+                              : 'Calculated from the items below'}
                           </span>
                         </div>
                         <div className="mt-3 space-y-2">

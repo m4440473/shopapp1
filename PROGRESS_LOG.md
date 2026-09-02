@@ -1,3 +1,34 @@
+### 2026-09-01 — Admin Orders tab completed with a primary action
+- Replaced the Orders admin tab's redirect-only destination with protected `/admin/orders`.
+- Added a prominent `Make a new order` button targeting `/orders/new`, plus an `Open active orders` path to the Shop Floor.
+- Verification: focused ESLint passed; clean production build generated 66 pages and copied standalone assets; compiled bundle contains the button and target; unauthenticated `/admin/orders` correctly redirects to sign-in; ShopApp is Running, health is 200, and the health monitor last result is 0.
+- Rollback: `C:\ShopApp\backups\pre-update\admin-orders-action-20260901-121105`.
+
+### 2026-09-01 — Production intake flexibility, business correction, and Mini routing
+- Corrected `STD-1003` from business `STD` to `CRM` without changing its stable number; business is now editable from order edit.
+- Intake can switch among drawings, manual entry, and prior parts; prior-part search spans every customer/business with source context. Added the admin Orders tab and immediate phone-photo upload.
+- Drawing intake uses `gpt-5.4-mini`; the admin high-`gpt-5.6-luna` uncertainty fallback is deployed OFF.
+- Verification: 25/25 focused tests, targeted ESLint, additive migration, clean 66-page build, exact deployed source hashes, Running task, Ready monitor, local/LAN health 200. Rollback: `C:\ShopApp\backups\pre-update\intake-admin-model-20260901-114407`.
+
+## 2026-08-31 â€” Spurious login prompts repaired
+- AuthRequiredDialog plus auth-required-response helper/test deployed. Forbidden403 and optional locked-kiosk GET401 no longer claim desktop login is expired; genuine protected desktop401 still prompts. No API authentication/role rules changed.
+- Five server tests and 63-page build passed. Rollback auth-prompts-20260831-150433 contains prior source/build. Local phone-origin fix passed 23 related tests and actual link/photo/finish/claim200; phone feature still local-only.
+- Repeat Orders list-only client crash is not reproduced/claimed fixed. Original order Create again works; same target URL. Owner asked to hard refresh to distinguish stale scripts after build; console evidence needed if persistent.
+
+## Prior repair
+
+## 2026-08-31 â€” Repeat-template / Create again production repair
+- Both actions shared a failing nested attachment write (Prisma: Argument template is missing). Only src/modules/repeat-orders/repeat-orders.repo.ts changed: explicit template UUID links part drawings to both required parents; top-level attachment reads exclude part drawings to prevent duplicate files on repeat orders.
+- Three real SQLite/API regression tests passed on this server: save + repeat reuse + new-order prefill, attachment ownership, atomic rollback. Synthetic isolated test data only. 63-page production build passed; ShopApp Running, monitor Ready, health OK. No schema/historical data/department behavior changes.
+- Rollback: C:\ShopApp\backups\pre-update\repeat-template-20260831-145454 (previous source and full build). SHA256: 1504B6A1ED821546EC5DA597072DFF9BBEC5A3234E0EBFF38244268289401577.
+- Source reconciled to workstation. Pending global search, phone QR and direct-order current-reader changes remain workstation-only. Local preview restored at http://localhost:3001 with normal auth and isolated data. Real customer click-through still belongs to owner; no duplicate production order was created for testing.
+
+## 2026-08-31 â€” Repeat-template / Create again production repair
+- Both actions shared a failing nested attachment write (Prisma: Argument template is missing). Only src/modules/repeat-orders/repeat-orders.repo.ts changed: explicit template UUID links part drawings to both required parents; top-level attachment reads exclude part drawings to prevent duplicate files on repeat orders.
+- Three real SQLite/API regression tests passed on this server: save + repeat reuse + new-order prefill, attachment ownership, atomic rollback. Synthetic isolated test data only. 63-page production build passed; ShopApp Running, monitor Ready, health OK. No schema/historical data/department behavior changes.
+- Rollback: C:\ShopApp\backups\pre-update\repeat-template-20260831-145454 (previous source and full build). SHA256: 1504B6A1ED821546EC5DA597072DFF9BBEC5A3234E0EBFF38244268289401577.
+- Source reconciled to workstation. Pending global search, phone QR and direct-order current-reader changes remain workstation-only. Local preview restored at http://localhost:3001 with normal auth and isolated data. Real customer click-through still belongs to owner; no duplicate production order was created for testing.
+
 ### 2026-08-24 — Sleeker open-canvas Shop Floor styling (latest)
 - Removed the full-page dark navy backing sheet and the strong glass results wrapper so Live Production / Shop Floor and the production content sit directly on the black/navy gradient.
 - Reduced Shop Floor card, panel, select, button, timer, and nested-row radii to restrained rectangular geometry while keeping true status badges and activity dots circular.
@@ -758,6 +789,11 @@ Commands run:
 Verification note:
 - Targeted pricing tests passed (3/3).
 - Lint passed with no ESLint warnings/errors.
+
+### 2026-08-24 — Temporary `/setup` server-bootstrap page (latest)
+- Added a hidden public `/setup` page with the Windows OpenSSH bootstrap script, the workstation's non-secret SSH public key, a safe interactive password-change prompt, LAN-scoped firewall configuration, verification commands, and one-click copying.
+- Kept the page out of normal navigation and included no password or private key; it is explicitly temporary and should be removed after the new server accepts key-based SSH.
+- Verification passed: targeted ESLint, `npx tsc --noEmit`, and HTTP 200/title checks through both loopback and `http://192.168.254.132:3000/setup`.
 
 **Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
 
@@ -2686,3 +2722,31 @@ Verification evidence:
 - Applied the glass system to the Shop Floor control shell, nested settings/rules, live-worker strip, department queue cards, nested part rows, grid cards, machinist groups/rows, metric cards, recent-order table, workload, and status pulse.
 - Deepened the default seven-day-overdue rule from bright red `#dc2626` to oxblood `#7f1d1d`. Existing untouched legacy defaults are promoted at read time; custom rule colors are not changed.
 - Verification passed: focused Shop Floor tests (2 files / 10 tests), targeted ESLint, TypeScript, `git diff --check`, production build (62 pages), and live visual QA of expanded/collapsed controls plus deep-red overdue work-queue tiles.
+### 2026-09-01 — Production intake flexibility, business correction, and Mini routing
+- Corrected today’s first WASTEBUILT order (`STD-1003`) from business `STD` to `CRM` while preserving its stable order number. Order edit now exposes the existing validated business field with an explicit immutable-number note.
+- Direct-order and quote intake keep drawing upload, manual entry, and prior-part selection reachable without restarting. Prior-part search now spans every customer and business, searches/displays source customer/business/order, and still resets quantity, pricing, procurement, and assignments.
+- Added Orders to the admin tabs. Phone photos now begin their existing two-at-a-time upload immediately after selection and automatically start desktop drawing review, with per-photo retry retained.
+- Drawing intake now defaults to `gpt-5.4-mini` at medium reasoning with high Mini dimension refinement. An admin Settings checkbox can enable one high-reasoning `gpt-5.6-luna` pass only for unreadable/conflicting/unusual pages; it is deployed OFF. Pricing metadata uses the official 2026-09-01 Mini/Luna rates.
+- Production verification: focused Vitest 5 files / 25 tests passed; targeted ESLint passed; clean Next production build passed with 66 pages and standalone assets. The additive AppSettings migration applied successfully. ShopApp is Running, monitor Ready, local health HTTP 200. Rollback: `C:\ShopApp\backups\pre-update\intake-admin-model-20260901-114407`.
+- Full standalone `tsc --noEmit` still reports only two pre-existing test-fixture gaps outside this task; the clean Next build’s type gate passed. No unrelated test source was changed.
+### 2026-09-01 — Quick stock-status control on order overview
+- Added an admin-only material-status selector to the selected part's Overview on order detail, using the existing `UNREVIEWED`, `NEED_TO_ORDER`, `WAITING_ON_STOCK`, `IN_STOCK`, and `NOT_REQUIRED` workflow and existing audited part PATCH path.
+- The selector saves immediately and updates the visible part state; no duplicate order-level state, schema change, or API contract was added. No real production part status was changed during verification.
+- Drawing-import source and configuration were review-only and remained byte-for-byte unchanged across this deployment. The owner-completed direct-image/compact-output build remains present.
+- Verification: targeted ESLint passed; orders service tests passed 19/19; clean production build generated 66 pages; compiled order bundle contains the quick-status implementation; node is listening on `0.0.0.0:3000`; server-local health is 200; health monitor is Ready with result 0. The workstation's direct port-3000 probe timed out, so LAN reachability was not claimed from that probe.
+- Rollback: `C:\ShopApp\backups\pre-update\stock-status-control-20260901-132215`.
+### 2026-09-01 — README refreshed from the running system
+- Replaced the old installer-focused stub with an accurate overview of ShopApp's part-centered model, current quote/order/drawing/material/shop-floor capabilities, architecture, local setup, LAN use, data/attachment handling, Windows production operations, drawing-review contract, and authoritative project documents.
+- Kept secrets, customer data, production addresses, and credentials out of the README. Verified every linked repository document exists and the file contains no copied API key or prior example secret.
+- Documentation-only deployment; no application source, build, runtime, database, configuration, or drawing-import files changed. Rollback: `C:\ShopApp\backups\pre-update\readme-refresh-20260901-221500`.
+- Context7 was evaluated but not installed: recommended only as optional developer/agent documentation retrieval, never as a ShopApp runtime dependency or production-server service.
+### 2026-09-01 — Current-state architecture map and context routing
+- Added `docs/ARCHITECTURE.md`: a 233-line map of the running code, domains, routes, persistence, drawing pipeline, storage inconsistency, and Windows topology. It contains current state only.
+- `AGENTS.md` now always reads CANON, ROADMAP, ARCHITECTURE, and lessons, then searches historical context/progress/handoff only as relevant. Structural changes must keep ARCHITECTURE synchronized.
+- Reframed `docs/AGENT_CONTEXT.md` as non-authoritative operational history/decision rationale and linked the map from README.
+- Documentation-only. Verified 17 referenced paths, exact deployed hashes, and runtime health 200. Rollback: `C:\ShopApp\backups\pre-update\architecture-context-20260901-224000`.
+### 2026-09-02 — Production source checkpoint prepared for GitHub
+- Exported the source currently running at `C:\ShopApp\app` into an isolated branch based on the last verified production-matching commit (`9cd2bb2`), leaving the dirty workstation checkout untouched.
+- Excluded secrets, databases, uploads/storage, logs, dependencies, build output, caches, and archives. Sanitized the example NextAuth secret, removed generated tracked database/build-info artifacts, and aligned stale drawing/phone test fixtures with the unchanged production importer contract.
+- Verification: archive SHA-256 `4E412BB60A59DD4D2384778086DA9B86FA1A3F05716CB8DB7DA5C171F85BCE4`; Prisma schema creation passed; full tests 369 passed / 4 skipped; lint and TypeScript passed; clean standalone build generated 66 pages.
+- Follow-up: production dependency audit reports 9 vulnerabilities (1 critical, 7 high, 1 moderate); upgrade and regression-test dependencies as a separate release rather than altering this checkpoint.

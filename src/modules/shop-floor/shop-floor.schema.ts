@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const SHOP_FLOOR_SORT_FIELDS = [
+  'createdAt',
   'dueDate',
   'daysPastDue',
   'receivedDate',
@@ -46,12 +47,21 @@ export const ShopFloorColorRule = z.object({
   enabled: z.boolean(),
 });
 
-export const ShopFloorDisplayOptions = z.object({
-  version: z.literal(1),
+const ShopFloorDisplayOptionsFields = {
   layout: z.enum(['grid', 'machinist', 'workQueue']),
   sortField: ShopFloorSortField,
   sortDirection: z.enum(['asc', 'desc']),
   colorRules: z.array(ShopFloorColorRule).max(12),
+};
+
+export const LegacyShopFloorDisplayOptions = z.object({
+  version: z.literal(1),
+  ...ShopFloorDisplayOptionsFields,
+});
+
+export const ShopFloorDisplayOptions = z.object({
+  version: z.literal(2),
+  ...ShopFloorDisplayOptionsFields,
 });
 
 export type ShopFloorDisplayOptionsInput = z.infer<typeof ShopFloorDisplayOptions>;
@@ -60,10 +70,10 @@ export type ShopFloorSortFieldInput = z.infer<typeof ShopFloorSortField>;
 export type ShopFloorRuleFieldInput = z.infer<typeof ShopFloorRuleField>;
 
 export const DEFAULT_SHOP_FLOOR_DISPLAY_OPTIONS: ShopFloorDisplayOptionsInput = {
-  version: 1,
+  version: 2,
   layout: 'workQueue',
-  sortField: 'dueDate',
-  sortDirection: 'asc',
+  sortField: 'createdAt',
+  sortDirection: 'desc',
   colorRules: [
     {
       id: 'overdue-seven-days',

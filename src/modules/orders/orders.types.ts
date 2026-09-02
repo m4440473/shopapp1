@@ -6,14 +6,24 @@ export type OrderListItem = {
   priority: string;
   dueDate: string | Date | null;
   receivedDate: string | Date | null;
+  createdAt?: string | Date | null;
   customer?: { name?: string | null } | null;
   assignedMachinist?: { id?: string; name?: string | null; email?: string | null } | null;
-  parts?: Array<{ quantity: number | null; currentDepartmentId?: string | null; partNumber?: string | null; partName?: string | null }>;
+  parts?: Array<{
+    quantity: number | null;
+    currentDepartmentId?: string | null;
+    partNumber?: string | null;
+    partName?: string | null;
+    assignments?: Array<{
+      user?: { id?: string; name?: string | null; email?: string | null; active?: boolean } | null;
+    }>;
+  }>;
   checklist?: Array<{ completed: boolean; departmentId?: string | null; addon?: { name?: string | null } | null }>;
   statusHistory?: Array<{ createdAt: string | Date }>;
 };
 
 export type OrderWithMeta = OrderListItem & {
+  assignedWorkers: Array<{ id: string; name: string }>;
   totalQuantity: number;
   addonCount: number;
   openAddonCount: number;

@@ -20,7 +20,9 @@ export const DrawingTitleBlockResult = z.object({
   finish: DrawingImportField.default({ value: null, confidence: 0, evidence: null }),
   stockSize: DrawingImportField,
   cutLength: DrawingImportField,
+  finalPartLength: DrawingImportField.default({ value: null, confidence: 0, evidence: null }),
   revision: DrawingImportField,
+  documentRole: z.enum(['PART_DRAWING', 'BOM', 'COVER', 'OTHER']).default('PART_DRAWING'),
   isAssembly: z.preprocess(
     (value) => value && typeof value === 'object' && 'value' in value ? (value as { value?: unknown }).value : value,
     z.boolean().default(false),
@@ -45,4 +47,17 @@ export type DrawingImportProposal = DrawingTitleBlockResult & {
   mimeType: string;
   storagePath: string;
   pageCount: number | null;
+  sourceDocumentName?: string | null;
+  sourcePageNumber?: number | null;
+  sourceDocumentPageCount?: number | null;
+  // The restored baseline UI already knows these newer review fields. Keep
+  // them optional until the legacy reader itself is upgraded again.
+  partWidth?: DrawingTitleBlockResult['finalPartLength'];
+  partThickness?: DrawingTitleBlockResult['finalPartLength'];
+};
+
+export type DrawingImportSupportingFile = {
+  storagePath: string;
+  label: string;
+  mimeType: string;
 };

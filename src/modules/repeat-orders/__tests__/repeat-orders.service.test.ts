@@ -6,6 +6,7 @@ const repeatOrdersRepo = vi.hoisted(() => ({
   findRepeatOrderTemplateBySourcePart: vi.fn(),
   listRepeatOrderTemplates: vi.fn(),
   findRepeatOrderTemplateById: vi.fn(),
+  findRepeatOrderCustomer: vi.fn(),
   createOrderFromRepeatTemplate: vi.fn(),
 }));
 
@@ -24,6 +25,7 @@ describe('repeat-orders.service', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    repeatOrdersRepo.findRepeatOrderCustomer.mockResolvedValue({ id: 'customer_1' });
 
     ordersService.generateNextOrderNumber.mockResolvedValue('STD-2001');
     ordersService.syncChecklistForOrder.mockResolvedValue({ ok: true, data: { ok: true } });
@@ -53,6 +55,8 @@ describe('repeat-orders.service', () => {
           materialId: 'material_1',
           stockSize: '1 x 2',
           cutLength: '10',
+          partWidth: '2',
+          partThickness: '1',
           notes: 'repeat me',
           workInstructions: 'hold tight',
           instructionsVersion: 3,
@@ -118,6 +122,7 @@ describe('repeat-orders.service', () => {
         notes: null,
       }),
     );
+    expect(repeatOrdersRepo.createRepeatOrderTemplate.mock.calls[0][0].parts[0]).toMatchObject({ partWidth: '2', partThickness: '1' });
   });
 
   it('creates one customer-part template and reuses it from the source order', async () => {
