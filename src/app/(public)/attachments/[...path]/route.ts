@@ -6,7 +6,7 @@ import { Readable } from 'node:stream';
 
 import { ensureAttachmentRoot } from '@/lib/storage';
 import { canAccessAdmin } from '@/lib/rbac';
-import { matchesRestrictedAttachmentLabel } from '@/lib/attachment-visibility';
+import { resolveStoredAttachmentAccess } from '@/modules/attachments/attachment-access.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,50 +23,14 @@ export async function GET(
   }
 
   const session = await getServerAuthSession();
+  if (!session) return new NextResponse('Unauthorized', { status: 401 });
   const user = session?.user as any;
   const isAdmin = canAccessAdmin(user);
 
   const relativePath = segments.join('/');
-  const { findQuoteAttachmentByStoragePath } = await import('@/modules/quotes/quotes.service');
-
-  const quoteAttachment = await findQuoteAttachmentByStoragePath(relativePath);
-
-  const { prisma } = await import('@/lib/prisma');
-
-  const quotePartAttachment = quoteAttachment
-    ? null
-    : await prisma.quotePartAttachment.findFirst({
-        where: { storagePath: relativePath },
-        select: { mimeType: true, label: true },
-      });
-
-  const orderAttachment = quoteAttachment || quotePartAttachment
-    ? null
-    : await prisma.attachment.findFirst({
-        where: { storagePath: relativePath },
-        select: { mimeType: true, label: true },
-      });
-
-  const partAttachment = quoteAttachment || quotePartAttachment || orderAttachment
-    ? null
-    : await prisma.partAttachment.findFirst({
-        where: { storagePath: relativePath },
-        select: { mimeType: true, label: true },
-      });
-
-  const attachment = quoteAttachment ?? quotePartAttachment ?? orderAttachment ?? partAttachment;
-
-  if ((quoteAttachment || quotePartAttachment) && !isAdmin) {
-    return new NextResponse('Forbidden', { status: 403 });
-  }
-
-  if (attachment && !isAdmin && matchesRestrictedAttachmentLabel(attachment.label)) {
-    return new NextResponse('Forbidden', { status: 403 });
-  }
-
-  if (!attachment) {
-    return new NextResponse('Not found', { status: 404 });
-  }
+  const access = await resolveStoredAttachmentAccess(relativePath, isAdmin);
+  if (!access.ok) return new NextResponse(access.error, { status: access.status });
+  const { attachment } = access;
 
   const settings = await getAppSettings();
   const root = await ensureAttachmentRoot(settings.attachmentsDir);

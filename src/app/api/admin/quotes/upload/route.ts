@@ -4,6 +4,7 @@ import { getServerAuthSession } from '@/lib/auth-session';
 import { canAccessAdmin } from '@/lib/rbac';
 import { BUSINESS_NAMES, storeAttachmentFile, type BusinessName } from '@/lib/storage';
 import { getAppSettings } from '@/lib/app-settings';
+import { beginDrawingImportActivity } from '@/modules/drawing-import/drawing-import.activity';
 
 async function requireAdmin() {
   const session = await getServerAuthSession();
@@ -33,33 +34,33 @@ export async function POST(req: NextRequest) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
-  const form = await req.formData();
-  const file = form.get('file');
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: 'Missing file upload' }, { status: 400 });
-  }
-
-  const business = parseBusiness(form.get('business'));
-  if (!business) {
-    return NextResponse.json({ error: 'Invalid business selection' }, { status: 400 });
-  }
-
-  const customerNameRaw = form.get('customerName');
-  const quoteNumberRaw = form.get('quoteNumber');
-  const customerName = typeof customerNameRaw === 'string' ? customerNameRaw.trim() : '';
-  const quoteNumber = typeof quoteNumberRaw === 'string' ? quoteNumberRaw.trim() : '';
-
-  if (!customerName) {
-    return NextResponse.json({ error: 'Customer name is required for uploads' }, { status: 400 });
-  }
-  if (!quoteNumber) {
-    return NextResponse.json({ error: 'Quote number is required for uploads' }, { status: 400 });
-  }
-
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
+  const activity = await beginDrawingImportActivity();
   try {
+    const form = await req.formData();
+    const file = form.get('file');
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: 'Missing file upload' }, { status: 400 });
+    }
+
+    const business = parseBusiness(form.get('business'));
+    if (!business) {
+      return NextResponse.json({ error: 'Invalid business selection' }, { status: 400 });
+    }
+
+    const customerNameRaw = form.get('customerName');
+    const quoteNumberRaw = form.get('quoteNumber');
+    const customerName = typeof customerNameRaw === 'string' ? customerNameRaw.trim() : '';
+    const quoteNumber = typeof quoteNumberRaw === 'string' ? quoteNumberRaw.trim() : '';
+
+    if (!customerName) {
+      return NextResponse.json({ error: 'Customer name is required for uploads' }, { status: 400 });
+    }
+    if (!quoteNumber) {
+      return NextResponse.json({ error: 'Quote number is required for uploads' }, { status: 400 });
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
     const settings = await getAppSettings();
     const stored = await storeAttachmentFile({
       business,
@@ -78,5 +79,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     const message = typeof error?.message === 'string' ? error.message : 'Failed to store attachment';
     return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    await activity.finish();
   }
 }

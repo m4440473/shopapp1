@@ -347,7 +347,7 @@ export function PartBomTab({
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="order-detail-tile">
         <CardHeader>
           <CardTitle>BOM Analyzer</CardTitle>
         </CardHeader>
@@ -403,7 +403,7 @@ export function PartBomTab({
           ) : null}
 
           {debugPayload ? (
-            <details className="rounded-md border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
+            <details className="order-detail-inset rounded-md border p-3 text-xs text-slate-300">
               <summary className="cursor-pointer font-medium text-foreground">Debug details</summary>
               <pre className="mt-2 overflow-auto whitespace-pre-wrap">{JSON.stringify(debugPayload, null, 2)}</pre>
             </details>
@@ -413,7 +413,7 @@ export function PartBomTab({
 
       {result ? (
         <>
-          <Card>
+          <Card className="order-detail-tile">
             <CardHeader>
               <CardTitle>Units</CardTitle>
             </CardHeader>
@@ -444,7 +444,7 @@ export function PartBomTab({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="order-detail-tile">
             <CardHeader>
               <CardTitle>General tolerances</CardTitle>
             </CardHeader>
@@ -452,7 +452,7 @@ export function PartBomTab({
               {result.generalTolerances.length ? (
                 <ul className="space-y-2 text-sm">
                   {result.generalTolerances.map((item, idx) => (
-                    <li key={`${item.note}-${idx}`} className="rounded-md border border-border/60 bg-muted/10 p-2">
+                    <li key={`${item.note}-${idx}`} className="order-detail-inset rounded-md border p-2">
                       <div className="text-foreground">{item.note}</div>
                       <div className="text-xs text-muted-foreground">Confidence {formatInches(item.confidence * 100).replace(/\.$/, '')}%</div>
                     </li>
@@ -464,7 +464,7 @@ export function PartBomTab({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="order-detail-tile">
             <CardHeader>
               <CardTitle>Holes</CardTitle>
             </CardHeader>
@@ -522,7 +522,7 @@ export function PartBomTab({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="order-detail-tile">
             <CardHeader>
               <CardTitle>Radii</CardTitle>
             </CardHeader>
@@ -566,7 +566,7 @@ export function PartBomTab({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="order-detail-tile">
             <CardHeader>
               <CardTitle>Tapped holes</CardTitle>
             </CardHeader>
@@ -626,7 +626,7 @@ export function PartBomTab({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="order-detail-tile">
             <CardHeader>
               <CardTitle>Setup / flips</CardTitle>
             </CardHeader>
@@ -643,7 +643,7 @@ export function PartBomTab({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="order-detail-tile">
             <CardHeader>
               <CardTitle>Warnings</CardTitle>
             </CardHeader>
@@ -660,11 +660,11 @@ export function PartBomTab({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="order-detail-tile">
             <CardContent className="pt-6">
               <details>
                 <summary className="cursor-pointer text-sm font-medium text-foreground">Raw JSON</summary>
-                <pre className="mt-2 overflow-auto rounded-md border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
+                <pre className="order-detail-inset mt-2 overflow-auto rounded-md border p-3 text-xs text-slate-300">
                   {JSON.stringify(result, null, 2)}
                 </pre>
               </details>

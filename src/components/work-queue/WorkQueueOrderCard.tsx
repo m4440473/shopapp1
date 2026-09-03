@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { CSSProperties } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/Card';
@@ -16,14 +17,16 @@ function formatDuration(seconds: number) {
 export function WorkQueueOrderCard({
   order,
   selectedDepartmentName,
+  style,
 }: {
   order: DepartmentFeedOrder;
   selectedDepartmentName: string;
+  style?: CSSProperties;
 }) {
   const latestActivityLabel = order.latestActivityAt ? new Date(order.latestActivityAt).toLocaleString() : 'No recent activity';
 
   return (
-    <Card className="h-full border-border/60 bg-card/70 p-4 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
+    <Card className="shop-glass h-full rounded-lg border p-4 transition duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:shadow-xl hover:shadow-primary/10" style={style}>
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <Link href={`/orders/${order.orderId}`} className="text-xl font-bold text-primary hover:underline">
@@ -67,10 +70,10 @@ export function WorkQueueOrderCard({
         ) : null}
 
         <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="rounded-lg border border-border/50 bg-muted/10 px-3 py-2">Parts here: {order.partsInDeptCount}</div>
-          <div className="rounded-lg border border-border/50 bg-muted/10 px-3 py-2">Open checklist: {order.openChecklistCount}</div>
-          <div className="rounded-lg border border-border/50 bg-muted/10 px-3 py-2">Flagged parts: {order.flaggedCount}</div>
-          <div className="rounded-lg border border-border/50 bg-muted/10 px-3 py-2">Last activity: {latestActivityLabel}</div>
+          <div className="rounded-md border border-border/50 bg-muted/10 px-3 py-2">Parts here: {order.partsInDeptCount}</div>
+          <div className="rounded-md border border-border/50 bg-muted/10 px-3 py-2">Open checklist: {order.openChecklistCount}</div>
+          <div className="rounded-md border border-border/50 bg-muted/10 px-3 py-2">Flagged parts: {order.flaggedCount}</div>
+          <div className="rounded-md border border-border/50 bg-muted/10 px-3 py-2">Last activity: {latestActivityLabel}</div>
         </div>
 
         <div className="space-y-2 text-sm text-muted-foreground">
@@ -78,7 +81,7 @@ export function WorkQueueOrderCard({
             <Link
               key={part.id}
               href={`/orders/${order.orderId}?part=${encodeURIComponent(part.id)}`}
-              className="flex min-h-12 items-center justify-between gap-3 rounded-md border border-border/50 bg-background/60 px-3 py-2 transition hover:border-primary/60 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="shop-glass-soft flex min-h-12 items-center justify-between gap-3 rounded-md border px-3 py-2 transition hover:border-primary/60 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               title={part.reasonText ?? undefined}
             >
               <span className="min-w-0">

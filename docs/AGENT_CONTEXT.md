@@ -39,6 +39,9 @@ Goal: a scalable foundation that can grow.
 
 ## Current Priorities
 
+### Production access
+- Before any `.72` inspection or deployment, read the local-only `docs/PRODUCTION_ACCESS.md` when present. It contains machine-specific SSH settings and must not be published to the public repository. If absent, obtain the approved access/runbook from the owner rather than guessing.
+
 ### P0 — Platform Stability
 - Ensure auth/session handling is consistent (single approach)
 - Ensure app shell is stable and mobile navigation is usable
@@ -59,6 +62,173 @@ Goal: a scalable foundation that can grow.
 - All charge kinds are per-part: `partId` is required for every charge kind.
 
 ## Decision Log (append newest at top)
+
+### 2026-09-03 — Part identity is contextual; absent finish normalizes to NA
+Decision: Do not equate every drawing-number field with `partNumber`. Ask the model for the identifier belonging to the depicted part using title-block/page context, and reject label-only values such as `REVISION`, `REV`, `DRAWING NUMBER`, or `PART NUMBER` as unreadable human-review cases. Normalize explicit none aliases and genuinely absent finish/treatment to literal `NA`; preserve unreadable/conflicting finish as unresolved. This policy shipped with the server-derived workflow/importer release. Machine-specific production access documentation stays local-only because the configured GitHub repository is public.
+
+### 2026-09-03 — Manual retry has durable page scope; newer importer has no local OCR
+Decision: Store reprocessPageId in existing job configJson atomically with selected-page pending state. The ordinary claimed-job/recovery entry point branches to a selected-page path before inventory; never replay siblings or packet quantity/BOM finalization for this action. Explicit retry bypasses local classification/duplicate and completed-model cache shortcuts, preserves saved confirmations and assembly quantities, and retains prior review on failure. Deduplicate same-page clicks and reject competing retries while busy. No schema/package addition. Remove the newer service's local OCR calls and ignore its former OCR flag; leave unrelated OCR consumers/dependencies alone. Direct-PDF V3 context contains no supplemental local text/candidate/BOM hints; locally copying PDF pages needs no OCR. PDF-native text/image content remains intact. Local only; models, schema, production and prompt instructions otherwise unchanged.
+
+### 2026-09-03 — New importer uses local PDF splitting and one-pass page extraction
+Decision: Preserve the existing safe ZIP inventory and lossless canonical PDF page copying; never send a multi-page packet or all packet images to the model. In V3 disable automatic extraction retries, fallback-model escalation and dimension refinement, even when older env/DB settings enable them. Leave unresolved values for human review; retain explicit manual retry and zero-call reuse/reference skips. Process separate one-page requests with bounded concurrency (two in the local trial). Resolve PDF.js fonts through ancestor node_modules for server-derived child checkouts without require.resolve webpack rewriting or new packages. Legacy prompt/schema migration was superseded and reverted. Local only; no production deployment or new measured AI speed claim.
+
+### 2026-09-03 — Current importer shares AI knobs, not the V3 response contract
+Decision: The existing Use current importer backend consumes getDrawingImportAiSettings through a small domain request helper, so the local Playground profile applies to both readers. Preserve legacy prompt, JSON field contract, PDF preparation, UI and downstream review behavior. Explicitly reject incomplete/empty Responses results before JSON parsing and keep manual review with a safe warning. Do not describe settings parity as identical extraction or a measured speedup. No new dependencies or production deployment; browser/test execution still requires completion after the approval-service outage.
+
+### 2026-09-03 — Playground settings are a local trial profile, not production defaults
+Decision: Add optional validated `DRAWING_IMPORT_V2_REASONING_SUMMARY` and `DRAWING_IMPORT_V2_REASONING_MODE`; omit both from the API request when unset. The owner-approved local trial runs gpt-5.4-mini, standard/low reasoning (including refinement), medium verbosity, concise summary, and 10,000 maximum output tokens via `.tmp/local-browser-regression-20260903/playground.env` and its `start-local.cjs` launcher. Keep the default medium reasoning/low verbosity and existing model defaults unchanged outside this trial. Preserve the server-derived v4.0.1 prompt/schema, isolated database/storage, and complete V2/V3 availability profile. No production deployment is authorized by this local test request.
+
+### 2026-09-03 — Drawing AI verbosity is explicit and independent from reasoning effort
+Decision: Configure Drawing Import response verbosity through validated `DRAWING_IMPORT_V2_VERBOSITY` (`low`, `medium`, or `high`), defaulting to `low`. Keep normal Terra extraction and focused Terra dimension refinement at `medium` reasoning unless a measured evaluation justifies another value.
+Reason: Responses API verbosity controls visible structured-output detail independently from reasoning effort. The drawing schema needs concise output, while medium reasoning remains the selected quality/latency baseline.
+
+### 2026-09-03 — Order decomposition uses compatibility exports and facade-preserving repo families
+- Large order/quote coordinators are decomposed one controlled leaf or command family at a time. Pages retain request, navigation, confirmation, and refresh orchestration until those contracts have dedicated typed controllers; step shells are not replaced with prop-heavy monoliths.
+- `orders.service.ts` and `orders.repo.ts` remain temporary compatibility surfaces while header, file, event, charge, part, create, query, and status-workflow service/repository families move into owned modules. Workflow/department callbacks are injected into extracted command families to avoid service cycles, and services continue importing persistence through `@/repos/orders` so TEST_MODE real/mock selection is never bypassed.
+- Checklist completion, department transitions, and time adjustment form one transaction-ordered lifecycle boundary. Do not split them through root-service callbacks or duplicate their rules; first define a typed lifecycle contract with transaction-order tests, then extract checklist commands and department transitions before reassessing a separate time family. Quote work-plan persistence and final-price derivation likewise stay in the coordinator until a typed pricing controller can own both without putting business rules in presentation components.
+- Production-derived and local trees may retain intentional pre-existing behavior differences during reconciliation; the pristine production download remains unchanged until deployment.
+
+### 2026-09-01 — Durable intake drafts, customer-part reuse and stock waits stay separate concerns
+- Unsaved fresh quote/direct-order intake uses a versioned, debounced browser draft keyed by workflow identity. Persisted quotes, quote conversions and frozen repeat templates remain the durable source and do not restore an unrelated browser draft. Successful creation clears only its matching draft.
+- Historical part reuse is a customer-scoped read model. It copies static drawing/manufacturing definitions and drawing attachments with visible source/version, while quantity, pricing, procurement and worker assignments start fresh. Manufacturing-note extraction creates evidence-backed suggestions only; a person must explicitly add one.
+- `WAITING_ON_STOCK` is an OrderPart material status, not a new Order workflow status. State changes are event-audited only when the persisted value actually changes. Shop Floor Summary reads these events plus department movements; no summary counters are persisted.
+- Phone throughput improvements preserve drawing fidelity and the existing Terra route: aggregate preflight, two-file client concurrency, idempotent partial retry, session-lock waiting, stage-specific AI limits, heartbeat and startup recovery. Model/image quality changes require representative benchmark evidence.
+- No dependency or schema migration was required for this release.
+
+### 2026-08-31 — Repeat-template attachment ownership
+- RepeatOrderTemplateAttachment requires both templateId and (for part drawings) templatePartId. A nested part create supplies only the latter. Generate a UUID for the template before its atomic nested create and explicitly include templateId on part attachments. Restrict top-level template attachment reads to templatePartId=null to avoid duplicating part drawings in Create again. No schema/dependency change. Verify with real disposable SQLite and snapshot/prefill route tests, not mocked persistence alone.
+
+### 2026-08-31 — Local phone drawing handoff
+Decision: Add a phone-upload domain with private filesystem-backed expiring sessions, SHA-256 capability hashes, admin-owned immutable quote context, bounded image staging and idempotent handoff into the current quote drawing importer. The phone can upload but cannot view quote records or trigger AI independently. Store staging outside public attachments; expire/revoke capabilities and clean stale staging opportunistically. Generate QR codes in-process with new qrcode dependency and @types/qrcode rather than a third-party QR URL service. Reuse installed sharp/JSZip. No database migration or production rollout in this task.
+Reason: Camera/gallery uploads must reach the exact draft without email, login sharing, duplicate import creation or a separate interpretation workflow. Normal session auth remains required on desktop. Local testing must not enable TEST_MODE on a LAN-accessible listener.
+
+### 2026-08-31 — Permission-aware business-wide search
+Decision: Add a search domain with a static, explicit SQL field/source registry, parameterized user values, pre-query authorization, complete category counts and bounded 40-result pages. Search live business records plus already-stored drawing/BOM extraction; do not scan credentials, configuration, raw model requests or external shares. Preserve drawing-only employee attachment rules before counts/snippets. No dependency or migration required.
+Reason: The old global-looking search only covered a few order fields and stopped at 60 results. Extensible allowlists prevent secrets from entering search while grouped results and contextual links make broad results useful. Full-text ingestion of previously unread files is a separate future indexing task; current query-time scanning should be benchmarked before very large datasets.
+
+
+### 2026-08-31 — Quote review dimension units are a presentation/entry preference
+- The compact per-page in/mm toggle covers final length, width/outside diameter, thickness/wall, and derived cut/stock displays. Canonical persisted values remain inches; unit switches perform no writes. Edited metric values convert using 25.4 mm/in before existing correction/save paths.
+- Missing revision is optional in field/page attention and review filters, matching the existing save contract. Actual conflicting revision evidence remains visible. No dependency, schema, model, or historical-data changes.
+
+### 2026-08-28 — V3 uses direct canonical PDFs with Terra-only dimensional refinement
+- Quote Drawing Import V3 reuses V2's durable upload/page/evidence/review/save architecture and changes only interpretation: each eligible authoritative single-page PDF goes directly to `gpt-5.6-terra` at high detail.
+- A second Terra request at high reasoning is permitted only when finished length, width/outside diameter, or thickness/wall is unresolved. It may replace only those unresolved fields. Sol, Luna, OCR, and local auto-accept remain disabled in the production admin beta.
+- A model failure or incomplete response changes the page to uncertain/manual review; weak local label reads cannot silently become parts. Missing physical dimensions remain nullable rather than guessed.
+- V3 release verification must include a packaged HTTP upload against an isolated database/storage copy on the deployment host, not just source tests or a local model call.
+Reason: The approved private benchmark showed direct PDF Terra materially improved manufacturing dimensions at acceptable time/cost, while the prior crop/local merge increased calls and allowed weak label artifacts to survive.
+
+### 2026-08-28 — Quote Drawing Import V2 is a durable evidence-backed admin beta
+- Drawing Import V2 applies only to admin quote creation/edit. Direct-order drawing intake remains on the proven legacy reader, and quote-to-order conversion copies reviewed values and page lineage without rerunning extraction or multiplying quantities again.
+- The authoritative page for a PDF source is a lossless vector single-page PDF linked to its original packet/page; previews and crops are derived. Local coordinate evidence, classification, BOM parsing, validators, OCR, and duplicate checks run before one-page Terra requests, with Sol reserved for explicit hard/conflicting cases.
+- Import state, attempts, evidence, usage/cost, and corrections are durable in additive records so review can resume after refresh/restart. Accepted fields remain nullable/evidence-backed; unresolved pages stay in review rather than being guessed.
+- Production is currently an admin beta with local auto-accept and customer-profile matching disabled, Luna disabled, a USD 8 hard cap, and an explicit legacy fallback. Final default rollout requires an approved representative golden set and measured real-layout accuracy/latency/cost gates; synthetic evaluation cannot certify it.
+- Added `pdf-lib` for lossless page copying, `tesseract.js` plus `@tesseract.js-data/eng` for local bounded OCR, and upgraded `openai` to the compatible Responses/Structured Outputs SDK. Native document packages are externalized through Next `serverExternalPackages` and copied into standalone output for Windows production.
+Reason: Quote packets need recoverable, page-traceable interpretation with deterministic local work first, narrowly routed model cost, explicit uncertainty, and rollback-safe production operation rather than all-page opaque AI extraction.
+
+### 2026-08-27 — Drawing PDFs use the proven text-to-model reader
+- PDF drawing intake extracts bounded native PDF text and sends that text directly to the configured AI model, one drawing at a time. It does not rasterize/split PDFs or invoke packet/image workers in the active import path.
+- The only extraction-contract extension is confidence/evidence-backed finished length, width, and thickness; unclear dimensions remain null for human review.
+- The existing 100-supported-drawing mixed-ZIP boundary, attachment storage, progress events, autosave review, and downstream stock-dimension persistence remain intact.
+
+### 2026-08-27 — Finished stock dimensions are explicit part data
+- Finished width and thickness are stored independently on quote parts, order parts, and repeat-order template parts; `stockSize` remains the backward-compatible display/storage field for the complete stock requirement.
+- Drawing intake derives the displayed total stock dimensions in the fixed order `thickness × width × (cut length × quantity)`, with cut length remaining `finished length + 0.125`.
+- Extraction must return null and require human review when width or thickness is unclear. The current full-page plus high-detail title-block pipeline remains in place, and its synthetic accuracy evaluation now covers both dimensions.
+- No new dependency was introduced.
+
+### 2026-08-26 — Customer dashboard metrics are computed, not persisted
+- Customer relationship metrics are derived on read from orders, part quantities, contacts, businesses, and canonical time intervals; no summary counters or labor totals are stored.
+- Order frequency means total orders per active order-history month, using a one-month minimum denominator. Most recent work includes order creation/receipt and time-entry activity.
+- Search/filter/sort behavior is shared by Tiles and List so both views always represent the same customer set and ordering.
+
+### 2026-08-26 — Customers retain multi-business membership and imported fax data
+- A customer is one organization with zero or more `CustomerBusiness` memberships; a high-confidence alias match merges the organization while retaining every Sterling, C&R, and Powder Coating source membership.
+- Customer and contact fax values are first-class optional fields. Imported values fill blanks and never replace non-empty customer/contact data with lower-confidence workbook values.
+- The workbook importer is idempotent, preserves the source filename on memberships, keeps the full legacy/billing address fallback, and populates structured address fields only when parsing is reliable.
+
+
+### 2026-08-25 — Work-order detail uses a phone-first stacked flow below desktop
+- Below `lg`, Parts is a compact horizontal selector followed immediately by the selected order; action controls use touch-friendly wrapping and detail tabs remain horizontally reachable without widening the document.
+- At `lg` and above, retain the approved sticky 360px Parts rail and full detail workspace. Responsive changes must not alter workflow permissions or business behavior.
+
+### 2026-08-25 — Business is an everyday Shop Floor quick filter
+- Business appears between Department and Priority and offers All plus the three canonical shop businesses.
+- It participates in the shared filter pipeline so Tiles and List cannot diverge, and All remains the fresh-load default.
+
+### 2026-08-25 — Offsite owner access stays private through Tailscale
+- SHOPAPP participates in the owner's private Tailscale network for direct phone access outside the shop LAN.
+- Do not add public Funnel, router forwarding, Tailscale SSH, or public RDP as part of app access. Optional Tailscale Serve/HTTPS is not currently enabled.
+
+### 2026-08-25 — Production fresh-start cleanup preserves exact reviewed work IDs
+- Historical production orders/quotes may be purged only after a timestamped application/database rollback snapshot and a disposable-copy dry run.
+- The cleanup must preserve an explicit reviewed ID set, validate expected before/delete/after counts, keep customer/user/configuration/template data intact, leave physical attachment files untouched, and finish with SQLite foreign-key verification.
+- The 2026-08-25 reset retained `CRM-1007`, `CRM-1008`, and `250826-001`; it removed 16 older orders and 17 older quotes.
+
+### 2026-08-25 — Order part cards share the Shop Floor tile color hierarchy
+- Individual part cards inside an order use a defined deep-navy unselected surface and a brighter royal-blue selected surface with stronger borders and text contrast.
+- This is a visual hierarchy only; part selection and all department, timer, and order behavior remain unchanged.
+
+### 2026-08-25 — Order detail uses an open canvas and department actions cover unassigned parts
+- The Parts rail and selected-order workspace sit directly on the page canvas; only individual part cards and task-specific inner panels retain card surfaces.
+- Department management is one adaptive audited action: unassigned parts show Assign department with every active destination, while assigned parts show Move department excluding their current department.
+- Both paths require an audit note and block while the selected part has an active timer.
+
+### 2026-08-25 — Timers and department selection are everyday Shop Floor controls
+- Timers is an independent top-level control beside Tiles/List/More and reveals Working Now without opening customization.
+- More owns only advanced Shop Floor customization.
+- Department is a quick filter between Status and Priority; it filters the shared Tiles/List set by effective current part department and includes All and Unassigned choices.
+- This supersedes the earlier portion of the Tiles/List/More decision that placed the timer strip behind More.
+
+### 2026-08-25 — Focused admin order controls and audited Shop Floor tile actions
+- Priority is administered through a focused order-header control rather than the broad order-details form, preventing stale form state from reverting a priority update.
+- Manual order-status changes remain admin-only, require a reason, and flow through the existing history-backed status service; normal workflow statuses continue to derive from part activity.
+- Shop Floor HOT work uses a flame indicator in Tiles and List. Admin-only three-dot actions exist in Tiles for priority, status, and assigned machinist; permission visibility remains server-derived.
+- No dependency or schema changes were introduced.
+
+### 2026-08-25 - Shop Floor separates everyday views from optional production controls
+Decision: Open Shop Floor directly in a compact three-column Tiles view, place Tiles, List, and More beside the four everyday filters, and keep the timer strip plus advanced customization hidden behind More. List is a flat order table driven by the same filtered and sorted order set, preceded by one four-card summary row whose fourth card is a compact top-three machinist workload. Remove the legacy dashboard blocks below the selected view; every fresh page load returns to Tiles while saved filter/color configuration remains intact.
+Reason: The shared production screen needs the order cards immediately without a large introduction or configuration panels consuming the TV. List needs high-level shop context before its rows, but duplicated overview/workload/status sections below the table waste vertical space and create conflicting hierarchy on the 80-inch display.
+
+### 2026-08-25 - Customer files remain local-canonical and are pulled into a non-deleting Unraid mirror
+Decision: Keep `C:\ShopApp\storage` as ShopApp's canonical attachment root so a NAS outage cannot stop the application. Expose it through a hidden, encrypted, read-only SMB share limited to `.10`; Unraid pulls new/changed files every five minutes into `/mnt/user/projects/ShopApp Customer Files` while preserving the existing `business/customer/order` hierarchy and intentionally never deleting mirror files. Keep monitoring/recovery artifacts separate under `projects/Backups/ShopApp/monitoring`.
+Reason: Management needs a normal searchable Windows Explorer hierarchy, while production availability and ransomware resistance require that the Windows server not depend on or hold broad write credentials for the NAS.
+
+### 2026-08-25 - ShopApp health is checked locally and independently from Unraid
+Decision: Run a SYSTEM Windows health task every two minutes, retry the local health endpoint three times, and restart only the `ShopApp` scheduled task if confirmed unhealthy. Independently check the LAN health endpoint from Unraid every two minutes and record/notify only outage and recovery transitions.
+Reason: Local self-healing handles process failure quickly, while an external check proves that a second machine can actually reach the webserver and avoids treating Windows' own opinion as sufficient monitoring.
+
+### 2026-08-25 - Department movement is separate from completion, quote origins are snapshotted, and travelers are per part
+Decision: Keep governed department completion and manual department movement as separate order-detail actions. Manual moves require an explicit destination and audit note, block while a timer is active, and flag backward movement as rework; completion previews must use the same open-checklist routing helper as the service. New quotes snapshot the actual first active department when saved. The Order Traveler reuses the authenticated order print route and prints one US Letter sheet per part with order context, required reading, production checkpoints, notes/files, and physical signoff fields.
+Reason: Operators need to correct routing without falsely declaring a department complete, saved quotes must not change origin when department ordering later changes, and physical work needs a readable traveler attached to each actual part rather than a crowded order-wide summary.
+
+### 2026-08-24 - Windows production separates persistent state and uses address-scoped recovery paths
+Decision: Run the Windows LAN deployment from `C:\ShopApp`, separating `app`, protected `config`, SQLite `data`, attachment `storage`, `logs`, `backups`, and `maintenance`. Start the standalone app as SYSTEM through Task Scheduler, verify it with a boot supervisor, and scope ShopApp to the shop subnet while limiting SSH/RDP to the admin workstation independent of Windows network-profile classification. Keep the router DHCP reservation authoritative for `192.168.254.72` rather than duplicating a static address in Windows.
+Reason: Application releases must be replaceable without endangering shop data, the server must recover without storing an administrator password, and a Windows Public/Private profile change must not strand every remote-management path after reboot.
+
+### 2026-08-24 - Shop Floor glass uses an open canvas and restrained geometry
+Decision: Keep the black/navy atmospheric gradient as the Shop Floor canvas, but remove both the full-page dark backing sheet and the large glass wrapper around production results. Place the Live Production heading directly on the gradient and use modest `rounded-lg`/`rounded-md` geometry for functional panels, tiles, controls, and nested rows; reserve pills/circles for semantic badges and live indicators.
+Reason: The stacked dark shells and large radii made the dashboard feel bubbly and consumer-oriented. An open canvas with tighter geometry keeps useful depth while reading as a sleeker professional production system.
+
+### 2026-08-24 - Quote numbers are daily shop-wide sequences
+Decision: Automatically assign quote numbers as `DDMMYY-###`, using the server's local calendar date and the next sequence across all businesses for that day. Preserve already assigned numbers, including legacy formats, when editing existing quotes.
+Reason: The owner identifies quotes by the date they were created and their order within that workday; business-prefixed random identifiers were backwards for that workflow, while renumbering historical quotes would break existing references.
+
+### 2026-08-24 - Shop Floor Quick View controls live with the governed results
+Decision: Replace the chosen tile view's former department-pill row with the persistent, compact status, priority, sort-field, and direction selects, without a separate Quick View panel. Keep layout, department selection, completed-item inclusion, advanced filters, conditional colors, and shared saving inside the independent Live Production configuration collapse. Apply filters before sorting in every layout, and let Working now collapse independently with device-local persistence.
+Reason: Everyday view manipulation must remain available in the exact pre-tile control slot when configuration is collapsed, while department choice changes the configured work-queue view and belongs with the other structural settings. The independent timer collapse preserves big-screen space without hiding sorting.
+
+### 2026-08-24 - Live Production glass atmosphere is black and navy
+Decision: Use black, near-black navy, and restrained royal-blue light for the Shop Floor's ambient glass layers, with enough backing opacity to mask the application's global cyan glow. Keep cyan limited to existing brand/action accents and keep green/red localized to operational state and alert surfaces.
+Reason: The owner liked the dimensional glass material but strongly disliked the overall cyan cast. Treating material, ambient palette, and semantic status colors as separate concerns preserves the glass depth without tinting the entire production screen cyan.
+
+### 2026-08-24 - Live Production owns a scoped three-depth glass surface system
+Decision: Style only the Shop Floor dashboard with a layered glassmorphism system: atmospheric brand-color light behind the page, strong glass for the dispatch/control shell, regular glass for primary cards, and soft glass for nested rows. Conditional order-color rules retain inline priority over the glass surface. Promote only the untouched legacy seven-day overdue red to the deeper oxblood default; preserve user-customized rule colors.
+Reason: The owner supplied a glass-interface reference and wants the shared TV dashboard to feel dimensional and modern without changing the visual contract of quote, order, or admin screens or weakening urgent status colors.
+
+### 2026-08-24 - Repeat orders are customer-part definitions and required reading has explicit authoring/status surfaces
+Decision: A newly saved repeat-order template represents one selected source part for one customer, carries stable source-part identity, and is reused by both the old-order `Create again` action and the dedicated Repeat Orders page. Required reading is authored explicitly per part during quote/direct/repeat order creation, persists through quote conversion, blocks timer start for the selected worker until that worker has a current receipt, and displays the active-user roster split into acknowledged/not acknowledged for the current part, department, and instruction version.
+Reason: The owner is repeating a proven customer/part manufacturing package, not selecting a generic order-document layout. The enforcement gate also needs a conspicuous input for the boss and a visible accountability roster or required notes can be omitted or their status cannot be managed confidently.
 
 ### 2026-07-17 - The TV dashboard is the Shop Floor station; the separate PIN kiosk is retired
 Decision: Treat the signed-in production dashboard at `/` as the single trusted Shop Floor station. It may select employees and control their timers using the existing actor/worker audit split, with Read Me First receipts as the safety gate and no employee PIN. Remove the Kiosk navigation entry and employee kiosk/PIN setup; redirect the legacy `/kiosk` URL to Shop Floor.
@@ -274,3 +444,41 @@ Reason: Management needs actual employee time per part for estimating and pricin
 Decision: Run standalone asset packaging through dependency-free Node filesystem APIs instead of invoking a Bash-only copy script from `npm run build`.
 Reason: The application is developed and verified on Windows but deployed through standalone/Docker output. The packaging step must behave identically on both platforms so a successful Next.js compile is also a successful production build.
 
+### 2026-08-24 — Shop Floor display profiles are shared, rules-based configuration
+Decision: Persist one validated Shop Floor display profile in application settings. The profile owns the default layout, broad order sort field/direction, and an ordered list of conditional translucent tile-color rules; the first enabled matching rule wins. All signed-in floor users may preview changes in place, while only administrators may save the shared profile. Collapse state remains device-local because it describes the individual TV/browser, not shop-wide business policy.
+Reason: The large Live Production screen must be adaptable without code changes, including attention rules such as “7 or more days overdue = red,” while preventing an accidental worker edit from silently changing every display.
+
+### 2026-08-25 — Customer contacts are selectable records and order staffing separates coordination from labor
+Decision: Model customer contacts as a one-to-many customer-owned record, require quote/order entry to select the intended contact explicitly, and snapshot that contact onto operational records. Keep the legacy customer contact/address scalars readable during migration. Treat `Order.assignedMachinistId` as an optional coordinator, while the employees performing work are explicit part assignments seeded from multi-select creation controls.
+Reason: A company such as Toyota can have many requestors, historical travelers must not change when a customer contact is edited later, and selecting multiple workers must not cause one of them to be mislabeled as the job coordinator.
+
+### 2026-08-25 — Shop Floor defaults to creation recency and order detail shares one tile language
+Decision: Persist a real order creation timestamp and use newest-created-first as the fresh Shop Floor default, narrowly upgrading only the previous saved default. Use shared order-detail tile/inset tokens across every order-detail tab while preserving semantic status colors.
+Reason: Newly entered work must appear immediately at the front of the production queue, and the complete order workspace—not only the part selector—must match the approved high-contrast TV tile hierarchy.
+### 2026-08-25 — Document headers are business letterheads and disclaimers are movable template blocks
+Decision: Keep business letterhead data inside each template Header block, with presets resolved from the selected/actual business and editable fields for name, address, phone, and email. Keep recipient Customer Info independent. Add Disclaimer as a first-class draggable quote block with editable heading/body. Defer logos until a later explicit scope.
+Reason: The same quote layout may print for three businesses, each needs correct sender identity, and terms/validity language must be positionable without code changes or being conflated with customer data.
+
+### 2026-08-26 — Drawing intake is resumable, assembly-aware, and deterministic where shop math is known
+Decision: Persist reviewed drawing-import metadata in a device-local draft keyed by destination/business/customer, clear it only after the parent quote/order saves (or explicit user clear), ask One-off versus Assembly before upload, and apply an assembly multiplier to extracted component quantities. Keep known saw-cut arithmetic outside the model: cut length is final length plus 0.125 inch and total stock length is cut length times quantity. Extract PDFs with bounded concurrency, retain bounded BOM text, and send BOM context only to drawings that reference BOM/parts-list material.
+Reason: Long drawing reviews must survive an accidental refresh, assembly quantities must be correct before review begins, deterministic arithmetic must not depend on model interpretation, and bounded parallel work improves throughput without flooding the model/API.
+
+### 2026-08-26 — Attachment visibility is enforced at the download boundary
+Decision: Non-admin users may see and download only part-scoped drawing files with approved drawing kinds; quote/order documents and labels indicating purchase orders, quotes, invoices, or other administrative records remain admin-only. Apply the same centralized policy to API payload filtering and the authenticated attachment download route.
+Reason: Hiding a file only in React is not authorization. Purchase orders and commercial documents must remain inaccessible even if a non-admin guesses or retains an attachment URL.
+
+### 2026-08-26 — Manual part pricing always carries an explicit basis
+Decision: Persist manual part prices with `PER_UNIT` or `LOT_TOTAL` semantics and show the basis in quote entry, detail, totals, and print. Automatic pricing remains per-unit.
+Reason: The same entered dollar value produces materially different totals depending on whether it applies to each part or the entire quantity; the basis must survive reload and be visible anywhere the total is interpreted.
+
+### 2026-08-27 — Multi-page PDFs are drawing packets, not single parts
+Decision: Split uploaded multi-page PDFs into page images for independent title-block extraction, classify each page as `PART_DRAWING`, `BOM`, `COVER`, or `OTHER`, omit BOM/cover pages from part creation, retain ambiguous pages for human review, and preserve the original PDF as an order/quote-level supporting file. Keep one-page PDFs and ZIP imports unchanged, and trace every generated part to its original packet page.
+Reason: Customers often combine many drawings, indexes, and BOMs into one PDF. File-count semantics otherwise collapse the entire packet into one false part, while dropping uncertain pages could silently lose real work.
+
+### 2026-08-27 — Drawing extraction uses direct high-detail inputs and field-preserving validation
+Decision: Send rendered packet pages directly as high-detail data-URL images with native page text, a full-page view, and a bottom-right title-block crop. Retry one transient response failure, log model/input and validation failures without document contents, and normalize reasonable document-role variants instead of rejecting the complete extraction. Keep `gpt-4.1-mini` until a representative owner-approved eval set supports a measured model change.
+Reason: Temporary vision-file readiness and strict whole-object validation can turn correctly read title-block fields into silent filename fallbacks. Accuracy failures must preserve usable fields, remain observable, and be measured rather than inferred from structural tests.
+
+### 2026-08-27 — Production rollback preserves operational data by default
+Decision: A timestamped source rollback restores only the source files captured in that snapshot unless the owner explicitly asks to restore database data too. Verify with an exact deployed-file hash and live health. Any temporary build compatibility setting must be removed before completion.
+Reason: Production orders and uploads continue independently of code releases, but owners need to test a known code point without losing current shop data.

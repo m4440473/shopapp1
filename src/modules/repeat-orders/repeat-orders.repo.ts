@@ -1,7 +1,13 @@
 import 'server-only';
 
+import { randomUUID } from 'node:crypto';
+
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+
+export async function findRepeatOrderCustomer(customerId: string) {
+  return prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
+}
 
 export async function findOrderTemplateSource(orderId: string) {
   return prisma.order.findUnique({
@@ -56,6 +62,7 @@ export async function findOrderTemplateSource(orderId: string) {
 export async function createRepeatOrderTemplate(data: {
   customerId: string;
   sourceOrderId: string;
+  sourcePartId: string | null;
   name: string;
   business: string;
   vendorId: string | null;
@@ -72,6 +79,8 @@ export async function createRepeatOrderTemplate(data: {
     materialId: string | null;
     stockSize: string | null;
     cutLength: string | null;
+    partWidth: string | null;
+    partThickness: string | null;
     notes: string | null;
     workInstructions: string | null;
     instructionsVersion: number;
@@ -104,10 +113,15 @@ export async function createRepeatOrderTemplate(data: {
     sortOrder: number;
   }>;
 }) {
+  // Part attachments have two parents: the template and its part. Prisma's
+  // nested part write supplies only the latter, so link the template explicitly.
+  const templateId = randomUUID();
   return prisma.repeatOrderTemplate.create({
     data: {
+      id: templateId,
       customerId: data.customerId,
       sourceOrderId: data.sourceOrderId,
+      sourcePartId: data.sourcePartId,
       name: data.name,
       business: data.business,
       vendorId: data.vendorId,
@@ -125,6 +139,8 @@ export async function createRepeatOrderTemplate(data: {
           materialId: part.materialId,
           stockSize: part.stockSize,
           cutLength: part.cutLength,
+          partWidth: part.partWidth,
+          partThickness: part.partThickness,
           notes: part.notes,
           workInstructions: part.workInstructions,
           instructionsVersion: part.instructionsVersion,
@@ -143,6 +159,7 @@ export async function createRepeatOrderTemplate(data: {
           },
           attachments: {
             create: part.attachments.map((attachment) => ({
+              templateId,
               kind: attachment.kind,
               url: attachment.url,
               storagePath: attachment.storagePath,
@@ -167,7 +184,7 @@ export async function createRepeatOrderTemplate(data: {
     include: {
       customer: { select: { id: true, name: true } },
       sourceOrder: { select: { id: true, orderNumber: true } },
-      parts: { select: { id: true } },
+      parts: { select: { id: true, partNumber: true, partName: true } },
     },
   });
 }
@@ -180,7 +197,24 @@ export async function listRepeatOrderTemplates(params: { customerId?: string; ta
     include: {
       customer: { select: { id: true, name: true } },
       sourceOrder: { select: { id: true, orderNumber: true } },
-      parts: { select: { id: true } },
+      parts: {
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, partNumber: true, partName: true },
+      },
+    },
+  });
+}
+
+export async function findRepeatOrderTemplateBySourcePart(sourcePartId: string) {
+  return prisma.repeatOrderTemplate.findUnique({
+    where: { sourcePartId },
+    include: {
+      customer: { select: { id: true, name: true } },
+      sourceOrder: { select: { id: true, orderNumber: true } },
+      parts: {
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, partNumber: true, partName: true },
+      },
     },
   });
 }
@@ -193,6 +227,8 @@ export async function findRepeatOrderTemplateById(templateId: string) {
       vendor: { select: { id: true, name: true } },
       sourceOrder: { select: { id: true, orderNumber: true } },
       attachments: {
+        // Part drawings belong only to their part in a new-order draft.
+        where: { templatePartId: null },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       },
       parts: {
@@ -233,6 +269,8 @@ export async function createOrderFromRepeatTemplate(data: {
     materialId: string | null;
     stockSize: string | null;
     cutLength: string | null;
+    partWidth: string | null;
+    partThickness: string | null;
     notes: string | null;
     workInstructions: string | null;
     instructionsVersion: number;
@@ -293,6 +331,8 @@ export async function createOrderFromRepeatTemplate(data: {
           materialId: part.materialId,
           stockSize: part.stockSize,
           cutLength: part.cutLength,
+          partWidth: part.partWidth,
+          partThickness: part.partThickness,
           notes: part.notes,
           workInstructions: part.workInstructions,
           instructionsVersion: part.instructionsVersion,

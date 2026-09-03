@@ -7,24 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 import { AUTH_REQUIRED_EVENT_NAME, emitAuthRequired } from '@/lib/auth-required';
-
-const isAuthFailureResponse = async (response: Response) => {
-  if (response.status === 401 || response.status === 403) {
-    return true;
-  }
-
-  const contentType = response.headers.get('content-type') ?? '';
-  if (!contentType.includes('application/json')) {
-    return false;
-  }
-
-  try {
-    const body = await response.clone().json();
-    return body?.code === 'AUTH_REQUIRED';
-  } catch {
-    return false;
-  }
-};
+import { shouldPromptForSignIn } from '@/lib/auth-required-response';
 
 export default function AuthRequiredDialog() {
   const [open, setOpen] = useState(false);
@@ -44,7 +27,7 @@ export default function AuthRequiredDialog() {
 
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const response = await originalFetch(input, init);
-      if (await isAuthFailureResponse(response)) {
+      if (await shouldPromptForSignIn(response, input, init, window.location.origin)) {
         emitAuthRequired({ url: typeof input === 'string' ? input : undefined });
       }
       return response;

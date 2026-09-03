@@ -25,6 +25,44 @@ describe('orders.service completion gating', () => {
     expect((result as { ok: false; error: string }).error).toContain('checklist items remain');
   });
 
+  it('requires a reason for an administrative workflow-status override', async () => {
+    const { updateOrderWorkflowStatusByAdmin } = await import('../orders.service');
+
+    const result = await updateOrderWorkflowStatusByAdmin({
+      orderId: 'order_test_001',
+      status: 'CLOSED',
+      reason: '   ',
+      userId: 'user_test_admin',
+      actorName: 'Test Admin',
+    });
+
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; status: number }).status).toBe(400);
+    expect((result as { ok: false; error: string }).error).toContain('Reason is required');
+  });
+
+  it('records the actor and reason when an admin changes workflow status', async () => {
+    const { getOrderDetails, updateOrderWorkflowStatusByAdmin } = await import('../orders.service');
+
+    const result = await updateOrderWorkflowStatusByAdmin({
+      orderId: 'order_test_001',
+      status: 'CLOSED',
+      reason: 'Customer picked up the completed order.',
+      userId: 'user_test_admin',
+      actorName: 'Test Admin',
+    });
+
+    expect(result.ok).toBe(true);
+    const details = await getOrderDetails('order_test_001', { isAdmin: true });
+    expect(details.ok).toBe(true);
+    const item = (details as { ok: true; data: { item: { status: string; statusHistory: Array<{ to: string; reason: string }> } } }).data.item;
+    expect(item.status).toBe('CLOSED');
+    expect(item.statusHistory[0]).toMatchObject({
+      to: 'CLOSED',
+      reason: 'Admin status change by Test Admin: Customer picked up the completed order.',
+    });
+  });
+
 
   it('requires Shipping as current department before manual part completion', async () => {
     const { completeOrderPart, toggleChecklistItem } = await import('../orders.service');
@@ -103,6 +141,7 @@ describe('orders.service completion gating', () => {
       vendorId: undefined,
       poNumber: undefined,
       assignedMachinistId: undefined,
+      assignedWorkerIds: [],
       notes: '',
       attachments: [],
       addonIds: [],
@@ -131,6 +170,65 @@ describe('orders.service completion gating', () => {
     expect(payload.item.parts[0]?.currentDepartmentId).toBe(payload.departments[0]?.id);
   });
 
+  it('persists drawing-derived stock dimensions on a new order part', async () => {
+    const { createOrderFromPayload, getOrderDetails } = await import('../orders.service');
+    const created = await createOrderFromPayload({
+      business: 'STD', customerId: 'customer_test_001', receivedDate: '2026-08-27', dueDate: '2026-09-10', priority: 'NORMAL',
+      materialNeeded: true, materialOrdered: false, modelIncluded: false, assignedWorkerIds: [], notes: '', attachments: [], addonIds: [], customFieldValues: [],
+      parts: [{
+        partNumber: 'DIM-100', quantity: 4, partThickness: '0.25', partWidth: '2.5', cutLength: '4.125', stockSize: '0.25 × 2.5 × 16.5', addonSelections: [],
+      }],
+    });
+    expect(created.ok).toBe(true);
+    const details = await getOrderDetails((created as { ok: true; data: { id: string } }).data.id, { isAdmin: true });
+    expect(details.ok).toBe(true);
+    const part = (details as { ok: true; data: { item: { parts: Array<Record<string, unknown>> } } }).data.item.parts[0];
+    expect(part).toMatchObject({ partThickness: '0.25', partWidth: '2.5', cutLength: '4.125', stockSize: '0.25 × 2.5 × 16.5' });
+  });
+
+  it('assigns every selected worker to every new part without making one the coordinator', async () => {
+    const { createOrderFromPayload, getOrderDetails } = await import('../orders.service');
+
+    const created = await createOrderFromPayload({
+      business: 'STD',
+      customerId: 'customer_test_001',
+      receivedDate: '2026-02-01',
+      dueDate: '2026-02-10',
+      priority: 'NORMAL',
+      materialNeeded: false,
+      materialOrdered: false,
+      modelIncluded: false,
+      assignedMachinistId: undefined,
+      assignedWorkerIds: ['user_test_machinist', 'user_test_helper', 'user_test_machinist'],
+      notes: '',
+      attachments: [],
+      addonIds: [],
+      customFieldValues: [],
+      parts: [
+        { partNumber: 'CREW-001', quantity: 1, addonSelections: [] },
+        { partNumber: 'CREW-002', quantity: 2, addonSelections: [] },
+      ],
+    }, 'user_test_admin');
+
+    expect(created.ok).toBe(true);
+    const orderId = (created as { ok: true; data: { id: string } }).data.id;
+    const details = await getOrderDetails(orderId, { isAdmin: true });
+    expect(details.ok).toBe(true);
+
+    const item = (details as {
+      ok: true;
+      data: { item: { assignedMachinistId: string | null; parts: Array<{ assignments: Array<{ userId: string }> }> } };
+    }).data.item;
+    expect(item.assignedMachinistId).toBeNull();
+    expect(item.parts).toHaveLength(2);
+    for (const part of item.parts) {
+      expect(part.assignments.map((assignment) => assignment.userId)).toEqual([
+        'user_test_machinist',
+        'user_test_helper',
+      ]);
+    }
+  });
+
   it('normalizes blank optional material IDs on order create', async () => {
     const { createOrderFromPayload, getOrderDetails } = await import('../orders.service');
 
@@ -146,6 +244,7 @@ describe('orders.service completion gating', () => {
       vendorId: undefined,
       poNumber: undefined,
       assignedMachinistId: undefined,
+      assignedWorkerIds: [],
       notes: '',
       attachments: [],
       addonIds: [],
@@ -185,6 +284,7 @@ describe('orders.service completion gating', () => {
       materialNeeded: false,
       materialOrdered: false,
       modelIncluded: false,
+      assignedWorkerIds: [],
       attachments: [],
       addonIds: [],
       customFieldValues: [],
@@ -382,5 +482,47 @@ describe('orders.service completion gating', () => {
     expect(part?.partActivity?.activeTimers.some((entry: any) => entry.userId === 'user_test_machinist')).toBe(true);
     expect(part?.partActivity?.timeByUser.some((entry: any) => entry.user?.id === 'user_test_helper' && entry.seconds > 0)).toBe(true);
     expect(part?.partActivity?.totalSeconds).toBeGreaterThan(0);
+  });
+
+  it('removes administrative documents from non-admin order details and part attachment lists', async () => {
+    const {
+      createAttachmentForOrder,
+      createAttachmentForPart,
+      getOrderDetails,
+      listAttachmentsForPart,
+    } = await import('../orders.service');
+
+    await createAttachmentForOrder({
+      orderId: 'order_test_001',
+      payload: { label: 'Customer PO.pdf', storagePath: 'orders/customer-po.pdf', mimeType: 'application/pdf' },
+    });
+    await createAttachmentForPart({
+      partId: 'part_test_001',
+      payload: { kind: 'PO', label: 'Purchase order', storagePath: 'parts/po.pdf', mimeType: 'application/pdf' },
+    });
+    await createAttachmentForPart({
+      partId: 'part_test_001',
+      payload: { kind: 'PDF', label: 'A-100 drawing.pdf', storagePath: 'parts/drawing.pdf', mimeType: 'application/pdf' },
+    });
+
+    const details = await getOrderDetails('order_test_001', { isAdmin: false });
+    expect(details.ok).toBe(true);
+    const item = (details as { ok: true; data: { item: any } }).data.item;
+    expect(item.attachments).toEqual([]);
+    const visibleOrderPartLabels = item.partAttachments.map((attachment: any) => attachment.label);
+    expect(visibleOrderPartLabels).toContain('A-100 drawing.pdf');
+    expect(visibleOrderPartLabels).not.toContain('Purchase order');
+    const visibleNestedPartLabels = item.parts
+      .find((part: any) => part.id === 'part_test_001').attachments
+      .map((attachment: any) => attachment.label);
+    expect(visibleNestedPartLabels).toContain('A-100 drawing.pdf');
+    expect(visibleNestedPartLabels).not.toContain('Purchase order');
+
+    const list = await listAttachmentsForPart('part_test_001', false);
+    expect(list.ok).toBe(true);
+    const visibleListLabels = (list as { ok: true; data: { attachments: any[] } }).data.attachments
+      .map((attachment) => attachment.label);
+    expect(visibleListLabels).toContain('A-100 drawing.pdf');
+    expect(visibleListLabels).not.toContain('Purchase order');
   });
 });

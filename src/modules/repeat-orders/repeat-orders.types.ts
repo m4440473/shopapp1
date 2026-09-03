@@ -5,6 +5,9 @@ export type RepeatOrderTemplateSummary = {
   customerName: string | null;
   sourceOrderId: string | null;
   sourceOrderNumber: string | null;
+  sourcePartId: string | null;
+  primaryPartNumber: string | null;
+  primaryPartName: string | null;
   business: string;
   priority: string;
   createdAt: Date;
@@ -20,6 +23,8 @@ export type RepeatOrderTemplatePartInput = {
   materialId: string | null;
   stockSize: string | null;
   cutLength: string | null;
+  partWidth?: string | null;
+  partThickness?: string | null;
   notes: string | null;
   workInstructions: string | null;
   instructionsVersion: number;

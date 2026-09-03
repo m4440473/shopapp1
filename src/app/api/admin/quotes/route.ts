@@ -10,6 +10,7 @@ import { ListQuery } from '@/lib/zod';
 import { QuoteCreate } from '@/modules/quotes/quotes.schema';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
+import { resolveCustomerContactSnapshot } from '@/modules/customers/customers.service';
 import {
   createQuoteWithDetails,
   findActiveQuoteCustomFields,
@@ -102,7 +103,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const data = parsed.data;
+  let data = parsed.data;
+  if (data.customerContactId) {
+    if (!data.customerId) {
+      return NextResponse.json({ error: 'Select a customer before selecting a contact.' }, { status: 400 });
+    }
+    try {
+      const snapshot = await resolveCustomerContactSnapshot(data.customerId, data.customerContactId);
+      data = { ...data, ...snapshot };
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Invalid customer contact.' },
+        { status: 400 },
+      );
+    }
+  }
   const userId = (session.user as any)?.id;
   if (!userId) {
     return NextResponse.json({ error: 'Unable to determine current user' }, { status: 400 });

@@ -1,26 +1,18 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Activity, ArrowUpRight, CalendarDays, CircleCheck, Users } from 'lucide-react';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 
-import { RecentOrdersTable } from '@/components/RecentOrdersTable';
 import { ShopFloorLayouts } from '@/components/ShopFloorLayouts';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/Button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import {
   decorateOrder,
   getDepartmentsOrdered,
   getHomeDashboardData,
   getOrderDepartmentFeed,
-  ORDER_STATUS_LABELS,
   type DepartmentFeedOrder,
 } from '@/modules/orders/orders.service';
-import { getInitials } from '@/lib/get-initials';
-import { cn } from '@/lib/utils';
 import { getRunningWorkerSummary } from '@/modules/time/time.service';
+import { canAccessAdmin } from '@/lib/rbac';
+import { getShopFloorDisplayOptions, getShopFloorSummary } from '@/modules/shop-floor/shop-floor.service';
 
 export default async function Home() {
   const session = await getServerAuthSession();
@@ -36,9 +28,11 @@ export default async function Home() {
     throw new Error(String(dashboardResult.error));
   }
 
-  const { totalOrders, closedOrders, activeOrders, recentOrders } = dashboardResult.data;
+  const { totalOrders, activeOrders } = dashboardResult.data;
   const runningWorkersResult = await getRunningWorkerSummary();
   const runningWorkers = runningWorkersResult.ok ? runningWorkersResult.data.items : [];
+  const displayOptions = await getShopFloorDisplayOptions();
+  const shopFloorSummary = await getShopFloorSummary();
   const departmentsResult = await getDepartmentsOrdered();
   const departments = departmentsResult.ok ? departmentsResult.data.items : [];
   const initialDepartmentId = departments[0]?.id ?? null;
@@ -49,21 +43,22 @@ export default async function Home() {
     const due = new Date(order.dueDate).getTime();
     return due >= now.getTime() && due <= soon.getTime();
   }).length;
-  const unassigned = activeOrders.filter((order) => !order.assignedMachinistId).length;
+  const decoratedActiveOrders = activeOrders.map((order) => decorateOrder(order as any));
+  const unassigned = decoratedActiveOrders.filter(
+    (order) => !order.assignedMachinist?.id && !order.assignedWorkers.length,
+  ).length;
 
-  const statusBreakdown = activeOrders.reduce((acc, order) => {
-    const key = order.status;
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const machinistWorkload = activeOrders.reduce((acc, order) => {
-    const id = order.assignedMachinistId;
-    if (!id) return acc;
-    if (!acc[id]) {
-      acc[id] = { name: order.assignedMachinist?.name ?? 'Unassigned', count: 0 };
-    }
-    acc[id].count += 1;
+  const machinistWorkload = decoratedActiveOrders.reduce((acc, order) => {
+    const assignees = order.assignedMachinist?.id
+      ? [{
+          id: String(order.assignedMachinist.id),
+          name: order.assignedMachinist.name ?? order.assignedMachinist.email ?? 'Unnamed worker',
+        }]
+      : order.assignedWorkers;
+    assignees.forEach((assignee) => {
+      if (!acc[assignee.id]) acc[assignee.id] = { name: assignee.name, count: 0 };
+      acc[assignee.id].count += 1;
+    });
     return acc;
   }, {} as Record<string, { name: string; count: number }>);
 
@@ -71,10 +66,12 @@ export default async function Home() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
-  const decoratedActiveOrders = activeOrders.map((order) => decorateOrder(order as any));
   const machinistList = activeOrders
-    .map((order) => order.assignedMachinist)
-    .filter(Boolean)
+    .flatMap((order: any) => [
+      ...(order.assignedMachinist ? [order.assignedMachinist] : []),
+      ...(order.parts ?? []).flatMap((part: any) => (part.assignments ?? []).map((assignment: any) => assignment.user)),
+    ])
+    .filter((item: any) => item?.active !== false)
     .reduce((acc: Array<{ id: string | null; name?: string | null; email?: string | null }>, item) => {
       if (!item) return acc;
       if (!acc.find((m) => m.id === (item as any).id)) {
@@ -82,63 +79,8 @@ export default async function Home() {
       }
       return acc;
     }, []);
-  machinistList.unshift({ id: null, name: 'Unassigned', email: null });
-
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.4em] text-primary/70">Live production</p>
-          <h1 className="text-4xl font-semibold text-foreground">Shop Floor</h1>
-          <p className="max-w-xl text-sm text-muted-foreground">
-            See what is running, who is working, and where every part is in production.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active orders</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{activeOrders.length}</div>
-            <p className="text-xs text-muted-foreground">{totalOrders} total records in the shop</p>
-          </CardContent>
-        </Card>
-        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Due within 7 days</CardTitle>
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{dueSoon}</div>
-            <p className="text-xs text-muted-foreground">Stay ahead of the hot jobs</p>
-          </CardContent>
-        </Card>
-        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Unassigned tickets</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{unassigned}</div>
-            <p className="text-xs text-muted-foreground">Waiting for a machinist</p>
-          </CardContent>
-        </Card>
-        <Card className="h-full border-border/60 bg-card/70 transition hover:border-primary/60 hover:shadow-lg hover:shadow-primary/10">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed jobs</CardTitle>
-            <CircleCheck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{closedOrders}</div>
-            <p className="text-xs text-muted-foreground">Orders closed out historically</p>
-          </CardContent>
-        </Card>
-      </div>
-
+    <div className="shop-floor-glass relative flex flex-col gap-6 px-1 py-2 sm:px-2">
       <ShopFloorLayouts
         orders={decoratedActiveOrders}
         machinists={machinistList}
@@ -146,88 +88,17 @@ export default async function Home() {
         initialDepartmentId={initialDepartmentId}
         initialDepartmentFeed={departmentFeedItems}
         runningWorkers={runningWorkers}
+        initialDisplayOptions={displayOptions}
+        initialSummary={shopFloorSummary}
+        canEditDisplay={canAccessAdmin(session.user as any)}
+        listSummary={{
+          activeOrders: activeOrders.length,
+          totalOrders,
+          dueSoon,
+          unassigned,
+          machinistWorkload: workloadList,
+        }}
       />
-
-      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader className="flex flex-row items-center">
-            <div className="grid gap-1">
-              <CardTitle className="text-lg">Orders overview</CardTitle>
-              <CardDescription>Latest order activity pulled straight from the floor.</CardDescription>
-            </div>
-            <Button asChild size="sm" className="ml-auto gap-1 rounded-full bg-primary/90 text-primary-foreground">
-              <Link href="/">
-                View dashboard
-                <ArrowUpRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <RecentOrdersTable orders={recentOrders} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Machinist workload</CardTitle>
-            <CardDescription>Top assignments across active jobs.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-5">
-            {workloadList.length ? (
-              workloadList.map((machinist) => (
-                <div key={machinist.name} className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10 border border-primary/40 bg-secondary/40">
-                      <AvatarFallback>{getInitials(machinist.name)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium leading-none">{machinist.name}</p>
-                      <p className="text-xs text-muted-foreground">{machinist.count} active order(s)</p>
-                    </div>
-                  </div>
-                  <Badge variant="secondary" className="rounded-full border border-primary/30 bg-primary/10 text-primary">
-                    {Math.round((machinist.count / Math.max(activeOrders.length, 1)) * 100)}%
-                  </Badge>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-muted-foreground">No machinists assigned just yet.</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Status pulse</CardTitle>
-            <CardDescription>Where every open job sits in the pipeline.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            {(Object.entries(statusBreakdown) as Array<[string, number]>)
-              .sort((a, b) => b[1] - a[1])
-              .map(([status, count]) => {
-                const pct = Math.round((count / Math.max(activeOrders.length, 1)) * 100);
-                return (
-                  <div key={status} className="space-y-2">
-                    <div className="flex items-center justify-between text-xs uppercase tracking-wide text-muted-foreground">
-                      <span>{ORDER_STATUS_LABELS[status] ?? status}</span>
-                      <span>{count}</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-secondary/50">
-                      <div
-                        className={cn('h-full rounded-full bg-primary/80 transition-all')}
-                        style={{ width: `${pct}%` }}
-                        aria-hidden="true"
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            {!Object.keys(statusBreakdown).length && (
-              <p className="text-sm text-muted-foreground">No active orders to visualize right now.</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

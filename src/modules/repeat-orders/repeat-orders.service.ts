@@ -18,7 +18,9 @@ import {
   createOrderFromRepeatTemplate,
   createRepeatOrderTemplate,
   findOrderTemplateSource,
+  findRepeatOrderTemplateBySourcePart,
   findRepeatOrderTemplateById,
+  findRepeatOrderCustomer,
   listRepeatOrderTemplates,
 } from './repeat-orders.repo';
 
@@ -33,6 +35,7 @@ function fail<T>(status: number, error: string | object): ServiceResult<T> {
 }
 
 function mapTemplateSummary(item: any) {
+  const primaryPart = Array.isArray(item.parts) ? item.parts[0] : null;
   return {
     id: item.id,
     name: item.name,
@@ -40,6 +43,9 @@ function mapTemplateSummary(item: any) {
     customerName: item.customer?.name ?? null,
     sourceOrderId: item.sourceOrderId ?? null,
     sourceOrderNumber: item.sourceOrder?.orderNumber ?? null,
+    sourcePartId: item.sourcePartId ?? null,
+    primaryPartNumber: primaryPart?.partNumber ?? null,
+    primaryPartName: primaryPart?.partName ?? null,
     business: item.business,
     priority: item.priority,
     createdAt: item.createdAt,
@@ -51,6 +57,13 @@ function mapTemplateSummary(item: any) {
 function buildDefaultTemplateName(order: any) {
   const customerName = order.customer?.name?.trim() || 'Customer';
   return `${customerName} - ${order.orderNumber}`;
+}
+
+function buildPartTemplateName(order: any, part: any) {
+  const customerName = order.customer?.name?.trim() || 'Customer';
+  const partNumber = part.partNumber?.trim() || 'Part';
+  const partName = part.partName?.trim();
+  return `${customerName} - ${partNumber}${partName ? ` - ${partName}` : ''}`;
 }
 
 function validateProvidedOrderNumber(orderNumber: string, business: string) {
@@ -70,10 +83,23 @@ export async function snapshotRepeatOrderTemplateFromOrder(
   const order = await findOrderTemplateSource(orderId);
   if (!order) return fail(404, 'Order not found');
 
+  const sourcePart = payload.partId
+    ? (order.parts ?? []).find((part: any) => part.id === payload.partId)
+    : null;
+  if (payload.partId && !sourcePart) return fail(404, 'Part not found on this order');
+
+  if (sourcePart) {
+    const existing = await findRepeatOrderTemplateBySourcePart(sourcePart.id);
+    if (existing) return ok({ template: mapTemplateSummary(existing), created: false });
+  }
+
+  const sourceParts = sourcePart ? [sourcePart] : (order.parts ?? []);
+
   const template = await createRepeatOrderTemplate({
     customerId: order.customerId,
     sourceOrderId: order.id,
-    name: payload.name?.trim() || buildDefaultTemplateName(order),
+    sourcePartId: sourcePart?.id ?? null,
+    name: payload.name?.trim() || (sourcePart ? buildPartTemplateName(order, sourcePart) : buildDefaultTemplateName(order)),
     business: order.business,
     vendorId: order.vendorId ?? null,
     materialNeeded: Boolean(order.materialNeeded),
@@ -82,13 +108,15 @@ export async function snapshotRepeatOrderTemplateFromOrder(
     priority: order.priority,
     notes: null,
     createdById: userId ?? null,
-    parts: (order.parts ?? []).map((part: any, index: number) => ({
+    parts: sourceParts.map((part: any, index: number) => ({
       partNumber: part.partNumber,
       partName: part.partName ?? null,
       quantity: part.quantity,
       materialId: part.materialId ?? null,
       stockSize: part.stockSize ?? null,
       cutLength: part.cutLength ?? null,
+      partWidth: part.partWidth ?? null,
+      partThickness: part.partThickness ?? null,
       notes: part.notes ?? null,
       workInstructions: part.workInstructions ?? null,
       instructionsVersion: part.instructionsVersion ?? 1,
@@ -122,7 +150,7 @@ export async function snapshotRepeatOrderTemplateFromOrder(
     })),
   });
 
-  return ok({ template: mapTemplateSummary(template) });
+  return ok({ template: mapTemplateSummary(template), created: true });
 }
 
 export async function listRepeatOrderTemplateSummaries(query: RepeatOrderTemplateListQueryInput) {
@@ -163,6 +191,8 @@ export async function getRepeatOrderTemplate(templateId: string) {
         materialId: part.materialId ?? null,
         stockSize: part.stockSize ?? null,
         cutLength: part.cutLength ?? null,
+        partWidth: part.partWidth ?? null,
+        partThickness: part.partThickness ?? null,
         notes: part.notes ?? null,
         workInstructions: part.workInstructions ?? null,
         instructionsVersion: part.instructionsVersion ?? 1,
@@ -203,6 +233,11 @@ export async function createOrderFromRepeatOrderTemplate(
     return fail(409, 'Repeat-order template has no parts to create.');
   }
 
+  const customerId = payload.customerId?.trim() || template.customerId;
+  if (!customerId || !(await findRepeatOrderCustomer(customerId))) {
+    return fail(400, 'Please choose an existing customer or add a customer before creating the order.');
+  }
+
   const dueDate = payload.dueDate ? new Date(payload.dueDate) : (() => {
     const next = new Date();
     next.setDate(next.getDate() + 14);
@@ -235,6 +270,8 @@ export async function createOrderFromRepeatOrderTemplate(
       materialId: override?.materialId === undefined ? part.materialId ?? null : override.materialId ?? null,
       stockSize: override?.stockSize === undefined ? part.stockSize ?? null : override.stockSize ?? null,
       cutLength: override?.cutLength === undefined ? part.cutLength ?? null : override.cutLength ?? null,
+      partWidth: override?.partWidth === undefined ? part.partWidth ?? null : override.partWidth ?? null,
+      partThickness: override?.partThickness === undefined ? part.partThickness ?? null : override.partThickness ?? null,
       notes: override?.notes === undefined ? part.notes ?? null : override.notes ?? null,
       workInstructions:
         override?.workInstructions === undefined ? part.workInstructions ?? null : override.workInstructions ?? null,
@@ -271,7 +308,7 @@ export async function createOrderFromRepeatOrderTemplate(
   const result = await createOrderFromRepeatTemplate({
     orderNumber,
     business: template.business,
-    customerId: template.customerId,
+    customerId,
     receivedDate: new Date(),
     dueDate,
     priority: payload.priority ?? template.priority,

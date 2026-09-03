@@ -4,6 +4,7 @@ export function createMockOrdersRepo() {
   const state = createMockSeedState();
   const counters: Record<string, number> = {
     order: state.orders.length + 1000,
+    part: state.orderParts.length + 1,
     note: state.notes.length + 1,
     attachment: state.orderAttachments.length + 1,
     partAttachment: state.partAttachments.length + 1,
@@ -121,7 +122,7 @@ export function createMockOrdersRepo() {
       return [];
     },
 
-    async createOrderWithCustomFields({ orderData }: { orderData: Record<string, any> }) {
+    async createOrderWithCustomFields({ orderData, relatedData }: { orderData: Record<string, any>; relatedData?: any }) {
       const id = nextId('order');
       const createdAt = new Date();
       const order = {
@@ -155,13 +156,91 @@ export function createMockOrdersRepo() {
           description: (part.notes as string) ?? null,
           status: null,
           materialId: (part.materialId as string) ?? null,
+          stockSize: (part.stockSize as string) ?? null,
+          cutLength: (part.cutLength as string) ?? null,
+          partWidth: (part.partWidth as string) ?? null,
+          partThickness: (part.partThickness as string) ?? null,
           currentDepartmentId: null,
           workInstructions: (part.workInstructions as string) ?? null,
           instructionsVersion: 1,
         };
         state.orderParts.push(createdPart);
+        const assignmentCreates = (part as any)?.assignments?.create ?? [];
+        for (const assignment of assignmentCreates) {
+          state.orderPartAssignments.push({
+            id: nextId('assignment'),
+            partId,
+            userId: assignment.userId,
+            assignedById: assignment.assignedById ?? null,
+            assignmentType: assignment.assignmentType ?? 'WORKER',
+            isActive: assignment.isActive !== false,
+            removedAt: null,
+            createdAt,
+          });
+        }
         return createdPart;
       });
+      for (const [index, partData] of (relatedData?.parts ?? []).entries()) {
+        const part = createdParts[index];
+        if (!part) continue;
+        for (const attachment of partData.attachments ?? []) {
+          state.partAttachments.push({
+            id: nextId('partAttachment'),
+            orderId: order.id,
+            partId: part.id,
+            ...attachment,
+            createdAt,
+          } as any);
+        }
+        for (const chargeInput of partData.charges ?? []) {
+          const charge = {
+            id: nextId('charge'),
+            orderId: order.id,
+            partId: part.id,
+            ...chargeInput.data,
+            createdAt,
+            updatedAt: createdAt,
+          } as any;
+          state.orderCharges.push(charge);
+          if (chargeInput.createChecklist) {
+            state.orderChecklist.push({
+              id: nextId('checklist'),
+              orderId: order.id,
+              partId: part.id,
+              chargeId: charge.id,
+              addonId: charge.addonId ?? null,
+              departmentId: charge.departmentId ?? null,
+              completed: false,
+              isActive: true,
+              toggledById: null,
+              performedById: null,
+              createdAt,
+              updatedAt: createdAt,
+            } as any);
+          }
+        }
+        for (const checklistItem of partData.checklistItems ?? []) {
+          state.orderChecklist.push({
+            id: nextId('checklist'),
+            orderId: order.id,
+            partId: part.id,
+            chargeId: null,
+            ...checklistItem,
+            completed: false,
+            isActive: true,
+            toggledById: null,
+            performedById: null,
+            createdAt,
+            updatedAt: createdAt,
+          } as any);
+        }
+      }
+      if (relatedData?.initialDepartmentId) {
+        for (const part of createdParts) {
+          part.currentDepartmentId = relatedData.initialDepartmentId;
+          part.status = 'IN_PROGRESS';
+        }
+      }
       const response: Record<string, unknown> = { id: order.id };
       if (orderData?.select?.parts) {
         response.parts = createdParts.map((part) => ({ id: part.id }));
@@ -172,6 +251,14 @@ export function createMockOrdersRepo() {
     async findOrderById(id: string) {
       const order = state.orders.find((item) => item.id === id);
       return order ? { id: order.id } : null;
+    },
+
+    async findOrderCustomerIdentity(id: string) {
+      const order = state.orders.find((item) => item.id === id);
+      return order ? {
+        customerId: order.customerId,
+        customerContactId: (order as any).customerContactId ?? null,
+      } : null;
     },
 
     async findOrderHeader(id: string) {
@@ -578,6 +665,8 @@ export function createMockOrdersRepo() {
         materialId?: string | null;
         stockSize?: string | null;
         cutLength?: string | null;
+        partWidth?: string | null;
+        partThickness?: string | null;
         notes?: string | null;
         workInstructions?: string | null;
       };
@@ -594,6 +683,10 @@ export function createMockOrdersRepo() {
         description: partData.notes ?? null,
         status: null,
         materialId: partData.materialId ?? null,
+        stockSize: partData.stockSize ?? null,
+        cutLength: partData.cutLength ?? null,
+        partWidth: partData.partWidth ?? null,
+        partThickness: partData.partThickness ?? null,
         currentDepartmentId: null,
         workInstructions: partData.workInstructions ?? null,
         instructionsVersion: 1,

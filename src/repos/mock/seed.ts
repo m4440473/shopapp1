@@ -70,6 +70,10 @@ export type MockOrderPart = {
   description: string | null;
   status: string | null;
   materialId: string | null;
+  stockSize?: string | null;
+  cutLength?: string | null;
+  partWidth?: string | null;
+  partThickness?: string | null;
   currentDepartmentId: string | null;
   workInstructions?: string | null;
   instructionsVersion?: number;

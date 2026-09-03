@@ -1,6 +1,5 @@
 import 'server-only';
 
-import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
 import { sumQuoteCustomAmountsCents } from '@/lib/quote-metadata';
 import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
 import type { QuoteApprovalMetadata } from '@/lib/quote-metadata';
@@ -15,7 +14,7 @@ import {
   findActiveQuoteCustomFields,
   findQuoteAttachmentByStoragePath,
   findQuoteById,
-  findQuoteByNumber,
+  listQuoteNumbersForDateStamp,
   findQuoteForConversion,
   findQuoteForUpdate,
   listAddonsByIds,
@@ -27,24 +26,36 @@ import {
   convertQuoteToOrder,
 } from './quotes.repo';
 
-function prefixForBusiness(business: BusinessCode): string {
-  return BUSINESS_PREFIX_BY_CODE[business] ?? business;
+export async function generateQuoteNumber(now = new Date()) {
+  const stamp = `${String(now.getDate()).padStart(2, '0')}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getFullYear()).slice(-2)}`;
+  const assignedNumbers = await listQuoteNumbersForDateStamp(stamp);
+  const highestSequence = assignedNumbers.reduce((highest, quote) => {
+    const match = quote.quoteNumber.match(new RegExp(`^${stamp}-(\\d{3,})$`));
+    if (!match) return highest;
+    return Math.max(highest, Number.parseInt(match[1], 10));
+  }, 0);
+
+  return `${stamp}-${String(highestSequence + 1).padStart(3, '0')}`;
 }
 
-export async function generateQuoteNumber(business: BusinessCode) {
-  const prefix = prefixForBusiness(business);
-  const now = new Date();
-  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const candidate = `${prefix}-${stamp}-${Math.floor(Math.random() * 10000)
-      .toString()
-      .padStart(4, '0')}`;
-    const existing = await findQuoteByNumber(candidate);
-    if (!existing) {
-      return candidate;
+export async function resolveQuoteNumber({
+  providedQuoteNumber,
+  existingQuoteNumber,
+}: {
+  providedQuoteNumber?: string | null;
+  existingQuoteNumber?: string | null;
+}) {
+  const provided = providedQuoteNumber?.trim();
+  if (provided) {
+    const isExistingQuoteNumber = provided === existingQuoteNumber;
+    if (!isExistingQuoteNumber && !/^\d{6}-\d{3,}$/.test(provided)) {
+      throw new Error('Quote numbers must use DDMMYY-### format');
     }
+    return provided;
   }
-  return `${prefix}-${stamp}-${Date.now()}`;
+
+  if (existingQuoteNumber) return existingQuoteNumber;
+  return generateQuoteNumber();
 }
 
 export interface PreparedQuoteComponents {
@@ -73,6 +84,10 @@ export interface PreparedQuoteComponents {
     finish: string | null;
     stockSize: string | null;
     cutLength: string | null;
+    finalPartLength: string | null;
+    partWidth: string | null;
+    partThickness: string | null;
+    drawingImportPageId: string | null;
     materialStatus: 'UNREVIEWED' | 'IN_STOCK' | 'NEED_TO_ORDER' | 'NOT_REQUIRED';
     inventoryLocation: string | null;
     materialNotes: string | null;
@@ -220,8 +235,6 @@ export async function prepareQuoteComponents(
     existingWorkStepSnapshots?: ExistingQuoteWorkStepSnapshot[];
   }
 ): Promise<PreparedQuoteComponents> {
-  const business = input.business as BusinessCode;
-  const prefix = prefixForBusiness(business);
   const parts = input.parts ?? [];
   const vendorItemsInput = input.vendorItems ?? [];
   const attachmentsInput = input.attachments ?? [];
@@ -363,22 +376,10 @@ export async function prepareQuoteComponents(
   const totalCents =
     basePriceCents + vendorTotalCents + pricingTotals.addonsAndLaborCents + pricingTotals.partPricingCents + customAmountsCents;
 
-  const providedQuoteNumber = input.quoteNumber?.trim();
-  let quoteNumber: string;
-  if (providedQuoteNumber && providedQuoteNumber.length > 0) {
-    if (!providedQuoteNumber.startsWith(`${prefix}-`)) {
-      throw new Error(`Quote numbers for ${prefix} must start with ${prefix}-`);
-    }
-    quoteNumber = providedQuoteNumber;
-  } else if (options?.existingQuoteNumber && options.existingQuoteNumber.length > 0) {
-    if (options.existingQuoteNumber.startsWith(`${prefix}-`)) {
-      quoteNumber = options.existingQuoteNumber;
-    } else {
-      quoteNumber = await generateQuoteNumber(business);
-    }
-  } else {
-    quoteNumber = await generateQuoteNumber(business);
-  }
+  const quoteNumber = await resolveQuoteNumber({
+    providedQuoteNumber: input.quoteNumber,
+    existingQuoteNumber: options?.existingQuoteNumber,
+  });
 
   const multiPiece =
     typeof input.multiPiece === 'boolean'
@@ -400,6 +401,10 @@ export async function prepareQuoteComponents(
     finish: part.finish ?? null,
     stockSize: part.stockSize ?? null,
     cutLength: part.cutLength ?? null,
+    finalPartLength: part.finalPartLength ?? null,
+    partWidth: part.partWidth ?? null,
+    partThickness: part.partThickness ?? null,
+    drawingImportPageId: optionalId(part.drawingImportPageId),
     materialStatus: part.materialStatus ?? 'UNREVIEWED',
     inventoryLocation: part.inventoryLocation ?? null,
     materialNotes: part.materialNotes ?? null,
@@ -411,6 +416,7 @@ export async function prepareQuoteComponents(
     quantity: part.quantity ?? 1,
     pieceCount: part.pieceCount ?? 1,
     notes: part.notes ?? null,
+    workInstructions: part.workInstructions ?? null,
     attachments: (part.attachments ?? []).map((attachment) => ({
       id: optionalId(attachment.id),
       kind: attachment.kind ?? 'DWG',

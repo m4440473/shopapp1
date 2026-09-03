@@ -1,50 +1,15 @@
 import 'server-only';
 
-import { Prisma } from '@prisma/client';
-import path from 'node:path';
-import { readFile } from 'node:fs/promises';
-import { z } from 'zod';
-import type { BusinessCode } from '@/lib/businesses';
-import { BUSINESS_PREFIX_BY_CODE, businessNameFromCode, slugifyName, type BusinessName } from '@/lib/businesses';
-import { getAppSettings } from '@/lib/app-settings';
-import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
-import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
-import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
-import {
-  OrderAttachmentCreate,
-  OrderChargeCreate,
-  OrderChargeUpdate,
-  OrderCreate,
-  OrderPartCreate,
-  OrderPartUpdate,
-  OrderUpdate,
-  PartAttachmentCreate,
-  PartAttachmentUpdate,
-} from './orders.schema';
 import type { DepartmentFeedOrder, DepartmentFeedPart, OrderFilterState, OrderListItem, OrderWithMeta } from './orders.types';
-import { isPartReadyForDepartment } from './department-routing';
+import { findNextDepartmentWithOpenChecklist, isPartReadyForDepartment } from './department-routing';
 import {
-  LEGACY_IN_PROGRESS_ORDER_STATUSES,
   normalizeOrderWorkflowStatus,
-  ORDER_WORKFLOW_STATUSES,
 } from './orders.constants';
 import {
-  createOrderAttachment,
-  createOrderCharge,
   createOrderNote,
-  createOrderPartWithCharges,
-  createOrderWithCustomFields,
-  createPartEvent,
   createPartTimeAdjustment,
-  countOrderParts,
-  createPartAttachment,
   createStatusHistoryEntry,
-  deleteOrderChargeWithChecklist,
-  deleteOrderPartWithRelations,
-  deletePartAttachment,
-  findActiveOrderCustomFields,
   findAddonById,
-  findAddonDepartment,
   findChargeById,
   findChecklistByAddon,
   findChecklistByCharge,
@@ -53,20 +18,14 @@ import {
   findDepartmentById,
   findOrderById,
   findOrderHeader,
-  findOrderCharge,
   findOrderPart,
   findOrderPartSummary,
-  findOrderPartWithCharges,
   findChecklistByOrderPartDepartment,
-  findOrderStatus,
   findOrderSummary,
   findOrderWithDetails,
-  findOrderForWorkflowStatus,
-  findPartAttachment,
   findPartById,
   findPartForRouting,
   findChecklistForRoutingById,
-  findPartWithOrderInfo,
   findUserSummaryById,
   listPartEventsForPart,
   listPartAssignments,
@@ -77,7 +36,6 @@ import {
   findInstructionReceipt,
   createInstructionReceipt,
   listAddons,
-  listAddonsByIds,
   listChecklistItems,
   runInTransaction,
   setChecklistCompletion,
@@ -85,12 +43,9 @@ import {
   updatePartCurrentDepartment,
   listDepartmentsOrdered,
   listOrderLevelDepartmentChecklistItems,
-  listOrderCharges,
   listOrderPartsMissingCurrentDepartment,
-  listOrders,
   listOrderPartsByIds,
   listReadyOrderPartsForDepartment,
-  listPartAttachments,
   getDashboardOrderOverview,
   searchOrdersByTerm,
   moveOrderPartsToDepartment,
@@ -98,67 +53,41 @@ import {
   updateChecklistCompletion,
   updateOrderChecklistItem,
   deleteOrderChecklistItem,
-  updateOrder,
-  updateOrderAttachmentStoragePath,
   updateOrderAssignee,
-  updateOrderCharge,
   updateOrderPart,
-  updatePartAttachment,
-  updatePartAttachmentStoragePath,
-  updateOrderStatus,
-  generateNextOrderNumber,
   syncChecklistForOrder,
 } from '@/repos/orders';
 import { listActiveTimeEntriesForPart, listTimeEntriesForPartsDetailed } from '@/repos/time';
+import { ensureOrderFilesInCanonicalStorage } from './orders.files.service';
+import { recordPartEvent, type PartEventInput } from './orders.events.service';
+import {
+  createChargeForOrderCommand,
+  deleteChargeForOrderCommand,
+  listChargesForOrder,
+  updateChargeForOrderCommand,
+  type OrderChargeCreateInput,
+  type OrderChargeUpdateInput,
+} from './orders.charges.service';
+import { addOrderPartCommand, deleteOrderPartCommand } from './orders.parts.service';
+import { syncOrderWorkflowStatus } from './orders.workflow.service';
 
-export { generateNextOrderNumber, syncChecklistForOrder };
+export { generateNextOrderNumber } from '@/repos/orders';
+export { syncChecklistForOrder };
+export { listChargesForOrder };
+export { createOrderFromPayload } from './orders.create.service';
+export { getOrderDetails, listOrdersForQuery } from './orders.query.service';
 export type { OrderFilterState, OrderListItem, OrderWithMeta };
 export { isPartReadyForDepartment };
 export { normalizeOrderWorkflowStatus, ORDER_STATUS_LABELS, ORDER_WORKFLOW_STATUSES } from './orders.constants';
+export { deriveWorkflowStatusFromSnapshot, updateOrderWorkflowStatusByAdmin } from './orders.workflow.service';
+export { syncOrderWorkflowStatus };
 export { decorateOrder, DEFAULT_ORDER_FILTERS, formatStatusLabel, orderMatchesFilters } from './orders.shared';
 export type { DepartmentFeedOrder, DepartmentFeedPart };
-
-type OrderCreateInput = z.infer<typeof OrderCreate>;
-type OrderUpdateInput = z.infer<typeof OrderUpdate>;
-type OrderChargeCreateInput = z.infer<typeof OrderChargeCreate>;
-type OrderChargeUpdateInput = z.infer<typeof OrderChargeUpdate>;
-type OrderPartCreateInput = z.infer<typeof OrderPartCreate>;
-type OrderPartUpdateInput = z.infer<typeof OrderPartUpdate>;
-type OrderAttachmentCreateInput = z.infer<typeof OrderAttachmentCreate>;
-type PartAttachmentCreateInput = z.infer<typeof PartAttachmentCreate>;
-type PartAttachmentUpdateInput = z.infer<typeof PartAttachmentUpdate>;
-type PartEventInput = {
-  orderId: string;
-  partId: string;
-  userId?: string | null;
-  type: string;
-  message: string;
-  meta?: Record<string, unknown> | null;
-};
-
-async function recordPartEvent(
-  { orderId, partId, userId, type, message, meta }: PartEventInput,
-  db?: any,
-) {
-  return createPartEvent({
-    orderId,
-    partId,
-    userId: userId ?? null,
-    type,
-    message,
-    meta: meta ?? null,
-  }, db);
-}
 
 function parseDate(value: string | Date | null | undefined) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function optionalId(value: string | null | undefined) {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
 }
 
 type DepartmentSortEntry = { id: string; name?: string | null; sortOrder: number };
@@ -373,59 +302,6 @@ async function requireInstructionAcknowledgement({
   });
 }
 
-function isPartComplete(part: { status?: string | null }) {
-  return normalizeOrderWorkflowStatus(part.status) === 'COMPLETE';
-}
-
-export function deriveWorkflowStatusFromSnapshot(order: {
-  status?: string | null;
-  parts?: Array<{ id: string; status?: string | null }>;
-  checklist?: Array<{ partId?: string | null; completed?: boolean | null; isActive?: boolean | null }>;
-  timeEntries?: Array<{ id: string }>;
-  partEvents?: Array<{ id: string }>;
-}) {
-  const current = normalizeOrderWorkflowStatus(order.status);
-  if (current === 'CLOSED') return 'CLOSED';
-
-  const parts = Array.isArray(order.parts) ? order.parts : [];
-  const checklist = Array.isArray(order.checklist) ? order.checklist : [];
-  if (parts.length > 0 && parts.every((part) => isPartComplete(part))) {
-    return 'COMPLETE';
-  }
-
-  const hasCompletedChecklist = checklist.some((item) => item.completed === true);
-  const hasTrackedActivity = Boolean(order.timeEntries?.length || order.partEvents?.length);
-  const hasProgress = current === 'IN_PROGRESS' || hasCompletedChecklist || hasTrackedActivity;
-
-  return hasProgress ? 'IN_PROGRESS' : 'RECEIVED';
-}
-
-export async function syncOrderWorkflowStatus(orderId: string, { userId, tx }: { userId?: string | null; tx?: any } = {}) {
-  const order = await findOrderForWorkflowStatus(orderId, tx);
-  if (!order) return fail(404, 'Order not found');
-
-  const nextStatus = deriveWorkflowStatusFromSnapshot(order);
-  const currentStatus = normalizeOrderWorkflowStatus(order.status);
-  if (currentStatus === nextStatus && order.status === nextStatus) {
-    return ok({ orderId, status: nextStatus, changed: false });
-  }
-
-  if (currentStatus === nextStatus && order.status !== nextStatus) {
-    await updateOrderStatus(orderId, nextStatus);
-    return ok({ orderId, status: nextStatus, changed: true });
-  }
-
-  await updateOrderStatus(orderId, nextStatus);
-  await createStatusHistoryEntry({
-    orderId,
-    from: order.status ?? currentStatus,
-    to: nextStatus,
-    userId: userId ?? null,
-    reason: 'Workflow status auto-synced from part activity.',
-  });
-  return ok({ orderId, status: nextStatus, changed: true });
-}
-
 type ServiceResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string | object };
 
 function ok<T>(data: T): ServiceResult<T> {
@@ -436,468 +312,9 @@ function fail<T>(status: number, error: string | object): ServiceResult<T> {
   return { ok: false, status, error };
 }
 
-function toDecimal(value: string) {
-  return new Prisma.Decimal(value);
-}
+export { ensureOrderFilesInCanonicalStorage };
 
-function serializeCharge(charge: any) {
-  const quantity = charge.quantity instanceof Prisma.Decimal ? charge.quantity : new Prisma.Decimal(charge.quantity);
-  const unitPrice = charge.unitPrice instanceof Prisma.Decimal ? charge.unitPrice : new Prisma.Decimal(charge.unitPrice);
-  return {
-    ...charge,
-    quantity: quantity.toString(),
-    unitPrice: unitPrice.toString(),
-    totalPrice: unitPrice.mul(quantity).toString(),
-  };
-}
-
-export async function listOrdersForQuery(params: {
-  q?: string;
-  status?: string;
-  priority?: string;
-  assignedMachinistId?: string;
-  customerId?: string;
-  overdue?: boolean;
-  awaitingMaterial?: boolean;
-  take: number;
-  cursor?: string | null;
-}) {
-  const { q, status, priority, assignedMachinistId, customerId, overdue, awaitingMaterial, take, cursor } = params;
-  const where: Record<string, any> = {};
-  if (q) {
-    where.OR = [
-      { orderNumber: { contains: q, mode: 'insensitive' } },
-      { customer: { name: { contains: q, mode: 'insensitive' } } },
-    ];
-  }
-  if (status) {
-    const normalizedStatus = normalizeOrderWorkflowStatus(status);
-    if (normalizedStatus === 'CLOSED') where.status = { in: ['CLOSED'] };
-    else if (normalizedStatus === 'COMPLETE') where.status = { in: ['COMPLETE'] };
-    else if (normalizedStatus === 'RECEIVED') where.status = { in: ['NEW', 'RECEIVED'] };
-    else where.status = { in: LEGACY_IN_PROGRESS_ORDER_STATUSES };
-  }
-  if (priority) where.priority = priority;
-  if (assignedMachinistId) where.assignedMachinistId = assignedMachinistId;
-  if (customerId) where.customerId = customerId;
-  if (overdue) where.dueDate = { lt: new Date() };
-  if (awaitingMaterial) where.AND = [...(where.AND ?? []), { materialNeeded: true, materialOrdered: false }];
-
-  const items = await listOrders({ where, take, cursor });
-  const nextCursor = items.length === take ? items[items.length - 1].id : null;
-  return ok({ items, nextCursor });
-}
-
-export async function createOrderFromPayload(body: OrderCreateInput, userId?: string) {
-  const prefix = BUSINESS_PREFIX_BY_CODE[body.business as keyof typeof BUSINESS_PREFIX_BY_CODE] ?? body.business;
-  const providedOrderNumber = body.orderNumber?.trim();
-  let orderNumber: string;
-  if (providedOrderNumber && providedOrderNumber.length > 0) {
-    if (!providedOrderNumber.startsWith(`${prefix}-`)) {
-      return fail(400, `Order numbers for ${prefix} must start with ${prefix}-`);
-    }
-    orderNumber = providedOrderNumber;
-  } else {
-    orderNumber = await generateNextOrderNumber(body.business as BusinessCode);
-  }
-
-  const customFieldValues = body.customFieldValues ?? [];
-  const validCustomFieldValues = customFieldValues.length
-    ? await findActiveOrderCustomFields({
-        fieldIds: customFieldValues.map((value) => value.fieldId),
-        business: body.business as BusinessCode,
-      })
-    : [];
-  const allowedFieldIds = new Set(validCustomFieldValues.map((field) => field.id));
-  const normalizedCustomFieldValues = customFieldValues
-    .filter((value) => allowedFieldIds.has(value.fieldId) && hasCustomFieldValue(value.value))
-    .map((value) => ({
-      fieldId: value.fieldId,
-      value: serializeCustomFieldValue(value.value),
-    }))
-    .filter((value) => value.value !== null) as { fieldId: string; value: string }[];
-
-  type AddonRecord = {
-    id: string;
-    name: string;
-    rateCents: number;
-    rateType: string;
-    departmentId: string;
-    affectsPrice: boolean;
-    isChecklistItem: boolean;
-  };
-
-  const created = await createOrderWithCustomFields({
-    orderData: {
-      data: {
-        orderNumber,
-        business: body.business,
-        customerId: body.customerId,
-        modelIncluded: body.modelIncluded,
-        receivedDate: new Date(body.receivedDate),
-        dueDate: new Date(body.dueDate),
-        priority: body.priority,
-        status: 'RECEIVED',
-        materialNeeded: body.materialNeeded,
-        materialOrdered: body.materialOrdered,
-        vendorId: body.vendorId ?? null,
-        poNumber: body.poNumber ?? null,
-        assignedMachinistId: body.assignedMachinistId ?? null,
-        parts: {
-          create: body.parts.map((p) => ({
-            partNumber: p.partNumber,
-            partName: p.partName ?? null,
-            quantity: p.quantity,
-            materialId: optionalId(p.materialId),
-            drawingMaterialText: p.drawingMaterialText ?? null,
-            drawingFinishText: p.drawingFinishText ?? null,
-            finish: p.finish ?? null,
-            materialStatus: p.materialStatus ?? 'UNREVIEWED',
-            inventoryLocation: p.inventoryLocation ?? null,
-            materialNotes: p.materialNotes ?? null,
-            procurementVendorId: optionalId(p.procurementVendorId),
-            stockSize: p.stockSize ?? null,
-            cutLength: p.cutLength ?? null,
-            notes: p.notes ?? null,
-            workInstructions: p.workInstructions ?? null,
-          })),
-        },
-        attachments: body.attachments.length
-          ? {
-              create: body.attachments.map((a) => ({
-                url: a.url ?? null,
-                storagePath: a.storagePath ?? null,
-                label: a.label ?? null,
-                mimeType: a.mimeType ?? null,
-                uploadedById: userId ?? null,
-              })),
-            }
-          : undefined,
-        notes:
-          body.notes && userId
-            ? {
-                create: {
-                  content: body.notes,
-                  userId,
-                },
-              }
-            : undefined,
-        statusHistory: {
-          create: {
-            from: 'RECEIVED',
-            to: 'RECEIVED',
-            userId,
-            reason: 'Order created',
-          },
-        },
-      },
-      select: { id: true, parts: { select: { id: true }, orderBy: { createdAt: 'asc' } } },
-    },
-    customFieldValues: normalizedCustomFieldValues,
-  });
-
-  const selectionsByPart = body.parts
-    .map((part, index) => ({
-      partId: created.parts?.[index]?.id ?? null,
-      selections: part.addonSelections ?? [],
-    }))
-    .filter((entry) => entry.partId && entry.selections.length);
-
-  const checklistKeys = new Set<string>();
-
-  for (const [index, inputPart] of body.parts.entries()) {
-    const partId = created.parts?.[index]?.id;
-    if (!partId) continue;
-    for (const attachment of inputPart.attachments ?? []) {
-      await createPartAttachment({
-        data: {
-          orderId: created.id,
-          partId,
-          kind: attachment.kind,
-          url: attachment.url ?? null,
-          storagePath: attachment.storagePath ?? null,
-          label: attachment.label ?? null,
-          mimeType: attachment.mimeType ?? null,
-        },
-      });
-    }
-  }
-
-  if (selectionsByPart.length) {
-    const addonIds = Array.from(
-      new Set(
-        selectionsByPart.flatMap((entry) => entry.selections.map((selection) => selection.addonId))
-      )
-    );
-    const addons = (await listAddonsByIds(addonIds)) as AddonRecord[];
-    const addonMap = new Map(addons.map((addon) => [addon.id, addon]));
-
-    let sortOrder = 0;
-    for (const entry of selectionsByPart) {
-      for (const selection of entry.selections) {
-        const addon = addonMap.get(selection.addonId);
-        if (!addon || !entry.partId) continue;
-        if (addon.affectsPrice) {
-          await createOrderCharge({
-            data: {
-              orderId: created.id,
-              partId: entry.partId,
-              departmentId: addon.departmentId,
-              addonId: addon.id,
-              kind: 'ADDON',
-              name: addon.name,
-              description: selection.notes ?? null,
-              quantity: new Prisma.Decimal(selection.units ?? 0),
-              unitPrice: new Prisma.Decimal(addon.rateCents ?? 0),
-              sortOrder: sortOrder++,
-            },
-          });
-        }
-
-        if (addon.isChecklistItem && !addon.affectsPrice) {
-          const checklistKey = `${entry.partId}:${addon.id}`;
-          if (checklistKeys.has(checklistKey)) continue;
-          checklistKeys.add(checklistKey);
-          await createOrderChecklistItem({
-            orderId: created.id,
-            partId: entry.partId,
-            addonId: addon.id,
-            departmentId: addon.departmentId ?? null,
-            completed: false,
-            isActive: true,
-          });
-        }
-      }
-    }
-
-    await syncChecklistForOrder(created.id);
-  }
-
-  if (body.addonIds.length) {
-    const addons = (await listAddonsByIds(body.addonIds)) as AddonRecord[];
-    const checklistAddons = addons.filter((addon) => addon.isChecklistItem && !addon.affectsPrice);
-    if (checklistAddons.length && created.parts?.length) {
-      for (const part of created.parts) {
-        for (const addon of checklistAddons) {
-          const checklistKey = `${part.id}:${addon.id}`;
-          if (checklistKeys.has(checklistKey)) continue;
-          checklistKeys.add(checklistKey);
-          await createOrderChecklistItem({
-            orderId: created.id,
-            partId: part.id,
-            addonId: addon.id,
-            departmentId: addon.departmentId ?? null,
-            completed: false,
-            isActive: true,
-          });
-        }
-      }
-    }
-  }
-
-  await initializeCurrentDepartmentForOrder(created.id);
-  await syncOrderWorkflowStatus(created.id, { userId: userId ?? null });
-  await ensureOrderFilesInCanonicalStorage(created.id);
-  return ok({ id: created.id, parts: created.parts ?? [] });
-}
-
-export async function ensureOrderFilesInCanonicalStorage(orderId: string) {
-  const order = await findOrderWithDetails(orderId);
-  if (!order) return fail(404, 'Order not found');
-
-  const settings = await getAppSettings();
-  const rootDir = settings.attachmentsDir;
-  const attachmentRoot = await ensureAttachmentRoot(rootDir);
-  const business = businessNameFromCode(order.business as BusinessCode) as BusinessName;
-  const customerName = order.customer?.name?.trim() || 'Customer';
-  const pathPrefix = [
-    slugifyName(business, 'business'),
-    slugifyName(customerName, 'customer'),
-    slugifyName(order.orderNumber, 'reference'),
-  ].join('/');
-
-  const normalizePathPrefix = (value: string) => value.trim().replace(/^\/+/, '');
-
-  const copyToCanonicalPath = async ({
-    storagePath,
-    label,
-  }: {
-    storagePath: string;
-    label?: string | null;
-  }) => {
-    const normalizedStorage = normalizePathPrefix(storagePath);
-    if (pathPrefix && normalizedStorage.startsWith(`${pathPrefix}/`)) {
-      return null;
-    }
-    const sourcePath = path.join(attachmentRoot, normalizedStorage);
-    const buffer = await readFile(sourcePath);
-    const stored = await storeAttachmentFile({
-      business,
-      customerName,
-      referenceNumber: order.orderNumber,
-      originalFilename: label || path.basename(normalizedStorage),
-      buffer,
-      rootDir,
-    });
-    return stored.storagePath;
-  };
-
-  for (const attachment of order.attachments ?? []) {
-    if (!attachment.storagePath) continue;
-    try {
-      const nextPath = await copyToCanonicalPath({
-        storagePath: attachment.storagePath,
-        label: attachment.label,
-      });
-      if (nextPath) {
-        await updateOrderAttachmentStoragePath(attachment.id, nextPath);
-      }
-    } catch {
-      // best effort to keep order creation/conversion resilient
-    }
-  }
-
-  for (const attachment of order.partAttachments ?? []) {
-    if (!attachment.storagePath) continue;
-    try {
-      const nextPath = await copyToCanonicalPath({
-        storagePath: attachment.storagePath,
-        label: attachment.label,
-      });
-      if (nextPath) {
-        await updatePartAttachmentStoragePath(attachment.id, nextPath);
-      }
-    } catch {
-      // best effort to keep order creation/conversion resilient
-    }
-  }
-
-  return ok({ ok: true });
-}
-
-export async function getOrderDetails(
-  id: string,
-  options: { isAdmin: boolean; canUseTimerControls?: boolean },
-) {
-  const order = await findOrderWithDetails(id);
-  if (!order) return fail(404, 'Not found');
-  const departments = await listDepartmentsOrdered();
-  const partIds = Array.isArray(order.parts) ? order.parts.map((part: any) => part.id).filter(Boolean) : [];
-  const partActivityById = partIds.length
-    ? buildPartActivityByPart(partIds, await listTimeEntriesForPartsDetailed(partIds))
-    : {};
-
-  const sanitized = sanitizePricingForNonAdmin(order, options.isAdmin) as any;
-  sanitized.status = normalizeOrderWorkflowStatus(sanitized.status);
-  sanitized.parts = Array.isArray(sanitized.parts)
-    ? sanitized.parts.map((part: any) => {
-        const isComplete = part.status === 'COMPLETE';
-        const fallbackDepartmentId =
-          isComplete
-            ? part.currentDepartmentId ?? null
-            : part.currentDepartmentId ?? departments[0]?.id ?? null;
-        return {
-          ...part,
-          currentDepartmentId: fallbackDepartmentId,
-          status: isComplete ? 'COMPLETE' : 'IN_PROGRESS',
-          instructionsVersion: Math.max(1, Number(part.instructionsVersion ?? 1)),
-          workInstructions: part.workInstructions ?? '',
-          assignments: Array.isArray(part.assignments) ? part.assignments : [],
-          instructionReceipts: Array.isArray(part.instructionReceipts) ? part.instructionReceipts : [],
-          partActivity: partActivityById[part.id] ?? {
-            activeTimers: [],
-            timeByUser: [],
-            totalSeconds: 0,
-          },
-        };
-      })
-    : sanitized.parts;
-
-  return ok({
-    item: sanitized,
-    departments,
-    permissions: {
-      canEditParts: options.isAdmin,
-      canEditOrderStatus: options.isAdmin,
-      canUseTimerControls: options.canUseTimerControls !== false,
-    },
-  });
-}
-
-export async function updateOrderDetails(id: string, payload: OrderUpdateInput) {
-  const data: Record<string, unknown> = {};
-
-  if (payload.business !== undefined) data.business = payload.business;
-
-  if (payload.customerId !== undefined) data.customerId = payload.customerId;
-
-  if (payload.receivedDate !== undefined) {
-    const date = new Date(payload.receivedDate);
-    if (Number.isNaN(date.getTime())) {
-      return fail(400, 'Invalid received date');
-    }
-    data.receivedDate = date;
-  }
-
-  if (payload.dueDate !== undefined) {
-    const date = new Date(payload.dueDate);
-    if (Number.isNaN(date.getTime())) {
-      return fail(400, 'Invalid due date');
-    }
-    data.dueDate = date;
-  }
-
-  if (payload.priority !== undefined) data.priority = payload.priority;
-  if (payload.vendorId !== undefined) data.vendorId = payload.vendorId || null;
-  if (payload.poNumber !== undefined) data.poNumber = payload.poNumber || null;
-  if (payload.materialNeeded !== undefined) data.materialNeeded = payload.materialNeeded;
-  if (payload.materialOrdered !== undefined) data.materialOrdered = payload.materialOrdered;
-  if (payload.modelIncluded !== undefined) data.modelIncluded = payload.modelIncluded;
-  if (payload.assignedMachinistId !== undefined)
-    data.assignedMachinistId = payload.assignedMachinistId || null;
-
-  if (Object.keys(data).length === 0) {
-    return fail(400, 'No fields to update');
-  }
-
-  await updateOrder(id, data);
-  return ok({ ok: true });
-}
-
-export async function updateOrderWorkflowStatusByAdmin({
-  orderId,
-  status,
-  reason,
-  userId,
-  actorName,
-}: {
-  orderId: string;
-  status: string;
-  reason: string;
-  userId?: string;
-  actorName?: string | null;
-}) {
-  const requestedStatus = (status ?? '').trim().toUpperCase();
-  if (!ORDER_WORKFLOW_STATUSES.includes(requestedStatus as (typeof ORDER_WORKFLOW_STATUSES)[number])) {
-    return fail(400, 'Invalid status');
-  }
-  const normalizedStatus = requestedStatus as (typeof ORDER_WORKFLOW_STATUSES)[number];
-  if (!reason.trim()) return fail(400, 'Reason is required');
-
-  const existingOrder = await findOrderStatus(orderId);
-  if (!existingOrder) return fail(404, 'Order not found');
-
-  const updatedOrder = await updateOrderStatus(orderId, normalizedStatus);
-  const actorLabel = actorName?.trim() || userId || 'Admin';
-  await createStatusHistoryEntry({
-    orderId,
-    from: normalizeOrderWorkflowStatus(existingOrder.status),
-    to: normalizedStatus,
-    userId,
-    reason: `Admin status change by ${actorLabel}: ${reason.trim()}`,
-  });
-  return ok({ order: updatedOrder });
-}
+export { updateOrderDetails } from './orders.header.service';
 
 export async function assignMachinistToOrder(orderId: string, machinistId: string | null) {
   const order = await updateOrderAssignee(orderId, machinistId);
@@ -1552,166 +969,23 @@ export async function assignPartDepartment({
   return ok({ ok: true });
 }
 
-export async function addOrderPart({
-  orderId,
-  payload,
-  invoiceAction,
-  copyChargesFromPartId,
-  userId,
-}: {
-  orderId: string;
-  payload: OrderPartCreateInput;
-  invoiceAction?: 'new' | 'update';
-  copyChargesFromPartId?: string;
-  userId?: string;
-}) {
-  const order = await findOrderSummary(orderId);
-  if (!order) {
-    return fail(404, 'Order not found');
-  }
-
-  let sourcePart: { id: string; partNumber: string | null } | null = null;
-  if (copyChargesFromPartId) {
-    sourcePart = await findOrderPartSummary(orderId, copyChargesFromPartId);
-    if (!sourcePart) {
-      return fail(404, 'Source part not found on this order');
-    }
-  }
-
-  const noteBuilder = userId
-    ? ({ part, copiedCharges }: { part: { partNumber: string; quantity: number }; copiedCharges: number }) => {
-        const invoiceLine =
-          invoiceAction === 'update'
-            ? `Invoice action: update existing invoice (invalidates prior PO${order.poNumber ? ` ${order.poNumber}` : ''}). Previous invoice/PO remain in attachments and notes.`
-            : invoiceAction === 'new'
-              ? 'Invoice action: create a separate invoice for the added part.'
-              : null;
-        const copyLine = sourcePart
-          ? `Add-ons/labor: copied ${copiedCharges} charge${copiedCharges === 1 ? '' : 's'} from ${
-              sourcePart.partNumber ?? 'selected part'
-            }.`
-          : null;
-        const noteLines = [
-          `Added part ${part.partNumber} (qty ${part.quantity}).`,
-          copyLine,
-          invoiceLine,
-        ].filter(Boolean);
-        return noteLines.join(' ');
-      }
-    : undefined;
-
-  const result = await createOrderPartWithCharges({
-    orderId,
-    partData: {
-      partNumber: payload.partNumber,
-      partName: payload.partName ?? null,
-      quantity: payload.quantity,
-      materialId: payload.materialId ?? null,
-      stockSize: payload.stockSize ?? null,
-      cutLength: payload.cutLength ?? null,
-      notes: payload.notes ?? null,
-      workInstructions: payload.workInstructions ?? null,
-    },
-    sourcePartId: sourcePart?.id ?? null,
-    userId: userId ?? null,
-    noteBuilder,
+export async function addOrderPart(
+  input: Parameters<typeof addOrderPartCommand>[0],
+) {
+  return addOrderPartCommand(input, {
+    initializeCurrentDepartmentForParts: (orderId) => initializeCurrentDepartmentForParts({ orderId }),
+    syncOrderWorkflowStatus: (orderId, userId) => syncOrderWorkflowStatus(orderId, { userId }),
   });
-
-  if (sourcePart) {
-    await syncChecklistForOrder(orderId);
-    await initializeCurrentDepartmentForParts({ orderId });
-  }
-
-  await syncOrderWorkflowStatus(orderId, { userId: userId ?? null });
-  return ok({ part: result.part, copiedCharges: result.copiedCharges });
 }
 
-export async function updateOrderPartDetails({
-  orderId,
-  partId,
-  payload,
-  userId,
-}: {
-  orderId: string;
-  partId: string;
-  payload: OrderPartUpdateInput;
-  userId?: string;
-}) {
-  const existing = await findOrderPart(orderId, partId);
-  if (!existing) {
-    return fail(404, 'Part not found for this order');
-  }
+export { updateOrderPartDetails } from './orders.parts.service';
 
-  const data: Record<string, unknown> = {};
-  if (payload.partNumber !== undefined) data.partNumber = payload.partNumber;
-  if (payload.partName !== undefined) data.partName = payload.partName;
-  if (payload.quantity !== undefined) data.quantity = payload.quantity;
-  if (payload.materialId !== undefined) data.materialId = payload.materialId;
-  if (payload.stockSize !== undefined) data.stockSize = payload.stockSize;
-  if (payload.cutLength !== undefined) data.cutLength = payload.cutLength;
-  if (payload.notes !== undefined) data.notes = payload.notes;
-  if (payload.workInstructions !== undefined) {
-    data.workInstructions = payload.workInstructions;
-    if ((payload.workInstructions ?? null) !== (existing.workInstructions ?? null)) {
-      data.instructionsVersion = (existing.instructionsVersion ?? 1) + 1;
-    }
-  }
-
-  const part = await updateOrderPart(partId, data);
-
-  if (userId) {
-    await createOrderNote(orderId, userId, `Updated part ${part.partNumber}.`);
-    await recordPartEvent({
-      orderId,
-      partId: part.id,
-      userId,
-      type: 'PART_UPDATED',
-      message: `Updated ${part.partNumber}.`,
-    });
-  }
-
-  return ok({ part });
-}
-
-export async function deleteOrderPartDetails({
-  orderId,
-  partId,
-  userId,
-}: {
-  orderId: string;
-  partId: string;
-  userId?: string;
-}) {
-  const partCount = await countOrderParts(orderId);
-  if (partCount <= 1) {
-    return fail(400, 'Orders must contain at least one part.');
-  }
-
-  const part = await findOrderPartWithCharges(orderId, partId);
-  if (!part) {
-    return fail(404, 'Part not found for this order');
-  }
-
-  const chargeIds = part.charges.map((charge) => charge.id);
-  await deleteOrderPartWithRelations({
-    orderId,
-    partId,
-    chargeIds,
-    noteContent: userId ? `Removed part ${part.partNumber} (qty ${part.quantity}).` : null,
-    userId: userId ?? null,
+export async function deleteOrderPartDetails(
+  input: Parameters<typeof deleteOrderPartCommand>[0],
+) {
+  return deleteOrderPartCommand(input, {
+    syncOrderWorkflowStatus: (orderId, userId) => syncOrderWorkflowStatus(orderId, { userId }),
   });
-
-  await syncChecklistForOrder(orderId);
-  await syncOrderWorkflowStatus(orderId, { userId: userId ?? null });
-  return ok({ ok: true });
-}
-
-export async function listChargesForOrder(orderId: string) {
-  const order = await findOrderById(orderId);
-  if (!order) return fail(404, 'Order not found');
-
-  const charges = await listOrderCharges(orderId);
-  return ok({ charges: charges.map(serializeCharge) });
 }
 
 export async function createChargeForOrder({
@@ -1721,43 +995,10 @@ export async function createChargeForOrder({
   orderId: string;
   payload: OrderChargeCreateInput;
 }) {
-  const order = await findOrderById(orderId);
-  if (!order) return fail(404, 'Order not found');
-
-  const part = await findOrderPartSummary(orderId, payload.partId);
-  if (!part) return fail(404, 'Part not found on order');
-
-  const department = await findDepartmentById(payload.departmentId);
-  if (!department) return fail(404, 'Department not found');
-
-  if (payload.addonId) {
-    const addon = await findAddonDepartment(payload.addonId);
-    if (!addon) return fail(404, 'Addon not found');
-    if (addon.departmentId !== payload.departmentId) {
-      return fail(400, 'Addon does not belong to department');
-    }
-  }
-
-  const charge = await createOrderCharge({
-    data: {
-      orderId,
-      partId: payload.partId,
-      departmentId: payload.departmentId,
-      addonId: payload.addonId ?? null,
-      kind: payload.kind,
-      name: payload.name,
-      description: payload.description ?? null,
-      quantity: toDecimal(payload.quantity),
-      unitPrice: toDecimal(payload.unitPrice),
-      sortOrder: payload.sortOrder ?? 0,
-    },
-    include: { department: true, part: true },
+  return createChargeForOrderCommand({ orderId, payload }, {
+    initializePartDepartments: (id) => initializeCurrentDepartmentForParts({ orderId: id }),
+    syncWorkflowStatus: (id) => syncOrderWorkflowStatus(id),
   });
-
-  await syncChecklistForOrder(orderId);
-  await initializeCurrentDepartmentForParts({ orderId });
-  await syncOrderWorkflowStatus(orderId);
-  return ok({ charge: serializeCharge(charge) });
 }
 
 export async function updateChargeForOrder({
@@ -1769,187 +1010,28 @@ export async function updateChargeForOrder({
   chargeId: string;
   payload: OrderChargeUpdateInput;
 }) {
-  const charge = await findOrderCharge(orderId, chargeId);
-  if (!charge) return fail(404, 'Charge not found');
-
-  if (payload.partId === null) {
-    return fail(400, 'partId cannot be null for order charges.');
-  }
-
-  const nextPartId = payload.partId !== undefined ? payload.partId : charge.partId;
-
-  if (!nextPartId) {
-    return fail(400, 'partId is required for all charge kinds (orders are containers; parts are work units).');
-  }
-
-  const part = await findOrderPartSummary(orderId, payload.partId);
-  if (!part) return fail(404, 'Part not found on order');
-
-  if (payload.departmentId) {
-    const department = await findDepartmentById(payload.departmentId);
-    if (!department) return fail(404, 'Department not found');
-  }
-
-  if (payload.addonId !== undefined && payload.addonId !== null) {
-    const addon = await findAddonDepartment(payload.addonId);
-    if (!addon) return fail(404, 'Addon not found');
-    if (payload.departmentId && addon.departmentId !== payload.departmentId) {
-      return fail(400, 'Addon does not belong to department');
-    }
-  }
-
-  const data: Record<string, any> = {};
-  if (payload.partId !== undefined) data.partId = payload.partId;
-  if (payload.departmentId !== undefined) data.departmentId = payload.departmentId;
-  if (payload.addonId !== undefined) data.addonId = payload.addonId ?? null;
-  if (payload.kind !== undefined) data.kind = payload.kind;
-  if (payload.name !== undefined) data.name = payload.name;
-  if (payload.description !== undefined) data.description = payload.description ?? null;
-  if (payload.quantity !== undefined) data.quantity = toDecimal(payload.quantity);
-  if (payload.unitPrice !== undefined) data.unitPrice = toDecimal(payload.unitPrice);
-  if (payload.sortOrder !== undefined) data.sortOrder = payload.sortOrder;
-  if (payload.completed !== undefined) data.completedAt = payload.completed ? new Date() : null;
-
-  const updated = await updateOrderCharge(chargeId, data);
-  await syncChecklistForOrder(orderId);
-  await initializeCurrentDepartmentForParts({ orderId });
-  await syncOrderWorkflowStatus(orderId);
-  return ok({ charge: serializeCharge(updated) });
+  return updateChargeForOrderCommand({ orderId, chargeId, payload }, {
+    initializePartDepartments: (id) => initializeCurrentDepartmentForParts({ orderId: id }),
+    syncWorkflowStatus: (id) => syncOrderWorkflowStatus(id),
+  });
 }
 
 export async function deleteChargeForOrder({ orderId, chargeId }: { orderId: string; chargeId: string }) {
-  const charge = await findOrderCharge(orderId, chargeId);
-  if (!charge) return fail(404, 'Charge not found');
-
-  await deleteOrderChargeWithChecklist(chargeId);
-  await syncChecklistForOrder(orderId);
-  await syncOrderWorkflowStatus(orderId);
-  return ok({ ok: true });
-}
-
-export async function createAttachmentForOrder({
-  orderId,
-  payload,
-  userId,
-}: {
-  orderId: string;
-  payload: OrderAttachmentCreateInput;
-  userId?: string;
-}) {
-  const order = await findOrderById(orderId);
-  if (!order) return fail(404, 'Order not found');
-
-  const attachment = await createOrderAttachment({
-    data: {
-      orderId,
-      url: payload.url ?? null,
-      storagePath: payload.storagePath ?? null,
-      label: payload.label?.length ? payload.label : null,
-      mimeType: payload.mimeType?.length ? payload.mimeType : null,
-      uploadedById: userId ?? null,
-    },
+  return deleteChargeForOrderCommand({ orderId, chargeId }, {
+    syncWorkflowStatus: (id) => syncOrderWorkflowStatus(id),
   });
-
-  return ok({ attachment });
 }
 
-export async function listAttachmentsForPart(partId: string) {
-  const part = await findPartById(partId);
-  if (!part) return fail(404, 'Part not found');
-
-  const attachments = await listPartAttachments(partId);
-  return ok({ attachments });
-}
-
-export async function createAttachmentForPart({
-  partId,
-  payload,
-  userId,
-}: {
-  partId: string;
-  payload: PartAttachmentCreateInput;
-  userId?: string;
-}) {
-  const part = await findPartWithOrderInfo(partId);
-  if (!part) return fail(404, 'Part not found');
-
-  const attachment = await createPartAttachment({
-    data: {
-      orderId: part.orderId,
-      partId,
-      kind: payload.kind,
-      url: payload.url ?? null,
-      storagePath: payload.storagePath ?? null,
-      label: payload.label ?? null,
-      mimeType: payload.mimeType ?? null,
-    },
-  });
-
-  if (userId) {
-    const label = attachment.label || attachment.storagePath || attachment.url || 'File';
-    await recordPartEvent({
-      orderId: part.orderId,
-      partId,
-      userId,
-      type: 'FILE_UPLOADED',
-      message: `File uploaded: ${label}.`,
-      meta: { attachmentId: attachment.id, kind: attachment.kind },
-    });
-  }
-
-  return ok({ attachment });
-}
-
-export async function getPartUploadContext(partId: string) {
-  const part = await findPartWithOrderInfo(partId);
-  if (!part) return fail(404, 'Part not found');
-  return ok({ part });
-}
-
-export async function updateAttachmentForPart({
-  partId,
-  attachmentId,
-  payload,
-}: {
-  partId: string;
-  attachmentId: string;
-  payload: PartAttachmentUpdateInput;
-}) {
-  const attachment = await findPartAttachment(partId, attachmentId);
-  if (!attachment) return fail(404, 'Attachment not found');
-
-  const data: Record<string, any> = {};
-  if (payload.kind !== undefined) data.kind = payload.kind;
-  if (payload.url !== undefined) data.url = payload.url ?? null;
-  if (payload.storagePath !== undefined) data.storagePath = payload.storagePath ?? null;
-  if (payload.label !== undefined) data.label = payload.label ?? null;
-  if (payload.mimeType !== undefined) data.mimeType = payload.mimeType ?? null;
-
-  const updated = await updatePartAttachment(attachmentId, data);
-  return ok({ attachment: updated });
-}
-
-export async function deleteAttachmentForPart(partId: string, attachmentId: string) {
-  const attachment = await findPartAttachment(partId, attachmentId);
-  if (!attachment) return fail(404, 'Attachment not found');
-
-  await deletePartAttachment(attachmentId);
-  return ok({ ok: true });
-}
+export {
+  createAttachmentForOrder,
+  createAttachmentForPart,
+  deleteAttachmentForPart,
+  getPartUploadContext,
+  listAttachmentsForPart,
+  updateAttachmentForPart,
+} from './orders.files.service';
 
 
-
-function findNextDepartmentWithOpenChecklist(
-  checklistItems: Array<{ departmentId?: string | null; isActive?: boolean | null; completed?: boolean | null }>,
-  departments: DepartmentSortEntry[],
-) {
-  for (const department of departments) {
-    const items = checklistItems.filter((item) => item.isActive !== false && item.departmentId === department.id);
-    if (!items.length) continue;
-    if (items.some((item) => item.completed === false)) return department.id;
-  }
-  return null;
-}
 
 export async function submitDepartmentComplete({
   orderId,
@@ -2337,6 +1419,11 @@ export async function getOrderDepartmentFeed(
     })
     .map((order) => ({
       ...order,
+      assignedMachinistName: order.assignedMachinistName ?? (
+        Array.from(new Set(
+          order.parts.flatMap((part) => part.assignedWorkers.map((worker) => worker.name)),
+        )).join(', ') || null
+      ),
       activeTimers: [...order.activeTimers]
         .sort((a, b) => {
           if (b.elapsedSeconds !== a.elapsedSeconds) return b.elapsedSeconds - a.elapsedSeconds;

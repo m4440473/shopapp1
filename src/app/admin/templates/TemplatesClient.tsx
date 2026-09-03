@@ -16,6 +16,8 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/Toast';
 import { fetchJson } from '@/lib/fetchJson';
+import { BUSINESS_OPTIONS } from '@/lib/businesses';
+import { getDocumentHeaderPreset, normalizeDocumentHeaderOptions } from '@/lib/document-header';
 import {
   DEFAULT_TEMPLATE_SECTIONS,
   normalizeSectionName,
@@ -24,6 +26,7 @@ import {
 } from '@/lib/document-template-layout';
 import {
   DEFAULT_QUOTE_ADDONS_OPTIONS,
+  DEFAULT_QUOTE_DISCLAIMER_OPTIONS,
   DEFAULT_QUOTE_REQUIREMENTS_OPTIONS,
   DEFAULT_QUOTE_SCOPE_OPTIONS,
 } from '@/lib/quote-print-layout';
@@ -39,6 +42,7 @@ const SECTION_LIBRARY = [
   { type: 'line items', label: 'Line Items', description: 'Parts table and quantities' },
   { type: 'addons/labor', label: 'Addons/Labor', description: 'Add-on services and labor entries' },
   { type: 'shipping', label: 'Shipping', description: 'Shipping method and delivery notes' },
+  { type: 'disclaimer', label: 'Disclaimer', description: 'Editable quote terms, validity, and closing note' },
 ];
 
 type TemplateRecord = {
@@ -79,6 +83,13 @@ type LayoutBlock = {
     showPurchasedItems?: boolean;
     showRequirements?: boolean;
     showNotes?: boolean;
+    businessName?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    phone?: string;
+    email?: string;
+    heading?: string;
+    body?: string;
   };
 };
 
@@ -148,6 +159,10 @@ function isPricingBlock(block: LayoutBlock, documentType: TemplateFormState['doc
   return key === 'part pricing' || key === 'part info' || key === 'pricing';
 }
 
+function isHeaderBlock(block: LayoutBlock) {
+  return normalizeSectionName(block.type || block.label) === 'header';
+}
+
 function isScopeBlock(block: LayoutBlock, documentType: TemplateFormState['documentType']) {
   if (documentType !== 'QUOTE') return false;
   const key = normalizeSectionName(block.type || block.label);
@@ -164,6 +179,11 @@ function isRequirementsBlock(block: LayoutBlock, documentType: TemplateFormState
   if (documentType !== 'QUOTE') return false;
   const key = normalizeSectionName(block.type || block.label);
   return key === 'requirements' || key === 'notes' || key === 'shipping' || key === 'notes requirements';
+}
+
+function isDisclaimerBlock(block: LayoutBlock, documentType: TemplateFormState['documentType']) {
+  if (documentType !== 'QUOTE') return false;
+  return normalizeSectionName(block.type || block.label) === 'disclaimer';
 }
 
 function toFormLayoutBlocks(layoutJson: unknown): LayoutBlock[] {
@@ -198,6 +218,13 @@ function toFormLayoutBlocks(layoutJson: unknown): LayoutBlock[] {
             showPurchasedItems: block.options.showPurchasedItems !== false,
             showRequirements: block.options.showRequirements !== false,
             showNotes: block.options.showNotes !== false,
+            businessName: typeof block.options.businessName === 'string' ? block.options.businessName : undefined,
+            addressLine1: typeof block.options.addressLine1 === 'string' ? block.options.addressLine1 : undefined,
+            addressLine2: typeof block.options.addressLine2 === 'string' ? block.options.addressLine2 : undefined,
+            phone: typeof block.options.phone === 'string' ? block.options.phone : undefined,
+            email: typeof block.options.email === 'string' ? block.options.email : undefined,
+            heading: typeof block.options.heading === 'string' ? block.options.heading : undefined,
+            body: typeof block.options.body === 'string' ? block.options.body : undefined,
           }
         : undefined,
   }));
@@ -207,6 +234,25 @@ function PreviewSection({ title }: { title: string }) {
   return (
     <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
       {title}
+    </div>
+  );
+}
+
+function BusinessHeaderPreview({ block, businessCode }: { block: LayoutBlock; businessCode: string }) {
+  const header = normalizeDocumentHeaderOptions(block.options, businessCode);
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-foreground/70 pb-3 text-foreground">
+      <div className="min-w-0 text-xs leading-relaxed">
+        <p className="text-sm font-bold">{header.businessName || 'Business name'}</p>
+        {header.addressLine1 ? <p>{header.addressLine1}</p> : null}
+        {header.addressLine2 ? <p>{header.addressLine2}</p> : null}
+        {header.phone ? <p>{header.phone}</p> : null}
+        {header.email ? <p className="break-all">{header.email}</p> : null}
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="text-base font-bold tracking-wide">QUOTE</p>
+        <p className="text-xs">Quote # · Date</p>
+      </div>
     </div>
   );
 }
@@ -281,6 +327,8 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
             showLineTotal: block.options?.showLineTotal !== false,
             showPricingMode: block.options?.showPricingMode !== false,
           }
+        : isHeaderBlock(block)
+          ? normalizeDocumentHeaderOptions(block.options, form.businessCode)
         : isScopeBlock(block, form.documentType)
           ? {
               showPartNumber: block.options?.showPartNumber !== false,
@@ -307,6 +355,11 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
                   showRequirements: block.options?.showRequirements !== false,
                   showNotes: block.options?.showNotes !== false,
                 }
+              : isDisclaimerBlock(block, form.documentType)
+                ? {
+                    heading: block.options?.heading ?? DEFAULT_QUOTE_DISCLAIMER_OPTIONS.heading,
+                    body: block.options?.body ?? DEFAULT_QUOTE_DISCLAIMER_OPTIONS.body,
+                  }
         : undefined,
     }));
 
@@ -468,7 +521,20 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
               </Select>
             </div>
             <div className="grid gap-2"><Label htmlFor="templateDescription">Description</Label><Textarea id="templateDescription" value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} /></div>
-            <div className="grid gap-2"><Label htmlFor="templateBusinessCode">Business code (optional)</Label><Input id="templateBusinessCode" value={form.businessCode} onChange={(event) => setForm((prev) => ({ ...prev, businessCode: event.target.value }))} /></div>
+            <div className="grid gap-2">
+              <Label>Business</Label>
+              <Select
+                value={form.businessCode || '__all__'}
+                onValueChange={(value) => setForm((prev) => ({ ...prev, businessCode: value === '__all__' ? '' : value }))}
+              >
+                <SelectTrigger className="border-border/60 bg-background/80"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All businesses</SelectItem>
+                  {BUSINESS_OPTIONS.map((business) => <SelectItem key={business.code} value={business.code}>{business.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Choose one business for a dedicated letterhead and default print template.</p>
+            </div>
             <div className="grid gap-2"><Label htmlFor="schemaVersion">Schema version</Label><Input id="schemaVersion" type="number" value={form.schemaVersion} onChange={(event) => setForm((prev) => ({ ...prev, schemaVersion: Number(event.target.value || 2) }))} /></div>
             <div className="flex flex-wrap items-center gap-4">
               <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.isDefault} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, isDefault: checked === true }))} />Default for type</label>
@@ -525,6 +591,24 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
                         <label className="flex items-center gap-2"><Checkbox checked={block.visible} onCheckedChange={(checked) => updateBlock(index, { visible: checked === true })} />Show block</label>
                         <span>Type: {block.type}</span>
                       </div>
+                      {isHeaderBlock(block) ? (() => {
+                        const preset = getDocumentHeaderPreset(form.businessCode);
+                        return (
+                          <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-xs">
+                            <div className="mb-3">
+                              <p className="font-semibold text-foreground">Business header details</p>
+                              <p className="text-muted-foreground">Printed at the top of this business&apos;s documents. Logo support can be added later.</p>
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <div className="grid gap-1 md:col-span-2"><Label>Business name</Label><Input value={block.options?.businessName ?? preset.businessName} onChange={(event) => updateBlock(index, { options: { ...block.options, businessName: event.target.value } })} /></div>
+                              <div className="grid gap-1"><Label>Address line 1</Label><Input value={block.options?.addressLine1 ?? preset.addressLine1} onChange={(event) => updateBlock(index, { options: { ...block.options, addressLine1: event.target.value } })} /></div>
+                              <div className="grid gap-1"><Label>Address line 2</Label><Input value={block.options?.addressLine2 ?? preset.addressLine2} onChange={(event) => updateBlock(index, { options: { ...block.options, addressLine2: event.target.value } })} /></div>
+                              <div className="grid gap-1"><Label>Phone</Label><Input value={block.options?.phone ?? preset.phone} onChange={(event) => updateBlock(index, { options: { ...block.options, phone: event.target.value } })} /></div>
+                              <div className="grid gap-1"><Label>Email</Label><Input type="email" value={block.options?.email ?? preset.email} onChange={(event) => updateBlock(index, { options: { ...block.options, email: event.target.value } })} /></div>
+                            </div>
+                          </div>
+                        );
+                      })() : null}
                       {isPricingBlock(block, form.documentType) ? (
                         <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-xs">
                           <p className="mb-2 font-semibold text-foreground">Pricing options</p>
@@ -544,7 +628,7 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
                             <label className="flex items-center gap-2"><Checkbox checked={block.options?.showQuantity ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showQuantity} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showQuantity: checked === true } })} />Show qty</label>
                             <label className="flex items-center gap-2"><Checkbox checked={block.options?.showPieces ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showPieces} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showPieces: checked === true } })} />Show pieces</label>
                             <label className="flex items-center gap-2"><Checkbox checked={block.options?.showMaterial ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showMaterial} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showMaterial: checked === true } })} />Show material</label>
-                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showStockSize ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showStockSize} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showStockSize: checked === true } })} />Show stock size</label>
+                            <label className="flex items-center gap-2"><Checkbox checked={block.options?.showStockSize ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showStockSize} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showStockSize: checked === true } })} />Show total stock dimensions</label>
                             <label className="flex items-center gap-2"><Checkbox checked={block.options?.showCutLength ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showCutLength} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showCutLength: checked === true } })} />Show cut length</label>
                             <label className="flex items-center gap-2"><Checkbox checked={block.options?.showDescription ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showDescription} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showDescription: checked === true } })} />Show description/finish</label>
                             <label className="flex items-center gap-2"><Checkbox checked={block.options?.showNotes ?? DEFAULT_QUOTE_SCOPE_OPTIONS.showNotes} onCheckedChange={(checked) => updateBlock(index, { options: { ...block.options, showNotes: checked === true } })} />Show notes</label>
@@ -574,6 +658,15 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
                           </div>
                         </div>
                       ) : null}
+                      {isDisclaimerBlock(block, form.documentType) ? (
+                        <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-xs">
+                          <p className="mb-2 font-semibold text-foreground">Disclaimer text</p>
+                          <div className="grid gap-3">
+                            <div className="grid gap-1"><Label>Heading</Label><Input value={block.options?.heading ?? DEFAULT_QUOTE_DISCLAIMER_OPTIONS.heading} onChange={(event) => updateBlock(index, { options: { ...block.options, heading: event.target.value } })} /></div>
+                            <div className="grid gap-1"><Label>Message</Label><Textarea rows={5} value={block.options?.body ?? DEFAULT_QUOTE_DISCLAIMER_OPTIONS.body} onChange={(event) => updateBlock(index, { options: { ...block.options, body: event.target.value } })} /></div>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -598,7 +691,18 @@ export default function TemplatesClient({ initialTemplates }: { initialTemplates
               form.layoutBlocks.filter((block) => block.visible).map((block) => (
                 <div key={`${block.id}-preview`} className="rounded-lg border border-dashed border-muted bg-muted/20 p-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{block.label || 'Untitled block'} · {block.variant}</p>
-                  <div className="mt-3 text-sm"><PreviewSection title={block.label || 'Untitled block'} /></div>
+                  <div className="mt-3 text-sm">
+                    {isHeaderBlock(block) ? (
+                      <BusinessHeaderPreview block={block} businessCode={form.businessCode} />
+                    ) : isDisclaimerBlock(block, form.documentType) ? (
+                      <div className="border border-foreground/70 text-center text-xs text-foreground">
+                        <p className="border-b border-foreground/70 px-2 py-1 font-bold">{block.options?.heading ?? DEFAULT_QUOTE_DISCLAIMER_OPTIONS.heading}</p>
+                        <p className="whitespace-pre-wrap px-2 py-2">{block.options?.body ?? DEFAULT_QUOTE_DISCLAIMER_OPTIONS.body}</p>
+                      </div>
+                    ) : (
+                      <PreviewSection title={block.label || 'Untitled block'} />
+                    )}
+                  </div>
                 </div>
               ))
             )}

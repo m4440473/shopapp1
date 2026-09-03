@@ -3,7 +3,7 @@ import { redirect, notFound } from 'next/navigation';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { buildSignInRedirectPath } from '@/lib/auth-redirect';
 
-import { getCustomerDetail } from '@/modules/customers/customers.service';
+import { formatCustomerShippingAddress, getCustomerDetail } from '@/modules/customers/customers.service';
 
 function formatDate(input?: Date | string | null) {
   if (!input) return '—';
@@ -28,6 +28,13 @@ export default async function CustomerPrintPage({ params }: PrintPageProps) {
   if (!customer) {
     notFound();
   }
+
+  const contacts = customer.contacts.length
+    ? customer.contacts
+    : customer.contact || customer.phone || customer.email
+      ? [{ id: 'legacy', name: customer.contact ?? customer.email ?? 'Primary contact', title: null, phone: customer.phone, email: customer.email, isPrimary: true }]
+      : [];
+  const shippingAddress = formatCustomerShippingAddress(customer);
 
   const totalOrders = customer.orders.length;
   const activeOrders = customer.orders.filter((order) => order.status !== 'CLOSED');
@@ -62,23 +69,22 @@ export default async function CustomerPrintPage({ params }: PrintPageProps) {
       </header>
 
       <section className="grid gap-4 border border-gray-300 p-4">
-        <h2 className="text-lg font-semibold">Contact</h2>
+        <h2 className="text-lg font-semibold">Contacts and shipping</h2>
         <div className="grid gap-2 md:grid-cols-2">
-          <div>
-            <p className="text-xs uppercase text-gray-500">Primary contact</p>
-            <p className="font-medium">{customer.contact ?? 'Not provided'}</p>
+          <div className="space-y-2">
+            <p className="text-xs uppercase text-gray-500">Contacts</p>
+            {contacts.length ? contacts.map((contact) => (
+              <div key={contact.id}>
+                <p className="font-medium">{contact.name}{contact.isPrimary ? ' (Primary)' : ''}</p>
+                {contact.title ? <p className="text-sm text-gray-600">{contact.title}</p> : null}
+                {contact.phone ? <p className="text-sm">{contact.phone}</p> : null}
+                {contact.email ? <p className="text-sm">{contact.email}</p> : null}
+              </div>
+            )) : <p className="font-medium">Not provided</p>}
           </div>
           <div>
-            <p className="text-xs uppercase text-gray-500">Phone</p>
-            <p className="font-medium">{customer.phone ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase text-gray-500">Email</p>
-            <p className="font-medium">{customer.email ?? '—'}</p>
-          </div>
-          <div className="md:col-span-2">
-            <p className="text-xs uppercase text-gray-500">Address</p>
-            <p className="whitespace-pre-line font-medium">{customer.address ?? '—'}</p>
+            <p className="text-xs uppercase text-gray-500">Shipping address</p>
+            <p className="whitespace-pre-line font-medium">{shippingAddress ?? '—'}</p>
           </div>
         </div>
       </section>

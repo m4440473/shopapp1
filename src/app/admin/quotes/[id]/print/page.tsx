@@ -15,6 +15,7 @@ import {
 import {
   buildQuoteRenderBlocks,
   DEFAULT_QUOTE_ADDONS_OPTIONS,
+  DEFAULT_QUOTE_DISCLAIMER_OPTIONS,
   DEFAULT_QUOTE_PRICING_OPTIONS,
   DEFAULT_QUOTE_REQUIREMENTS_OPTIONS,
   DEFAULT_QUOTE_SCOPE_OPTIONS,
@@ -67,7 +68,7 @@ export default async function QuotePrintPage({
   const selectedTemplate =
     templates.find((template) => template.id === requestedTemplateId) ?? activeTemplate ?? templates[0] ?? null;
   const layout = normalizeTemplateLayout(selectedTemplate?.layoutJson);
-  const renderBlocks = buildQuoteRenderBlocks(layout).filter((block) => block.visible);
+  const renderBlocks = buildQuoteRenderBlocks(layout, selectedTemplate?.businessCode ?? quote.business).filter((block) => block.visible);
 
   const legacyAddonSelections = quote.addonSelections.filter((selection) => !selection.quotePartId);
   const vendorTotal = quote.vendorItems.reduce((sum, item) => sum + item.finalPriceCents, 0);
@@ -127,20 +128,36 @@ export default async function QuotePrintPage({
   const hasAddons = addonSelections.length > 0;
   const hasVendorItems = quote.vendorItems.length > 0;
 
-  const headerSection = (
-    <header className="flex items-start justify-between border-b border-black pb-4">
-      <div>
-        <h1 className="text-2xl font-bold tracking-wide">Quote #{quote.quoteNumber}</h1>
-        <p className="mt-1 text-sm">
-          {quote.companyName}
-          {quote.contactName ? ` — Attn: ${quote.contactName}` : ''}
-        </p>
+  const renderHeaderSection = (header: NonNullable<(typeof renderBlocks)[number]['headerOptions']>) => (
+    <header className="flex items-start justify-between gap-8 border-b-2 border-black pb-5">
+      <div className="text-sm leading-relaxed">
+        <h1 className="text-xl font-bold tracking-wide">{header.businessName}</h1>
+        {header.addressLine1 ? <p>{header.addressLine1}</p> : null}
+        {header.addressLine2 ? <p>{header.addressLine2}</p> : null}
+        {header.phone ? <p>{header.phone}</p> : null}
+        {header.email ? <p>{header.email}</p> : null}
       </div>
-      <div className="text-right text-sm">
-        <p>Date: {new Date(quote.updatedAt).toLocaleDateString()}</p>
+      <div className="shrink-0 text-right">
+        <p className="text-3xl font-bold tracking-[0.08em]">QUOTE</p>
+        <p className="mt-2 text-sm font-semibold">Quote #{quote.quoteNumber}</p>
+        <p className="text-sm">Date: {new Date(quote.updatedAt).toLocaleDateString()}</p>
       </div>
     </header>
   );
+
+  const customerCityState = [quote.customer?.city, quote.customer?.stateProvince].filter(Boolean).join(', ');
+  const customerLocality = [customerCityState, quote.customer?.postalCode].filter(Boolean).join(' ');
+  const structuredCustomerAddress = [
+    quote.customer?.addressLine1,
+    quote.customer?.addressLine2,
+    customerLocality,
+    quote.customer?.country,
+  ].filter(Boolean);
+  const customerAddress = structuredCustomerAddress.length > 0
+    ? structuredCustomerAddress
+    : quote.customer?.address
+      ? [quote.customer.address]
+      : [];
 
   const customerInfoSection = (
     <section className="border border-black">
@@ -148,10 +165,12 @@ export default async function QuotePrintPage({
         Customer Info
       </div>
       <div className="grid gap-1 px-3 py-3 text-xs">
+        <p className="font-semibold">{quote.companyName}</p>
+        {quote.contactName ? <p>Attn: {quote.contactName}</p> : null}
         {quote.contactEmail && <p>Email: {quote.contactEmail}</p>}
         {quote.contactPhone && <p>Phone: {quote.contactPhone}</p>}
-        {quote.customer?.name && <p>Customer record: {quote.customer.name}</p>}
-        {!quote.contactEmail && !quote.contactPhone && !quote.customer?.name && (
+        {customerAddress.map((line: string) => <p key={line}>{line}</p>)}
+        {!quote.companyName && !quote.contactEmail && !quote.contactPhone && customerAddress.length === 0 && (
           <p className="text-neutral-500">No customer contact details recorded.</p>
         )}
       </div>
@@ -214,7 +233,7 @@ export default async function QuotePrintPage({
                   <div className="font-medium">{part.name}</div>
                   {scopeOptions.showPartNumber !== false && part.partNumber ? <div className={detailTextClass}>Part #: {part.partNumber}</div> : null}
                   {scopeOptions.showMaterial !== false && part.material ? <div className={detailTextClass}>Material: {part.material.name}</div> : null}
-                  {scopeOptions.showStockSize !== false && part.stockSize ? <div className={detailTextClass}>Stock size: {part.stockSize}</div> : null}
+                  {scopeOptions.showStockSize !== false && part.stockSize ? <div className={detailTextClass}>Total stock dimensions: {part.stockSize}</div> : null}
                   {scopeOptions.showCutLength !== false && part.cutLength ? <div className={detailTextClass}>Cut length: {part.cutLength}</div> : null}
                   {scopeOptions.showDescription !== false && part.description ? <div className={`mt-1 whitespace-pre-wrap ${detailTextClass}`}>{part.description}</div> : null}
                 </td>
@@ -243,9 +262,9 @@ export default async function QuotePrintPage({
           <thead className="bg-zinc-200">
             <tr>
               <th className="border border-black px-2 py-1 text-left">Part</th>
-              {showUnit ? <th className="border border-black px-2 py-1 text-left">Unit price</th> : null}
+              {showUnit ? <th className="border border-black px-2 py-1 text-left">Price per part</th> : null}
               {showQty ? <th className="border border-black px-2 py-1 text-left">Qty</th> : null}
-              {showLine ? <th className="border border-black px-2 py-1 text-left">Line total</th> : null}
+              {showLine ? <th className="border border-black px-2 py-1 text-left">Whole qty total</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -261,7 +280,11 @@ export default async function QuotePrintPage({
                 <td className="border border-black px-2 py-2">
                   <div className="font-medium">{row.part.name}</div>
                   {row.part.partNumber && <div className="text-xs">Part #: {row.part.partNumber}</div>}
-                  {showMode ? <div className="text-xs text-neutral-500">Mode: {row.pricingMode}</div> : null}
+                  {showMode ? (
+                    <div className="text-xs text-neutral-500">
+                      Price basis: {row.pricingMode === 'PER_UNIT' ? 'each part' : 'whole quantity / lot'}
+                    </div>
+                  ) : null}
                 </td>
                 {showUnit ? <td className="border border-black px-2 py-2">{formatCurrency(row.unitPriceCents)}</td> : null}
                 {showQty ? <td className="border border-black px-2 py-2">{row.quantity}</td> : null}
@@ -418,6 +441,17 @@ export default async function QuotePrintPage({
     </section>
   );
 
+  const renderDisclaimerSection = (disclaimer = DEFAULT_QUOTE_DISCLAIMER_OPTIONS) => (
+    <section className="border border-black text-center text-xs">
+      {disclaimer.heading ? (
+        <div className="border-b border-black px-3 py-1 font-bold">{disclaimer.heading}</div>
+      ) : null}
+      {disclaimer.body ? (
+        <div className="whitespace-pre-wrap px-3 py-2 leading-relaxed">{disclaimer.body}</div>
+      ) : null}
+    </section>
+  );
+
   return (
     <div className="min-h-screen bg-white p-8 text-black">
       <PrintControls
@@ -434,7 +468,7 @@ export default async function QuotePrintPage({
           const key = block.type;
           const content =
             key === 'header'
-              ? headerSection
+              ? renderHeaderSection(block.headerOptions!)
               : key === 'customer_info'
                 ? customerInfoSection
                 : key === 'total_price'
@@ -447,6 +481,8 @@ export default async function QuotePrintPage({
                         ? renderAddonsSection(block.addonsOptions ?? DEFAULT_QUOTE_ADDONS_OPTIONS, block.variant)
                         : key === 'requirements'
                           ? renderRequirementsSection(block.requirementsOptions ?? DEFAULT_QUOTE_REQUIREMENTS_OPTIONS)
+                          : key === 'disclaimer'
+                            ? renderDisclaimerSection(block.disclaimerOptions ?? DEFAULT_QUOTE_DISCLAIMER_OPTIONS)
                           : null;
 
           if (!content) {

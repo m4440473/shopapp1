@@ -102,7 +102,7 @@ export function RecentOrdersTable({ orders }: { orders: RecentOrder[] }) {
             const receivedDate = parseDate(order.receivedDate);
 
             return (
-              <TableRow key={order.id} className="border-border/60">
+              <TableRow key={order.id} className="border-white/10 transition hover:bg-white/[0.045]">
                 <TableCell className="font-medium">
                   <div className="flex flex-col">
                     <Link href={`/orders/${order.id}`} className="text-sm font-semibold text-primary hover:underline">

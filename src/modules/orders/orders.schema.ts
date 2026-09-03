@@ -12,6 +12,14 @@ export const StatusEnum = z.enum([
 
 export const PriorityEnum = z.enum(['LOW','NORMAL','RUSH','HOT']);
 
+export const OrderPartMaterialStatus = z.enum([
+  'UNREVIEWED',
+  'IN_STOCK',
+  'NEED_TO_ORDER',
+  'WAITING_ON_STOCK',
+  'NOT_REQUIRED',
+]);
+
 /** Query params for GET /api/orders */
 export const OrderQuery = z.object({
   q: z.string().trim().optional(),
@@ -55,12 +63,15 @@ export const OrderPartCreate = z.object({
   drawingMaterialText: z.string().trim().max(500).optional(),
   drawingFinishText: z.string().trim().max(500).optional(),
   finish: z.string().trim().max(500).optional(),
-  materialStatus: z.enum(['UNREVIEWED', 'IN_STOCK', 'NEED_TO_ORDER', 'NOT_REQUIRED']).optional(),
+  materialStatus: OrderPartMaterialStatus.optional(),
   inventoryLocation: z.string().trim().max(500).optional(),
   materialNotes: z.string().trim().max(2000).optional(),
   procurementVendorId: z.string().trim().optional(),
   stockSize: z.string().trim().max(200).optional(),
   cutLength: z.string().trim().max(200).optional(),
+  finalPartLength: z.string().trim().max(200).optional(),
+  partWidth: z.string().trim().max(200).optional(),
+  partThickness: z.string().trim().max(200).optional(),
   notes: z.string().trim().max(500).optional(),
   workInstructions: z.string().trim().max(4000).optional(),
   addonSelections: z.array(OrderPartAddonSelection).optional().default([]),
@@ -76,12 +87,15 @@ export const OrderPartUpdate = z
     drawingMaterialText: z.string().trim().max(500).nullable().optional(),
     drawingFinishText: z.string().trim().max(500).nullable().optional(),
     finish: z.string().trim().max(500).nullable().optional(),
-    materialStatus: z.enum(['UNREVIEWED', 'IN_STOCK', 'NEED_TO_ORDER', 'NOT_REQUIRED']).optional(),
+    materialStatus: OrderPartMaterialStatus.optional(),
     inventoryLocation: z.string().trim().max(500).nullable().optional(),
     materialNotes: z.string().trim().max(2000).nullable().optional(),
     procurementVendorId: z.string().trim().nullable().optional(),
     stockSize: z.string().trim().max(200).nullable().optional(),
     cutLength: z.string().trim().max(200).nullable().optional(),
+    finalPartLength: z.string().trim().max(200).nullable().optional(),
+    partWidth: z.string().trim().max(200).nullable().optional(),
+    partThickness: z.string().trim().max(200).nullable().optional(),
     notes: z.string().trim().max(500).nullable().optional(),
     workInstructions: z.string().trim().max(4000).nullable().optional(),
   })
@@ -105,6 +119,10 @@ export const OrderCreate = z.object({
   orderNumber: z.string().trim().optional(),
   business: z.enum(BUSINESS_CODES),
   customerId: z.string().trim().min(1),
+  customerContactId: z.string().trim().optional(),
+  contactName: z.string().trim().max(200).optional(),
+  contactEmail: z.string().trim().email().max(200).optional(),
+  contactPhone: z.string().trim().max(50).optional(),
   modelIncluded: z.boolean().default(false),
   receivedDate: z.string().min(1),
   dueDate: z.string().min(1),
@@ -114,6 +132,7 @@ export const OrderCreate = z.object({
   vendorId: z.string().trim().optional(),
   poNumber: z.string().trim().optional(),
   assignedMachinistId: z.string().trim().optional(),
+  assignedWorkerIds: z.array(z.string().trim().min(1)).max(200).default([]),
   parts: z.array(OrderPartCreate).min(1),
   addonIds: z.array(z.string().trim()).default([]),
   attachments: z.array(OrderAttachmentMetadata).default([]),
@@ -137,6 +156,7 @@ export type OrderAttachmentCreateInput = z.infer<typeof OrderAttachmentCreate>;
 export const OrderUpdate = z.object({
   business: z.enum(BUSINESS_CODES).optional(),
   customerId: z.string().trim().min(1).optional(),
+  customerContactId: z.string().trim().nullable().optional(),
   receivedDate: z.string().trim().min(1).optional(),
   dueDate: z.string().trim().min(1).optional(),
   priority: PriorityEnum.optional(),

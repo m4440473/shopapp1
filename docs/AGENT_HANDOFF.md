@@ -1,3 +1,331 @@
+## Session Handoff — 2026-09-03 (Drawing importer/workflow release on `.72`)
+- Outcome: deployed the complete tested server-derived source release to `C:\ShopApp\app` at `192.168.254.72` / `shopapp.local`. Includes order/quote decomposition, new importer mixed ZIP and local PDF page splitting, one model request per page, selected-page-only Reprocess, no local OCR in the newer reader, finish `NA` policy, and removal of the erroneous drawing-number override. Label-only part numbers such as `REVISION` are rejected instead of saved.
+- Release identity: local commit `d3131df0955fe4bce6dfd63034f37bda065b07ab`; 86 runtime files, 29 replaced and 57 new, zero deletions. No package install, schema/migration, database, storage, customer file or protected `.env` mutation. Local verification: 408 passed / 3 opt-in skipped, focused 11/11, 66-page build/type/lint/standalone pass. Production: 411 passed / 3 opt-in skipped (three additional server-local checks), clean 66-page build.
+- Production evidence: exact 86-file manifest hash gate, sampled local/live SHA-256 equality, loopback/IP/hostname health 200, one post-build runtime, task Running, monitor Ready/result 0, zero-byte error log. Authenticated Chrome checked quote/new-importer/order-create/order-edit controls with no console errors, save, upload or inference. Rollback is `C:\ShopApp\backups\pre-update\drawing-import-release-d3131df-20260903-134939` and contains prior source, `.next`, protected config and manifest.
+- Operational correction: the first attempt safely aborted before downtime because the partial predeploy download lacked `package.json`; refreshed its baseline directly from live and retried. During the successful long build, the enabled periodic monitor launched the old runtime once after its current task instance had been stopped. The runtime was stopped again before build completion and the final process started after the build. Future deploy scripts must disable the monitor task before stopping ShopApp, then enable/start it only after final health or completed rollback.
+- GitHub: published the audited source-only release through PR #179 and merged it into public `m4440473/shopapp1` `main`. The whole-PR audit found no customer records, uploads, drawings, exports, secrets, or production-access runbook. Customer-named paths contain application source and synthetic tests only; the previously tracked development DB and generated build-info file are deleted. Keep `docs/PRODUCTION_ACCESS.md` local-only.
+
+## Session Handoff — 2026-09-03 (Page-only retry; OCR removed from newer importer)
+- Goal complete locally: selected page Reprocess issues one fresh canonical-page model request, not a whole-packet rerun. Unrelated page values, quantities and attempt history are unchanged. Saved human confirmations (including in-flight saves) survive; failed requests keep the previous review. Assembly retry retains its reviewed quantity with a reminder instead of recomputing other pages. Only one page retry per job runs at a time.
+- Ownership/scope: both root and `.tmp-server-implementation-20260903`, preserving each baseline's signatures. Files: `src/modules/drawing-import/v2/drawing-import-v2.{service,repo,config}.ts`; new `__tests__/drawing-import-v2.reprocess.integration.test.ts`; `src/components/orders/drawing-import/{QuoteDrawingImportV2Panel.tsx,drawing-import-review-state.ts,__tests__/drawing-import-review-state.test.ts}`; root `.env.example`; continuity docs. No migrations/dependencies/production changes. Pristine predeploy snapshot untouched.
+- Design: atomic queue validates page/job/prepared artifacts, deduplicates same-page clicks, rejects competing requests, supersedes only selected model attempts, retains prior extraction, and persists reprocessPageId in configJson. Existing startup/stale-job recovery reads that scope and branches before inventory. Scoped AI bypasses reference/duplicate/cache shortcuts and skips packet finalization. No OCR engine calls remain in the newer service; ocrEnabled is always false. V3 requests omit local text, local candidate and BOM hints; cached local analysis is regenerated from embedded source text to avoid historical OCR evidence. Source PDFs retain their own text/image content, as supported by OpenAI direct-file processing.
+- Commands/results: full `node [../]node_modules/vitest/vitest.mjs run --dir src/modules/drawing-import/v2 --no-file-parallelism` PASS root 77 / staged 74 with three opt-in skips each; review UI `--dir src/components/orders/drawing-import/__tests__` PASS root 25 / staged 22. Five temporary-SQLite tests per tree exercise the real service/repo with only OpenAI mocked; no paid requests. Root/staged `tsc --noEmit`, targeted ESLint and scoped diff checks PASS. Staged tests use installed generated Prisma schema because snapshot lacks schema scaffolding; initialize empty temporary SQLite file for Windows. No build against the running dev tree.
+- Browser/runtime: Chrome authenticated http://127.0.0.1:3100 quote fixture opens newer importer and updated no-OCR description; upload enables after One-off choice. No UI Reprocess click/model inference or Save this session; do not claim a live speed/accuracy measurement. Next: owner test selected-page Reprocess on an existing local packet. Legacy OCR utilities remain available for other consumers; do not uninstall packages indiscriminately. Deployment is not authorized by this local request.
+
+## Session Handoff — 2026-09-03 (New importer: ZIPs and one AI extraction per page)
+- Goal/scope: newer importer only, local testing; locally split PDFs into original-quality individual pages before AI. Preserve originals, ZIP paths, page associations and the existing review/quantity interface. User superseded unfinished legacy prompt/schema migration; that work was reverted, prior legacy settings helper and layout retained.
+- Files changed in root and `.tmp-server-implementation-20260903`: `src/modules/drawing-import/v2/document/document.pdf.ts` (ancestor standard-font lookup), `document/__tests__/document.intake.test.ts` (three regressions), `drawing-import-v2.config.ts` (V3 retry/escalation guards), `drawing-import-v2.service.ts` (no automatic refinement, protect settings override), and `src/components/orders/drawing-import/QuoteDrawingImportV2Panel.tsx` (upload explanation). Staged-only missing `scripts/drawing-import-v2-document-worker.mjs` downloaded read-only via SSH from production, matching root worker. No production writes/dependencies/schema changes.
+- Policy: V3 sends one canonical page per extraction request. Automatic second-pass refinement, fallback-model calls and retries disabled; incomplete fields need review. Exact reuse/reference skips may need no AI; explicit manual retry remains possible. Local concurrency two independent requests; Playground profile/model/prompt otherwise unchanged. ZIP-in-ZIP is not supported; nested folders and mixed PDF/PNG/JPG are supported.
+- Commands/evidence: `node [../]node_modules/vitest/vitest.mjs run --dir src/modules/drawing-import/v2/document --no-file-parallelism` (24 pass / one opt-in skip each), corresponding AI suite (18 root / 19 staged), config tests (two each); `node [../]node_modules/typescript/bin/tsc --noEmit` and targeted ESLint pass in both trees. Broader legacy suite root 50 pass / one live-eval skip; staged 42 pass / two absent ops-script fixtures (`install-shopapp-health-monitor.ps1`, `start-shopapp.ps1`), not importer failures. Missing-worker and root-default failures found initially were fixed and rerun successfully.
+- Runtime/browser: existing isolated loopback dev launcher remains at http://127.0.0.1:3100 using the server-derived tree. Chrome authenticated new importer opens, new description visible, upload enables after One-off parts. No new upload, paid inference or Save. No new timing benchmark or full production build claimed. Next: representative real ZIP/assembly PDF trial, review uncertain fields and measured timings; production remains unchanged. Keep pristine `.tmp-server-predeploy-20260903` untouched.
+
+## Session Handoff — 2026-09-03 (Local Playground settings applied)
+- Goal complete: owner can test at http://127.0.0.1:3100 with gpt-5.4-mini, standard/low reasoning, medium verbosity, concise summary, and 10,000 max output. Refinement also uses low effort; escalation stays disabled. The server-derived v4.0.1 prompt/schema and original drawing handling remain unchanged.
+- Added optional summary/mode fields and conditional API forwarding in root and staged AI config/adapter; added three regression tests to each matching suite; documented env options in .env.example. Shared defaults remain medium reasoning/low verbosity and no summary/mode override.
+- Local-only profile/launcher: `.tmp/local-browser-regression-20260903/playground.env` and `start-local.cjs`. Start with `node .tmp/local-browser-regression-20260903/start-local.cjs` from the repo; don't create a second port-3100 server. Launched hidden via Start-Process (launcher PID 45992), stdout/stderr logs alongside the profile. Preserves existing isolated shopapp-test.db, attachments/phone storage, credentials loaded in memory from root .env, and V2 admin_beta/V3 gates. Bound loopback only.
+- Gates: staged pre-change 16/16; post-change root 18/18 and staged 19/19 Vitest; root/staged tsc --noEmit and targeted ESLint; node --check launcher; diff check; HTTP health/feature 200; Chrome authenticated quote drawing UI enabled, no console errors. No real model request run this turn, no production changes. Await owner's fresh import and compare timing/quality; no promise of 11-second app totals.
+
+## Session Handoff — 2026-09-03 (Owner PDF benchmark review)
+- Checked the owner's 11-second Playground result against the complete `25011-00-133-602.pdf` and enlarged title block using Poppler plus pypdf. Core identity/material/finish and dimensions agree: 48.00 length, 2.00 OD, 1.25 ID, 0.375 derived wall.
+- Review caveats: chamfer `2X .13 X 45° CHAM.` omitted from manufacturing notes; unlabeled bottom-right `C` cannot be confidently assigned to revision. Timing is owner-reported and not a controlled same-PDF app benchmark. No runtime/config/deployment changes. Scratch renders removed after inspection; original PDF untouched.
+
+## Session Handoff — 2026-09-03 (Exact Playground prompt/schema export)
+- Goal: give the owner the actual prompt and schema from the last measured local import, not a paraphrase or root-checkout approximation. Owner explicitly excluded an image export.
+- Read-only SQLite/API evidence identifies job `cmtllaq270014knagyihmuvtm`, response `resp_00f39bc5d9b17891006a997cdbc86087d2aa2ab0eb27e9ed47`, prompt v4.0.1; recovered stored instructions, input text, and JSON schema directly. Source/runtime settings match the server-derived tree, not root v4.0.0.
+- Files: `artifacts/drawing-import-playground/instructions.txt`, `user-prompt.txt`, `schema.json`; read-only helper `.tmp/inspect-playground-response.cjs`; continuity docs and prevention lesson. No runtime source/config/data/deployment change, no new inference request, and no image or credential export.
+- Commands: `node .tmp/inspect-playground-response.cjs --export-text`, read-only SQLite queries, JSON/identity/schema assertions, and diff whitespace check. Strict schema has 17 required fields; settings medium reasoning, low verbosity, 10,000 max output, requested gpt-5.4-mini. Await owner's Playground results before tuning.
+
+## Session Handoff — 2026-09-01 (Intake/repeat/stock stability release)
+- Goal completed and deployed: repeat-order launch reliability/customer recovery, part waiting-on-stock lifecycle, QR multi-photo reliability, shared historical-part reuse, quote/direct-order autosave, evidence-backed drawing note suggestions, Shop Floor Summary and admin Server Monitor.
+- Repeat orders: `orders/new` retries/aborts template loading safely and blocks progression until valid. Customer remains visible/selectable/addable; repeat service resolves and validates explicit or inherited customer. Production browser opened template `bd44538c-9948-4e50-8993-4fc64c8716d8` with WASTEBUILT preselected and no client error. No order submitted.
+- Intake: both editors use `src/modules/intake-drafts`; both expose CustomerPartPicker. Historical copies are customer-scoped and reset job fields. AI manufacturing notes remain suggestions until a user explicitly adds them. Phone upload concurrency is 2 with aggregate preflight, partial retries and lock waiting; image fidelity/model configuration is unchanged.
+- Operations: admin `/admin/system-health` shows safe uptime/memory/import and 24-hour order/quote/AI telemetry. Shop Floor Summary renders stock waits and movements. `WAITING_ON_STOCK` is stored on OrderPart materialStatus and event-audited. No migration or dependency added.
+- Local evidence: TypeScript PASS; targeted ESLint PASS (0 warnings); git diff check PASS; build PASS (66 pages); full Vitest PASS, 79 files / 423 passed / 4 intentional skips. Production evidence: 15 focused files / 78 tests PASS, clean 66-page build, exact drift/hash checks, authenticated browser on repeat/direct-order/Summary/monitor, health 200, task Running, monitor Ready/result 0, error log 0 bytes.
+- Deployment: 64 allowlisted files only; release SHA-256 `2523FDDF327FECA010B521E6ED57944359ECC6A606505E38C95C9901D63A71FA`. Rollback `C:\ShopApp\backups\pre-update\overnight-stability-20260901-064131` contains replaced files, DB/config and prior build. Source/data/storage/config outside the allowlist were preserved.
+- Tailscale: BackendState Running, Self Online, DNS `shopapp.tail2e8197.ts.net`, IP `100.69.89.39`; HTTP health 200 through both on SHOPAPP. The workstation itself is not on the tailnet, so MagicDNS failure from it is expected.
+- Local app: restarted at `http://localhost:3001/api/health` (200). The initial dev tab held stale pre-build chunks; a fresh tab rendered the new UI. Production authenticated runtime interactions succeeded without console errors.
+
+## Session Handoff — 2026-08-31 (Spurious authentication prompts)
+- Local fixes: AuthRequiredDialog delegates to new auth-required-response.ts; ignore 403, exact optional GET /api/kiosk/session, phone capabilities and external-origin failures. Genuine desktop 401/AUTH_REQUIRED still prompts. New 5-test regression. Local phone-upload.http.ts origin uses browser Host plus forwarded scheme (not internal bind URL), with localhost/LAN/proxy/cross-site tests.
+- Verification: 23 focused tests pass, TypeScript/lint pass. Owner actual local session: create link200, phone GET200, photo POST200, finish PATCH200, desktop claim200. Do not restart local app while their review is running.
+- Production only AuthRequiredDialog + helper/test deployed, guarded by ops/Repair-ShopApp-AuthPrompts.ps1; live dialog baseline matched. Five server tests, 63-page build, exact deployed hashes and health passed. Rollback auth-prompts-20260831-150433 retains old source/build. Phone/search/direct-order reader remain local. No access-control relaxation.
+- New report: repeat-list Create again gives client exception while original-order button works. Screenshot is IP:3000 and same template URL; no browser console evidence/reproduction available. Hard refresh requested to test stale chunks after deployment, not claimed as proven cause or fixed.
+
+## Session Handoff — 2026-08-31 (Repeat-template / Create again server repair)
+- Goal: repair both production buttons and restore local testing. User clarified second screenshot meant Create again, not department completion; all tentative department modifications/tests reverted before deployment.
+- Runtime ownership: only repeat-orders.repo.ts deployed directly via ops/Repair-ShopApp-RepeatTemplate.ps1; local reconciliation preserved pending finalPartLength mapping and all unrelated dirty changes. New repeat-orders.repo.integration.test.ts covers real SQLite + actual snapshot/prefill routes with synthetic admin authentication. No production data written by tests.
+- Root cause: part attachment nested write omitted required template relationship. Preassign template UUID and link both parent relations; filter top-level attachment list to templatePartId=null. Atomic rollback and repeat reuse preserved. No migration/dependency change.
+- Commands: existing service tests 24 pass, new SQLite/API tests 3 pass locally and on server; npx tsc --noEmit and targeted ESLint pass. Server npm run build 63 pages and standalone copy pass; source hash verified, ShopApp Running, monitor Ready, health OK.
+- Rollback C:\ShopApp\backups\pre-update\repeat-template-20260831-145454 (original repo source + entire prior build). Source SHA256 1504B6A1ED821546EC5DA597072DFF9BBEC5A3234E0EBFF38244268289401577. No historical records or drawing files edited. Actual customer browser mutation avoided; owner can retry both buttons after refresh.
+- Local: scripts/start-phone-upload-local.cjs now defaults localhost:3001 and dev fallback when standalone missing; same isolated DB/storage/auth and local-login.json. PID40188 launcher at last check, homepage/health200. Old overlapping ShopApp dev/standalone processes stopped, .next preserved at .tmp/local-next-before-repeatfix. Pending phone/direct-order/search remain local-only.
+
+## Session Handoff — 2026-08-31 (Phone upload + direct-order parity LOCAL REVIEW)
+- User explicitly requested local-only phone QR intake, then corrected direct-order legacy-reader mismatch. Implemented both locally; .72 unchanged. Global search remains pending here too.
+- Files: new modules/phone-upload (types/repo/service/http/tests), admin/phone-upload and phone-upload APIs, generic admin/drawing-import aliases, phone-upload/[id] page, PhoneUploadHandoff/PhonePhotoUpload; shared QuoteDrawingImportV2Panel and API client; importer service destination guards; orders/new plus orders schema/create mapping; package lock/qrcode+types; .gitignore; two local startup/setup scripts and docs/PHONE_UPLOAD_LOCAL_REVIEW.md. No schema migration.
+- Staging outside public attachments; 30-minute hashed upload-only capability, 24-hour retention/next-create cleanup, 100 photos/20MB each/95MB normalized batch. Desktop session auth required for creation/claim; immutable owner/draft/destination/mode prevents misrouting. Retry IDs and importer idempotency prevent duplicate imports; desktop can recover partial received photos. New generic drawing routes retain admin guards; old quote routes remain compatible.
+- Commands passed: focused/full relevant Vitest (254 pass/7 opt-in skip, includes archived duplicate fixtures), npx tsc --noEmit, targeted ESLint, npm run build (64 static pages), local health HTTP200. Phone route→canonical PDF→V3 mock-response→review works for both quote/order; final/cut/material/finish persist in direct-order create path. Browser sign-in denied ERR_BLOCKED_BY_CLIENT; no workaround. Physical phone/interactive UI still requires owner's check. Do not claim live-AI accuracy benchmark or full browser verification.
+- Local app running via hidden node launcher PID2628, http://localhost:3000, phone http://192.168.254.132:3000 (same Wi-Fi/firewall needed). Isolated .tmp/phone-upload-local/app.db and storage, normal auth TEST_MODE=false. Temporary login in .tmp/phone-upload-local/local-login.json. Synthetic sample synthetic-drawing.jpg. No real quote/customer records changed.
+- Restart: node scripts/start-phone-upload-local.cjs after build. Setup (idempotent isolated schema/seed) node scripts/prepare-phone-upload-local.cjs. Do not deploy test database/credentials; production deployment needs explicit approval and reconciliation of dirty files.
+
+## Session Handoff — 2026-08-31 (Global search, local and ready for approval)
+- Goal: make navigation search business-wide instead of order-only. Implemented four src/modules/search runtime files, two tests, src/app/search/page.tsx, AppNav labels and Prisma SQL helper declarations in src/types/prisma.d.ts. No dependencies, schema, production data or server changes.
+- Coverage: business records/parts/quotes/customers/contacts/files, already-extracted drawing/BOM text, notes/history/catalogs/work steps/people/templates/custom values. Explicit source/field allowlists; employee attachment policy applied before result/count generation; all user search text parameterized. Up to 12 words/160 characters, 40-result pages without old 60-record ceiling.
+- Verification: npm run test -- src/modules/search (26 passed); npx tsc --noEmit; targeted ESLint; npm run build; synthetic browser grouped screen/pagination check. Preview-only test harness removed after use; no production customer UI inspected. Live baseline comparison for three replaced files matched HEAD before changes.
+- NOT DEPLOYED. Production runbook requires explicit owner request. Release only src/modules/search/{search.types,search.registry,search.repo,search.service}.ts, src/app/search/page.tsx, src/components/AppNav.tsx, src/types/prisma.d.ts. Recompare live files, snapshot, build/restart/health/hash/log verify after approval. Do not deploy unrelated dirty tree.
+- Explain indexing boundary honestly: unread documents, external shares, secrets/configuration are not searched. Stored extraction text is admin-only; no expensive AI/OCR calls occur during search. Query-time SQL scan may need an indexed successor at larger measured scale.
+
+## Session Handoff — 2026-08-31 (Read-only usability recommendations)
+- User requested suggestions, not implementation. Reviewed live Shop Floor, Customers, Admin and Quotes plus related source/history. Individual customer-order browser navigation was blocked by approval guard; no bypass or private record inspection followed.
+- No code, production, data or settings edits. Only required continuity docs updated; no build/tests needed for this advisory review.
+- Suggested first batch: whole-quote autosave/unsaved state; faster compact drawing-review queue; Quotes navigation/filter consistency and initial cursor preservation. Later: part-level blockers/purchasing, operator-focused actions, QR traveler, unified search/file roles/revision history, backup status and estimated-vs-actual reporting.
+- Initial quote-list source drops pagination cursor after take=20; confirm/fix under a future authorized implementation task. Do not treat these suggestions as approved development work.
+
+## Session Handoff — 2026-08-31 (Optional revision and dimension units, latest)
+- Goal/scope: optional revision and compact in/mm toggle in quote drawing review only; no extraction, schema, or historical record changes.
+- Runtime files: DrawingImportFieldEditor.tsx, DrawingImportPageCard.tsx, drawing-import-review-state.ts, new drawing-import-dimension-units.ts under src/components/orders/drawing-import. Test: __tests__/quote-drawing-import.test.ts. Updated todo, lessons, context, progress, handoff and task board.
+- Canonical measurements remain inches; toggle never writes data. Metric edits convert with 25.4 mm/in; explicit suffix wins; invalid entries become unresolved. Original evidence is preserved. Absent revisions no longer look mandatory; actual conflicts remain visible.
+- Commands passed: focused Vitest (21 current-source + 9 archived tests), npx tsc --noEmit, targeted npx eslint, git diff --check, exact-hash four-file deployment and clean server npm run build (63 pages). Synthetic browser verified unit switching, metric edit/save, blank revision and invalid-input recovery.
+- Production-quote browser access was denied by approval guard; no bypass. Synthetic local test used instead, so do not claim a real customer-quote post-deploy UI test. Exact live source hashes/build/health gates passed.
+- Deployed release C97A813D10ECB4AE9DA9F23DAC1FA366904D033F06718A4361FFA31F47CDFC05; rollback C:\ShopApp\backups\pre-update\drawing-review-simple-20260831-012116. ShopApp Running; monitor Ready/result 0; health OK; error log empty.
+
+## Session Handoff — 2026-08-28 (V3 quote review simplified, latest)
+
+- The production quote drawing workflow remains V3 and still sends exactly one canonical single-page PDF per model request. Independent requests can run concurrently; drawings are not batched together. Upload security, splitting, durable jobs, evidence, retries, source traceability, and quote saving were not weakened.
+- The review UI is intentionally simple again: plain compact fields, restrained attention messages, collapsed technical/supporting information, one compact filter, Material-only catalog creation, and no AI-editable cut/stock fields.
+- The final layout uses three independent semantic columns, preventing a long conflict message from forcing empty space into unrelated fields. Native Material selects explicitly use dark background/light text and dark-compatible options.
+- Shop math is authoritative and local: `cut = final + 0.125`; `total stock = cut × quantity`. A regression test passes conflicting AI values and verifies they are ignored.
+- Local evidence: full drawing-import suite 183 passed / 7 opt-in skipped across 32 files; final focused regression 9/9; TypeScript, targeted ESLint, `git diff --check`, and clean 63-route production build passed. Authenticated production review of the existing nine-page job showed READY_FOR_REVIEW and correct calculated examples.
+- Production evidence: latest archive SHA `27167EE453D171F1C912C79B5B6087D63E57EAF98FFE9E46557E65FCFA3D0BC8`; rollback `C:\ShopApp\backups\pre-update\drawing-review-simple-20260828-120339`; `.72` clean build/health passed, ShopApp Running, monitor result 0, error log 0 bytes.
+- The first two narrow deployment attempts auto-rolled back because old server-resident fixtures no longer match live V3 types. No failed attempt remained live; the final runtime releases were gated by the complete current-source local suite plus exact-hash staging, clean server build, and authenticated runtime verification.
+
+## Session Handoff — 2026-08-28 (Quote Drawing Import V3 deployed)
+
+- V3 is live on `.72` for admin quote drawing intake. It retains the V2 durable/upload/review/save framework but sends each authoritative single-page PDF directly to Terra; a second high-reasoning Terra request runs only for unresolved finished length, width/outside diameter, or thickness/wall.
+- Incomplete Terra responses now become uncertain/manual-review pages. Resolved fields are never overwritten by the refinement pass. Production keeps OCR, local auto-accept, Luna, and Sol disabled.
+- Local evidence: `npx tsc --noEmit`; targeted ESLint; 20 drawing-import files / 116 tests passed with 2 opt-in skips; `npm run build` generated 63 routes.
+- Deployment evidence: 15 source files built on `.72`; isolated packaged HTTP upload returned READY_FOR_REVIEW with 9/9 canonical PDF pages, 9 Terra pages, dimensions on 6/6 classified detail parts, 3 manual-review pages, 48.626 seconds, USD 0.372434; production health 200, ShopApp Running, monitor Ready, error log 0 bytes.
+- Rollback is `C:\ShopApp\backups\pre-update\drawing-import-v3-20260828-095926`. It contains the replaced source, protected environment file, and database copy.
+- Known beta boundary: Terra deliberately leaves absent or uncertain dimensions blank for review. The owner directed shipment at this point; do not describe this as full golden-set/default-rollout certification.
+
+## Session Handoff — 2026-08-28 (SHOPAPP Tailscale restored, latest)
+
+- The production server's existing Tailscale node is online again as `shopapp.tail2e8197.ts.net` / `100.69.89.39`.
+- Root cause was not the Windows service or internet connectivity: the service and adapter were up, but the saved user profile was not active and the backend cycled through `NeedsLogin`/`NoState`.
+- `tailscale up --hostname=shopapp --unattended=true` restored the existing identity and enabled Windows unattended mode so RDP/user logoff does not take the server off the tailnet.
+- A controlled Tailscale service restart then auto-reconnected in two polls with BackendState `Running`, Self Online, no health warnings, the same hostname/IP, and healthy ShopApp response through the private IP.
+- The current workstation is not connected to that tailnet, so MagicDNS does not resolve there; verify offsite access from the owner's phone while its Tailscale client is connected.
+
+## Session Handoff — 2026-08-28 (Quote Drawing Import V2 admin beta deployed)
+
+- V2 is live on `.72` for admin quote drawing intake only, with the legacy reader retained as an immediate fallback and direct orders unchanged.
+- Full local regression passed 324 tests; local/server 63-route builds, standalone worker, migration, private local-only ZIP foundation smoke, synthetic live Terra smoke, and production health/hash checks passed.
+- Production release SHA-256: `CC4BDF2A3ED2A9C8E20D5B889050710347A6D83CAA30593D8B3E36E721782977`; rollback: `C:\ShopApp\backups\pre-update\drawing-import-v2-20260828-003455`.
+- All 42 migrations are current; `shopapp.local` health is HTTP 200; the protected V2 route returns HTTP 401 without a session; task/monitor are healthy.
+- Final default-release certification is still blocked on a representative approved golden set and real packet benchmark. Local auto-accept/profile matching stay off during admin beta.
+- The complete scope, verification, deployment incident, file ownership, and next steps are in the detailed 2026-08-28 V2 record later in this file.
+
+## Session Handoff — 2026-08-25 (Mobile work-order detail deployed)
+
+Goal: Make the work-order detail page practical on phone-sized screens while retaining the approved desktop layout and all existing workflows.
+
+### What changed
+- `src/app/orders/[id]/page.tsx` now uses a compact horizontal Parts selector below the mobile header, removes unnecessary phone-only vertical space, and keeps the desktop sticky 360px rail at `lg` widths.
+- Order actions use a two-column touch grid on phones with a full-width final action; status/priority controls stack cleanly, panel padding is reduced, and tabs remain horizontally scrollable.
+- `src/modules/orders/__tests__/order-detail-layout.test.ts` adds a static responsive-layout contract. `ops/Deploy-ShopApp-MobileOrderDetail.ps1` provides exact-hash deployment and automatic rollback.
+
+### Verification / state
+- Local and authenticated live browser QA at `390x844`: no horizontal overflow, document width 380px, balanced 170px action columns, full-width 348px Exit Order action, compact Parts selector, and readable timer/status controls.
+- Desktop QA: no overflow and the Parts rail remains exactly 360px.
+- Focused Vitest 2/2, targeted ESLint, full TypeScript, and local/server 62-page builds passed.
+- Deployed hash: `DEC2ED1E1E9A53ABBFEDA004AA0D56493E38F0EC626FC47BD69E17558774E29B`. Rollback: `C:\ShopApp\backups\pre-update\mobile-order-detail-20260825-213850`.
+- Final production checks: IP health 200, hostname health 200, sign-in 200, ShopApp Running, monitor Ready, error log 0 bytes.
+
+## Session Handoff — 2026-08-25 (Shop Floor Business filter deployed)
+
+Goal: Add an everyday Business quick filter beside the existing Shop Floor filters and release it safely to production.
+
+### What changed
+- `src/components/ShopFloorLayouts.tsx` adds Business between Department and Priority, using the canonical business labels and the same shared pipeline for Tiles and List.
+- `src/modules/shop-floor/shop-floor.shared.ts` adds normalized, case-insensitive business matching; `src/modules/shop-floor/__tests__/shop-floor.shared.test.ts` covers All, matching, mismatch, and missing values.
+- `ops/Deploy-ShopApp-BusinessFilter.ps1` provides exact-hash deployment, per-file rollback, production build, and task restart behavior.
+
+### Verification / state
+- Local browser QA: All 16, Sterling 9, C and R Machining 6, Powder Coating 1; Tiles and List matched exactly.
+- Focused Vitest passed 2 files / 15 tests; targeted ESLint, full TypeScript, and the 62-page production build passed.
+- Deployed hashes matched local. IP and `shopapp.local` health return `{"status":"ok"}`. Rollback: `C:\ShopApp\backups\pre-update\business-filter-20260825-211700`.
+
+## Session Handoff — 2026-08-25 (Private mobile access confirmed)
+
+Goal: Give the owner private offsite phone access to ShopApp without exposing the site or admin services publicly.
+
+### Current state
+- Official Tailscale `1.102.3` is installed on SHOPAPP through Windows Package Manager.
+- SHOPAPP is authorized and online as `shopapp.tail2e8197.ts.net` / `100.69.89.39`; Tailscale reports no health warnings.
+- The owner confirmed ShopApp is reachable from the phone while outside the work network through direct private tailnet access.
+- Tailscale Serve/HTTPS is not enabled; the confirmed direct tailnet path does not require it.
+- Do not enable Tailscale Funnel, router port forwarding, Tailscale SSH, or RDP exposure in this task.
+
+## Session Handoff — 2026-08-25 (Print header and Parts rail correction)
+
+Goal: Restore the visible quote business header in printer output and clean up the order-detail Parts rail hierarchy/hover behavior.
+
+### What changed
+- `src/app/globals.css` scopes print-only app-chrome hiding to `[data-app-chrome]` instead of blanket `header, footer` selectors.
+- `src/app/layout.tsx` marks only the global ShopApp navigation and footer as app chrome, leaving semantic headers/footers inside printable documents visible.
+- `src/app/orders/[id]/page.tsx` promotes `PARTS` to the same 24px title treatment as the customer name, aligns the left rail edge, and replaces vertical hover translation with border/shadow feedback.
+- Added focused static regression contracts in `src/lib/__tests__/print-chrome.test.ts` and `src/modules/orders/__tests__/order-detail-layout.test.ts`.
+
+### Verification / state
+- Local browser QA: quote header visible; Parts/customer font size both 24px; bottoms 174/176px; Parts title/subheading x=32px; hovered card remains x=32/y=214/356x78 with transform `none`.
+- Focused Vitest: 4 files / 10 tests passed. Targeted ESLint and full TypeScript passed.
+- Local review remains at `http://127.0.0.1:3001`.
+- After fresh explicit approval, `ops/Deploy-ShopApp-PrintHeaderLayoutFix.ps1` verified all three incoming hashes, backed up the prior files, completed the 62-page production build, and restarted ShopApp.
+- Rollback: `C:\ShopApp\backups\pre-update\print-header-order-layout-20260825-183246`.
+- Final checks: direct IP and `shopapp.local` health HTTP 200, sign-in HTTP 200, ShopApp Running, Health Monitor enabled/Ready, `shopapp.err.log` zero bytes, and deployed source hashes equal local.
+
+## Session Handoff — 2026-08-25 (Fresh-start production sync)
+
+Goal: Release the held local feature batch to `.72` and make the owner's two new orders plus one new quote the only production work records.
+
+### What changed
+- Deployed the reviewed local source archive and migration `20260825150000_customer_contacts_structured_address_v1` to `C:\ShopApp\app`; Prisma generation/migration and the production build completed successfully.
+- Added reusable guarded operations scripts under `ops/` for the timestamped pre-update backup, controlled deployment, and exact-ID historical-work purge.
+- Preserved orders `CRM-1007` (`cmt909q2v0003z7euy7su7fo5`), `CRM-1008` (`cmt915w7w000fz7euwkqby2ih`), and quote `250826-001` (`cmt91dtzb000pz7eu9bfzqfmp`). Deleted 16 older orders and 17 older quotes; no physical customer files were removed.
+
+### Verification and rollback
+- Rollback snapshot: `C:\ShopApp\backups\pre-update\fresh-start-20260825-154601`; database SHA-256 `05BEDC950501956BDB60B614DFAB9D3EC3B13838CB8427585BC0846D23092CE6`; 377 source files in the backup manifest.
+- Cleanup passed first on a disposable migrated production copy and then on production. Base-table counts stayed at customers 7, contacts 7, users 13, departments 4, document templates 2, app settings 1, and repeat templates 1; `PRAGMA foreign_key_check` returned zero issues.
+- Release SHA-256 `6A5B873C83AD4B5B9DD9A15CB24C0098BE3CDE5A4878633A05E1E9717BF35A08`; selected production/local source hashes match.
+- `http://192.168.254.72/api/health`, `http://shopapp.local/api/health`, and `http://192.168.254.72/auth/signin` returned HTTP 200. ShopApp is running, Health Monitor is enabled with last result `0`, and `shopapp.err.log` is zero bytes.
+- Local review remained available independently at `http://127.0.0.1:3001` in `TEST_MODE=true` during deployment.
+
+## Session Handoff — 2026-08-25 (Defined Shop Floor-style order part tiles)
+
+Goal: Bring the individual part cards inside an order up to the same clear navy/royal-blue definition as Shop Floor order tiles.
+
+### What changed
+- `src/app/orders/[id]/page.tsx` gives selected part cards a brighter royal-blue gradient, sky border, and stronger inset/depth treatment.
+- Unselected part cards now use a distinctly bordered deep-navy gradient instead of blending into the order canvas.
+- Card text contrast was strengthened without changing selection, department, timer, or order behavior.
+
+### Verification and deployment
+- Targeted ESLint, `npx tsc --noEmit`, 23/23 focused tests, and clean 62-page local/server builds passed.
+- Local visual/interaction QA and authenticated production QA confirmed readable selected/unselected states and correct selection transfer; p001 was restored afterward.
+- Live health is HTTP 200; port 3000 is listening, source SHA-256 matches local, and `shopapp.err.log` is empty.
+- Rollback: `C:\ShopApp\backups\pre-update\defined-part-tiles-20260825-1420`. Database remained 1,142,784 bytes and storage remains 12 files / 2,191,862 bytes.
+
+## Session Handoff — 2026-08-25 (Open order canvas and unassigned department path, latest)
+
+Goal: Remove redundant dark order-detail shells and ensure every selected part has an obvious department-management path.
+
+### What changed
+- `src/app/orders/[id]/page.tsx` replaces the left Parts wrapper with a transparent rail and removes background/border/shadow from the right selected-order wrapper; individual part cards and inner functional surfaces remain.
+- An unassigned selected part now enables the department action as Assign department. Assigned parts continue to show Move department.
+- The existing audit-backed assignment dialog adapts its title, help text, reason label, progress label, and success toast to Assign versus Move while retaining active-timer blocking and required notes.
+
+### Verification and deployment
+- Targeted ESLint, `npx tsc --noEmit`, 23/23 focused tests, `git diff --check`, and clean 62-page local/server builds passed.
+- Local visual QA on STD-1001 confirmed the open canvas and retained part tiles. Local and authenticated production dialog QA on unassigned p001 confirmed four department choices and reason-gated save; QA canceled without mutation.
+- Live health is HTTP 200, port 3000 is listening, source SHA-256 matches local, and `shopapp.err.log` is empty.
+- Rollback: `C:\ShopApp\backups\pre-update\order-open-canvas-20260825-1345`. Database remained 1,142,784 bytes and storage remains 12 files / 2,191,862 bytes.
+
+## Session Handoff — 2026-08-25 (Shop Floor Timers and department quick filter, latest)
+
+Goal: Make active timers and department filtering everyday Shop Floor controls rather than hiding timers behind customization.
+
+### What changed
+- `src/components/ShopFloorLayouts.tsx` adds Department between Status and Priority. All, Unassigned, and active-department choices filter the shared Tiles/List order set by effective current part department.
+- Timers is a separate top-level button beside Tiles/List/More and independently reveals `RunningWorkersStrip`.
+- More now reveals only Customize this shop floor; it no longer contains the timer strip.
+
+### Verification and deployment
+- Targeted ESLint, `npx tsc --noEmit`, 14/14 focused tests, and clean 62-page local/server builds passed; `git diff --check` passed.
+- Local QA showed Machining reduce 16 orders to 10. Authenticated production QA showed 16 to 9, proved Timers/More independence, then restored Department to All and closed both panels.
+- Live health is HTTP 200, port 3000 is listening, source SHA-256 matches local, and `shopapp.err.log` is empty.
+- Rollback: `C:\ShopApp\backups\pre-update\shopfloor-timers-department-20260825-1310`. Database remained 1,142,784 bytes through deployment; storage remains 12 files / 2,191,862 bytes.
+
+## Session Handoff — 2026-08-25 (Admin order controls and tile actions, latest)
+
+Goal: Make priority/status administration obvious on orders and provide a compact admin action path directly from Shop Floor tiles.
+
+### What changed
+- `src/app/orders/[id]/page.tsx` now exposes admin-only header controls for Priority and audited Change status. Status reasons are required and saved through the existing `/api/orders/[id]/status` route.
+- The broad Edit order form no longer owns priority, preventing stale full-form saves from reverting focused priority changes.
+- `src/components/ShopFloorLayouts.tsx` shows a flame for HOT orders in Tiles and List. Admins also receive a three-dot Tiles dialog for priority, status, and assigned-machinist updates; non-admin rendering remains gated by the server-provided permission.
+- Added focused service tests for blank-reason rejection and persisted status-history attribution.
+
+### Verification and deployment
+- Targeted ESLint, `npx tsc --noEmit`, and five focused suites (35/35 tests) passed. Clean local and server builds generated 62 pages; `git diff --check` passed.
+- Local and authenticated live QA confirmed 16 tile menus, two HOT flames, reason-gated status changes, and the new order-header controls. No QA changes were saved.
+- Live health is HTTP 200; server/local source hashes match; scheduled task is running on port 3000; `shopapp.err.log` is empty.
+- Rollback: `C:\ShopApp\backups\pre-update\order-controls-20260825-1245`. Production database/storage remained 1,142,784 bytes and 12 files / 2,191,862 bytes.
+
+## Session Handoff — 2026-08-25 (List summary and compact workload refinement, latest)
+
+Goal: Put shop summary context above List, replace Completed jobs with compact machinist workload, and eliminate the duplicated dashboard below the selected view.
+
+### What changed
+- `src/app/page.tsx` passes its server-calculated active/total/due-soon/unassigned/workload data into `ShopFloorLayouts` and no longer renders the legacy summary, Orders overview, full workload, or Status pulse sections afterward.
+- `src/components/ShopFloorLayouts.tsx` renders four equal-height summary cards only in List mode, directly before the table.
+- The fourth card displays the top three machinists and active-order counts using compact typography suitable for the shared 80-inch TV.
+
+### Verification and deployment
+- Targeted ESLint, `npx tsc --noEmit`, and 14/14 focused tests passed. Clean local and `.72` production builds generated 62 pages and copied standalone assets.
+- Local and authenticated live QA confirmed the summary precedes the table, only one Machinist workload appears, and Orders overview / Status pulse are absent below List.
+- Live health and sign-in return HTTP 200. Production source hashes match local; rollback source is `C:\ShopApp\backups\pre-update\shopfloor-list-summary-20260825-1210`.
+- `shopapp1.db` remains 1,142,784 bytes with the same 10:01 AM last-write time; storage remains 12 files / 2,191,862 bytes.
+
+## Session Handoff — 2026-08-25 (Shop Floor Tiles, List, and More, latest)
+
+Goal: Make the production screen land on the supplied compact tile dashboard while keeping the order list, timers, and customization one click away.
+
+### What changed
+- `src/app/page.tsx` no longer renders the large Live production / Shop Floor introduction above the working dashboard.
+- `src/components/ShopFloorLayouts.tsx` now opens in Tiles on every fresh load, adds the adjacent Tiles/List/More view control, and leaves More closed initially.
+- List is a flat order overview table using the same status, priority, sort, direction, advanced-filter, and conditional-color pipeline as Tiles.
+- More reveals Working Now and the complete Customize this shop floor surface; the obsolete Grid digest / By machinist / Work queue layout chooser was removed from customization while saved filter/color settings remain supported.
+
+### Verification and deployment
+- Targeted ESLint and `npx tsc --noEmit` passed; focused Shop Floor and Working Now tests passed 14/14.
+- Clean local and `.72` `npm run build` passed with 62 generated pages and standalone assets copied; `git diff --check` passed.
+- Authenticated production QA verified initial Tiles, interactive List, More revealing both requested surfaces, and reload restoring Tiles with More closed. LAN health and sign-in return HTTP 200.
+- Only the two UI source files were deployed. Their production SHA-256 hashes match local; rollback source is `C:\ShopApp\backups\pre-update\shopfloor-view-20260825-1205`.
+- Production data remained intact: `shopapp1.db` is 1,142,784 bytes with its same 10:01 AM last-write time, and storage remains 12 files / 2,191,862 bytes.
+
+## Session Handoff — 2026-08-24 (Sleeker open-canvas Shop Floor styling, latest)
+
+Goal: Remove the bubble-like dark enclosure from Live Production and give the Shop Floor a flatter, more professional visual hierarchy.
+
+### What changed
+- Removed the `.shop-floor-glass::after` dark backing sheet from `src/app/globals.css` while preserving the atmospheric navy gradient.
+- Removed the rounded outer page shell and the `shop-glass-strong` results wrapper.
+- Tightened Shop Floor panels, work/order cards, selectors, buttons, timer surfaces, and nested rows from oversized/pill radii to `rounded-lg` or `rounded-md` where appropriate.
+- Retained circular geometry for semantic badges, progress indicators, avatars, and live-status dots.
+
+### Verification
+- Live in-app browser QA confirmed the Live Production / Shop Floor heading sits directly on the gradient and the main production tiles no longer have a dark navy enclosure behind them.
+- `npm run test -- src/modules/shop-floor/__tests__/shop-floor.shared.test.ts src/components/work-queue/__tests__/RunningWorkersStrip.test.ts` — 10/10 passed.
+- Targeted ESLint and `npx tsc --noEmit` passed.
+- Clean `npm run build` passed with 62 generated pages and standalone assets copied.
+- `git diff --check` passed (line-ending notices only).
+
+## Session Handoff — 2026-08-24 (Daily sequential quote numbering, latest)
+
+Goal: Make quote identifiers read as creation date followed by that quote's order within the day.
+
+### What changed
+- `src/modules/quotes/quotes.repo.ts` now lists quote numbers matching a six-digit daily stamp.
+- `src/modules/quotes/quotes.service.ts` assigns `DDMMYY-###` using the next sequence for the local calendar day.
+- Existing quote numbers are preserved on edit, including legacy business-prefixed identifiers; newly supplied replacements must use the new format.
+- Added `src/modules/quotes/__tests__/quote-number.test.ts` with deterministic date/sequence and edit-preservation coverage.
+
+### Verification
+- `npm run test -- src/modules/quotes/__tests__/quote-number.test.ts` — 3/3 passed.
+- Targeted ESLint passed for the quote repository, service, and test.
+- `npx tsc --noEmit` passed.
+- Clean `npm run build` passed with 62 generated pages and standalone assets copied; the sandboxed attempt was blocked only by the managed Google Fonts network redirect and the permitted rerun passed.
+- `git diff --check` passed (line-ending notices only).
+
 ## Session Handoff — 2026-07-17 (Quote part-list overflow correction, latest)
 
 Goal: Keep imported part labels contained and readable in the quote editor's manual parts sidebar.
@@ -3624,6 +3952,67 @@ Goal (1 sentence): Execute P3-T3 and P3-T4 only by closing Phase 3 with explicit
 ---
 
 ---
+## 2026-08-24 — Temporary `/setup` server-bootstrap page
+
+### Goal
+Let the new Windows 11 Pro server open a LAN page and copy the one-time OpenSSH/key-authentication bootstrap without transferring a password or private key through chat.
+
+### Scope and touched files
+- Added `src/app/(public)/setup/page.tsx` as a hidden public route with a copy button and the approved PowerShell script.
+- Updated `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md` for continuity.
+- Did not alter navigation, authentication, dependencies, database state, or domain behavior.
+
+### Commands and verification
+- `npx eslint "src/app/(public)/setup/page.tsx"` — passed.
+- `npx tsc --noEmit --pretty false` — passed.
+- Initial sandboxed `npm run dev -- --hostname 0.0.0.0 --port 3000` — blocked by known `spawn EPERM`; recorded before retry.
+- Unrestricted start attempt established that port 3000 was already owned by the existing ShopApp process.
+- `Invoke-WebRequest` returned HTTP 200 and the expected title for both `http://127.0.0.1:3000/setup` and `http://192.168.254.132:3000/setup`.
+
+### Next
+- Open `http://192.168.254.132:3000/setup` on the new server, copy/run the script as Administrator, and verify SSH from the workstation.
+- Remove the temporary `/setup` page after SSH setup succeeds.
+
+---
+
+## 2026-08-24 — Windows LAN production deployment
+
+### Goal and outcome
+- ShopApp is operational on Windows 11 Pro at `192.168.254.72` and is reachable locally without a port number at `http://desktop-bkbakpm.local`.
+- The server uses router-reserved DHCP for Ethernet MAC `D8-9E-F3-16-CD-4A`; do not configure a competing Windows static address.
+
+### Production layout
+- `C:\ShopApp\app` — source and standalone build.
+- `C:\ShopApp\config\.env` — protected canonical configuration, hard-linked to the app root.
+- `C:\ShopApp\data\shopapp1.db` — production SQLite database.
+- `C:\ShopApp\storage` — persistent attachments.
+- `C:\ShopApp\logs` — ShopApp and supervisor logs.
+- `C:\ShopApp\backups\pre-update\20260824-initial-shopapp1.db` — initial database safety copy.
+- `C:\ShopApp\maintenance` — launch and boot-supervisor scripts.
+
+### Runtime and recovery
+- Installed Node.js `v22.23.2`, npm `10.9.8`, and Git `2.55.0.windows.3`.
+- `ShopApp` Task Scheduler task runs the standalone server as SYSTEM at startup.
+- `ShopApp Boot Supervisor` verifies SSH, firewall scope, ShopApp task state, and `http://127.0.0.1:3000/api/health`, logging to `C:\ShopApp\logs\boot-supervisor.log`.
+- SSH permits only `192.168.254.132`; direct ShopApp 3000 permits `192.168.254.0/24`; friendly HTTP 80 permits `LocalSubnet`; RDP with NLA permits only `192.168.254.132`.
+- `scripts/windows/install-shopapp-boot-supervisor.ps1` is the reusable installer/source for this configuration.
+
+### Verification evidence
+- Transfer hashes matched; production database remains 1,142,784 bytes and the pre-deployment backup exists.
+- Prisma reported 38 migrations and no pending migrations; generation passed.
+- Production build passed with 62 pages and standalone assets.
+- Health and sign-in returned HTTP 200 over `.72:3000`, `.72` port 80, and `desktop-bkbakpm.local` over both IPv4 and IPv6.
+- Data counts: 13 users, 4 customers, 16 orders, 64 parts, and 12 attachment files.
+- SSH, ShopApp, and RDP ports were independently reachable from the admin workstation; the supervisor's immediate validation passed.
+
+### Remaining work
+- Do not perform another unattended reboot yet. Repeat one controlled full reboot while an operator remains onsite to validate the corrected supervisor end to end.
+- Rename the server to `SHOPAPP` during that onsite maintenance window if the owner wants the final `http://shopapp.local` address; then update production base URLs and verify authentication redirects.
+- Configure the deferred secondary backup copy on `.10` with a dedicated non-root backup share/account.
+- Review the npm audit output and reported Next.js security advisory in a separate dependency-upgrade task.
+
+---
+
 **Non-authoritative operational history. CANON.md and ROADMAP.md are authoritative.**
 
 # Agent Handoff (Update Every Session)
@@ -4911,3 +5300,668 @@ Goal: Make the boss's Read Me First note a real timer-start gate without adding 
 
 ### Next
 - No required follow-up for this gate. A future enhancement could add an admin report of unread current-version instructions across active parts if the owner wants proactive visibility.
+## Session Handoff — 2026-07-20 (Narrated quote-to-order tutorial video, latest)
+
+Goal: Deliver a friendly, thorough 3–5 minute training video that shows the full quote-to-order flow plus quote/order editing.
+
+### What changed
+- Created the narrated 1080p walkthrough: `artifacts/quote-tutorial/ShopApp_Quote_to_Order_Tutorial.mp4`.
+- Created matching captions: `artifacts/quote-tutorial/ShopApp_Quote_to_Order_Tutorial.srt`.
+- Retained the reusable local authoring files, captured real ShopApp screens, and render manifest under `artifacts/quote-tutorial/`.
+
+### Verification
+- Video probe confirmed H.264 video, AAC narration, 1920x1080 resolution, and a 4 minute 32 second runtime.
+- Visual QA checked the title, part-pricing/work-step explanation, and closing screens for framing and legibility.
+- The walkthrough covers quote creation/resume, customer setup, drawing upload/review, material walkdown, work planning, pricing, editing a quote, conversion to an order, and editing an order.
+- The local app is intentionally left running at `http://127.0.0.1:3000/`.
+## Session Handoff — 2026-07-20 (Live-action quote tutorial rebuild, latest)
+
+Goal: Replace the rejected narrated slideshow with a genuine 3–5 minute tutorial that visibly demonstrates ShopApp quote creation, editing, conversion, and order editing.
+
+### What changed
+- Captured 218 real ShopApp states and assembled 158 action frames into a continuous 3:10.58 walkthrough with cursor movement, click feedback, typing, scrolling, file upload, import progress, and real navigation.
+- Replaced `artifacts/quote-tutorial/ShopApp_Quote_to_Order_Tutorial.mp4` with the 1920x1080 H.264/AAC live-action version and regenerated its matching SRT captions and manifest.
+- Added reusable authoring script `artifacts/quote-tutorial/create_live_quote_tutorial.py`, capture timeline, QA contact sheet, and isolated training input.
+- Created training quote `CRM-20260720-5745` and converted training order `CRM-1006` for the demonstration.
+- Fixed date-only order due dates displaying one day early by formatting the order detail due date in UTC in `src/app/orders/[id]/page.tsx`.
+
+### Verification
+- Media probe confirmed 3:10.58 duration, 1920x1080 H.264 High video, yuv420p pixel format, and AAC narration.
+- The canonical and `_Live` MP4 copies have matching SHA-256 `A104FC8D7C4E3F9EC54F870E438568CECC75C909C2B89C049059E4AED2080F33`.
+- Visual QA passed across the full contact sheet and a representative final-order frame; the tutorial visibly covers the full requested workflow rather than holding screenshots.
+- Targeted ESLint for `src/app/orders/[id]/page.tsx` passed.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed with line-ending notices only.
+- The development app remains running at `http://127.0.0.1:3000`.
+## Session Handoff — 2026-08-24 (Customer-part repeats and required reading, latest)
+
+Goal: Make repeat orders reusable by customer/part and make required-reading authoring, enforcement, and status obvious end to end.
+
+### What changed
+- Added nullable unique `RepeatOrderTemplate.sourcePartId`; selected-part snapshots reuse the existing frozen template for that source part.
+- Added `Create again` to old order detail, customer/part identity to template summaries, and `/repeat-orders` plus admin navigation for launching saved definitions.
+- Added `QuotePart.workInstructions`, schema/repo/service/editor support, and conversion mapping into order-part required reading.
+- Renamed and visually emphasized direct/repeat order work instructions as `Required reading / Read Me First`; fixed direct-order submission to include `workInstructions`.
+- Added acknowledged/not acknowledged active-user groups on order detail for the current instruction version and department.
+- Preserved the pre-existing order due-date UTC display correction in the dirty order-detail file.
+
+### Files and migrations
+- Repeat order: `prisma/schema.prisma`, `prisma/migrations/20260824120000_repeat_template_source_part/migration.sql`, `src/modules/repeat-orders/*`, `src/app/repeat-orders/page.tsx`, `src/components/repeat-orders/CustomerRepeatTemplateSection.tsx`, `src/components/AppNav.tsx`, `src/app/orders/[id]/page.tsx`.
+- Required reading: `prisma/migrations/20260824121000_quote_part_required_reading/migration.sql`, `src/app/admin/quotes/QuoteEditor.tsx`, `src/app/orders/new/page.tsx`, quote schema/service/repo, conversion route/test.
+
+### Verification
+- `npx prisma format`, normal `npx prisma generate`, and `npx prisma migrate deploy` passed; both new migrations applied to the workspace dev DB.
+- Focused Vitest passed: 4 files, 31 tests (repeat orders, orders, timer, quote conversion).
+- Targeted ESLint and `npx tsc --noEmit` passed.
+- `npm run build` passed and generated 61 pages; the sandboxed first attempt could not fetch existing Google Font assets, and the approved network-enabled rerun passed.
+- Live browser QA passed for `/repeat-orders`, old-order `Create again`, explicit acknowledgment roster (1 acknowledged, 12 not acknowledged on the inspected part), quote Work Details authoring, and direct-order authoring; no browser console errors.
+- Temporary dev server used for QA was stopped at session end.
+
+### Next
+- No required follow-up for this slice. Existing legacy multi-part repeat templates remain readable and are labeled as legacy; new selected-part templates use the customer-part contract.
+## Session Handoff — 2026-08-24 (Required-reading demonstration order, latest)
+
+Goal: Create a real order that demonstrates the new required-reading gate.
+
+### Result
+- Created `STD-1009` for Starter Customer with part `READ-ME-DEMO` (`Required Reading Demo`), quantity 1, due 2026-09-07.
+- Saved required reading: review the latest print and confirm material, setup, and revision; stop and ask the boss if anything does not match.
+- Verified the order detail shows `Needs acknowledgement`, the full note, and both acknowledgement roster groups.
+- The local development server remains running on port 3000 and the created order is open in the browser.
+
+## Session Handoff — 2026-08-24 (Customizable Live Production display, latest)
+
+Goal: Make the shared Shop Floor page directly configurable for broad sorting and attention-based tile colors without sacrificing the big-screen view.
+
+### What changed
+- Added `shopFloorDisplayOptions` to `AppSettings` with migration `20260824143000_shop_floor_display_options`.
+- Added the Shop Floor repo/service/schema/shared-helper boundary plus authenticated GET and admin-only PATCH at `/api/shop-floor/display-options`.
+- Made `Customize this shop floor` the first major block below the page title. It contains layout, filters, sort field/direction, ordered color-rule editing, save feedback, and a collapse control whose state survives refresh on that device.
+- Added fourteen practical sort choices plus rule fields covering overdue age, business, priority, status, customer, machinist, current department, quantity, parts, open checklist items, and active timers.
+- Added the requested default rule: 7 or more days past due uses `#dc2626` at 28% opacity. Rule styling is shared by department queue cards, grid tiles, and machinist rows.
+
+### Verification
+- Migration applied and Prisma client regenerated.
+- Focused Vitest: 2 files / 9 tests passed.
+- Targeted ESLint, `npx tsc --noEmit`, and `git diff --check` passed.
+- `npm run build` passed with 62 generated pages and standalone asset copy.
+- Live browser QA confirmed shared settings save, collapse persistence after refresh, order-number descending preview (`STD-1009` first), saved due-date ordering restored (`STD-1003` first), and red translucent CSS on overdue queue/grid tiles.
+- One clean development server remains running at `http://127.0.0.1:3000/` for owner review.
+
+### Next
+- No required follow-up. If management later wants different displays to retain different shared profiles, promote the singleton profile to named/device-assigned profiles rather than overloading the current device-local collapse flag.
+
+## Session Handoff — 2026-08-24 (Glass Live Production treatment, latest)
+
+Goal: Match the owner-supplied glassmorphism reference on the Shop Floor dashboard and deepen the overdue alert red.
+
+### What changed
+- Added dashboard-scoped glass atmosphere and three surface depths in `src/app/globals.css`; the style does not leak to quotes, orders, customers, or admin.
+- Restyled the full Live Production hierarchy: control shell, settings, rule rows, running-worker strip/cards, department queue/cards/part rows, grid digest, machinist groups, metrics, recent orders, workload, and status pulse.
+- Preserved inline conditional-color precedence so alert tiles remain status-colored while retaining light edges and blur.
+- Changed the default overdue color to oxblood `#7f1d1d` and added a compatibility promotion for only the untouched `#dc2626` legacy default.
+
+### Verification
+- Focused Shop Floor tests passed: 2 files / 10 tests.
+- Targeted ESLint, `npx tsc --noEmit`, and `git diff --check` passed.
+- Production build passed with 62 generated pages and standalone asset copy.
+- Live browser QA confirmed the supplied-reference visual traits: colored atmospheric light, translucent panels, white glass borders, nested blur/depth, collapsed big-screen controls, and overdue card CSS `rgba(127, 29, 29, 0.28)` with a deeper oxblood border.
+
+### Next
+- No required follow-up. Keep future glass adjustments scoped under `.shop-floor-glass` unless the owner explicitly asks to expand the visual system app-wide.
+
+## Session Handoff — 2026-08-24 (Black/navy Shop Floor palette, latest)
+
+Goal: Keep the new glassmorphism treatment while removing the owner-disliked cyan cast from Live Production.
+
+### What changed
+- Replaced the route-scoped ambient cyan/green/amber lighting with black, near-black navy, restrained royal blue, and a small indigo depth layer in `src/app/globals.css`.
+- Strengthened the dark backing layer so the global application cyan glow does not show through the dashboard's transparent panels.
+- Retained the glass borders, blur, depth, and localized semantic colors; overdue tiles remain translucent oxblood rather than blending into the navy palette.
+
+### Verification
+- Targeted ESLint and `npx tsc --noEmit` passed.
+- Production build passed with 62 generated pages and standalone asset copy.
+- Live browser QA confirmed expanded/collapsed controls, black/navy/slate glass, preserved deep-red overdue tiles, and no cyan page wash.
+
+### Next
+- No required follow-up. Existing cyan action/brand accents are intentionally localized; remove those separately only if the owner asks for a fully cyan-free component palette.
+
+## Session Handoff — 2026-08-24 (Shop Floor Quick View and collapsible timers, latest)
+
+Goal: Make common sorting/filtering permanently convenient without crowding the collapsible configuration menu, and allow Working now to collapse independently.
+
+### What changed
+- Added a small select-only Quick View strip immediately above the active grid, machinist, or department-queue view. It owns quick status, priority, sort field, and ascending/descending selection plus quiet result-state text.
+- Restored the Live Production collapse to configuration only: layout choice, advanced filter dialog, conditional tile rules, and shared Save remain inside it.
+- Department queue items now use the same filtered order membership before sorting; grid/machinist active-timer sorting uses live timer counts.
+- Working now has a separate collapse control and device-local remembered state.
+- Removed the duplicate Unassigned machinist entry from the advanced filter menu.
+
+### Verification
+- Targeted ESLint and `npx tsc --noEmit` passed.
+- Focused Shop Floor/Working now tests passed: 2 files / 10 tests.
+- A clean production build passed with 62 generated pages and standalone asset copy. The first attempt hit a stale missing `.next` chunk after a Windows paging interruption; verified cache removal resolved it.
+- Live QA confirmed the Quick View strip stays visible while both larger sections are collapsed, order-number descending returns `STD-1009`, `STD-1008`, `STD-1007`, the timer collapse survives reload, and the filter menu has one Unassigned option.
+
+### Next
+- No required follow-up. Keep future reversible view-only controls in the Quick View strip and persistence/configuration actions in the collapsible Live Production menu.
+
+## Session Handoff — 2026-08-24 (Exact pre-tile control placement correction, latest)
+
+Goal: Use the former department-selector slot for the four everyday view controls and keep department configuration inside Customize.
+
+### What changed
+- Removed the standalone Quick View glass wrapper.
+- Rendered Status, Priority, Sort, and Direction as compact rounded selects in the exact row immediately before work-queue tiles, grid tiles, or machinist groups.
+- Moved department pills and Show completed items into the collapsible Customize this shop floor content, visible for the work-queue layout.
+- Kept the previously verified filter-then-sort behavior and independently remembered Working now collapse.
+
+### Verification
+- Targeted ESLint and `npx tsc --noEmit` passed.
+- Focused tests passed: 2 files / 10 tests.
+- Clean production build passed with 62 generated pages and standalone asset copy.
+- Live QA confirmed department controls hide with Customize, the four selects remain in the former pill row, Fab/Machining switching works inside configuration, and descending order number produces `STD-1009`, `STD-1008`, `STD-1007`.
+
+### Next
+- No required follow-up. Treat this exact pre-tile row as the owner-approved location for reversible status/priority/sort/direction controls.
+## Session Handoff — 2026-08-24 (Department workflow and production-layout audit, latest)
+
+Goal: Diagnose Fab-to-Machining behavior, verify first-department defaults, and report the current repository/production filesystem layout without changing product behavior.
+
+### Findings
+- Order detail exposes only `Submit {department} complete`; the existing manual `assign-department` and `transition` APIs have no frontend caller.
+- The submit dialog predicts the next globally ordered department, but the service selects the first department with an open checklist. Live CRM-1001 / QA-1-1 therefore previewed Paint while the owner wanted Machining; because that part has no Fab checklist item, submission would be rejected before either move.
+- Direct and repeat orders initialize parts to the first active department ordered by `sortOrder`, then name. Quote conversion does too, but an automatic quote does not snapshot that department when saved, so later department reordering can change its eventual starting department.
+- Production keeps durable state separated under `C:\ShopApp`, but `app` is a full development checkout, `.env` and an empty storage folder are duplicated inside it, `incoming` retains staging artifacts, and only the initial pre-update DB backup exists.
+
+### Files touched
+- Continuity only: `tasks/todo.md`, `PROGRESS_LOG.md`, `docs/AGENT_HANDOFF.md`, and `docs/AGENT_TASK_BOARD.md`.
+
+### Verification
+- Authenticated live browser inspection of CRM-1001, order controls, checklist, and configured department sort order.
+- Read-only source tracing of order routing, quote conversion, direct-order creation, and repeat-order initialization.
+- `npm run test -- src/modules/orders/__tests__/orders.service.test.ts src/modules/repeat-orders/__tests__/repeat-orders.service.test.ts` — 2 files / 19 tests passed.
+- Read-only SSH inventory of `C:\ShopApp`; no secrets were read and no production state changed.
+## Session Handoff — 2026-08-25 (Department controls, quote origin, and Order Traveler, latest)
+
+Goal: Repair part routing controls, make quote defaults stable, and deliver a physical Order Traveler on the live Windows server.
+
+### What changed
+- Order detail now separates governed department completion from manual movement. Manual moves select any other active department, require an audit note, refuse active-timer moves, and retain existing backend event/rework behavior.
+- The UI and service now share `findNextDepartmentWithOpenChecklist`; completion is visibly blocked for active timers, missing current-department checklist rows, or open checklist work.
+- Quote creation now explicitly selects and snapshots the first active department ordered by `sortOrder` then name, with guarded loading/failure/no-department states and server-side enforcement.
+- `/orders/[id]/print` is now the Order Traveler. It produces one US Letter sheet per part and is linked by `Print traveler` from every order.
+
+### Key files
+- `src/app/orders/[id]/page.tsx`
+- `src/app/orders/[id]/print/page.tsx`
+- `src/app/admin/quotes/QuoteEditor.tsx`
+- `src/components/print/OrderTravelerControls.tsx`
+- `src/components/print/OrderTravelerDocument.tsx`
+- `src/modules/orders/department-routing.ts`
+- `src/modules/orders/order-traveler.ts`
+- `src/modules/orders/orders.repo.ts`
+- `src/modules/orders/orders.service.ts`
+- `src/modules/quotes/quote-departments.ts`
+- `src/modules/quotes/quotes.repo.ts`
+- Focused tests beside the order/quote modules.
+
+### Verification and deployment
+- Focused Vitest: 4 files / 28 tests passed.
+- Targeted ESLint and `npx tsc --noEmit` passed.
+- Clean `npm run build` passed locally and on `.72` with 62 generated pages plus standalone assets.
+- Local and production live QA confirmed CRM-1001 shows the exact Fab blocker, a Machining-capable audited move dialog, and two correct Traveler sheets without mutating the order.
+- Production health passed at `http://192.168.254.72/api/health` and `http://desktop-bkbakpm.local/api/health`; sign-in returned HTTP 200.
+- Rollback source: `C:\ShopApp\backups\pre-update\feature-20260825-0824`; DB backup: `C:\ShopApp\backups\pre-update\shopapp1-before-feature-20260825-0825.db`.
+- Live DB remained 1,142,784 bytes with last write `2026-08-24T17:44:40.8388007-04:00`; storage remained 12 files.
+
+## Session Handoff — 2026-08-25 (Production hostname, latest)
+
+Goal: Give the Windows production host the stable, recognizable computer name `SHOPAPP`.
+
+### Result and verification
+- Preflight confirmed the `ShopApp` scheduled task, local health endpoint, and automatic SSH service were healthy.
+- `Rename-Computer` staged `DESKTOP-BKBAKPM` -> `SHOPAPP`, followed by the required controlled Windows restart.
+- The fixed router reservation stayed at `192.168.254.72`. Recovery was delayed for several minutes but completed without onsite intervention.
+- Windows now reports `COMPUTER=SHOPAPP`; `shopapp.local` resolves to `192.168.254.72` and its health endpoint returns HTTP 200.
+- The IP health endpoint also returns HTTP 200. `sshd` and `TermService` are Running/Automatic, Remote Desktop is enabled, and TCP 3389 is reachable.
+- No repository source, production database, or attachment-storage content was changed.
+
+## Session Handoff — 2026-08-25 (Customer mirror, monitoring, and Codex readiness, latest)
+
+Goal: Make ShopApp files searchable in `projects`, continuously monitor/recover the webserver, and correct Codex's `.72` project access.
+
+### Live design
+- Canonical files remain at `C:\ShopApp\storage` so Unraid downtime does not stop ShopApp.
+- Windows exposes hidden encrypted read-only `ShopAppStorage$` only to local `shopapp_mirror`; firewall TCP 445 is scoped to `192.168.254.10`.
+- Unraid stores the protected generated credential at `/boot/config/plugins/shopapp-customer-mirror/windows-storage.credentials` and runs `/boot/config/plugins/user.scripts/scripts/ShopAppCustomerMirror/script` every five minutes.
+- Searchable mirror: `/mnt/user/projects/ShopApp Customer Files` / `\\SterlingServer\projects\ShopApp Customer Files`. Sync copies new/changed files and never deletes mirror content.
+- Mirror status/log: `/mnt/user/projects/Backups/ShopApp/monitoring/customer-mirror-status.json` and `customer-mirror.log`.
+- Windows `ShopApp Health Monitor` runs `C:\ShopApp\maintenance\health-monitor.ps1` every two minutes as SYSTEM. Status/log: `C:\ShopApp\logs\health-status.json` and `health-monitor.log`.
+- Unraid runs `ShopAppRemoteHealthMonitor` every two minutes against `http://192.168.254.72/api/health`. Status/log live under `projects/Backups/ShopApp/monitoring`.
+
+### Codex
+- Codex state/config were backed up before repair. The selected trusted project is now `ShopApp Production` at `C:\ShopApp\app`; the previous managed project remains as `ShopApp Context`.
+- A `PAIR CODEX REMOTE.txt` guide and `ShopApp.url` shortcut are on the admin desktop.
+- Official behavior: each Codex task runs on the selected connected computer/project. Remote does not merge the workstation and server filesystems; phone pairing still requires Settings > Connections > Control this PC and QR approval under the same account/workspace.
+
+### Verification
+- PowerShell installers parsed; both Unraid scripts passed `bash -n` on Unraid.
+- Initial 12-file seed, full hashes, and incremental marker hash passed; temporary marker removed from both servers.
+- Final mirror status: healthy, `changed=0 files=12`.
+- Windows scheduled monitor automatic run result `0`; Windows and Unraid health statuses are healthy and ShopApp remains HTTP 200.
+## Session Handoff — 2026-08-25 (Local demo follow-up batch, deployment held, latest)
+
+Goal: Prepare the owner's order-detail visuals, traveler staffing correction, newest-first Shop Floor default, customer contacts, multi-worker assignment, and structured addresses locally while leaving `.72` unchanged during a live demo.
+
+### Completed scope
+- Added shared Shop Floor-style order-detail tile/inset surfaces across all order-detail tabs and supporting BOM/labor components.
+- Kept `Order.assignedMachinistId` as the optional Coordinator and added multiple selected worker IDs to direct creation and quote conversion; worker selections fan out to part assignments.
+- Traveler shaping now reads coordinator and active part workers separately and prefers immutable order contact snapshots over later customer edits.
+- Added `Order.createdAt`; fresh/default Shop Floor display is newest-created first, with a narrow saved-default upgrade from due-date ascending.
+- Added `CustomerContact`, structured address fields, quote/order contact selection, and order contact snapshots with a backward-compatible migration and legacy fallbacks.
+
+### Verification
+- `npx prisma migrate dev` and disposable migration validation passed after a local DB backup.
+- Focused Vitest: 8 files / 51 tests passed.
+- Targeted ESLint, full TypeScript, and clean production build passed; build produced 62 pages.
+- Browser QA verified all six order-detail tabs, traveler role labels, Toyota's multi-contact editor, structured address inputs, quote/direct-order selectors, and newest-first Shop Floor order.
+- Read-only local counts: 4 customers, 4 contacts, 16 orders, 17 quotes.
+
+### Deployment hold / next action
+- Do not connect to or change `192.168.254.72` until the owner explicitly releases the hold.
+- When released, follow `docs/DEPLOYMENT_READY_2026-08-25.md`, including the production DB/app rollback copy before `prisma migrate deploy`.
+## Session Handoff — 2026-08-25 (Business document headers and disclaimer, deployment held, latest)
+
+Goal: Make quote templates capable of reproducing the owner's business letterhead/disclaimer examples and reconfirm the daily quote-number format without deploying during review.
+
+### Completed scope
+- Header blocks now own editable business name, address lines, phone, and email and automatically resolve Sterling/C&R/Powder Coating presets by the quote/template business.
+- Template business selection is constrained to the three configured businesses or All businesses; a shared template still resolves the actual quote business at render time.
+- Quote print renders business details left and QUOTE/number/date right. Customer Info stays separately positionable and includes structured customer address data.
+- Added a draggable Disclaimer block with editable heading/body, instant preview, and bordered printed output.
+- Confirmed all new quote creation uses `DDMMYY-###`; legacy saved numbers are not rewritten.
+
+### Verification
+- Focused tests: 4 files / 13 tests passed.
+- Targeted ESLint, full TypeScript, and production build passed (62 pages).
+- Browser QA confirmed the editor fields, C&R preset/live preview, Disclaimer editor/default preview, and C&R quote print header.
+- No UI save was made during QA; no connection to `.72` occurred.
+
+### Next action
+- Owner review is pending. Keep the production hold until explicit approval, then follow `docs/DEPLOYMENT_READY_2026-08-25.md` and verify the next deployed quote number on `.72`.
+## Session Handoff — 2026-08-26 (Three business customer lists imported live)
+
+Goal: Import the Sterling, C&R, and PKP customer spreadsheets from `.10/projects` into ShopApp without duplicating real customers or disturbing live order/quote history.
+
+### What changed
+- `Customer.fax`, `CustomerContact.fax`, and `CustomerBusiness` preserve fax data and the source business list(s). Customer list/detail pages show business badges; customer detail/edit surfaces display and edit fax values.
+- `scripts/import-customer-workbooks.cjs` reads the three QuickBooks-export XLSX layouts, skips three known bookkeeping sentinels, conservatively normalizes aliases, preserves multiple contacts/business memberships, fills only blank existing fields, and writes dry-run/apply audit reports.
+- Migration: `prisma/migrations/20260826140000_customer_import_business_fax_v1/migration.sql`.
+
+### Production result and recovery
+- Imported 234 rows into 194 unique source organizations: 188 new customers plus six matches to existing customers, 162 contacts, and 229 business memberships. Live totals: 195 customers, 169 contacts, 229 memberships, 157 structured addresses, 137 phones, 40 faxes, and 9 emails.
+- Existing production history stayed intact: before/after counts remain 2 orders, 1 quote, and 2 parts. A post-import dry run returned zero pending customer/contact/membership writes.
+- Backup/import reports and the pre-migration DB are under `C:\ShopApp\backups\pre-update\customer-import-20260826-093254`; restore `shopapp1.db` and the backed-up targeted source files from that directory for rollback.
+
+### Verification
+- Source SHA-256: Sterling `CB7F7CF9BB39EB9EBC6A4C091FD3C81179F6C3F231FFB8CC41392F0D7C6D3846`; C&R `67AC719BF741DE0653278CB9B16073A130E54652D893174DF23520EBE317ED0C`; PKP `73D1EE81D394248E32AEE700BB79C14DC98E2C7769877F4514AF245E257443BF`.
+- Focused customer tests 5/5, targeted ESLint, full TypeScript, `git diff --check`, local/server 62-page builds, migration validation on a fresh production copy, server idempotency report, and `.72` loopback health all passed.
+- Browser QA was unavailable from the Codex in-app browser because that isolated browser could not resolve/reach the private Tailscale/LAN host; server-render/build and live database/service checks are authoritative for this release.
+## Session Handoff — 2026-08-26 (Customer dashboard deployed)
+
+Goal: Turn Customers into a robust relationship dashboard with customer-relevant filters, metrics, search, sorting, and Tiles/List presentation.
+
+### What changed
+- `src/modules/customers/customer-dashboard.ts` derives dashboard metrics from customer/order/part/time relations; `customer-dashboard.shared.ts` owns the common search/filter/sort pipeline.
+- `src/modules/customers/customer-dashboard.ui.tsx` provides Search, Business, Activity, Sort, Direction, Tiles, and List controls. Desktop List is a dense table; mobile List is a no-overflow compact row layout.
+- `src/modules/customers/customers.repo.ts` now includes time intervals for dashboard reads, and the service returns the serializable dashboard contract instead of leaking Prisma-shaped data into the page.
+- `src/modules/customers/__tests__/customer-dashboard.test.ts` covers metric calculation, invalid intervals, search/filter combinations, all numeric/date sorts, both name directions, and missing-date placement.
+
+### Verification / release state
+- Focused tests 15/15, targeted ESLint, full `npx tsc --noEmit`, `git diff --check`, and the 62-page production build passed.
+- Local browser QA passed at desktop and `390x844`; mobile document/body width measured 380px within a 390px viewport, with clean Tiles and a purpose-built compact List.
+- After explicit owner approval, six exact-hash files were deployed by `ops/Deploy-ShopApp-CustomerDashboard.ps1`; the server build completed all 62 pages and the deployed hashes match local.
+- Rollback: `C:\ShopApp\backups\pre-update\customer-dashboard-20260826-095958`.
+- Final production verification: loopback/IP/`shopapp.local` health HTTP 200, Customers expected authenticated 307 redirect, ShopApp Running, Health Monitor Ready/enabled with last result 0, and `shopapp.err.log` zero bytes.
+## Session Handoff — 2026-08-26 (Customer Tile visual parity deployed)
+
+Goal: Restore the Customer Tiles to the exact visual language used by Shop Floor order tiles.
+
+### What changed / verification
+- `src/modules/customers/customer-dashboard.ui.tsx` now uses the canonical `shop-floor-glass` / `shop-glass` surface, cyan title hierarchy, unboxed two-column fact grid, border/depth, and hover lift. List views and all behavior are unchanged.
+- Desktop visual QA passed. At `390x844`, document/body width is 380px with no horizontal overflow; the wide decorative glow is clipped without clipping tile content.
+- Targeted ESLint, TypeScript, `git diff --check`, and the 62-page production build pass.
+
+### Release state
+- Exact source hash: `42D117C8E275E682819E47EA0392AF9DD74D066CE1D65BAF00E8FC387413A565`.
+- After explicit approval, the guarded one-file script completed the 62-page server build and deployed the matching hash.
+- Rollback: `C:\ShopApp\backups\pre-update\customer-tile-parity-20260826-101737`.
+- Final checks: loopback/IP/`shopapp.local` health HTTP 200, Customers expected authenticated 307, ShopApp Running, Health Monitor Ready/enabled with result 0, and zero-byte error log.
+## Session Handoff — 2026-08-26 (Customers mechanics corrected server-only)
+
+- On `.72` only, moved the Shop Floor canvas class to the Customers page wrapper, removed the nested dashboard canvas/overflow container, and removed the filter backing panel.
+- This fixes the separate scrollbar, visible backing around tile radii, and filters/tiles scrolling together under a nested layer.
+- Server verification: 62-page build; exact class assertions passed; loopback/hostname HTTP 200; task Running; monitor Ready/result 0; error log empty.
+- Rollback: `C:\ShopApp\backups\pre-update\customer-page-mechanics-20260826-104409`.
+- Important: workstation product source intentionally remains behind these two server files because the owner requested a direct-server-only correction. Reconcile before any future source deployment.
+## Session Handoff — 2026-08-26 (Quote customer list production hotfix)
+
+- Directly on `.72`, changed the quote editor customer request from 100 to 5,000 after confirming the apparent scroll cutoff was data truncation at the API request.
+- Production verification: 62-page build passed; ShopApp task Running; loopback health HTTP 200.
+- Rollback: `C:\ShopApp\backups\pre-update\quote-customer-limit-20260826-110834`.
+- Workstation product source was intentionally not edited; reconcile this server-only change before any future source deployment.
+## Session Handoff — 2026-08-26 (Direct-order customer list hotfix)
+
+- Directly on `.72`, changed the new-order customer request from 100 to 5,000.
+- Production verification: 62-page build passed; ShopApp task Running; loopback health HTTP 200.
+- Rollback: `C:\ShopApp\backups\pre-update\order-customer-limit-20260826-121101`. Reconcile the server-only source edit before a future deployment.
+## Session Handoff — 2026-08-26 (100-file drawing upload hotfix)
+
+- Directly on `.72`, raised ZIP drawing imports from 50 to 100 files and updated the upload UI text.
+- Production verification: 62-page build passed; ShopApp Running; loopback health HTTP 200.
+- Rollback: `C:\ShopApp\backups\pre-update\drawing-upload-100-20260826-130802`. Reconcile the server-only edits before a future deployment.
+## Session Handoff — 2026-08-26 (Production access continuity)
+
+- Future agents must read `docs/PRODUCTION_ACCESS.md` before connecting to `.72`.
+- The runbook records the authorized non-secret SSH settings, explicit Windows OpenSSH executables, workstation key locations/fingerprint, production paths/tasks, safe deployment sequence, and Tailscale/RDP boundaries.
+- Verified key-based access from this workstation returns hostname `SHOPAPP`. No password or private-key contents were added to the repository.
+## Session Handoff — 2026-08-26 (Order intake reliability batch staged; deploy blocked by active review)
+
+Goal: Resolve the owner's eight reported order/quote intake, assignment, attachment-security, and 92-drawing workflow issues without interrupting the active production drawing review.
+
+### Scope completed locally
+- Material Ordered / On Hand is independently selectable; quantity controls permit a blank editing state and normalize at validation/submission.
+- Customer-specific Add Contact is available in quote and direct-order intake, preserving multiple contacts and one primary contact.
+- Manual quote prices carry an explicit Each Part versus Whole Quantity / Lot basis through persistence, totals, detail, and print.
+- Stored quote PDFs are scanned for a PO number during conversion. A user-entered PO always wins; the conversion route performs a final blank-value fallback scan.
+- Multi-worker direct-order selection seeds every part, and Shop Floor derives the machinist label/filter/workload from deduplicated part assignments when no coordinator exists.
+- Non-admin attachment policy allows only part drawing kinds and is enforced both in returned data and the authenticated `/attachments/...` download route.
+- Drawing import now has stable device-local autosave, clear-after-success semantics, One-off/Assembly mode and multiplier, add-material-in-place, deterministic saw allowance/total stock math, conditional BOM context, bounded concurrency, bounded 20-page/80k PDF extraction, and a 100-file archive limit.
+
+### Verification evidence
+- `npx prisma validate` and `npx prisma generate`: passed.
+- Targeted `npx eslint` and full `npx tsc --noEmit`: passed.
+- Integrated focused Vitest: 14 files / 101 tests passed.
+- Full Vitest: 44 files / 231 tests passed.
+- `npm run build`: passed; 62 routes/pages and standalone assets completed.
+- `git diff --check`: passed; warnings were CRLF conversion notices only.
+- Browser QA at `http://localhost:3000/orders/new`: Material Ordered / On Hand enabled without purchasing; Toyota selection exposes Add Contact; default quantity could be replaced with `92`; drawing intake starts with One-off/Assembly; Assembly exposes assembly count; uploader advertises up to 100 drawings.
+
+### Release state / next action
+- No `.72` mutation, deployment, migration, or service restart occurred during this batch.
+- Recent production-only hotfixes were first reconciled into workstation source, so a future deployment will not regress them.
+- The only release blocker is the owner's currently open 92-drawing production review. The new autosave cannot protect work that began on the older running build. Obtain explicit confirmation that the order/quote has been successfully saved or the tab is no longer needed, then follow `docs/PRODUCTION_ACCESS.md`: backup production DB/uploads and targeted source, deploy, run any pending migrations, build, restart, and verify health plus data invariants.
+## Session Handoff — 2026-08-26 (Order intake reliability deployed)
+
+- Owner confirmed the large drawing order was saved, removing the production hold. Post-deploy read-only audit shows `STD-1002` with 85 parts; totals are five orders, 89 parts, two quotes, and 195 customers.
+- Release archive SHA-256: `F40ACA3B49C7D3C4A386B062244B9806DF6131B2514E4935B2925C7D3B73435E`; 369 source/schema/migration files deployed.
+- Rollback: `C:\ShopApp\backups\pre-update\order-intake-reliability-20260826-155249`, including the complete pre-release database and replaced-file copies.
+- Server verification: Prisma generated; 40 migrations found / zero pending; 62-page build passed; app task Running; monitor Ready/result 0; loopback/IP/`shopapp.local` health 200; sign-in 200; error log 0 bytes.
+- Data preservation: production DB remained 1,175,552 bytes with last-write `2026-08-26T15:12:12.0357733-04:00` before and after deployment. Twelve representative source hashes match local exactly.
+- Deployment tooling note: Windows PowerShell 5.1 does not expose `[System.IO.Path]::GetRelativePath`; the guarded deployment script now uses a compatible rooted-substring calculation. The first attempt stopped before runtime/source mutation and live health was reconfirmed before retry.
+
+## Session Handoff — 2026-08-27 (Multi-page PDF drawing packets live)
+
+Goal: Let quote/direct-order intake extract individual parts when a customer supplies one combined multi-page PDF.
+
+### Implementation
+- `drawing-import.service.ts` now detects PDFs with more than one page, caps packets at 100 pages, renders each page at 1.5x through the already-installed `pdfjs-dist` / `@napi-rs/canvas` runtime, and sends each page image through the existing bounded four-worker extraction path.
+- The extraction contract classifies `PART_DRAWING`, `BOM`, `COVER`, or `OTHER`. Only BOM/cover pages are excluded automatically; `OTHER` is deliberately retained with a review warning so a low-confidence model result cannot silently drop a real part.
+- Original packet PDFs are stored once as order/quote supporting files. Generated part drawings use page PNGs, and the review/source label records `original.pdf — page N of M`. BOM page text remains available to drawings that explicitly say SEE BOM / SEE PARTS LIST.
+- API/UI/draft state now carry supporting files. Existing one-page PDFs and ZIPs preserve their prior behavior.
+
+### Verification / production
+- Local focused test: 22/22. Complete suite: 44 files / 233 tests. Targeted ESLint, TypeScript, `git diff --check`, and local 62-route build passed.
+- Server focused test: 22/22, including real three-page rasterization using `.72` native modules. Server 62-route build passed; all five deployed hashes match local.
+- Release archive SHA-256: `BC99AD2387E0DECC634EC82D8597DB48B2ECE60273570E0B58D4767FF96B802F`.
+- Rollback: `C:\ShopApp\backups\pre-update\order-intake-reliability-20260827-100255` (source replacements plus database safety copy).
+- Final live checks: ShopApp Running; Health Monitor Ready/enabled; loopback and LAN health OK; error log empty; zero pending migrations.
+
+## Session Handoff — 2026-08-27 (Drawing accuracy regression corrected live)
+
+- Root cause: adding packet classification made `documentRole` a strict enum. The model sometimes returned a wrapped or human-readable variant; Zod rejected the whole object, discarding correctly extracted title-block fields and returning filename fallback data. Packet page images also used a temporary vision-file flow without a readiness wait.
+- Fix: normalize/unbox document roles, preserve uncertain roles as `OTHER`, send direct high-detail image data URLs, provide native page text plus full-page and bottom-right crop views, render PDFs at 2x, retry one transient response failure, and log content-safe failure/validation metadata.
+- Quality gate: a generated non-confidential manufacturing drawing with known fields passed locally and on `.72`; it recovered part `TEST-26031`, `STANCHION TUBE`, `DOM TUBING`, `ZINC PLATE`, and `PART_DRAWING`. A real repository drawing was deliberately not transmitted externally without explicit owner approval.
+- Verification: deterministic drawing tests 25/25, full suite 236 passed with one opt-in eval skipped, targeted lint, TypeScript, diff check, and local/server 62-route builds passed. Production deterministic + synthetic accuracy suites passed 26/26.
+- Release SHA-256 `8668EF11E994FA00777BC0823DA29FB30FDB4F87998EA43166C5303C6C6B93D2`; rollback `C:\ShopApp\backups\pre-update\order-intake-reliability-20260827-103153`.
+- Production is healthy with exact deployed hashes, ShopApp Running, Health Monitor Ready, loopback/LAN health OK, and empty error log.
+## Session Handoff — 2026-08-27 (Drawing stock dimensions staged locally)
+
+Goal: Extract finished width and thickness from drawings and carry a single thickness × width × total-length requirement into stock finding and printed shop lookup sheets.
+
+### What changed
+- `DrawingTitleBlockResult` now includes confidence/evidence-backed `partWidth` and `partThickness`; the prompt explicitly distinguishes finished envelope dimensions from raw stock notes and refuses unclear guesses.
+- `DrawingImportPanel` reviews thickness, width, finished length, cut length, and total stock dimensions. Calculation is `cut = finished length + .125`; total length is `cut × quantity`; display order is thickness × width × total length.
+- Prisma adds nullable `partWidth`/`partThickness` columns to `QuotePart`, `OrderPart`, and `RepeatOrderTemplatePart` through `20260827140000_drawing_stock_dimensions_v1`.
+- Quote/order services, quick conversion, repeat templates, order editing, travelers, Material Check, and the printable Material Shop Walkdown preserve/display the fields.
+- TEST_MODE now mirrors the production stock fields so persistence regressions are observable.
+
+### Verification / state
+- Focused Vitest: 5 files / 57 tests passed. Full Vitest: 44 files / 238 tests passed, with the networked accuracy eval skipped by default.
+- Synthetic configured-model accuracy eval: 1/1 passed and read part number, part name, material, finish, thickness, width, and length.
+- Prisma generate/migrate, TypeScript, targeted ESLint, `git diff --check`, and the 62-page production build passed.
+- Local standalone shell rendered successfully; deeper interactive quote steps require an authenticated local browser session, so data/UI behavior is covered by the focused tests and production build rather than a saved browser mutation.
+- Not deployed. Production `.72` remains unchanged pending explicit owner approval.
+## Session Handoff — 2026-08-27 (Drawing stock dimensions deployed, latest)
+
+Goal: Carry drawing-derived finished thickness and width into explicit, printable total stock dimensions without reducing the restored drawing-reading quality.
+
+### What changed
+- Drawing extraction/review now captures finished thickness and width with evidence/confidence and blocks uncertain or missing values for human review rather than guessing.
+- Quote, direct order, quote conversion, repeat template, order editing, Material Check, stock walkdown print, and traveler paths preserve/display `thickness × width × (cut length × quantity)` while retaining finished and cut lengths.
+- Migration `20260827140000_drawing_stock_dimensions_v1` adds nullable width/thickness fields to quote, order, and repeat-template parts for backward compatibility.
+
+### Verification / production state
+- Local evidence before release: focused 57/57, full 238/238, configured-model synthetic accuracy 1/1, type-check/lint/diff checks, migration validation, and 62-route build.
+- Production release archive SHA-256: `0867780FF608FA49C1F462F05A9929DBA23C2E870105027FF33AB5D0027875CA`; 34/34 deployed hashes match the staged release and all 41 migrations are applied.
+- Production focused suite passed 57/57 and configured-model synthetic accuracy passed 1/1. Loopback/LAN/`shopapp.local` health are HTTP 200; ShopApp is Running; monitor is Ready/result 0; error log is empty.
+- Rollback: `C:\ShopApp\backups\pre-update\order-intake-reliability-20260827-120200` (includes the pre-migration production database and replaced source files).
+## Session Handoff — 2026-08-27 (Long mixed-ZIP import health guard deployed, latest)
+
+Goal: Stop legitimate long drawing ZIP imports from being killed by automated health recovery while retaining recovery for a genuinely exited runtime.
+
+### What changed
+- `src/app/api/orders/drawing-import/route.ts` and `src/modules/drawing-import/drawing-import.activity.ts` bracket every authorized import—including multipart parsing—with a unique activity marker and guaranteed cleanup.
+- `scripts/windows/install-shopapp-health-monitor.ps1` treats failed probes as `busy-import` only when a fresh marker and the exact ShopApp standalone Node process coexist. Markers older than 45 minutes are removed; a missing process still takes the established restart path.
+- `drawing-import.service.ts` counts only supported PDF/PNG/JPG files toward the 100-drawing limit, ignores unrelated mixed-ZIP entries, and retains a 1,000-entry safety ceiling.
+
+### Verification / production state
+- Local/production focused tests 30/30, TypeScript, targeted ESLint, and local/server 62-route builds passed. Four final deployed hashes match.
+- A safe production simulation forced health failure while marking an import: result `busy-import`, `restarted=false`, Node PID 8092 preserved before/after. The first listener-based simulation failed and was replaced before owner retry with the verified exact-process check.
+- Loopback/LAN/`shopapp.local` health are HTTP 200; ShopApp Running; monitor Ready/result 0; error log empty.
+- Release SHA-256 `071F60D2EFFA20382763760F69E108D0A079162F3A10109025D1241882B762F5`. Rollbacks: `C:\ShopApp\backups\pre-update\order-intake-reliability-20260827-135601` and `C:\ShopApp\backups\pre-update\zip-import-health-guard-20260827-134907`.
+- Follow-up live logs exposed the separate `/api/admin/quotes/upload` multipart route; it now uses the same pre-`formData()` marker/finally cleanup. Release `651175E9AEC7F9D35203F50FE96875EAE20AE84E64671D9596214A9671773901`, guard tests 4/4 local/server, hashes 2/2, three health endpoints 200, empty error log; rollback `C:\ShopApp\backups\pre-update\order-intake-reliability-20260827-140316`.
+## Session Handoff — 2026-08-27 (Mixed-ZIP runtime hardening deployed; real retry pending)
+
+Goal: Stop mixed drawing ZIP uploads from silently terminating production while retaining the newly added width/thickness workflow.
+
+### What changed
+- `src/modules/drawing-import/drawing-import.service.ts` retains all width/thickness extraction and stock-dimension math, serializes native PDF preprocessing, leaves model extraction concurrency at four, skips eager CRC inflation of unrelated ZIP members, and continues to enforce individual supported-file safety checks.
+- `src/modules/drawing-import/drawing-import.activity.ts` now records durable begin/finish events in addition to per-request monitor markers.
+- `scripts/windows/start-shopapp.ps1` launches Node with a 12 GB heap ceiling plus fatal/uncaught reports, uncaught tracing, and a durable exit-code log.
+- `scripts/windows/install-shopapp-health-monitor.ps1` now kills only the exact ShopApp standalone Node runtime after a confirmed unhealthy/no-active-import state and before restarting the scheduled task, preventing an orphaned child from masquerading as a managed recovery.
+
+### Verification / production state
+- Local: focused 32/32 tests, TypeScript, targeted ESLint, and 62-route build passed.
+- Production: focused 32/32 tests and build passed; all five release hashes match; the active launcher command line contains the memory/report flags; loopback, LAN, and `shopapp.local` health are HTTP 200; task is Running; monitor is Ready/result 0; error log is empty; active markers are zero.
+- Release SHA-256: `FB9CE6C7836D532BC4415F5F29E54167841467BBB1CC8AC7320560212E47A590`.
+- Rollback paths: `C:\ShopApp\backups\pre-update\order-intake-reliability-20260827-141241` and `C:\ShopApp\backups\pre-update\runtime-launcher-20260827-141419`.
+- Monitor correction hash/rollback: `58EFB0671BF7C93E7A71D04F4C9CC0FD7D1F3CBCE1BDBCF28DF37F81ADFA0606`; `C:\ShopApp\backups\pre-update\health-monitor-recovery-20260827-142121`. Controlled dead-runtime recovery produced a new managed `Running` process, and a healthy follow-up cycle exited 0 without changing PID `6112`.
+- Remaining validation: have the owner retry the same real mixed ZIP, then inspect `C:\ShopApp\app\.runtime\drawing-import-events.log`, `C:\ShopApp\logs\runtime-exit.log`, `C:\ShopApp\logs\node-reports`, memory/PID, and all health paths during the run. Do not declare the production incident closed until this real retry succeeds.
+- First instrumented owner retry proved the monitor acted before the request reached the route-level marker. The live monitor now has a persisted five-minute `pre-route-grace` for an existing exact runtime, after which normal restart applies unless the 45-minute import marker exists. Hash `682A1D364E961BCD8AC1F30754AFD3361D203A05B532CB71E9FDB2CBD7CB4E6B`; rollback `C:\ShopApp\backups\pre-update\health-monitor-preroute-20260827-143233`. Safe unused-port simulation returned `pre-route-grace`, preserved PID `7952`, and left production healthy. Await the post-fix real retry.
+
+## Session Handoff — 2026-08-27 (Proven PDF reader restored with dimensions, latest)
+
+Goal: Use the previously accurate PDF reader unchanged in architecture while adding finished width and thickness to what it extracts.
+
+### What changed
+- `importDrawingUpload` is serial again: expand supported drawings, store each original, call the established title-block reader once per drawing, and return review proposals. The active path bypasses packet rasterization, page splitting, and isolated AI/image workers.
+- PDF extraction is back to bounded local PDF text followed directly by the configured model. PNG/JPG uploads retain the original direct vision-file behavior.
+- The model contract retains `finalPartLength`, `partWidth`, and `partThickness` with confidence/evidence and explicit null-not-guess instructions. The 100-supported-drawing ZIP limit and current storage/review/persistence contracts remain.
+
+### Verification / production state
+- Local and production focused tests: 34/34. TypeScript, targeted ESLint, and local/server 62-route builds passed.
+- Release SHA-256 `43AF36D187EFB7FFDD11A4C910FD840F5B1AA59325178124D0CC158BB7225E58`; deployed/local reader SHA-256 `E728C72E505B677544DF4BC4BCB9C0744730C326FF78416FEBCF3432A03BA41E`.
+- Rollback/database snapshot: `C:\ShopApp\backups\pre-update\order-intake-reliability-20260827-155741`.
+- Production: ShopApp Running, Health Monitor Ready, loopback/LAN/`shopapp.local` health OK, and zero-byte error log.
+
+## Session Handoff — 2026-08-27 (Owner rollback to 10:31 drawing reader)
+
+- Restored only the selected snapshot source (`order-intake-reliability-20260827-103153`), leaving the production database and uploads intact.
+- Exact source proof: `drawing-import.service.ts` hash `AA16DB0F30A5A6A905E31B2116742CD1BCAF3A452BF0131E58217EB91046C16D` equals the snapshot.
+- Final runtime proof: loopback and LAN health OK, ShopApp Running, Health Monitor enabled, and original `next.config.js` restored after a one-build type-check bypass.
+- Focused restored suite: 21/22 passed; the remaining old expectation omits newly shared thickness/width confirmation requirements. Do not alter the restored code merely to make that legacy assertion pass.
+## Session Handoff — 2026-08-28 (Quote Drawing Import V2 admin beta deployed, detailed record)
+
+Goal: Make the evidence-backed local-first Drawing Import V2 functional in the admin quote-creation/edit workflow and deploy it safely to `.72` without replacing the direct-order legacy importer or overstating unmeasured release gates.
+
+### Scope and behavior
+- `QuoteEditor` uses `src/components/orders/drawing-import/QuoteDrawingImportV2Panel.tsx` for quote drawing intake and offers the proven legacy reader as an explicit fallback. `/orders/new` continues to use the legacy importer.
+- New quote-only APIs under `src/app/api/admin/quotes/drawing-import-v2/**` create durable jobs and expose authenticated progress, cancel, correction, reprocess, and exact artifact access.
+- `src/modules/drawing-import/v2/**` owns safe archive/page inventory, vector single-page PDFs, coordinate text/OCR, preview/crops, hashes/duplicates, page classification, local evidence, BOM rows/graph quantities, Terra/Sol Responses routing, budgets, retry/idempotency, usage/cost, and durable job orchestration.
+- Prisma migration `20260827193000_drawing_import_v2_foundation` adds import job/source/page/attempt/BOM/profile records and additive quote/order page lineage. Existing records/attachments were not deleted or reinterpreted.
+- Reviewed V2 parts/files continue through existing quote save/material handling and quote-to-order conversion without rereading drawings or applying the assembly multiplier twice.
+- Production mode is conservative admin beta: local auto-accept off, profile matching off, OCR on, Terra medium, Sol high for measured hard cases, Luna off, soft budget USD 6.40, hard budget USD 8.
+
+### Verification evidence
+- Focused V2/document/BOM/eval/review/quote tests: 23 files / 104 passed.
+- Full regression: 62 files / 324 passed / 4 opt-in skipped.
+- `npx tsc --noEmit`, targeted ESLint, local 63-route `npm run build`, standalone asset assertions/worker ping, OCR opt-in 3/3, and disposable database migration rehearsal passed.
+- Private fixture `P10 & P14 Turbo Fixture.zip` was processed local-only: safe archive inventory, 9 vector PDF pages, original archive retained, and 10 SolidWorks support files retained. No private customer drawing was transmitted externally during verification.
+- A generated synthetic drawing passed the live Responses/Terra smoke with exact part number/quantity/evidence and a sub-USD-1 cap.
+- The repository-local release evaluator correctly remains `eligibleForRelease: false`: there is no approved representative labeled golden set yet, and the mock performance harness cannot prove real 92/100-page accuracy, latency, or cost.
+
+### Production deployment
+- Final archive: `artifacts\shopapp-drawing-import-v2-20260828-0031.zip`.
+- SHA-256: `CC4BDF2A3ED2A9C8E20D5B889050710347A6D83CAA30593D8B3E36E721782977`.
+- Guarded release script: `ops/Deploy-ShopApp-DrawingImportV2.ps1`.
+- Rollback snapshot: `C:\ShopApp\backups\pre-update\drawing-import-v2-20260828-003455` containing source, `shopapp1.db`, and protected production environment backup.
+- Server result: 72 files deployed, focused server tests passed, 63-route server build passed, standalone worker ping passed, restart passed, and `npx prisma migrate status` reports 42 migrations / schema current.
+- Post-deploy: Node listens on `0.0.0.0:3000`; loopback, `192.168.254.72:3000`, and `http://shopapp.local/api/health` are healthy; unauthenticated V2 route returns HTTP 401; ShopApp task is Running; health monitor result is 0; five representative V2 source/migration hashes match local exactly.
+
+### Deployment incident and prevention
+- The first guarded V2 attempt exposed that the selected rollback source snapshot did not itself compile against its restored route/UI callers even though the previously compiled `.next` still ran. The deploy script restored source/database/config, but the rollback rebuild failed.
+- Repaired only the restored baseline contracts (optional progress callback and optional width/thickness proposal fields), verified the baseline 62-route build, restarted it healthy, then included those compatibility shims in the final V2 archive. The final deployment therefore has a buildable rollback source instead of relying on stale compiled output.
+- Do not remove these compatibility shims unless the legacy route/panel and legacy service/schema are updated together and a selected-source rollback build is rehearsed.
+
+### Main touched areas
+- `prisma/schema.prisma`, `prisma/migrations/20260827193000_drawing_import_v2_foundation/`
+- `src/modules/drawing-import/v2/**`, `scripts/drawing-import-v2-document-worker.mjs`
+- `src/app/api/admin/quotes/drawing-import-v2/**`
+- `src/components/orders/drawing-import/**`, `src/app/admin/quotes/QuoteEditor.tsx`
+- quote persistence/conversion lineage in quote APIs/modules and Prisma mappings
+- `next.config.js`, `scripts/copy-standalone-assets.cjs`, `package.json`, `package-lock.json`
+- `evals/drawing-import/**`, evaluation/performance scripts/docs, deployment/operations docs
+
+### Next work
+- Build an owner-approved, access-controlled golden set from reviewed pages and label expected normalized values plus source evidence.
+- Run real vector/scanned/mixed packet benchmarks and compare current vs V2 local-only vs Terra vs Terra+Sol. Do not enable local auto-accept or customer profiles until their precision gates pass.
+- After measured admin-beta corrections/latency/cost satisfy the specified gates, explicitly approve the final default rollout; until then keep the legacy fallback and rollback snapshot.
+
+## Session Handoff — 2026-08-28 (V2 first-upload production failure repaired)
+
+Goal: Repair the owner's first real V2 quote import immediately and prove the exact upload works before reporting completion.
+
+### Root cause and correction
+- Production job `cmtcsbvlm0001x9lcu3462rr4` failed in `document_analysis` before page creation. Next bundled `require.resolve('pdfjs-dist/package.json')` as numeric module ID `15754`, so the in-process PDF renderer executed `path.dirname(15754)`.
+- `src/modules/drawing-import/v2/document/document.pdf.ts` now locates `standard_fonts` only through verified source/standalone filesystem layouts already populated by `scripts/copy-standalone-assets.cjs`.
+- The copy script rejects future server chunks containing the unsafe numeric resolver. `drawing-import-v2.service.ts` now logs stage/job stacks without logging drawing content.
+
+### Verification and production state
+- Exact packet tests: direct nine-page canonicalize/render passed; durable private quote-import integration reached review with nine canonical pages; packaged local HTTP upload reached `READY_FOR_REVIEW` with 9 pages / 11 source-support files.
+- V2 regression: 57 passed / 3 opt-in skipped. TypeScript, targeted ESLint, local 63-route build, and diff check passed.
+- `.72` rollback: `C:\ShopApp\backups\pre-update\v2-import-path-fix-20260828-070024`.
+- The deployed `.72` standalone build passed the same isolated HTTP upload to `READY_FOR_REVIEW`, 9/9 canonical PDF pages, 11 supporting files, and no error. The isolated DB/storage/log/ZIP copies were removed afterward; production business data was untouched.
+- Live status: ShopApp Running, Health Monitor Ready, loopback/LAN/`shopapp.local` HTTP 200, production error log 0 bytes, no unsafe numeric resolver, and no listener left on smoke port 3011.
+- V1 fallback remains visible but was not activated because the corrected V2 packaged route passed the real packet gate.
+# Session Handoff — 2026-08-29 (FWD confirmation walkthrough, latest)
+
+- The approved FWD ZIP is attached to production quote `280826-002`; 16 PDFs became 17 canonical pages and completed `READY_FOR_REVIEW`.
+- Live confirmation testing covered quantity correction, candidate choice, file-only classification, restore, and page ordering. Final state: 13 part/assembly pages and 4 supporting pages.
+- Provenance-only candidates no longer render as false conflicts; the saved packet now reports `Conflicts (0)` while evidence remains available.
+- Gates passed: 25 focused tests, TypeScript, ESLint, production build, health, task/monitor, and zero-byte error log.
+- Release SHA `88ED4F84819D0A59AF6C9BBE1B57132F0A67BC1B7C2A99E6F272E9D797A9C23E`; rollback `C:\ShopApp\backups\pre-update\drawing-review-simple-20260829-002846`.
+
+---
+# Session Handoff — 2026-08-29 (stable explanations and file-only bypass, latest)
+
+- “Why this needs review” no longer disappears intermittently: untouched blur cannot confirm a field, and the disclosure open state survives normal rerenders. Live production browser verification kept the reason open after focus change plus a three-second wait.
+- Explicit file-only/reference pages bypass all part-field validation before extraction failure is considered. They remain attachments and do not require quantity/material/dimension approval.
+- Gates: 14 focused tests, TypeScript, ESLint, production build, health OK, ShopApp Running, monitor 0, error log 0 bytes.
+- Latest rollback: `C:\ShopApp\backups\pre-update\drawing-review-simple-20260829-141347`.
+
+---
+## Session Handoff — 2026-09-02 (Production workflow and drawing-import audit)
+- Goal: advisory review of quote creation/conversion, direct-order creation, order editing, and drawing-import performance. Owner corrected the environment mid-session; final evidence is from production `C:\ShopApp\app` and a read-only copy of `C:\ShopApp\data\shopapp1.db`, not the divergent workstation source.
+- P0 findings: conversion UI edits are silently discarded because deployed `ConversionOverrides` excludes parts/vendor/material/model fields and the route rebuilds from the quote; direct order auto-BOM never starts because the service returns created part IDs, the API responds only with `{id}`, and the client requires `data.parts`.
+- P1 findings: post-create graph work is outside the base order transaction; order customer changes retain an old contact snapshot; edit option loading is capped at 200 while create loads 5,000; no optimistic concurrency; quote numbering has a concurrent max+1 race. The large editor/service files should be decomposed incrementally, not via drive-by rewrite.
+- Production timing: latest three Sep 2 one-photo V3 jobs were 41.088, 62.755, and 66.356 seconds. Preparation was consistently about 11.7–12.0 seconds; full-page `gpt-5.4-mini` medium reasoning was 29.310, 51.000, and 54.304 seconds and consumed 71.3–81.8% of total; finalization was 35–55 ms. Current completed-job timing JSON retains only total time because the final write replaces the earlier stage object.
+- Best next implementation slice: regression tests and fixes for the two P0 contracts, then stage telemetry. Benchmark compact output/low reasoning and a stable prompt-cache key on representative exact-dimension drawings before changing defaults. Keep full-resolution JPEG model input; remove unnecessary full-resolution PNG/PDF preparation from the image critical path. Benchmark multi-page concurrency separately.
+- Browser: live `shopapp.local` screens verified. Chrome blocked the provided image at the extension file permission boundary, so no upload/import occurred. First-step `Save & continue` did create draft quote `020926-001` for A & N Precision Machining LLC; no parts/import/order were created and the quote was not deleted or further edited.
+- No production code/configuration/settings changes and no tests/build were needed for this review-only session. Temporary production source/database audit copies were removed after analysis.
+## Session Handoff — 2026-09-03 (Quote conversion/order integrity, deployment pending)
+- Goal implemented locally and in `.tmp-server-implementation-20260903`, which was built from the exact `C:\ShopApp\app` production source. A fresh `.tmp-server-predeploy-20260903` read-only copy was used to review every live-to-staged hunk. Do not deploy broad local files; deploy only the nine staged runtime files after explicit owner approval.
+- Runtime scope: orders/new page; quote convert route; quotes repo; order detail page; orders schema/service/repo; repo facade; mock order repo. Tests added/updated locally cover edited/added/removed conversion parts, invalid source identity, customer/contact clear/validate/reject, atomic order graph persistence/rollback, and duplicate priced-addon checklist de-duplication.
+- Verification: `npx tsc --noEmit` PASS; focused `npx eslint` PASS; focused Vitest PASS (8 discovered files / 78 tests, including read-only staging duplicates); `npm run build` PASS (65 pages, standalone assets copied); `git diff --check` had no whitespace errors. No schema, dependency, production database, storage, config, task, or runtime was changed.
+- Deployment must follow `docs/PRODUCTION_ACCESS.md`: exact allowlist backup plus DB/build/config rollback capture, server-focused tests and clean build while ShopApp is stopped, restart in finally, deployed hashes, task/monitor/health/log checks, and browser smoke for quote conversion/order contact editing without mutating a real customer record.
+- Finding 6 plan: `docs/ORDER_QUOTE_DECOMPOSITION_PLAN.md`. Suggested first release is Phase 0 contract characterization plus Phase 1 pure intake mappers; do not start a big-bang editor split.
+## Session Handoff — 2026-09-03 (Order/quote decomposition, first bounded slice)
+- Goal: begin the approved order/quote decomposition before deployment, using the exact server-derived source as authority. Production remains untouched.
+- Added shared `src/modules/order-intake/order-intake.client.ts` and `order-submission.client.ts`; `/orders/new` delegates the three submission modes without changing endpoints or payloads. Seven focused client tests cover normalization and each submission contract.
+- Extracted `QuoteWizardProgress.tsx`, `OrderHeaderEditor.tsx`, `orders.header.service.ts`, and `orders.files.service.ts`. Existing page/service entry points remain compatible and retain orchestration/transaction behavior.
+- Applied corresponding edits under `.tmp-server-implementation-20260903`; preserved `.tmp-server-predeploy-20260903` as the pristine production comparison. The production-derived order page includes Business editing while the older local page does not, and each controlled component intentionally preserves its tree's existing contract.
+- Gates: TypeScript PASS; focused ESLint PASS; workflow Vitest PASS (10 files / 85 tests); build PASS (65 pages and standalone assets); `git diff --check` PASS. No deploy, dependency, schema, config, or data mutation.
+- Next: extract repeat/direct prefill hooks and quote customer/parts sections, then order part/workflow panels; split order create/query/parts/workflow/time and repository families one at a time with compatibility exports and focused gates.
+## Session Handoff — 2026-09-03 (Order/quote decomposition continuation)
+- Continued from the exact production-derived staging baseline; `.tmp-server-predeploy-20260903` remains pristine and production was not changed.
+- Intake: added `order-prefill.client.ts` and tests. `/orders/new` still owns abort/retry/template-to-form mapping and submission gating.
+- Quote UI: added `NewQuoteCustomerDialog.tsx`, `QuoteCustomerContactFields.tsx`, and `QuotePartEntryChooser.tsx`; the editor owns fetch/save/autosave/import state. Production-derived wording for global saved-part search remains preserved separately from older local wording.
+- Order UI: added `SelectedPartEditor.tsx`; the page owns PATCH/POST/DELETE calls, delete confirmation, reloads, and toasts. Existing `OrderHeaderEditor.tsx` remains the header boundary.
+- Order domain: added `orders.events.service.ts`, expanded `orders.files.service.ts` to own attachment CRUD/canonicalization, and added `orders.files.repo.ts` for ten Prisma attachment functions. Root service/repo files re-export for compatibility; `@/repos/orders` still controls TEST_MODE mock selection.
+- Evidence: `npx tsc --noEmit`; focused ESLint zero output; combined Vitest 17 files / 103 tests including order graph/contact/quote conversion and attachment access; `npm run build` 65 pages plus standalone assets; `git diff --check`. No dependency, schema, config, data, or production mutation.
+- Next: extract remaining quote/customer/drawing/manual subpanels and quote-prefill mapping, then order checklist/timer/assignment panels and one service/repository family per verified patch.
+## Session Handoff — 2026-09-03 (Order/quote decomposition continuation 2)
+- Used parallel, non-overlapping ownership for quote parts UI, order assignment UI, and charge service/repo while the main agent extracted quote-to-order prefill. All edits were applied locally and to `.tmp-server-implementation-20260903`; pristine `.tmp-server-predeploy-20260903` and production remain unchanged.
+- Added `order-quote-prefill.client.ts` plus three tests. `/orders/new` applies the mapped state and retains load-error UI/gating; source part IDs, first-part legacy selections, work instructions, dimensions, contact and add-on snapshots are preserved.
+- Added `QuoteManualPartsPanel.tsx` and `PartWorkerAssignmentsPanel.tsx`. These are controlled presentation boundaries; API/import/autosave/permission/refresh/toast orchestration stays in their pages.
+- Added `orders.charges.service.ts` and `orders.charges.repo.ts`. `orders.service.ts` keeps public wrappers and injects workflow callbacks to avoid a cycle; `orders.repo.ts` re-exports six moved Prisma functions, leaving `src/repos/orders.ts` and mock repositories unchanged.
+- Evidence: `npx tsc --noEmit`; focused ESLint zero output; combined Vitest 18 files / 106 tests; `npm run build` 65 pages plus standalone assets; `git diff --check`. No dependency, schema, config, data, or deployment change.
+- Remaining decomposition: quote drawing/customer/business/custom-field shells; direct/repeat order-form panels; order checklist/timer/workflow UI; create/query/parts/workflow/time service and repository families. Continue one family per verified patch.
+
+## Session Handoff — 2026-09-03 (Order/quote decomposition continuation 3)
+- Scope completed locally and in `.tmp-server-implementation-20260903`; production and pristine `.tmp-server-predeploy-20260903` remain unchanged. Parallel owners handled quote identity/custom fields, order checklist presentation, and the order-part service/repo family; the main agent extracted the shared new-order quick-add customer dialog and ran combined gates.
+- UI files added: `src/app/admin/quotes/QuoteGeneralInformationCard.tsx`, `QuoteCustomIntakeFieldsCard.tsx`, `src/app/orders/new/NewOrderCustomerDialog.tsx`, and `src/app/orders/[id]/OrderChecklistPanel.tsx`, with corresponding coordinator edits and matching staging files. All are controlled presentation boundaries; network, persistence, autosave, mode/permission, confirmation, refresh, and toast decisions remain in the parent coordinators.
+- Domain files added: `src/modules/orders/orders.parts.service.ts`, `orders.parts.repo.ts`, and `src/modules/orders/__tests__/orders.parts.service.test.ts`. Root service/repo compatibility exports and the `src/repos/orders.ts` real/mock facade remain. The service injects workflow/department callbacks to avoid cycles; the repo retains atomic charge-copy and relation-delete transactions.
+- Evidence: TypeScript PASS; focused local/staging ESLint PASS; 19 files / 109 focused workflow, command, atomicity, conversion, and attachment-security tests PASS; local build PASS (65 pages and standalone asset copy); production-derived staged build PASS (66 pages); new boundary hashes match local/staging; no staging cross-tree source imports; `git diff --check` PASS.
+- The first staged build failed before application compilation because the source-only download omitted production `tailwind.config.cjs`, `postcss.config.cjs`, `next.config.js`, and the standalone copy script. These were downloaded read-only from `C:\ShopApp\app`; the next staged build passed. This did not modify production.
+- Next safe boundaries: new-order main header/contact fields, quote drawing-import shell sections, order timer/workflow panels, or order query/workflow/time service/repository families. Continue one family at a time and do not deploy until the owner separately requests it.
+
+## Session Handoff — 2026-09-03 (Order/quote decomposition completion push)
+- Finished all safe remaining boundaries locally and in `.tmp-server-implementation-20260903`; `.tmp-server-predeploy-20260903` and production remain unchanged. Parallel agents owned non-overlapping quote, new-order, order-detail, and order-domain slices.
+- Quote additions: `QuoteDrawingEntryPanel`, `QuotePurchasedItemsCard`, `QuoteAttachmentsCard`, `QuoteTotalsSummaryCard`, `QuoteBuildDetailsCards`, `QuoteRoutingCard`, `QuoteCustomAmountsCard`, and `QuoteMaterialCheckPanel`. New-order additions: `NewOrderInfoCards`, `NewOrderPartEntryChooser`, `NewOrderDrawingEntryPanel`, `NewOrderPartsEditor`, `NewOrderReviewSummaryCards`, `NewOrderAttachmentsCard`, `NewOrderLaunchNotesCard`, `NewOrderSubmitCard`, and `NewOrderWizardControls`. Order-detail additions: `OrderOverviewPanels`, `OrderFilesPanels`, `OrderActivityPanel`, `OrderTimerConsole`, and `OrderStatusChangeDialog`.
+- Domain additions: `orders.create.service/repo`, `orders.query.service/repo`, and status-only `orders.workflow.service/repo`, with focused service tests and root compatibility exports. Final sizes: QuoteEditor 2,480; new-order page 1,271 local / 1,272 staged; order detail 3,186 local / 3,225 staged; root order service 1,236; root order repo 947.
+- Residual architecture is explicit: quote work-plan persistence plus final pricing require a typed pricing controller; checklist/department/part-completion/time-adjustment behavior requires a typed lifecycle contract with transaction-order tests. Do not mechanically move these blocks through root callbacks or into UI components. Remaining high-coupling order dialogs should follow focused action hooks.
+- Evidence: TypeScript PASS; focused local/staged ESLint PASS; combined Vitest PASS (43 files / 205 tests); local build PASS (65 pages); production-derived staged build PASS (66 pages); local/staged boundary hashes and cross-tree import scan PASS; `git diff --check` PASS. No deploy, dependency, schema, data, task, monitor, or runtime mutation. Browser smoke remains part of the later deployment gate because staged code is not running.
+## Session Handoff — 2026-09-03 (Local synchronization and Chrome regression)
+
+- Goal completed without deploying: read-only SSH proved the live 435-file source tree matches `.tmp-server-predeploy-20260903` byte-for-byte. The reviewed `.tmp-server-implementation-20260903` source is running locally at `http://127.0.0.1:3100` against `.tmp/local-browser-regression-20260903/shopapp-test.db` and isolated storage. Leave production untouched unless the owner separately authorizes deployment.
+- Chrome covered quote `030926-001`, conversion order `STD-1010`, direct order `STD-1011`, repeat-order prefill and orders `STD-1012`/`STD-1014`, order editing/reload, all detail tabs, status gating, timer presentation, and the Shop Floor part material-status dialog. Direct isolated-DB checks confirmed source quote, customer/contact, due date, edited PO/name, quantities, charges, checklist, and attachment persistence. Browser console errors were empty.
+- Drawing V2 job `cmtljpdsu005o3w5to4s96hg6` completed `READY_FOR_REVIEW` in 54,586 ms. AI resolution was 48,862 ms (89.5%), with 6,176 input tokens, no cached input, 5,940 output tokens, and 5,245 reasoning tokens. Prioritize lower-reasoning/compact-output benchmarks, stable prompt caching, and preserved stage telemetry before changing production defaults.
+- Found and fixed a local-only sync regression: Shop Floor material-status controls were missing from the overlapping workstation component/projection/type files. Exact server hunks were merged and the characterization passes. The live/staged server already retained this behavior.
+- Known data issue: repeat template `STD-1005` references a PDF absent both locally and on production. A seeded isolated fixture copied correctly after the copied DB's `AppSettings.attachmentsDir` was pointed at isolated storage. Repair the production template/source file only with explicit data-change authorization.
+- Chrome UI file upload was not executable because the ChatGPT Chrome extension lacks **Allow access to file URLs**. The supplied JPEG passed through the exact local backend route instead. Enable that extension permission before claiming a Chrome upload pass.
+- Verification: root/staged TypeScript PASS; focused ESLint PASS; workflow suite 43 files / 205 tests PASS; Shop Floor regression 6/6 PASS; root build 65 pages PASS; staged build 66 pages PASS; local health PASS. The staged standalone launch failure is specific to the selectively mirrored dependency layout; normal root standalone packaging succeeds.
+## Session Handoff — 2026-09-03 (Drawing AI verbosity control)
+
+- Drawing Import now validates `DRAWING_IMPORT_V2_VERBOSITY` as `low | medium | high`, defaults to `low`, and sends the value through Responses API `text.verbosity` beside the existing strict JSON schema.
+- Normal Terra extraction and focused Terra refinement default to `medium` reasoning. The isolated local server-derived runtime is explicitly running `admin_beta` V3, medium/medium reasoning, and low verbosity at `http://127.0.0.1:3100`; its availability endpoint returns enabled and Chrome shows the import panel. Production configuration and runtime are untouched.
+- Gates: root drawing-AI 15/15 PASS; staged drawing-AI 16/16 PASS; root/staged TypeScript PASS; focused ESLint PASS; root 65-page build PASS; health PASS. Use directory-scoped Vitest because archival `.tmp` trees contain intentionally stale/incomplete suites.
+## Session Handoff — 2026-09-03 (Current importer settings; verification blocked)
+- User requested AI settings parity while retaining Use current importer appearance. Implemented in root and authoritative .tmp-server-implementation-20260903, not production. Shared new drawing-import-ai-request.ts reads existing validated V2 AI config; legacy service spreads model/reasoning/verbosity/max_output_tokens and rejects incomplete results. Root active temperature override removed; inactive root image-worker helper unchanged. Staged extractTitleBlock exported for regression coverage.
+- UI, legacy prompt/json_object schema, PDF preparation, routing, storage and review mapping unchanged. Same model knobs as Playground, NOT the same strict V3 schema or direct-PDF input. Local existing profile still low/medium/concise/standard with gpt-5.4-mini and 10k. No new runtime launch/restart or production operation.
+- Touched application files in each tree: src/modules/drawing-import/drawing-import.service.ts; new drawing-import-ai-request.ts and __tests__/drawing-import-ai-request.test.ts. Added 16 tests each for actual PDF/photo request settings, legacy fields and routing, photo cleanup, output-cap/empty/invalid failures and no-key manual fallback. Tests use fake OpenAI and no network.
+- Commands PASS: node node_modules/typescript/bin/tsc --noEmit and staged ../node_modules equivalent; targeted eslint for those three files in both trees; UI SHA256 before/after unchanged. BLOCKED: Vitest --dir src/modules/drawing-import/__tests__ (both trees) cannot spawn esbuild in sandbox; root elevated retry rejected by approval-service 404. Chrome local quote navigation similarly rejected. No live inference, browser regression, build or successful test-run claim this session.
+- Next: after approval service recovers or explicit informed owner approval, rerun focused legacy and AI suites in both trees, then test the current-importer button and a local upload. Do not bypass denials via alternate browser/HTTP/test mechanisms. Local launcher remains start-local.cjs on 127.0.0.1:3100 with isolated data/storage; do not deploy or start a duplicate listener.
+- Separate finding from existing runtime log: V3 import PJ-10904-W5500.pdf failed missing PDF.js standard-font directory. Logged in progress; investigate separately, do not conflate with legacy model settings.

@@ -52,8 +52,10 @@ export default async function MaterialCheckPrintPage({ params }: { params: Promi
             <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
               <p><strong>Matched material:</strong> {part.material?.name || 'Not matched'}</p>
               <p><strong>Drawing says:</strong> {part.drawingMaterialText || 'Not shown'}</p>
-              <p><strong>Stock size:</strong> {part.stockSize || 'Not shown'}</p>
+              <p><strong>Total stock dimensions:</strong> {part.stockSize || 'Not shown'}</p>
               <p><strong>Cut length:</strong> {part.cutLength || 'Not shown'}</p>
+              <p><strong>Finished thickness:</strong> {part.partThickness || 'Not shown'}</p>
+              <p><strong>Finished width:</strong> {part.partWidth || 'Not shown'}</p>
               <p className="col-span-2"><strong>Finish:</strong> {part.finish || part.drawingFinishText || 'Not shown'}</p>
               <p className="col-span-2 min-h-8"><strong>Part note:</strong> {part.notes || '________________________________________________________________'}</p>
             </div>

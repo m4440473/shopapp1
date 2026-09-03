@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const repeatOrdersRepo = vi.hoisted(() => ({
   findOrderTemplateSource: vi.fn(),
   createRepeatOrderTemplate: vi.fn(),
+  findRepeatOrderTemplateBySourcePart: vi.fn(),
   listRepeatOrderTemplates: vi.fn(),
   findRepeatOrderTemplateById: vi.fn(),
+  findRepeatOrderCustomer: vi.fn(),
   createOrderFromRepeatTemplate: vi.fn(),
 }));
 
@@ -23,6 +25,7 @@ describe('repeat-orders.service', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    repeatOrdersRepo.findRepeatOrderCustomer.mockResolvedValue({ id: 'customer_1' });
 
     ordersService.generateNextOrderNumber.mockResolvedValue('STD-2001');
     ordersService.syncChecklistForOrder.mockResolvedValue({ ok: true, data: { ok: true } });
@@ -52,6 +55,8 @@ describe('repeat-orders.service', () => {
           materialId: 'material_1',
           stockSize: '1 x 2',
           cutLength: '10',
+          partWidth: '2',
+          partThickness: '1',
           notes: 'repeat me',
           workInstructions: 'hold tight',
           instructionsVersion: 3,
@@ -117,6 +122,93 @@ describe('repeat-orders.service', () => {
         notes: null,
       }),
     );
+    expect(repeatOrdersRepo.createRepeatOrderTemplate.mock.calls[0][0].parts[0]).toMatchObject({ partWidth: '2', partThickness: '1' });
+  });
+
+  it('creates one customer-part template and reuses it from the source order', async () => {
+    repeatOrdersRepo.findOrderTemplateSource.mockResolvedValue({
+      id: 'order_1',
+      orderNumber: 'STD-1010',
+      customerId: 'customer_1',
+      customer: { id: 'customer_1', name: 'Acme' },
+      business: 'STD',
+      vendorId: null,
+      materialNeeded: false,
+      materialOrdered: false,
+      modelIncluded: false,
+      priority: 'NORMAL',
+      parts: [
+        {
+          id: 'part_1',
+          partNumber: 'AB-207',
+          partName: 'Drive plate',
+          quantity: 12,
+          materialId: null,
+          stockSize: null,
+          cutLength: null,
+          notes: null,
+          workInstructions: 'Use proven setup.',
+          instructionsVersion: 2,
+          charges: [],
+          attachments: [],
+        },
+        {
+          id: 'part_2',
+          partNumber: 'OTHER-1',
+          quantity: 3,
+          charges: [],
+          attachments: [],
+        },
+      ],
+      attachments: [],
+    });
+    repeatOrdersRepo.findRepeatOrderTemplateBySourcePart.mockResolvedValue(null);
+    repeatOrdersRepo.createRepeatOrderTemplate.mockImplementation(async (input) => ({
+      id: 'template_part_1',
+      customerId: input.customerId,
+      customer: { id: input.customerId, name: 'Acme' },
+      sourceOrderId: input.sourceOrderId,
+      sourcePartId: input.sourcePartId,
+      sourceOrder: { id: input.sourceOrderId, orderNumber: 'STD-1010' },
+      name: input.name,
+      business: input.business,
+      priority: input.priority,
+      createdAt: new Date('2026-08-24T12:00:00Z'),
+      updatedAt: new Date('2026-08-24T12:00:00Z'),
+      parts: input.parts.map((part, index) => ({ id: `saved_part_${index}`, ...part })),
+    }));
+
+    const { snapshotRepeatOrderTemplateFromOrder } = await import('../repeat-orders.service');
+    const created = await snapshotRepeatOrderTemplateFromOrder('order_1', { partId: 'part_1' }, 'user_1');
+
+    expect(created.ok).toBe(true);
+    expect(repeatOrdersRepo.createRepeatOrderTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourcePartId: 'part_1',
+        name: 'Acme - AB-207 - Drive plate',
+        parts: [expect.objectContaining({ partNumber: 'AB-207', quantity: 12 })],
+      }),
+    );
+
+    repeatOrdersRepo.findRepeatOrderTemplateBySourcePart.mockResolvedValue({
+      id: 'template_part_1',
+      customerId: 'customer_1',
+      customer: { name: 'Acme' },
+      sourceOrderId: 'order_1',
+      sourcePartId: 'part_1',
+      sourceOrder: { orderNumber: 'STD-1010' },
+      name: 'Acme - AB-207 - Drive plate',
+      business: 'STD',
+      priority: 'NORMAL',
+      createdAt: new Date('2026-08-24T12:00:00Z'),
+      updatedAt: new Date('2026-08-24T12:00:00Z'),
+      parts: [{ id: 'saved_part_1', partNumber: 'AB-207', partName: 'Drive plate' }],
+    });
+    repeatOrdersRepo.createRepeatOrderTemplate.mockClear();
+
+    const reused = await snapshotRepeatOrderTemplateFromOrder('order_1', { partId: 'part_1' }, 'user_1');
+    expect(reused).toMatchObject({ ok: true, data: { created: false, template: { id: 'template_part_1' } } });
+    expect(repeatOrdersRepo.createRepeatOrderTemplate).not.toHaveBeenCalled();
   });
 
   it('rejects unknown template part overrides', async () => {

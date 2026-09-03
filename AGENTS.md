@@ -23,15 +23,25 @@ Build a shop operations app that is:
    - Services do NOT import React.
 4) Prefer composition over cleverness. Readability beats “smart.”
 5) Update continuity docs every session so context persists.
+6) Keep `docs/ARCHITECTURE.md` synchronized whenever domain ownership, primary paths, routes, persistence, auth, storage, AI boundaries, or production topology changes.
 
 ## Before You Start (Required Reading)
 
-Read these files before writing code:
-- docs/AGENT_CONTEXT.md (priorities + invariants + decision log)
-- PROGRESS_LOG.md (what was last done and what’s next)
-- docs/AGENT_HANDOFF.md (what you must update before you stop)
+Always read, in this order:
+- `AGENTS.md` (this operating guide)
+- `CANON.md` (product/business truth)
+- `ROADMAP.md` (approved direction)
+- `docs/ARCHITECTURE.md` (compressed current implementation map)
+- `tasks/lessons.md` (anti-repeat rules from owner corrections)
 
-If any of these are missing or stale, fix them first.
+Then read only what the task requires:
+- the nearest subsystem `AGENTS.md`, if one exists;
+- relevant subsystem documentation;
+- targeted `docs/AGENT_CONTEXT.md` decision-log entries;
+- recent relevant `PROGRESS_LOG.md` entries;
+- the current relevant section of `docs/AGENT_HANDOFF.md`.
+
+Do not read entire chronological context, progress, or handoff files by default. Search them for the affected subsystem, decision, date, or path. If `docs/ARCHITECTURE.md` is missing or stale for the area being changed, update it as part of the task.
 
 ## Working Style
 

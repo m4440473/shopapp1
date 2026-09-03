@@ -8,6 +8,7 @@ import { canAccessAdmin } from '@/lib/rbac';
 import { QuoteCreate } from '@/modules/quotes/quotes.schema';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 import { hasCustomFieldValue, parseCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
+import { resolveCustomerContactSnapshot } from '@/modules/customers/customers.service';
 import {
   deleteQuoteById,
   findActiveQuoteCustomFields,
@@ -88,9 +89,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return new NextResponse('Not found', { status: 404 });
   }
 
+  let data = parsed.data;
+  if (data.customerContactId) {
+    if (!data.customerId) {
+      return NextResponse.json({ error: 'Select a customer before selecting a contact.' }, { status: 400 });
+    }
+    try {
+      const snapshot = await resolveCustomerContactSnapshot(data.customerId, data.customerContactId);
+      data = { ...data, ...snapshot };
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Invalid customer contact.' },
+        { status: 400 },
+      );
+    }
+  }
+
   let prepared;
   try {
-    prepared = await prepareQuoteComponents(parsed.data, {
+    prepared = await prepareQuoteComponents(data, {
       existingQuoteNumber: existing.quoteNumber,
       existingWorkStepSnapshots: existing.addonSelections,
     });
@@ -102,21 +119,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const existingMetadata = parseQuoteMetadata(existing.metadata) ?? DEFAULT_QUOTE_METADATA;
   const nextMetadata = {
     ...existingMetadata,
-    originDepartmentId: parsed.data.originDepartmentId ?? null,
+    originDepartmentId: data.originDepartmentId ?? null,
     partPricing: prepared.partPricing,
-    customAmounts: parsed.data.customAmounts
-      ? parsed.data.customAmounts.map((entry) => ({
+    customAmounts: data.customAmounts
+      ? data.customAmounts.map((entry) => ({
           title: entry.title,
           amountCents: entry.amountCents ?? 0,
         }))
       : existingMetadata.customAmounts,
   };
 
-  const customFieldValues = parsed.data.customFieldValues ?? [];
+  const customFieldValues = data.customFieldValues ?? [];
   const validCustomFieldValues = customFieldValues.length
     ? await findActiveQuoteCustomFields({
         fieldIds: customFieldValues.map((value) => value.fieldId),
-        business: parsed.data.business,
+        business: data.business,
       })
     : [];
   const allowedFieldIds = new Set(validCustomFieldValues.map((field) => field.id));
@@ -130,7 +147,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const updated = await updateQuoteWithDetails({
     quoteId: id,
-    data: parsed.data,
+    data,
     prepared,
     normalizedCustomFieldValues,
     nextMetadata,

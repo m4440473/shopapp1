@@ -1,4 +1,5 @@
 import { normalizeSectionName, type TemplateLayout, type TemplateLayoutBlock } from '@/lib/document-template-layout';
+import { normalizeDocumentHeaderOptions, type DocumentHeaderOptions } from '@/lib/document-header';
 
 export type QuoteBlockType =
   | 'header'
@@ -8,6 +9,7 @@ export type QuoteBlockType =
   | 'part_pricing'
   | 'addons_labor'
   | 'requirements'
+  | 'disclaimer'
   | 'custom';
 
 export type QuotePricingBlockOptions = {
@@ -43,6 +45,11 @@ export type QuoteRequirementsBlockOptions = {
   showNotes: boolean;
 };
 
+export type QuoteDisclaimerBlockOptions = {
+  heading: string;
+  body: string;
+};
+
 export type QuoteRenderBlock = {
   id: string;
   type: QuoteBlockType;
@@ -50,10 +57,12 @@ export type QuoteRenderBlock = {
   visible: boolean;
   order: number;
   variant: 'standard' | 'compact';
+  headerOptions?: DocumentHeaderOptions;
   pricingOptions?: QuotePricingBlockOptions;
   scopeOptions?: QuoteScopeBlockOptions;
   addonsOptions?: QuoteAddonsBlockOptions;
   requirementsOptions?: QuoteRequirementsBlockOptions;
+  disclaimerOptions?: QuoteDisclaimerBlockOptions;
 };
 
 export const DEFAULT_QUOTE_PRICING_OPTIONS: QuotePricingBlockOptions = {
@@ -89,6 +98,11 @@ export const DEFAULT_QUOTE_REQUIREMENTS_OPTIONS: QuoteRequirementsBlockOptions =
   showNotes: true,
 };
 
+export const DEFAULT_QUOTE_DISCLAIMER_OPTIONS: QuoteDisclaimerBlockOptions = {
+  heading: 'PLEASE NOTE:',
+  body: 'Prices and deliveries are valid for 30 days from the quote date.\nThank you for the opportunity to quote!',
+};
+
 function toQuoteBlockType(value: string): QuoteBlockType {
   const key = normalizeSectionName(value);
   if (key === 'header') return 'header';
@@ -100,6 +114,7 @@ function toQuoteBlockType(value: string): QuoteBlockType {
   if (key === 'requirements' || key === 'notes' || key === 'shipping' || key === 'notes requirements') {
     return 'requirements';
   }
+  if (key === 'disclaimer' || key === 'terms disclaimer') return 'disclaimer';
   return 'custom';
 }
 
@@ -148,7 +163,15 @@ function normalizeRequirementsOptions(options: unknown): QuoteRequirementsBlockO
   };
 }
 
-function fromBlock(block: TemplateLayoutBlock): QuoteRenderBlock {
+function normalizeDisclaimerOptions(options: unknown): QuoteDisclaimerBlockOptions {
+  const record = (options && typeof options === 'object' ? options : {}) as Record<string, unknown>;
+  return {
+    heading: typeof record.heading === 'string' ? record.heading.trim() : DEFAULT_QUOTE_DISCLAIMER_OPTIONS.heading,
+    body: typeof record.body === 'string' ? record.body.trim() : DEFAULT_QUOTE_DISCLAIMER_OPTIONS.body,
+  };
+}
+
+function fromBlock(block: TemplateLayoutBlock, businessCode?: string | null): QuoteRenderBlock {
   const type = toQuoteBlockType(block.type || block.label);
   return {
     id: block.id,
@@ -157,16 +180,18 @@ function fromBlock(block: TemplateLayoutBlock): QuoteRenderBlock {
     visible: block.visible !== false,
     order: block.order,
     variant: block.variant === 'compact' ? 'compact' : 'standard',
+    headerOptions: type === 'header' ? normalizeDocumentHeaderOptions(block.options, businessCode) : undefined,
     pricingOptions: type === 'part_pricing' ? normalizePricingOptions(block.options) : undefined,
     scopeOptions: type === 'scope' ? normalizeScopeOptions(block.options) : undefined,
     addonsOptions: type === 'addons_labor' ? normalizeAddonsOptions(block.options) : undefined,
     requirementsOptions: type === 'requirements' ? normalizeRequirementsOptions(block.options) : undefined,
+    disclaimerOptions: type === 'disclaimer' ? normalizeDisclaimerOptions(block.options) : undefined,
   };
 }
 
-export function buildQuoteRenderBlocks(layout: TemplateLayout): QuoteRenderBlock[] {
+export function buildQuoteRenderBlocks(layout: TemplateLayout, businessCode?: string | null): QuoteRenderBlock[] {
   if (layout.blocks.length > 0) {
-    return [...layout.blocks].sort((a, b) => a.order - b.order).map(fromBlock);
+    return [...layout.blocks].sort((a, b) => a.order - b.order).map((block) => fromBlock(block, businessCode));
   }
 
   return layout.sections.map((section, index) =>
@@ -177,6 +202,6 @@ export function buildQuoteRenderBlocks(layout: TemplateLayout): QuoteRenderBlock
       visible: true,
       order: index,
       variant: 'standard',
-    }),
+    }, businessCode),
   );
 }

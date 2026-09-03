@@ -7,21 +7,16 @@ import { useSession } from 'next-auth/react';
 import {
   ArrowRightLeft,
   CheckCircle2,
-  ClipboardList,
-  FileText,
-  ListChecks,
   PauseCircle,
   Play,
+  Printer,
   Square,
   Timer,
-  UserPlus,
-  Users,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
@@ -30,10 +25,21 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/Textarea';
 import { useToast } from '@/components/ui/Toast';
 import { PartBomTab } from './PartBomTab';
-import { PartLaborHistory } from '@/modules/time/PartLaborHistory';
+import { OrderHeaderEditor } from './OrderHeaderEditor';
+import { PART_MATERIAL_STATUS_OPTIONS, SelectedPartEditor } from './SelectedPartEditor';
+import { PartWorkerAssignmentsPanel } from './PartWorkerAssignmentsPanel';
+import { OrderChecklistPanel } from './OrderChecklistPanel';
+import { OrderActivityPanel } from './OrderActivityPanel';
+import { FullOrderFilesPanel, PART_ATTACHMENT_KINDS, PartNotesAndFilesPanel } from './OrderFilesPanels';
+import { PartInstructionsPanel, PartOverviewDetails } from './OrderOverviewPanels';
+import { OrderTimerConsole } from './OrderTimerConsole';
+import { OrderStatusChangeDialog } from './OrderStatusChangeDialog';
+import { findNextDepartmentWithOpenChecklist } from '@/modules/orders/department-routing';
 
 const PART_TABS = ['overview', 'notes', 'full-files', 'bom', 'checklist', 'log'] as const;
-const PART_ATTACHMENT_KINDS = ['DWG', 'STEP', 'PDF', 'PO', 'PRINT', 'IMAGE', 'OTHER'] as const;
+function formatPartMaterialStatus(value?: string | null) {
+  return PART_MATERIAL_STATUS_OPTIONS.find(([status]) => status === value)?.[1] ?? 'Not reviewed';
+}
 
 type PartTab = (typeof PART_TABS)[number];
 
@@ -56,6 +62,9 @@ type ConflictState = {
 };
 
 type SelectOption = { id: string; name: string };
+type CustomerOption = SelectOption & {
+  contacts: Array<{ id: string; name: string; email?: string | null; phone?: string | null }>;
+};
 type TeamUserOption = {
   id: string;
   name: string;
@@ -194,6 +203,7 @@ export default function OrderDetailPage() {
   const [activeTab, setActiveTab] = useState<PartTab>('overview');
   const [noteText, setNoteText] = useState('');
   const [canEditParts, setCanEditParts] = useState(false);
+  const [canEditOrderStatus, setCanEditOrderStatus] = useState(false);
   const [canUseTimerControls, setCanUseTimerControls] = useState(true);
   const [kioskSession, setKioskSession] = useState<any | null>(null);
   const [kioskSessionLoading, setKioskSessionLoading] = useState(false);
@@ -233,12 +243,22 @@ export default function OrderDetailPage() {
   const [checklistError, setChecklistError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [savingOrderDetails, setSavingOrderDetails] = useState(false);
+  const [prioritySaving, setPrioritySaving] = useState(false);
+  const [statusChangeDialog, setStatusChangeDialog] = useState({
+    open: false,
+    status: 'RECEIVED',
+    reason: '',
+    saving: false,
+    error: null as string | null,
+  });
   const [savingPartDetails, setSavingPartDetails] = useState(false);
+  const [materialStatusSaving, setMaterialStatusSaving] = useState(false);
   const [orderDraft, setOrderDraft] = useState({
+    business: '',
     customerId: '',
+    customerContactId: '',
     receivedDate: '',
     dueDate: '',
-    priority: 'NORMAL',
     vendorId: '',
     poNumber: '',
     assignedMachinistId: '',
@@ -251,12 +271,19 @@ export default function OrderDetailPage() {
     partName: '',
     quantity: 1,
     materialId: '',
+    materialStatus: 'UNREVIEWED',
+    procurementVendorId: '',
+    inventoryLocation: '',
+    materialNotes: '',
     stockSize: '',
     cutLength: '',
+    finalPartLength: '',
+    partWidth: '',
+    partThickness: '',
     notes: '',
     workInstructions: '',
   });
-  const [customers, setCustomers] = useState<SelectOption[]>([]);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [vendors, setVendors] = useState<SelectOption[]>([]);
   const [machinists, setMachinists] = useState<SelectOption[]>([]);
   const [materials, setMaterials] = useState<SelectOption[]>([]);
@@ -319,9 +346,10 @@ export default function OrderDetailPage() {
   );
   const defaultRepeatTemplateName = useMemo(() => {
     const customerName = typeof item?.customer?.name === 'string' ? item.customer.name.trim() : 'Customer';
-    const orderNumber = typeof item?.orderNumber === 'string' && item.orderNumber.trim().length ? ` - ${item.orderNumber}` : '';
-    return `${customerName}${orderNumber}`;
-  }, [item?.customer?.name, item?.orderNumber]);
+    const partNumber = typeof selectedPart?.partNumber === 'string' ? selectedPart.partNumber.trim() : 'Part';
+    const partName = typeof selectedPart?.partName === 'string' ? selectedPart.partName.trim() : '';
+    return `${customerName} - ${partNumber}${partName ? ` - ${partName}` : ''}`;
+  }, [item?.customer?.name, selectedPart?.partName, selectedPart?.partNumber]);
   const currentUser = session?.user as any;
   const currentUserId = typeof currentUser?.id === 'string' ? currentUser.id : '';
   const currentUserName =
@@ -402,20 +430,6 @@ export default function OrderDetailPage() {
     return items.filter((entry: any) => entry.isActive !== false && entry.partId === selectedPartId);
   }, [item?.checklist, selectedPartId]);
 
-  const checklistByDepartment = useMemo(() => {
-    const groups = new Map<string, { departmentId: string | null; departmentName: string; entries: any[] }>();
-    selectedChecklist.forEach((entry: any) => {
-      const departmentId = entry.departmentId ?? null;
-      const departmentName = entry.department?.name || (departmentId ? `Department ${departmentId}` : 'Unassigned Department');
-      const key = departmentId ?? '__none__';
-      if (!groups.has(key)) {
-        groups.set(key, { departmentId, departmentName, entries: [] });
-      }
-      groups.get(key)?.entries.push(entry);
-    });
-    return Array.from(groups.values());
-  }, [selectedChecklist]);
-
   const timerDepartments = useMemo(
     () => departments.filter((department) => department.name.trim().toLowerCase() !== 'shipping'),
     [departments]
@@ -444,6 +458,18 @@ export default function OrderDetailPage() {
         Math.max(1, Number(receipt?.instructionsVersion ?? 1)) === selectedPartInstructionsVersion,
     );
   }, [selectedPart?.instructionReceipts, selectedPartCurrentDepartmentId, selectedPartInstructionsVersion]);
+  const acknowledgedWorkerIds = useMemo(
+    () => new Set(selectedPartAcknowledgedReceipts.map((receipt: any) => receipt.userId)),
+    [selectedPartAcknowledgedReceipts],
+  );
+  const acknowledgedWorkers = useMemo(
+    () => timerWorkerOptions.filter((user) => acknowledgedWorkerIds.has(user.id)),
+    [acknowledgedWorkerIds, timerWorkerOptions],
+  );
+  const unacknowledgedWorkers = useMemo(
+    () => timerWorkerOptions.filter((user) => !acknowledgedWorkerIds.has(user.id)),
+    [acknowledgedWorkerIds, timerWorkerOptions],
+  );
 
   const selectedPartDepartmentHistory = useMemo(() => {
     if (!selectedPartId) return [];
@@ -576,6 +602,7 @@ export default function OrderDetailPage() {
           : []
       );
       setCanEditParts(Boolean(data?.permissions?.canEditParts));
+      setCanEditOrderStatus(Boolean(data?.permissions?.canEditOrderStatus));
       setCanUseTimerControls(Boolean(data?.permissions?.canUseTimerControls ?? true));
       setError(null);
       return data.item;
@@ -737,10 +764,11 @@ export default function OrderDetailPage() {
   useEffect(() => {
     if (!item) return;
     setOrderDraft({
+      business: item.business ?? '',
       customerId: item.customerId ?? '',
+      customerContactId: item.customerContactId ?? '',
       receivedDate: item.receivedDate ? String(item.receivedDate).slice(0, 10) : '',
       dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : '',
-      priority: item.priority ?? 'NORMAL',
       vendorId: item.vendorId ?? '',
       poNumber: item.poNumber ?? '',
       assignedMachinistId: item.assignedMachinistId ?? '',
@@ -757,8 +785,15 @@ export default function OrderDetailPage() {
       partName: selectedPart.partName ?? '',
       quantity: Number(selectedPart.quantity ?? 1),
       materialId: selectedPart.materialId ?? '',
+      materialStatus: selectedPart.materialStatus ?? 'UNREVIEWED',
+      procurementVendorId: selectedPart.procurementVendorId ?? '',
+      inventoryLocation: selectedPart.inventoryLocation ?? '',
+      materialNotes: selectedPart.materialNotes ?? '',
       stockSize: selectedPart.stockSize ?? '',
       cutLength: selectedPart.cutLength ?? '',
+      finalPartLength: selectedPart.finalPartLength ?? '',
+      partWidth: selectedPart.partWidth ?? '',
+      partThickness: selectedPart.partThickness ?? '',
       notes: selectedPart.notes ?? '',
       workInstructions: selectedPart.workInstructions ?? '',
     });
@@ -812,8 +847,27 @@ export default function OrderDetailPage() {
           .filter((entry: SelectOption) => entry.id.length > 0);
       };
 
+      const fetchCustomers = async (): Promise<CustomerOption[]> => {
+        const res = await fetch('/api/admin/customers?take=200', { credentials: 'include' });
+        if (!res.ok) return [];
+        const data = await res.json().catch(() => null);
+        const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        return items.map((entry: any) => ({
+          id: String(entry.id ?? ''),
+          name: String(entry.name ?? 'Unnamed'),
+          contacts: Array.isArray(entry.contacts)
+            ? entry.contacts.map((contact: any) => ({
+                id: String(contact.id ?? ''),
+                name: String(contact.name ?? contact.email ?? 'Unnamed contact'),
+                email: contact.email ?? null,
+                phone: contact.phone ?? null,
+              })).filter((contact: { id: string }) => contact.id.length > 0)
+            : [],
+        })).filter((entry: CustomerOption) => entry.id.length > 0);
+      };
+
       const [loadedCustomers, loadedVendors, loadedMachinists, loadedMaterials] = await Promise.all([
-        fetchOptions('/api/admin/customers?take=200'),
+        fetchCustomers(),
         fetchOptions('/api/admin/vendors?take=200'),
         fetchOptions('/api/admin/users?role=MACHINIST&take=200'),
         fetchOptions('/api/admin/materials?take=200'),
@@ -1470,8 +1524,87 @@ export default function OrderDetailPage() {
     });
   };
 
+  const handleMoveDepartment = async (): Promise<boolean> => {
+    if (!id || !selectedPartId) return false;
+    const destinationDepartmentId = moveDepartmentDialog.destinationDepartmentId;
+    const note = moveDepartmentDialog.note.trim();
+    if (!destinationDepartmentId) {
+      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'Choose a destination department.' }));
+      return false;
+    }
+    if (!note) {
+      setMoveDepartmentDialog((prev) => ({ ...prev, error: 'A note is required so this move is recorded clearly.' }));
+      return false;
+    }
+    if (activeOnSelected) {
+      setMoveDepartmentDialog((prev) => ({
+        ...prev,
+        error: 'Pause or finish every active employee timer before moving this part.',
+      }));
+      return false;
+    }
+
+    setTimerSaving(true);
+    setMoveDepartmentDialog((prev) => ({ ...prev, error: null }));
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/assign-department`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          partId: selectedPartId,
+          departmentId: destinationDepartmentId,
+          reasonCode: 'MANUAL_MOVE',
+          reasonText: note,
+        }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        const fieldMessage = payload?.error?.fieldErrors?.reasonText?.[0];
+        throw new Error(
+          typeof payload?.error === 'string'
+            ? payload.error
+            : typeof fieldMessage === 'string'
+              ? fieldMessage
+              : 'Failed to move department.',
+        );
+      }
+
+      const destination = manualMoveDepartments.find((department) => department.id === destinationDepartmentId);
+      await load();
+      await refreshTimerSummary();
+      await loadPartEvents();
+      setMoveDepartmentDialog({
+        open: false,
+        destinationDepartmentId: '',
+        note: '',
+        error: null,
+      });
+      toast.push(
+        selectedPartCurrentDepartmentId
+          ? `Part moved to ${destination?.name ?? 'the selected department'}.`
+          : `Part assigned to ${destination?.name ?? 'the selected department'}.`,
+        'success',
+      );
+      return true;
+    } catch (err: any) {
+      setMoveDepartmentDialog((prev) => ({
+        ...prev,
+        error: err?.message || 'Failed to move department.',
+      }));
+      return false;
+    } finally {
+      setTimerSaving(false);
+    }
+  };
+
   const handleBeginSubmitDepartmentComplete = async (): Promise<boolean> => {
     if (!id || !selectedPartId) return false;
+
+    if (departmentSubmitBlocker) {
+      setTimerError(departmentSubmitBlocker);
+      return false;
+    }
 
     const currentDepartmentId = selectedPart?.currentDepartmentId ?? '';
     const destinationDepartmentId = nextDepartmentOption?.id ?? currentDepartmentId;
@@ -1588,8 +1721,8 @@ export default function OrderDetailPage() {
   };
 
 
-  const handleSaveRepeatTemplate = async () => {
-    if (!id || !canEditParts) return;
+  const handleSaveRepeatTemplate = async ({ launch = false }: { launch?: boolean } = {}) => {
+    if (!id || !selectedPartId || !canEditParts) return;
     setRepeatTemplateSaving(true);
     setRepeatTemplateError(null);
     try {
@@ -1599,6 +1732,7 @@ export default function OrderDetailPage() {
         credentials: 'include',
         body: JSON.stringify({
           name: repeatTemplateName.trim() || undefined,
+          partId: selectedPartId,
         }),
       });
       if (!res.ok) {
@@ -1619,7 +1753,11 @@ export default function OrderDetailPage() {
           : null;
       setSavedRepeatTemplate(savedTemplate);
       setRepeatTemplateDialogOpen(false);
-      toast.push('Repeat-order template saved.', 'success');
+      if (launch && savedTemplate) {
+        router.push(`/orders/new?templateId=${savedTemplate.id}`);
+        return;
+      }
+      toast.push('Customer-part repeat template saved.', 'success');
     } catch (err: any) {
       const message = err?.message || 'Failed to save repeat-order template.';
       setRepeatTemplateError(message);
@@ -1634,10 +1772,11 @@ export default function OrderDetailPage() {
     setSavingOrderDetails(true);
     try {
       const payload: Record<string, unknown> = {
+        business: orderDraft.business || undefined,
         customerId: orderDraft.customerId || undefined,
+        customerContactId: orderDraft.customerContactId || null,
         receivedDate: orderDraft.receivedDate || undefined,
         dueDate: orderDraft.dueDate || undefined,
-        priority: orderDraft.priority,
         vendorId: orderDraft.vendorId || '',
         poNumber: orderDraft.poNumber || '',
         assignedMachinistId: orderDraft.assignedMachinistId || '',
@@ -1664,6 +1803,58 @@ export default function OrderDetailPage() {
     }
   };
 
+  const handlePriorityChange = async (priority: string) => {
+    if (!id || !canEditOrderStatus || prioritySaving || priority === item?.priority) return;
+    setPrioritySaving(true);
+    try {
+      const res = await fetch(`/api/orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ priority }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to update priority.');
+      }
+      setItem((current: any) => current ? { ...current, priority } : current);
+      toast.push(`Priority changed to ${priority}.`, 'success');
+    } catch (err: any) {
+      toast.push(err?.message || 'Failed to update priority.', 'error');
+    } finally {
+      setPrioritySaving(false);
+    }
+  };
+
+  const handleStatusChange = async () => {
+    if (!id || !canEditOrderStatus || statusChangeDialog.saving || !statusChangeDialog.reason.trim()) return;
+    setStatusChangeDialog((current) => ({ ...current, saving: true, error: null }));
+    try {
+      const res = await fetch(`/api/orders/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          status: statusChangeDialog.status,
+          reason: statusChangeDialog.reason.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to update order status.');
+      }
+      await load();
+      setStatusChangeDialog({ open: false, status: 'RECEIVED', reason: '', saving: false, error: null });
+      toast.push('Order status updated and recorded in history.', 'success');
+    } catch (err: any) {
+      setStatusChangeDialog((current) => ({
+        ...current,
+        saving: false,
+        error: err?.message || 'Failed to update order status.',
+      }));
+    }
+  };
+
   const handleSavePartDetails = async () => {
     if (!id || !selectedPartId || !canEditParts) return;
     setSavingPartDetails(true);
@@ -1673,8 +1864,15 @@ export default function OrderDetailPage() {
         partName: partDraft.partName || null,
         quantity: Number(partDraft.quantity),
         materialId: partDraft.materialId || null,
+        materialStatus: partDraft.materialStatus,
+        procurementVendorId: partDraft.procurementVendorId || null,
+        inventoryLocation: partDraft.inventoryLocation || null,
+        materialNotes: partDraft.materialNotes || null,
         stockSize: partDraft.stockSize || null,
         cutLength: partDraft.cutLength || null,
+        finalPartLength: partDraft.finalPartLength || null,
+        partWidth: partDraft.partWidth || null,
+        partThickness: partDraft.partThickness || null,
         notes: partDraft.notes || null,
         workInstructions: partDraft.workInstructions || null,
       };
@@ -1694,6 +1892,35 @@ export default function OrderDetailPage() {
       toast.push(err?.message || 'Failed to update part.', 'error');
     } finally {
       setSavingPartDetails(false);
+    }
+  };
+
+  const handleQuickMaterialStatusChange = async (materialStatus: string) => {
+    if (!id || !selectedPartId || !canEditParts || materialStatusSaving) return;
+    setMaterialStatusSaving(true);
+    try {
+      const res = await fetch(`/api/orders/${id}/parts/${selectedPartId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ materialStatus }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to update material status.');
+      }
+      setItem((current: any) => current ? {
+        ...current,
+        parts: (current.parts ?? []).map((part: any) => (
+          part.id === selectedPartId ? { ...part, ...(body?.part ?? {}), materialStatus } : part
+        )),
+      } : current);
+      setPartDraft((current) => ({ ...current, materialStatus }));
+      toast.push(`Material status changed to ${formatPartMaterialStatus(materialStatus)}.`, 'success');
+    } catch (err: any) {
+      toast.push(err?.message || 'Failed to update material status.', 'error');
+    } finally {
+      setMaterialStatusSaving(false);
     }
   };
 
@@ -2018,7 +2245,9 @@ export default function OrderDetailPage() {
   }
 
   const orderTitle = `Order ${item.orderNumber}`;
-  const dueDateLabel = item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'TBD';
+  const dueDateLabel = item.dueDate
+    ? new Date(item.dueDate).toLocaleDateString(undefined, { timeZone: 'UTC' })
+    : 'TBD';
   const statusLabel = item.status
     ? String(item.status)
         .toLowerCase()
@@ -2055,13 +2284,33 @@ export default function OrderDetailPage() {
   const kioskHelperLabel = kioskDefaultDepartmentName
     ? `Choose a worker, choose a department, and enter that worker's PIN to time this order. ${kioskDefaultDepartmentName} is the current default department for the selected worker.`
     : 'Choose a worker, choose a department, and enter that worker\'s PIN to time this order.';
-  const selectedCurrentDepartmentIndex = selectedCurrentDepartment
-    ? manualMoveDepartments.findIndex((department) => department.id === selectedCurrentDepartment.id)
-    : -1;
+  const currentDepartmentChecklistItems = selectedChecklist.filter(
+    (entry: any) =>
+      entry.isActive !== false && entry.departmentId === selectedPartCurrentDepartmentId,
+  );
+  const currentDepartmentOpenItemCount = currentDepartmentChecklistItems.filter(
+    (entry: any) => entry.completed === false,
+  ).length;
+  const nextDepartmentId = findNextDepartmentWithOpenChecklist(selectedChecklist, manualMoveDepartments);
   const nextDepartmentOption =
-    selectedCurrentDepartmentIndex >= 0
-      ? manualMoveDepartments[selectedCurrentDepartmentIndex + 1] ?? null
-      : manualMoveDepartments[0] ?? null;
+    currentDepartmentChecklistItems.length > 0 && currentDepartmentOpenItemCount === 0
+      ? manualMoveDepartments.find((department) => department.id === nextDepartmentId) ?? null
+      : null;
+  const departmentCompletionPreview = !currentDepartmentChecklistItems.length
+    ? 'Cannot submit: this department has no checklist items.'
+    : currentDepartmentOpenItemCount > 0
+      ? `Finish ${currentDepartmentOpenItemCount} open checklist item${currentDepartmentOpenItemCount === 1 ? '' : 's'} first.`
+      : nextDepartmentOption
+        ? `Move to ${nextDepartmentOption.name}`
+        : 'Mark the part complete';
+  const departmentSubmitBlocker = activeOnSelected
+    ? 'Pause or finish every active employee timer before submitting this department complete.'
+    : !currentDepartmentChecklistItems.length
+      ? 'This department cannot be submitted because it has no checklist items. Use Move department if the part needs to go elsewhere.'
+      : currentDepartmentOpenItemCount > 0
+        ? `Complete ${currentDepartmentOpenItemCount} remaining checklist item${currentDepartmentOpenItemCount === 1 ? '' : 's'} before submitting this department.`
+        : null;
+  const canSubmitCurrentDepartment = Boolean(selectedPartCurrentDepartmentId) && !departmentSubmitBlocker;
   const canMarkPartComplete = (selectedCurrentDepartment?.name ?? '').trim().toLowerCase() === 'shipping';
   const canStartSelectedPartTimer =
     selectedPart?.status !== 'COMPLETE' &&
@@ -2071,7 +2320,7 @@ export default function OrderDetailPage() {
     : 'New timers are unavailable after a part reaches Shipping or is complete. Existing timers can still be paused or finished above.';
 
   return (
-    <div className="space-y-6">
+    <div className="order-detail-page -mt-4 space-y-4 sm:mt-0 sm:space-y-6">
       <Dialog open={conflictState.open} onOpenChange={(open) => setConflictState((prev) => ({ ...prev, open }))}>
         <DialogContent>
           <DialogHeader>
@@ -2243,6 +2492,13 @@ export default function OrderDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <OrderStatusChangeDialog
+        state={statusChangeDialog}
+        currentStatus={item?.status ?? 'RECEIVED'}
+        onChange={setStatusChangeDialog}
+        onSave={() => void handleStatusChange()}
+      />
+
       <Dialog
         open={repeatTemplateDialogOpen}
         onOpenChange={(open) => {
@@ -2252,9 +2508,9 @@ export default function OrderDetailPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Save as repeat template</DialogTitle>
+            <DialogTitle>Save customer-part repeat template</DialogTitle>
             <DialogDescription>
-              Freeze this order&apos;s parts, charges, files, and instructions so the next reorder starts from a trusted template.
+              Save the selected part&apos;s manufacturing definition for this customer. This is not a document layout or a generic order format.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -2271,8 +2527,9 @@ export default function OrderDetailPage() {
               />
             </div>
             <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm text-muted-foreground">
-              Source order <span className="font-medium text-foreground">#{item.orderNumber}</span> for{' '}
-              <span className="font-medium text-foreground">{item.customer?.name ?? 'this customer'}</span>.
+              <span className="font-medium text-foreground">{selectedPart?.partNumber ?? 'Selected part'}</span> for{' '}
+              <span className="font-medium text-foreground">{item.customer?.name ?? 'this customer'}</span>, sourced from order{' '}
+              <span className="font-medium text-foreground">#{item.orderNumber}</span>.
             </div>
             {repeatTemplateError ? (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -2289,7 +2546,7 @@ export default function OrderDetailPage() {
             >
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleSaveRepeatTemplate()} disabled={repeatTemplateSaving}>
+            <Button type="button" onClick={() => void handleSaveRepeatTemplate()} disabled={repeatTemplateSaving || !selectedPartId}>
               {repeatTemplateSaving ? 'Saving...' : 'Save template'}
             </Button>
           </DialogFooter>
@@ -2305,9 +2562,14 @@ export default function OrderDetailPage() {
           }))
         }
       >
-        <DialogContent>
+        <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Submit {selectedCurrentDepartment?.name ?? 'department'} complete</DialogTitle>
+            <DialogTitle>{selectedPartCurrentDepartmentId ? 'Move department' : 'Assign department'}</DialogTitle>
+            <DialogDescription>
+              {selectedPartCurrentDepartmentId
+                ? 'Move this part without marking the current department complete. The destination and note are recorded in the part log.'
+                : 'Choose the starting department for this part. The assignment and note are recorded in the part log.'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm">
@@ -2316,19 +2578,48 @@ export default function OrderDetailPage() {
                 {selectedCurrentDepartment?.name ?? selectedPart?.currentDepartmentId ?? 'Unassigned'}
               </div>
             </div>
-            <div className="rounded-md border border-border/60 bg-background/70 px-3 py-3 text-sm">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                What happens next
-              </div>
-              <div className="mt-1 font-semibold text-foreground">
-                {nextDepartmentOption
-                  ? `Move to ${nextDepartmentOption.name}`
-                  : 'Mark the part complete'}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Every checklist item must be complete and all employee timers must be paused or finished.
+            <div className="grid gap-2">
+              <Label htmlFor="move-department-destination">Destination department</Label>
+              <Select
+                value={moveDepartmentDialog.destinationDepartmentId}
+                onValueChange={(destinationDepartmentId) =>
+                  setMoveDepartmentDialog((prev) => ({ ...prev, destinationDepartmentId, error: null }))
+                }
+              >
+                <SelectTrigger id="move-department-destination">
+                  <SelectValue placeholder="Choose a department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {submitDestinationOptions.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="move-department-note">
+                {selectedPartCurrentDepartmentId ? 'Reason for move' : 'Reason for assignment'}
+              </Label>
+              <Textarea
+                id="move-department-note"
+                value={moveDepartmentDialog.note}
+                onChange={(event) =>
+                  setMoveDepartmentDialog((prev) => ({ ...prev, note: event.target.value, error: null }))
+                }
+                placeholder={selectedPartCurrentDepartmentId ? 'Why is this part moving departments?' : 'Why is this the correct starting department?'}
+                rows={3}
+              />
+              <div className="text-xs text-muted-foreground">
+                Required for the audit log. Moving backward is automatically flagged as rework.
               </div>
             </div>
+            {activeOnSelected ? (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                Pause or finish every active employee timer before moving this part.
+              </div>
+            ) : null}
             {moveDepartmentDialog.error ? (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                 {moveDepartmentDialog.error}
@@ -2350,8 +2641,19 @@ export default function OrderDetailPage() {
             >
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleBeginSubmitDepartmentComplete()} disabled={timerSaving}>
-              {timerSaving ? 'Reviewing…' : `Review ${selectedCurrentDepartment?.name ?? 'department'} completion`}
+            <Button
+              type="button"
+              onClick={() => void handleMoveDepartment()}
+              disabled={
+                timerSaving ||
+                activeOnSelected ||
+                !moveDepartmentDialog.destinationDepartmentId ||
+                !moveDepartmentDialog.note.trim()
+              }
+            >
+              {timerSaving
+                ? (selectedPartCurrentDepartmentId ? 'Moving…' : 'Assigning…')
+                : (selectedPartCurrentDepartmentId ? 'Move department' : 'Assign department')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2561,7 +2863,7 @@ export default function OrderDetailPage() {
             <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-sm">
               <div className="text-xs uppercase tracking-wide text-muted-foreground">Next production state</div>
               <div className="font-medium text-foreground">
-                {nextDepartmentOption ? `Move to ${nextDepartmentOption.name}` : 'Mark the part complete'}
+                {departmentCompletionPreview}
               </div>
             </div>
             {submitConfirmDialog.error ? (
@@ -2581,20 +2883,22 @@ export default function OrderDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <Card className="flex min-h-0 flex-col">
-          <div className="sticky top-0 z-10 border-b border-border/60 bg-background/95 p-4">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span className="uppercase tracking-wide">Parts</span>
-              {timerLoading ? <span>Refreshing…</span> : <span>{parts.length} total</span>}
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-6">
+        <div className="flex min-h-0 flex-col">
+          <div className="pb-2 lg:sticky lg:top-0 lg:z-10 lg:pb-3">
+            <div className="flex items-end justify-between gap-3 lg:min-h-[70px]">
+              <span className="text-2xl font-semibold text-foreground">PARTS</span>
+              <span className="pb-1 text-xs text-muted-foreground">
+                {timerLoading ? 'Refreshing…' : `${parts.length} total`}
+              </span>
             </div>
           </div>
-          <CardContent className="flex-1 min-h-0 space-y-3 overflow-hidden p-4">
+          <div className="min-h-0 flex-1 space-y-2 lg:space-y-3 lg:overflow-hidden">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>Parts</span>
               <span>{selectedPartId ? 'Select a part to inspect details' : 'Choose a part to begin'}</span>
             </div>
-            <div className="max-h-[calc(100vh-260px)] space-y-2 overflow-y-auto pr-1">
+            <div className="flex gap-2 overflow-x-auto pb-1 pr-1 lg:block lg:max-h-[calc(100vh-260px)] lg:space-y-2 lg:overflow-x-hidden lg:overflow-y-auto lg:pb-0">
               {parts.map((part: any, index: number) => {
                 const isSelected = part.id === selectedPartId;
                 const partLabel = part.partNumber || `Part ${index + 1}`;
@@ -2612,22 +2916,22 @@ export default function OrderDetailPage() {
                     key={part.id}
                     type="button"
                     onClick={() => selectPart(part.id)}
-                    className={`w-full rounded-lg border px-3 py-3 text-left transition ${
+                    className={`relative isolate w-full min-w-[min(18rem,calc(100vw-2rem))] rounded-lg border px-3 py-3 text-left transition-[border-color,box-shadow,background-color] duration-200 lg:min-w-0 ${
                       isSelected
-                        ? 'border-primary/60 bg-primary/10'
-                        : 'border-border/60 bg-muted/10 hover:bg-muted/20'
+                        ? 'border-sky-400/80 bg-[linear-gradient(145deg,rgba(38,82,162,0.96),rgba(17,52,106,0.96))] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_12px_30px_rgba(0,0,0,0.22)]'
+                        : 'border-white/20 bg-[linear-gradient(145deg,rgba(21,55,104,0.94),rgba(8,34,68,0.96))] shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_10px_24px_rgba(0,0,0,0.18)] hover:border-sky-300/50 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_12px_26px_rgba(0,0,0,0.22)]'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-sm font-medium text-foreground">{partLabel}</div>
-                        <div className="text-xs text-muted-foreground">Qty {part.quantity ?? 1}</div>
-                        <div className="text-xs text-muted-foreground">Current dept: {partCurrentDepartment}</div>
+                        <div className="text-sm font-semibold text-white">{partLabel}</div>
+                        <div className="text-xs text-slate-300">Qty {part.quantity ?? 1}</div>
+                        <div className="text-xs text-slate-300">Current dept: {partCurrentDepartment}</div>
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <Badge className={statusBadgeStyles[status] || 'bg-muted text-foreground'}>{status}</Badge>
                         {flagged ? <Badge variant="destructive" title={typeof latestMeta?.reasonText === 'string' ? latestMeta.reasonText : 'Rework / manual backward move'}>REWORK</Badge> : null}
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-slate-300">
                           {formatDuration(totalSeconds)}
                         </span>
                       </div>
@@ -2636,277 +2940,141 @@ export default function OrderDetailPage() {
                 );
               })}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="flex flex-col">
-          <CardHeader className="space-y-3">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+        <Card className="min-w-0 flex flex-col rounded-none border-0 bg-transparent shadow-none">
+          <CardHeader className="space-y-3 px-0 pb-0 pt-1 sm:px-6 sm:pb-0 sm:pt-6">
+            <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-start sm:justify-between sm:gap-4">
               <div>
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">{orderTitle}</div>
                 <div className="text-2xl font-semibold text-foreground">{item.customer?.name ?? 'Customer'}</div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="grid w-full grid-cols-2 gap-2 [&>*:last-child]:col-span-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:[&>*:last-child]:col-span-1">
                 {canEditParts ? (
-                  <Button type="button" variant="outline" size="sm" onClick={() => setRepeatTemplateDialogOpen(true)}>
-                    Save as repeat template
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handleSaveRepeatTemplate({ launch: true })}
+                    disabled={repeatTemplateSaving || !selectedPartId}
+                    className="h-auto min-h-9 w-full whitespace-normal sm:w-auto"
+                  >
+                    {repeatTemplateSaving ? 'Preparing...' : 'Create again'}
                   </Button>
                 ) : null}
                 {canEditParts ? (
-                  <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => setEditMode((prev) => !prev)}>
+                  <Button type="button" variant="outline" size="sm" className="h-auto min-h-9 w-full whitespace-normal sm:w-auto" onClick={() => setRepeatTemplateDialogOpen(true)}>
+                    Save repeat template
+                  </Button>
+                ) : null}
+                <Button asChild variant="outline" size="sm" className="h-auto min-h-9 w-full whitespace-normal sm:w-auto">
+                  <Link href={`/orders/${id}/print`}>
+                    <Printer className="h-4 w-4" />
+                    Print traveler
+                  </Link>
+                </Button>
+                {canEditParts ? (
+                  <Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" className="h-auto min-h-9 w-full whitespace-normal sm:w-auto" onClick={() => setEditMode((prev) => !prev)}>
                     {editMode ? 'Exit edit mode' : 'Edit order'}
                   </Button>
                 ) : null}
-                <Button asChild variant="outline" size="sm">
+                <Button asChild variant="outline" size="sm" className="h-auto min-h-9 w-full whitespace-normal sm:w-auto">
                   <Link href="/">Exit Order</Link>
                 </Button>
               </div>
             </div>
-            <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/10 p-3">
-              <div className="flex flex-wrap items-center gap-3">
+            <div className="order-detail-tile flex flex-col gap-3 rounded-lg border p-3">
+              <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap sm:gap-3">
                 <Badge className={statusBadgeStyles[item.status || 'RECEIVED'] || 'bg-primary/10 text-primary'}>{statusLabel}</Badge>
                 <span className="text-sm text-muted-foreground">Due {dueDateLabel}</span>
+                {canEditOrderStatus ? (
+                  <>
+                    <div className="col-span-2 flex w-full items-center gap-2 rounded-md border border-border/60 bg-background/70 px-2 py-1 sm:col-span-1 sm:w-auto">
+                      <Label htmlFor="order-header-priority" className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Priority</Label>
+                      <Select value={item.priority ?? 'NORMAL'} onValueChange={(value) => void handlePriorityChange(value)} disabled={prioritySaving}>
+                        <SelectTrigger id="order-header-priority" className="h-7 flex-1 border-0 bg-transparent px-2 text-xs shadow-none sm:w-28 sm:flex-none"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="LOW">Low</SelectItem>
+                          <SelectItem value="NORMAL">Normal</SelectItem>
+                          <SelectItem value="RUSH">Rush</SelectItem>
+                          <SelectItem value="HOT">Hot</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="col-span-2 h-9 w-full sm:col-span-1 sm:w-auto"
+                      onClick={() => setStatusChangeDialog({
+                        open: true,
+                        status: item.status ?? 'RECEIVED',
+                        reason: '',
+                        saving: false,
+                        error: null,
+                      })}
+                    >
+                      Change status
+                    </Button>
+                  </>
+                ) : null}
               </div>
               {savedRepeatTemplate ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-sm">
                   <div className="space-y-1">
                     <p className="font-medium text-foreground">{savedRepeatTemplate.name}</p>
                     <p className="text-muted-foreground">
-                      Template saved. Launch the next reorder without rebuilding files or part setup.
+                      Customer-part template saved. Launch the next reorder without rebuilding its manufacturing setup.
                     </p>
                   </div>
                   <Button asChild size="sm" className="rounded-full">
-                    <Link href={`/orders/new?templateId=${savedRepeatTemplate.id}`}>Create repeat order</Link>
+                    <Link href={`/orders/new?templateId=${savedRepeatTemplate.id}`}>Create again</Link>
                   </Button>
                 </div>
               ) : null}
-              <div className="space-y-3 rounded-lg border border-border/60 bg-background/70 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Part Controls</div>
-                    <div className="text-sm font-medium text-foreground">
-                      {selectedPart?.partNumber || 'No part selected'}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {selectedPartId ? `Elapsed ${formatDuration(selectedPartElapsedSeconds)}` : 'Pick a part from the left to start work.'}
-                    </div>
-                  </div>
-                  {activeOnSelected ? (
-                    <Badge className="bg-emerald-500/15 text-emerald-200">Running</Badge>
-                  ) : activeElsewhereEntry?.href ? (
-                    <Button asChild size="sm" variant="ghost" className="h-7 bg-emerald-500/15 px-2 text-emerald-200 hover:bg-emerald-500/25 hover:text-emerald-100">
-                      <Link href={activeElsewhereEntry.href} title={`Open ${activeElsewhereEntry.order?.orderNumber || 'active order'}${activeElsewhereEntry.part?.partNumber ? ` / ${activeElsewhereEntry.part.partNumber}` : ''}`}>
-                        {otherTimerBadgeLabel}
-                      </Link>
-                    </Button>
-                  ) : (
-                    <Badge className={hasActiveEntry ? 'bg-emerald-500/15 text-emerald-200' : 'bg-muted text-foreground'}>
-                      {hasActiveEntry ? otherTimerBadgeLabel : 'Idle'}
-                    </Badge>
-                  )}
-                </div>
-
-                {selectedPartId ? (
-                  <div className="rounded-md border border-border/60 bg-muted/10 p-3">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">Active timers:</span>
-                      {selectedPartActiveTimers.length ? (
-                        selectedPartActiveTimers.map((entry: any) => {
-                          const workerName =
-                            entry?.user?.name?.trim() ||
-                            entry?.user?.email?.trim() ||
-                            entry?.userId ||
-                            'Worker';
-                          const departmentName =
-                            typeof entry?.departmentName === 'string' && entry.departmentName.trim().length
-                              ? entry.departmentName.trim()
-                              : typeof entry?.departmentId === 'string' && entry.departmentId.trim().length
-                                ? entry.departmentId.trim()
-                                : 'Unknown dept';
-                          const startedAtMs = entry?.startedAt ? new Date(entry.startedAt).getTime() : Number.NaN;
-                          const elapsedSeconds = Number.isFinite(startedAtMs)
-                            ? Math.max(0, Math.floor((nowMs - startedAtMs) / 1000))
-                            : 0;
-
-                          return (
-                            <Button
-                              key={entry?.id ?? `${entry?.userId ?? workerName}-${entry?.departmentId ?? departmentName}`}
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-8 border-emerald-500/30 bg-emerald-500/10 px-2 text-[11px] text-emerald-100 hover:bg-emerald-500/20 hover:text-emerald-50"
-                              onClick={() => handleOpenActiveTimerChip(entry)}
-                            >
-                              <span>{workerName}, {departmentName}, {formatDuration(elapsedSeconds)}</span>
-                              <Square className="ml-2 h-3.5 w-3.5 opacity-80" />
-                            </Button>
-                          );
-                        })
-                      ) : (
-                        <span>No active timers on this part.</span>
-                      )}
-                    </div>
-                    {selectedPartActiveTimers.length ? (
-                      <div className="mt-2 text-[11px] text-muted-foreground">
-                        Click a timer to pause or finish it from this console.
-                      </div>
-                    ) : null}
-                      </div>
-                    ) : null}
-
-                <div className="grid gap-2 md:grid-cols-2">
-                  <div className="flex h-10 items-center rounded-md border border-border/60 bg-background/80 px-3 text-sm">
-                    <span className="text-muted-foreground">Department:&nbsp;</span>
-                    <span className="font-medium text-foreground">
-                      {selectedCurrentDepartment?.name ?? 'Assign a department first'}
-                    </span>
-                  </div>
-                  <Select value={selectedTimerWorkerId || '__none__'} onValueChange={(value) => setSelectedTimerWorkerId(value === '__none__' ? '' : value)}>
-                    <SelectTrigger className="h-10 border-border/60 bg-background/80">
-                      <SelectValue placeholder="Select employee" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Select employee</SelectItem>
-                      {timerWorkerOptions.map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid gap-2 lg:grid-cols-[repeat(2,minmax(0,1fr))_220px]">
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={!selectedPartId || timerSaving || !selectedPartCurrentDepartmentId || !selectedTimerWorkerId || !canStartSelectedPartTimer}
-                    onClick={handleOpenTimerStartDialog}
-                    className="justify-center gap-2"
-                  >
-                    <Play className="h-4 w-4" />
-                    Start employee timer
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={!selectedPartId || timerSaving || !selectedPartCurrentDepartmentId}
-                    onClick={openMoveDepartmentDialog}
-                    className="justify-center gap-2"
-                  >
-                    <ArrowRightLeft className="h-4 w-4" />
-                    Submit {selectedCurrentDepartment?.name ?? 'department'} complete
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={!selectedPartId || timerSaving || !canMarkPartComplete}
-                    onClick={() => {
-                      if (selectedPartId && !timerSaving && canMarkPartComplete) {
-                        void handleCompleteSelectedPart();
-                      }
-                    }}
-                    className="justify-center gap-2"
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span>Mark Shipped</span>
-                  </Button>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-                  <span className="text-muted-foreground">{timerReadOnlyMessage}</span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setShowTimerDetails((prev) => !prev)}
-                    className="h-7 px-2 text-xs"
-                  >
-                    {showTimerDetails ? 'Hide details' : 'Show details'}
-                  </Button>
-                </div>
-
-                {timerError ? (
-                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                    {timerError}
-                  </div>
-                ) : null}
-                {showTimerDetails && (
-                  <>
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
-                      <div className="flex items-start gap-2">
-                        <ArrowRightLeft className="mt-0.5 h-3.5 w-3.5" />
-                        <span>{canUseTimerControls ? startHelperLabel : kioskHelperLabel}</span>
-                      </div>
-                      {!canUseTimerControls ? (
-                        <span className="font-medium text-foreground">
-                          {kioskSession
-                            ? `${kioskSession.worker?.name || kioskSession.worker?.email || 'Kiosk user'} unlocked`
-                            : 'PIN required for kiosk timing'}
-                        </span>
-                      ) : null}
-                    </div>
-                    {selectedPartId ? (
-                      <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
-                    <div><span className="font-medium text-foreground">Total time:</span> {formatDuration(selectedPartStoredSeconds)}</div>
-                    <div>Timer time: {formatDuration(selectedPartTimerSeconds)}</div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span>Manual added time: {formatDuration(selectedPartManualSeconds)}</span>
-                    </div>
-                        {partManualAdjustments.length ? (
-                      <div className="mt-2 space-y-1">
-                        {partManualAdjustments.map((adjustment: any) => (
-                          <div key={adjustment.id}>
-                            +{formatDuration(Number(adjustment.seconds ?? 0))} — {adjustment.note}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                        {selectedPartDepartmentHistory.length ? (
-                      <div className="mt-3 space-y-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Department history totals</div>
-                        <div className="grid gap-2 md:grid-cols-2">
-                          {selectedPartDepartmentHistory.map((group) => (
-                            <div key={group.departmentId ?? '__none__'} className="rounded border border-border/60 bg-background/70 p-2">
-                              <div className="text-[11px] text-muted-foreground">{group.departmentName}</div>
-                              <div className="text-sm font-semibold text-foreground">{formatDuration(group.totalSeconds)}</div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="space-y-1">
-                          {selectedPartDepartmentHistory.map((group) => (
-                            <div key={`${group.departmentId ?? '__none__'}_rows`} className="rounded border border-border/50 bg-background/50 p-2">
-                              <div className="mb-1 text-[11px] font-medium text-foreground">{group.departmentName}</div>
-                              {group.entries.slice(0, 3).map((entry: any) => (
-                                <div key={entry.id} className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                                  <span>{new Date(entry.startedAt).toLocaleString()}</span>
-                                  <span className="font-medium text-foreground">{formatDuration(entry.durationSeconds)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                    <div className="text-xs text-muted-foreground">
-                      {lastPartEvent ? (
-                        <span>
-                      Last action: <span className="font-medium text-foreground">{lastPartEvent.message}</span> ·{' '}
-                          {new Date(lastPartEvent.createdAt).toLocaleString()}
-                        </span>
-                      ) : (
-                        <span>Last action: none yet for this part.</span>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
+              <OrderTimerConsole
+                selectedPart={selectedPart}
+                selectedPartId={selectedPartId}
+                selectedPartElapsedSeconds={selectedPartElapsedSeconds}
+                activeOnSelected={activeOnSelected}
+                activeElsewhereEntry={activeElsewhereEntry}
+                otherTimerBadgeLabel={otherTimerBadgeLabel}
+                hasActiveEntry={hasActiveEntry}
+                selectedPartActiveTimers={selectedPartActiveTimers}
+                nowMs={nowMs}
+                selectedCurrentDepartment={selectedCurrentDepartment}
+                selectedTimerWorkerId={selectedTimerWorkerId}
+                timerWorkerOptions={timerWorkerOptions}
+                timerSaving={timerSaving}
+                selectedPartCurrentDepartmentId={selectedPartCurrentDepartmentId}
+                canStartSelectedPartTimer={canStartSelectedPartTimer}
+                canSubmitCurrentDepartment={canSubmitCurrentDepartment}
+                departmentSubmitBlocker={departmentSubmitBlocker}
+                submitDestinationOptions={submitDestinationOptions}
+                canMarkPartComplete={canMarkPartComplete}
+                timerReadOnlyMessage={timerReadOnlyMessage}
+                timerError={timerError}
+                showTimerDetails={showTimerDetails}
+                canUseTimerControls={canUseTimerControls}
+                startHelperLabel={startHelperLabel}
+                kioskHelperLabel={kioskHelperLabel}
+                kioskSession={kioskSession}
+                selectedPartStoredSeconds={selectedPartStoredSeconds}
+                selectedPartTimerSeconds={selectedPartTimerSeconds}
+                selectedPartManualSeconds={selectedPartManualSeconds}
+                partManualAdjustments={partManualAdjustments}
+                selectedPartDepartmentHistory={selectedPartDepartmentHistory}
+                lastPartEvent={lastPartEvent}
+                onOpenActiveTimer={handleOpenActiveTimerChip}
+                onTimerWorkerChange={setSelectedTimerWorkerId}
+                onStartTimer={handleOpenTimerStartDialog}
+                onSubmitDepartment={() => void handleBeginSubmitDepartmentComplete()}
+                onMoveDepartment={openMoveDepartmentDialog}
+                onCompletePart={() => { if (selectedPartId && !timerSaving && canMarkPartComplete) void handleCompleteSelectedPart(); }}
+                onToggleDetails={() => setShowTimerDetails((current) => !current)}
+              />
             </div>
-            <div className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-md bg-muted/20 p-1">
+            <div className="flex max-w-full gap-1 overflow-x-auto whitespace-nowrap rounded-md bg-muted/20 p-1 sm:gap-2">
               {visibleTabs.map((tab) => {
                 const label =
                   tab === 'overview'
@@ -2938,382 +3106,61 @@ export default function OrderDetailPage() {
               })}
             </div>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-6 px-0 pb-6 pt-4 sm:px-6 sm:pt-6">
             {activeTab === 'overview' && (
               <div className="space-y-4 text-sm">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Part</div>
-                    <div className="text-base font-medium text-foreground">
-                      {selectedPart?.partNumber || 'Select a part'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Description</div>
-                    <div className="text-foreground">{selectedPart?.notes || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Customer</div>
-                    <div className="text-foreground">{item.customer?.name ?? '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Quantity</div>
-                    <div className="text-foreground">{selectedPart?.quantity ?? '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Current department</div>
-                    <div className="text-foreground">
-                      {selectedCurrentDepartment?.name ?? selectedPart?.currentDepartmentId ?? 'Unassigned'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Stock length</div>
-                    <div className="text-foreground">{selectedPart?.stockSize || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Cut length</div>
-                    <div className="text-foreground">{selectedPart?.cutLength || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Material</div>
-                    <div className="text-foreground">{selectedPart?.material?.name || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Priority</div>
-                    <div className="text-foreground">{item.priority ?? '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">Due date</div>
-                    <div className="text-foreground">{dueDateLabel}</div>
-                  </div>
-                </div>
+                <PartOverviewDetails
+                  customerName={item.customer?.name}
+                  dueDateLabel={dueDateLabel}
+                  orderPriority={item.priority}
+                  selectedCurrentDepartment={selectedCurrentDepartment}
+                  selectedPart={selectedPart}
+                  canEditMaterialStatus={canEditParts}
+                  materialStatusSaving={materialStatusSaving}
+                  onMaterialStatusChange={(value) => void handleQuickMaterialStatusChange(value)}
+                />
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="space-y-3 rounded-lg border border-border/60 bg-muted/10 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Read me first</div>
-                        <div className="text-sm font-semibold text-foreground">Part instructions</div>
-                      </div>
-                      <Badge className={selectedPartInstructionReceipt ? 'bg-emerald-500/15 text-emerald-200' : 'bg-amber-500/15 text-amber-100'}>
-                        {selectedPartInstructionReceipt ? 'Read and logged' : selectedPartRequiresInstructionGate ? 'Needs acknowledgement' : 'Optional reference'}
-                      </Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-foreground">
-                        Dept: {selectedCurrentDepartment?.name ?? 'Unassigned'}
-                      </span>
-                      <span className="rounded-full border border-border/60 bg-background/70 px-3 py-1 text-foreground">
-                        Version: {selectedPartInstructionsVersion}
-                      </span>
-                    </div>
-                    {selectedPartInstructions ? (
-                      <div className="rounded-md border border-border/60 bg-background/70 p-3 text-sm text-foreground">
-                        <div className="space-y-4">
-                          {selectedPartInstructionSections.map((section, index) => (
-                            <div key={`${section.heading ?? 'notes'}-${index}`} className="space-y-2">
-                              {section.heading ? (
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                                  {section.heading}
-                                </div>
-                              ) : null}
-                              <ul className="list-disc space-y-1 pl-5">
-                                {section.items.map((item, itemIndex) => (
-                                  <li key={`${index}-${itemIndex}`} className="leading-6 text-foreground">
-                                    {item}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-md border border-dashed border-border/70 bg-background/60 p-3 text-sm text-muted-foreground">
-                        No part-specific instructions were entered for this job.
-                      </div>
-                    )}
-                    <div className="space-y-2 rounded-md border border-border/60 bg-background/60 p-3">
-                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Already read by</div>
-                      {selectedPartAcknowledgedReceipts.length ? (
-                        <div className="space-y-2">
-                          {selectedPartAcknowledgedReceipts.map((receipt: any) => {
-                            const workerName =
-                              receipt?.user?.name?.trim() ||
-                              receipt?.user?.email?.trim() ||
-                              receipt?.userId ||
-                              'Worker';
-                            const acknowledgedAtLabel = receipt?.acknowledgedAt
-                              ? new Date(receipt.acknowledgedAt).toLocaleString()
-                              : 'Time unavailable';
-                            return (
-                              <div
-                                key={receipt?.id ?? `${receipt?.userId ?? workerName}-${receipt?.acknowledgedAt ?? ''}`}
-                                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/10 px-3 py-2 text-sm"
-                              >
-                                <span className="font-medium text-foreground">{workerName}</span>
-                                <span className="text-xs text-muted-foreground">{acknowledgedAtLabel}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="text-sm text-muted-foreground">
-                          Nobody has acknowledged this version for {selectedCurrentDepartment?.name ?? 'this department'} yet.
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={selectedPartInstructionReceipt ? 'outline' : 'secondary'}
-                        onClick={() =>
-                          setInstructionGateDialog({
-                            open: true,
-                            loading: false,
-                            error: null,
-                            pendingAction: null,
-                            workerId: currentUserId || timerWorkerOptions[0]?.id || '',
-                          })
-                        }
-                        disabled={!selectedPartInstructions || !selectedPartCurrentDepartmentId}
-                      >
-                        {selectedPartInstructionReceipt ? 'Review brief' : 'Read and acknowledge'}
-                      </Button>
-                      {selectedPartInstructionReceipt ? (
-                        <span className="text-xs text-muted-foreground">
-                          Logged for {currentUserName} in {selectedCurrentDepartment?.name ?? 'this department'}.
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="space-y-3 rounded-lg border border-border/60 bg-muted/10 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Part workers</div>
-                        <div className="text-sm font-semibold text-foreground">Who is working this part</div>
-                      </div>
-                      <Badge variant="outline">
-                        <Users className="mr-1 h-3.5 w-3.5" />
-                        {selectedPartAssignments.length} assigned
-                      </Badge>
-                    </div>
-                    <div className="rounded-md border border-border/50 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
-                      Use this roster for the people actually touching this part. The order-level assigned machinist stays as coordinator only.
-                    </div>
-                    {selectedPartAssignments.length ? (
-                      <div className="space-y-2">
-                        {selectedPartAssignments.map((assignment: any) => (
-                          <div key={assignment.id} className="rounded-md border border-border/60 bg-background/70 p-3 text-sm">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <div className="font-medium text-foreground">
-                                  {assignment.user?.name || assignment.user?.email || 'Unknown user'}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {assignment.assignmentType || 'WORKER'}
-                                  {assignment.assignedBy?.name || assignment.assignedBy?.email ? ` · added by ${assignment.assignedBy?.name || assignment.assignedBy?.email}` : ''}
-                                </div>
-                              </div>
-                              {canEditParts ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => void handleRemoveWorkerAssignment(assignment.id)}
-                                  disabled={assignmentSaving}
-                                >
-                                  Remove
-                                </Button>
-                              ) : null}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="rounded-md border border-dashed border-border/70 bg-background/60 p-3 text-sm text-muted-foreground">
-                        No workers are assigned yet. Add the machinists, floaters, or helpers actually working this part.
-                      </div>
-                    )}
-                    {canEditParts ? (
-                      <div className="space-y-3 rounded-md border border-border/50 bg-background/60 p-3">
-                        <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                          <div className="grid gap-2">
-                            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Add worker</Label>
-                            <Select value={assignmentUserId || '__none__'} onValueChange={(value) => setAssignmentUserId(value === '__none__' ? '' : value)}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Choose a worker" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__none__">Choose a worker</SelectItem>
-                                {availableAssignmentUsers.map((user) => (
-                                  <SelectItem key={user.id} value={user.id}>
-                                    {user.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <Button type="button" onClick={() => void handleAssignWorkerToSelectedPart()} disabled={assignmentSaving || !assignmentUserId}>
-                            <UserPlus className="mr-2 h-4 w-4" />
-                            Add
-                          </Button>
-                        </div>
-                        {assignmentError ? (
-                          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                            {assignmentError}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <div className="rounded-md border border-dashed border-border/70 bg-background/60 p-3 text-xs text-muted-foreground">
-                        Only admins can add or remove workers from a part.
-                      </div>
-                    )}
-                  </div>
+                  <PartInstructionsPanel
+                    acknowledgedReceipts={selectedPartAcknowledgedReceipts}
+                    acknowledgedWorkers={acknowledgedWorkers}
+                    currentDepartmentName={selectedCurrentDepartment?.name}
+                    currentUserName={currentUserName}
+                    instructionReceipt={selectedPartInstructionReceipt}
+                    instructionSections={selectedPartInstructionSections}
+                    instructions={selectedPartInstructions}
+                    instructionsVersion={selectedPartInstructionsVersion}
+                    requiresInstructionGate={selectedPartRequiresInstructionGate}
+                    unacknowledgedWorkers={unacknowledgedWorkers}
+                    canAcknowledge={Boolean(selectedPartInstructions && selectedPartCurrentDepartmentId)}
+                    onOpen={() => setInstructionGateDialog({ open: true, loading: false, error: null, pendingAction: null, workerId: currentUserId || timerWorkerOptions[0]?.id || '' })}
+                  />
+                  <PartWorkerAssignmentsPanel
+                    assignments={selectedPartAssignments}
+                    availableWorkers={availableAssignmentUsers}
+                    canEdit={canEditParts}
+                    selectedWorkerId={assignmentUserId}
+                    saving={assignmentSaving}
+                    error={assignmentError}
+                    onSelectedWorkerIdChange={setAssignmentUserId}
+                    onAdd={handleAssignWorkerToSelectedPart}
+                    onRemove={handleRemoveWorkerAssignment}
+                  />
                 </div>
                 {editMode && canEditParts ? (
-                  <div className="space-y-4 rounded-lg border border-border/60 bg-muted/10 p-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-foreground">Edit order details</p>
-                      <Button size="sm" onClick={handleSaveOrderDetails} disabled={savingOrderDetails}>
-                        {savingOrderDetails ? 'Saving…' : 'Save order'}
-                      </Button>
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="grid gap-2">
-                        <Label>Customer</Label>
-                        <Select value={orderDraft.customerId || '__none__'} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, customerId: value === '__none__' ? '' : value }))}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">Select customer</SelectItem>
-                            {customers.map((customer) => (
-                              <SelectItem key={customer.id} value={customer.id}>{customer.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Vendor</Label>
-                        <Select value={orderDraft.vendorId || '__none__'} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, vendorId: value === '__none__' ? '' : value }))}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">No vendor</SelectItem>
-                            {vendors.map((vendor) => (
-                              <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Received date</Label>
-                        <Input type="date" value={orderDraft.receivedDate} onChange={(e) => setOrderDraft((prev) => ({ ...prev, receivedDate: e.target.value }))} />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Due date</Label>
-                        <Input type="date" value={orderDraft.dueDate} onChange={(e) => setOrderDraft((prev) => ({ ...prev, dueDate: e.target.value }))} />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Priority</Label>
-                        <Select value={orderDraft.priority} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, priority: value }))}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="LOW">LOW</SelectItem>
-                            <SelectItem value="NORMAL">NORMAL</SelectItem>
-                            <SelectItem value="RUSH">RUSH</SelectItem>
-                            <SelectItem value="HOT">HOT</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Assigned machinist</Label>
-                        <Select value={orderDraft.assignedMachinistId || '__none__'} onValueChange={(value) => setOrderDraft((prev) => ({ ...prev, assignedMachinistId: value === '__none__' ? '' : value }))}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">Unassigned</SelectItem>
-                            {machinists.map((machinist) => (
-                              <SelectItem key={machinist.id} value={machinist.id}>{machinist.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid gap-2 md:col-span-2">
-                        <Label>PO Number</Label>
-                        <Input value={orderDraft.poNumber} onChange={(e) => setOrderDraft((prev) => ({ ...prev, poNumber: e.target.value }))} />
-                      </div>
-                      <label className="flex items-center gap-2 text-sm">
-                        <Checkbox checked={orderDraft.materialNeeded} onCheckedChange={(checked) => setOrderDraft((prev) => ({ ...prev, materialNeeded: checked === true }))} />
-                        Material needed
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <Checkbox checked={orderDraft.materialOrdered} onCheckedChange={(checked) => setOrderDraft((prev) => ({ ...prev, materialOrdered: checked === true }))} />
-                        Material ordered
-                      </label>
-                      <label className="flex items-center gap-2 text-sm md:col-span-2">
-                        <Checkbox checked={orderDraft.modelIncluded} onCheckedChange={(checked) => setOrderDraft((prev) => ({ ...prev, modelIncluded: checked === true }))} />
-                        Model included
-                      </label>
-                    </div>
+                  <div className="order-detail-tile space-y-4 rounded-lg border p-4">
+                    <OrderHeaderEditor draft={orderDraft} setDraft={setOrderDraft} customers={customers} vendors={vendors} machinists={machinists} saving={savingOrderDetails} onSave={handleSaveOrderDetails} />
                     {selectedPart ? (
-                      <div className="space-y-3 rounded-md border border-border/50 bg-background/40 p-3">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-semibold text-foreground">Edit selected part</p>
-                          <div className="flex items-center gap-2">
-                            <Button size="sm" variant="outline" onClick={handleAddPart}>Add part</Button>
-                            <Button size="sm" variant="destructive" onClick={handleDeleteSelectedPart} disabled={parts.length <= 1}>Delete part</Button>
-                            <Button size="sm" onClick={handleSavePartDetails} disabled={savingPartDetails}>
-                              {savingPartDetails ? 'Saving…' : 'Save part'}
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div className="grid gap-2">
-                            <Label>Part number</Label>
-                            <Input value={partDraft.partNumber} onChange={(e) => setPartDraft((prev) => ({ ...prev, partNumber: e.target.value }))} />
-                          </div>
-                          <div className="grid gap-2">
-                            <Label>Part name</Label>
-                            <Input value={partDraft.partName} onChange={(e) => setPartDraft((prev) => ({ ...prev, partName: e.target.value }))} />
-                          </div>
-                          <div className="grid gap-2">
-                            <Label>Quantity</Label>
-                            <Input type="number" min={1} value={partDraft.quantity} onChange={(e) => setPartDraft((prev) => ({ ...prev, quantity: Number(e.target.value || 1) }))} />
-                          </div>
-                          <div className="grid gap-2">
-                            <Label>Material</Label>
-                            <Select value={partDraft.materialId || '__none__'} onValueChange={(value) => setPartDraft((prev) => ({ ...prev, materialId: value === '__none__' ? '' : value }))}>
-                              <SelectTrigger><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__none__">No material</SelectItem>
-                                {materials.map((material) => (
-                                  <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="grid gap-2">
-                            <Label>Stock size</Label>
-                            <Input value={partDraft.stockSize} onChange={(e) => setPartDraft((prev) => ({ ...prev, stockSize: e.target.value }))} />
-                          </div>
-                          <div className="grid gap-2">
-                            <Label>Cut length</Label>
-                            <Input value={partDraft.cutLength} onChange={(e) => setPartDraft((prev) => ({ ...prev, cutLength: e.target.value }))} />
-                          </div>
-                          <div className="grid gap-2 md:col-span-2">
-                            <Label>Part notes</Label>
-                            <Textarea rows={3} value={partDraft.notes} onChange={(e) => setPartDraft((prev) => ({ ...prev, notes: e.target.value }))} />
-                          </div>
-                          <div className="grid gap-2 md:col-span-2">
-                            <Label>Work instructions</Label>
-                            <Textarea
-                              rows={4}
-                              value={partDraft.workInstructions}
-                              onChange={(e) => setPartDraft((prev) => ({ ...prev, workInstructions: e.target.value }))}
-                              placeholder="Must-read floor instructions for this part."
-                            />
-                          </div>
-                        </div>
-                      </div>
+                      <SelectedPartEditor
+                        draft={partDraft}
+                        setDraft={setPartDraft}
+                        materials={materials}
+                        vendors={vendors}
+                        saving={savingPartDetails}
+                        canDelete={parts.length > 1}
+                        onAdd={handleAddPart}
+                        onDelete={handleDeleteSelectedPart}
+                        onSave={handleSavePartDetails}
+                      />
                     ) : null}
                   </div>
                 ) : null}
@@ -3321,272 +3168,41 @@ export default function OrderDetailPage() {
             )}
 
             {activeTab === 'notes' && (
-              <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                    <ClipboardList className="h-4 w-4 text-muted-foreground" /> Notes
-                  </div>
-                  <div className="max-h-72 space-y-3 overflow-auto rounded-lg border border-border/60 bg-muted/10 p-3">
-                    {item.notes?.length ? (
-                      item.notes.map((note: any) => (
-                        <div key={note.id} className="space-y-1 text-sm">
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{note.user?.name ?? 'Unknown'}</span>
-                            <span>{new Date(note.createdAt).toLocaleString()}</span>
-                          </div>
-                          <p className="text-foreground">{note.content}</p>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No notes yet.</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Textarea
-                      rows={3}
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)}
-                      placeholder="Add a shop note or inspection comment"
-                    />
-                    <div className="flex justify-end">
-                      <Button size="sm" onClick={handleAddNote}>
-                        Add note
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                    <FileText className="h-4 w-4 text-muted-foreground" /> Files & print drawings
-                  </div>
-                  <div className="space-y-3">
-                    {selectedAttachments.length ? (
-                      selectedAttachments.map((attachment: any) => {
-                        const openHref = attachment.storagePath
-                          ? `/attachments/${attachment.storagePath}`
-                          : attachment.url;
-                        return (
-                          <div
-                            key={attachment.id}
-                            className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
-                          >
-                            <div className="font-medium text-foreground">{attachment.label || 'Attachment'}</div>
-                            <div className="text-xs text-muted-foreground">{attachment.mimeType || 'Unknown type'}</div>
-                            {openHref ? (
-                              <a
-                                href={openHref}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-2 inline-flex text-xs font-medium text-primary hover:underline"
-                              >
-                                Open file
-                              </a>
-                            ) : null}
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No files yet for this part. Upload a file with type <span className="font-medium text-foreground">PRINT</span> to make it the preferred BOM analyzer source.</p>
-                    )}
-                  </div>
-                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
-                    <p className="font-medium text-foreground">Print image slot for BOM analyzer</p>
-                    <p className="mt-1">Set file type to <span className="font-medium text-foreground">PRINT</span> for drawings/photos you want the BOM tab to auto-prioritize.</p>
-                  </div>
-                  <Separator />
-                  {canEditParts ? (
-                    <form className="space-y-3" onSubmit={handleAddAttachment}>
-                      <div className="grid gap-2">
-                        <Label htmlFor="attachment-kind">File type</Label>
-                        <Select
-                          value={attachmentForm.kind}
-                          onValueChange={(value) =>
-                            setAttachmentForm((prev) => ({
-                              ...prev,
-                              kind: value as AttachmentFormState['kind'],
-                            }))
-                          }
-                        >
-                          <SelectTrigger id="attachment-kind" className="border-border/60 bg-background/80 text-left">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {PART_ATTACHMENT_KINDS.map((kind) => (
-                              <SelectItem key={kind} value={kind}>
-                                {kind}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="attachment-label">Label</Label>
-                        <Input
-                          id="attachment-label"
-                          value={attachmentForm.label}
-                          onChange={(e) => {
-                            setAttachmentForm((prev) => ({ ...prev, label: e.target.value }));
-                            setAttachmentError(null);
-                          }}
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="attachment-mime">Mime type</Label>
-                        <Input
-                          id="attachment-mime"
-                          value={attachmentForm.mimeType}
-                          onChange={(e) => {
-                            setAttachmentForm((prev) => ({ ...prev, mimeType: e.target.value }));
-                            setAttachmentError(null);
-                          }}
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="attachment-url">External link</Label>
-                        <Input
-                          id="attachment-url"
-                          value={attachmentForm.url}
-                          onChange={(e) => {
-                            setAttachmentForm((prev) => ({
-                              ...prev,
-                              url: e.target.value,
-                              storagePath: e.target.value.trim().length ? '' : prev.storagePath,
-                            }));
-                            setAttachmentError(null);
-                          }}
-                          placeholder="Paste a shared link"
-                          disabled={attachmentForm.uploading}
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="attachment-file">Upload file</Label>
-                        <Input
-                          key={attachmentFileKey}
-                          id="attachment-file"
-                          type="file"
-                          className="bg-background/80"
-                          onChange={(e) => void handleAttachmentFile(e.target.files)}
-                          disabled={attachmentForm.uploading}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          {attachmentForm.uploading ? 'Uploading…' : attachmentFileName ? `Selected: ${attachmentFileName}` : 'Drop a file to upload.'}
-                        </p>
-                      </div>
-                      {attachmentError ? (
-                        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                          {attachmentError}
-                        </div>
-                      ) : null}
-                      <div className="flex justify-end">
-                        <Button size="sm" type="submit" disabled={attachmentSaving || attachmentForm.uploading}>
-                          {attachmentSaving ? 'Attaching…' : 'Add file'}
-                        </Button>
-                      </div>
-                    </form>
-                  ) : (
-                    <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
-                      Admin access required to upload files.
-                    </div>
-                  )}
-                </div>
-              </div>
+              <PartNotesAndFilesPanel
+                notes={item.notes ?? []}
+                noteText={noteText}
+                attachments={selectedAttachments}
+                canEdit={canEditParts}
+                attachment={attachmentForm}
+                attachmentSaving={attachmentSaving}
+                attachmentFileKey={attachmentFileKey}
+                attachmentFileName={attachmentFileName}
+                attachmentError={attachmentError}
+                onNoteTextChange={setNoteText}
+                onAddNote={handleAddNote}
+                onAttachmentChange={(patch) => {
+                  setAttachmentForm((current) => ({
+                    ...current,
+                    ...patch,
+                    storagePath: patch.url?.trim().length ? '' : current.storagePath,
+                  }));
+                  setAttachmentError(null);
+                }}
+                onAttachmentFileChange={(files) => void handleAttachmentFile(files)}
+                onAddAttachment={handleAddAttachment}
+              />
             )}
 
             {activeTab === 'full-files' && canEditParts && (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
-                  Full Order Files is admin-only and includes order-level + part-level files for this order.
-                </div>
-                <div className="space-y-3">
-                  {fullOrderFiles.length ? (
-                    fullOrderFiles.map((attachment: any) => {
-                      const href = attachment.storagePath ? `/attachments/${attachment.storagePath}` : attachment.url;
-                      return (
-                        <div key={`${attachment.source}-${attachment.id}`} className="rounded-lg border border-border/60 bg-muted/10 p-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-sm font-medium text-foreground">{attachment.label || 'Attachment'}</p>
-                            <Badge variant="outline">{attachment.sourceLabel}</Badge>
-                          </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {attachment.partNumber ? `Part: ${attachment.partNumber} · ` : null}
-                            {attachment.mimeType || 'Unknown type'} · {new Date(attachment.createdAt).toLocaleString()}
-                          </div>
-                          {attachment.storagePath ? (
-                            <div className="mt-1 text-[11px] text-muted-foreground">
-                              <code>{attachment.storagePath}</code>
-                            </div>
-                          ) : null}
-                          {href ? (
-                            <a href={href} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-medium text-primary hover:underline">
-                              Open file
-                            </a>
-                          ) : null}
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No files found on this order.</p>
-                  )}
-                </div>
-              </div>
+              <FullOrderFilesPanel attachments={fullOrderFiles} />
             )}
 
             {activeTab === 'checklist' && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <ListChecks className="h-4 w-4 text-muted-foreground" /> To-do / Checklist
-                </div>
-                {checklistError ? (
-                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                    {checklistError}
-                  </div>
-                ) : null}
-                {checklistByDepartment.length ? (
-                  checklistByDepartment.map((group) => (
-                    <div key={group.departmentId ?? '__none__'} className="space-y-2">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.departmentName}</div>
-                      {group.entries.map((entry: any) => {
-                        const label = entry.charge?.name ?? entry.addon?.name ?? 'Checklist item';
-                        const performedByLabel =
-                          entry.performedBy?.name ||
-                          entry.performedBy?.email ||
-                          entry.meta?.performedByLabel ||
-                          null;
-                        return (
-                          <label
-                            key={entry.id}
-                            className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 p-3 text-sm"
-                          >
-                            <div className="flex items-start gap-3">
-                              <Checkbox
-                                checked={Boolean(entry.completed)}
-                                onCheckedChange={(checked) => handleChecklistToggle(entry, checked === true)}
-                              />
-                              <div>
-                                <div className="font-medium text-foreground">{label}</div>
-                                {entry.addon?.description ? (
-                                  <div className="text-xs text-muted-foreground">{entry.addon.description}</div>
-                                ) : null}
-                                {performedByLabel ? (
-                                  <div className="text-xs text-muted-foreground">
-                                    {entry.completed ? 'Performed by' : 'Last marked by'} {performedByLabel}
-                                  </div>
-                                ) : null}
-                              </div>
-                            </div>
-                            <span className="text-xs text-muted-foreground">
-                              {entry.completed ? 'Done' : 'Open'}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No checklist items for this part.</p>
-                )}
-              </div>
+              <OrderChecklistPanel
+                entries={selectedChecklist}
+                error={checklistError}
+                onToggle={handleChecklistToggle}
+              />
             )}
 
             {activeTab === 'bom' && selectedPartId && (
@@ -3599,44 +3215,7 @@ export default function OrderDetailPage() {
 
 
             {activeTab === 'log' && (
-              <div className="space-y-3">
-                <PartLaborHistory entries={selectedPartLaborEntries} title="Timer history" />
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Timer className="h-4 w-4 text-muted-foreground" /> Part log
-                </div>
-                {eventsLoading ? (
-                  <div className="text-xs text-muted-foreground">Loading log…</div>
-                ) : partEvents.length ? (
-                  partEvents.map((event) => (
-                    <div key={event.id} className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm">
-                      {(() => {
-                        const actorLabel = event.user?.name || event.user?.email || 'System';
-                        const performerLabel =
-                          event.meta?.performedByLabel ||
-                          event.meta?.performerLabel ||
-                          event.meta?.performedByName ||
-                          null;
-                        const actorDiffers = performerLabel && performerLabel !== actorLabel;
-                        return (
-                          <>
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                        <span>{actorLabel}</span>
-                        <span>{new Date(event.createdAt).toLocaleString()}</span>
-                      </div>
-                      <div className="mt-1 font-medium text-foreground">{event.message}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {event.type}
-                        {actorDiffers ? ` · performed by ${performerLabel}` : ''}
-                      </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No events yet for this part.</p>
-                )}
-              </div>
+              <OrderActivityPanel events={partEvents} laborEntries={selectedPartLaborEntries} loading={eventsLoading} />
             )}
           </CardContent>
         </Card>

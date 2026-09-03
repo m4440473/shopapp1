@@ -26,6 +26,7 @@ export const AppSettingsUpdate = z.object({
   attachmentsDir: z.string().trim().min(1).max(500).optional(),
   requirePOForQuoteApproval: z.boolean().optional(),
   requirePOForQuoteToOrder: z.boolean().optional(),
+  drawingImportLunaFallbackEnabled: z.boolean().optional(),
   invoiceTemplateId: InvoiceTemplateId.optional(),
   invoiceOptions: InvoiceOptions.transform((value) => (value ? JSON.stringify(value) : undefined)),
 });

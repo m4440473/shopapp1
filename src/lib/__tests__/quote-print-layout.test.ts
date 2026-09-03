@@ -47,6 +47,34 @@ describe('buildQuoteRenderBlocks', () => {
     });
   });
 
+  it('resolves business-specific header details from the selected template business', () => {
+    const blocks = buildQuoteRenderBlocks({
+      sections: [],
+      blocks: [
+        {
+          id: 'header',
+          type: 'header',
+          label: 'Header',
+          visible: true,
+          order: 0,
+          variant: 'standard',
+          options: { phone: '859-555-0100' },
+        },
+      ],
+    }, 'CRM');
+
+    expect(blocks[0]).toMatchObject({
+      type: 'header',
+      headerOptions: {
+        businessName: 'C&R Machine & Fabrication, LLC',
+        addressLine1: '744 Richmond Avenue',
+        addressLine2: 'Nicholasville, KY 40356',
+        phone: '859-555-0100',
+        email: 'acct.mgr@crmachinefab.com',
+      },
+    });
+  });
+
   it('normalizes scope and addons options for structured blocks', () => {
     const blocks = buildQuoteRenderBlocks({
       sections: [],
@@ -94,6 +122,34 @@ describe('buildQuoteRenderBlocks', () => {
         showPrices: false,
         showUnits: true,
         showPartContext: true,
+      },
+    });
+  });
+
+  it('maps an editable disclaimer block', () => {
+    const blocks = buildQuoteRenderBlocks({
+      sections: [],
+      blocks: [
+        {
+          id: 'terms',
+          type: 'disclaimer',
+          label: 'Disclaimer',
+          visible: true,
+          order: 0,
+          variant: 'compact',
+          options: {
+            heading: 'PLEASE NOTE:',
+            body: 'Valid for 30 days.\nThank you for the opportunity to quote!',
+          },
+        },
+      ],
+    });
+
+    expect(blocks[0]).toMatchObject({
+      type: 'disclaimer',
+      disclaimerOptions: {
+        heading: 'PLEASE NOTE:',
+        body: 'Valid for 30 days.\nThank you for the opportunity to quote!',
       },
     });
   });

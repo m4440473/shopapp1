@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isPartReadyForDepartment } from '../department-routing';
+import { findNextDepartmentWithOpenChecklist, isPartReadyForDepartment } from '../department-routing';
 
 describe('isPartReadyForDepartment', () => {
   it('returns false when the part is not in the department', () => {
@@ -43,5 +43,37 @@ describe('isPartReadyForDepartment', () => {
     };
 
     expect(isPartReadyForDepartment(part, 'dept-1')).toBe(true);
+  });
+});
+
+describe('findNextDepartmentWithOpenChecklist', () => {
+  const departments = [{ id: 'machining' }, { id: 'fab' }, { id: 'paint' }];
+
+  it('uses department order while skipping departments without open work', () => {
+    const checklist = [
+      { departmentId: 'machining', isActive: true, completed: true },
+      { departmentId: 'fab', isActive: true, completed: true },
+      { departmentId: 'paint', isActive: true, completed: false },
+    ];
+
+    expect(findNextDepartmentWithOpenChecklist(checklist, departments)).toBe('paint');
+  });
+
+  it('ignores inactive and completed checklist items', () => {
+    const checklist = [
+      { departmentId: 'machining', isActive: false, completed: false },
+      { departmentId: 'fab', isActive: true, completed: true },
+    ];
+
+    expect(findNextDepartmentWithOpenChecklist(checklist, departments)).toBeNull();
+  });
+
+  it('does not assume the next global department has work', () => {
+    const checklist = [
+      { departmentId: 'machining', isActive: true, completed: true },
+      { departmentId: 'paint', isActive: true, completed: false },
+    ];
+
+    expect(findNextDepartmentWithOpenChecklist(checklist, departments)).toBe('paint');
   });
 });
