@@ -309,6 +309,8 @@ function requestBody(
     reasoning: {
       effort: spec.effort,
       context: 'current_turn',
+      ...(settings.reasoningSummary ? { summary: settings.reasoningSummary } : {}),
+      ...(settings.reasoningMode ? { mode: settings.reasoningMode } : {}),
     },
 
     instructions: DRAWING_IMPORT_AI_INSTRUCTIONS,
@@ -329,7 +331,7 @@ function requestBody(
     ],
 
     text: {
-      verbosity: 'low',
+      verbosity: settings.verbosity,
 
       format: spec.compactOutput
         ? zodTextFormat(
@@ -1008,10 +1010,7 @@ export function createDrawingImportAiAdapter(dependencies: {
           content:
             fullPageContent(context),
 
-          compactOutput:
-            Boolean(
-              context.fullPageImageDataUrl,
-            ),
+          compactOutput: false,
         },
 
         context,
@@ -1046,10 +1045,7 @@ export function createDrawingImportAiAdapter(dependencies: {
           content:
             fullPageContent(context),
 
-          compactOutput:
-            Boolean(
-              context.fullPageImageDataUrl,
-            ),
+          compactOutput: false,
         },
 
         context,
@@ -1093,10 +1089,7 @@ export function createDrawingImportAiAdapter(dependencies: {
           content:
             fullPageContent(context),
 
-          compactOutput:
-            Boolean(
-              context.fullPageImageDataUrl,
-            ),
+          compactOutput: false,
         },
 
         context,

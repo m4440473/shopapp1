@@ -156,6 +156,7 @@ export type OrderAttachmentCreateInput = z.infer<typeof OrderAttachmentCreate>;
 export const OrderUpdate = z.object({
   business: z.enum(BUSINESS_CODES).optional(),
   customerId: z.string().trim().min(1).optional(),
+  customerContactId: z.string().trim().nullable().optional(),
   receivedDate: z.string().trim().min(1).optional(),
   dueDate: z.string().trim().min(1).optional(),
   priority: PriorityEnum.optional(),

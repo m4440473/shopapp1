@@ -151,6 +151,64 @@ function adapter(port: DrawingImportResponsesPort, budget = new DrawingImportAiB
 }
 
 describe('drawing import V2 OpenAI adapter', () => {
+  it('keeps summary and mode opt-in and accepts only supported settings', () => {
+    expect(getDrawingImportAiSettings({})).toMatchObject({
+      reasoningSummary: undefined,
+      reasoningMode: undefined,
+      terraReasoningEffort: 'medium',
+      verbosity: 'low',
+    });
+    expect(getDrawingImportAiSettings({
+      DRAWING_IMPORT_V2_REASONING_SUMMARY: ' CONCISE ',
+      DRAWING_IMPORT_V2_REASONING_MODE: ' STANDARD ',
+    })).toMatchObject({ reasoningSummary: 'concise', reasoningMode: 'standard' });
+    expect(getDrawingImportAiSettings({
+      DRAWING_IMPORT_V2_REASONING_SUMMARY: 'invalid',
+      DRAWING_IMPORT_V2_REASONING_MODE: 'invalid',
+    })).toMatchObject({ reasoningSummary: undefined, reasoningMode: undefined });
+  });
+
+  it('omits summary and mode from requests unless configured', async () => {
+    const port = fakePort();
+    await adapter(port).runTerraFullPage(pageContext());
+    expect(port.parse.mock.calls[0][0].reasoning).toEqual({ effort: 'medium', context: 'current_turn' });
+  });
+
+  it('applies the local Playground profile to full-page and dimension refinement requests', async () => {
+    const port = fakePort();
+    const playgroundSettings = getDrawingImportAiSettings({
+      DRAWING_IMPORT_V3_ENABLED: 'true',
+      DRAWING_IMPORT_V2_TERRA_MODEL: 'gpt-5.4-mini',
+      DRAWING_IMPORT_V2_TERRA_REASONING: 'low',
+      DRAWING_IMPORT_V3_TERRA_REFINEMENT_REASONING: 'low',
+      DRAWING_IMPORT_V2_VERBOSITY: 'medium',
+      DRAWING_IMPORT_V2_REASONING_SUMMARY: 'concise',
+      DRAWING_IMPORT_V2_REASONING_MODE: 'standard',
+      DRAWING_IMPORT_V2_MAX_OUTPUT_TOKENS: '10000',
+    });
+    const configured = adapter(port, undefined, { settings: playgroundSettings });
+    await configured.runTerraFullPage(pageContext());
+    await configured.runTerraDimensionRefinement(pageContext({
+      unresolvedFields: ['finalLength'],
+      escalationReasons: ['finalLength is unresolved'],
+    }));
+    for (const [body] of port.parse.mock.calls) {
+      expect(body).toMatchObject({
+        model: 'gpt-5.4-mini',
+        reasoning: { effort: 'low', context: 'current_turn', mode: 'standard', summary: 'concise' },
+        text: { verbosity: 'medium', format: { type: 'json_schema', name: 'drawing_import_page_v3', strict: true } },
+        max_output_tokens: 10000,
+      });
+      expect(body.input[0].content.at(-1).file_data).toMatch(/^data:application\/pdf;base64,/);
+    }
+  });
+
+  it('defaults response verbosity to low and accepts supported overrides only', () => {
+    expect(getDrawingImportAiSettings({}).verbosity).toBe('low');
+    expect(getDrawingImportAiSettings({ DRAWING_IMPORT_V2_VERBOSITY: 'HIGH' }).verbosity).toBe('high');
+    expect(getDrawingImportAiSettings({ DRAWING_IMPORT_V2_VERBOSITY: 'verbose' }).verbosity).toBe('low');
+  });
+
   it('builds a strict Terra targeted request with stable prompt prefix and high-detail crop', async () => {
     const port = fakePort();
     const result = await adapter(port).runTerraTargeted(pageContext());
@@ -192,17 +250,25 @@ describe('drawing import V2 OpenAI adapter', () => {
   });
 
   it('sends an original phone photo as an image instead of expanding it into a PDF request', async () => {
-    const port = fakePort(completedResponse({
-      partNumber: 'H1-040-2204',
-      description: 'Big Bite Pin Retaining Collar',
-      revision: null,
-      drawingQuantity: 1,
-      material: '4.13Ø x .5W DOM Tb',
-      finish: '125',
-      finalLength: 2,
-      partWidth: 4.06,
-      partThickness: 0.5,
-    } as never));
+    const port = fakePort(completedResponse(extraction({
+      partNumber: modelField('H1-040-2204'),
+      partName: modelField('Big Bite Pin Retaining Collar'),
+      drawingQuantity: modelField(1),
+      material: modelField('4.13Ø x .5W DOM Tb'),
+      finish: modelField('125'),
+      finalLength: modelField('2'),
+      partWidth: modelField('4.06'),
+      partThickness: modelField('0.5'),
+      revision: modelField<string>(null),
+      manufacturingNotes: [{
+        text: 'PREHEAT TO 600-700F',
+        category: 'preheat_heat_treat',
+        evidenceText: 'PREHEAT TO 600-700F',
+        sourceRegionIdentity: null,
+        warnings: [],
+        diagnosticConfidence: 0.95,
+      }],
+    })));
     const result = await adapter(port).runTerraFullPage(pageContext({
       sourceFilename: 'phone-photo.jpg',
       fullPageImageDataUrl: 'data:image/jpeg;base64,AA==',
@@ -214,13 +280,14 @@ describe('drawing import V2 OpenAI adapter', () => {
       image_url: 'data:image/jpeg;base64,AA==',
       detail: 'high',
     });
-    expect(body.text.format.name).toBe('drawing_import_photo_compact_v1');
+    expect(body.text.format.name).toBe('drawing_import_page_v3');
     expect(result.extraction).toMatchObject({
       partNumber: { value: 'H1-040-2204' },
       partName: { value: 'Big Bite Pin Retaining Collar' },
       finalLength: { value: '2' },
       partWidth: { value: '4.06' },
       partThickness: { value: '0.5' },
+      manufacturingNotes: [{ text: 'PREHEAT TO 600-700F' }],
     });
   });
 

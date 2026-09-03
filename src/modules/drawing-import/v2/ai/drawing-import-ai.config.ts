@@ -1,6 +1,9 @@
 import type { DrawingImportV2Config } from '../drawing-import-v2.types';
 
 export type DrawingImportReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type DrawingImportVerbosity = 'low' | 'medium' | 'high';
+export type DrawingImportReasoningSummary = 'auto' | 'concise' | 'detailed';
+export type DrawingImportReasoningMode = 'standard' | 'pro';
 
 export type DrawingImportAiSettings = {
   terraModel: string;
@@ -8,6 +11,9 @@ export type DrawingImportAiSettings = {
   terraRefinementReasoningEffort: DrawingImportReasoningEffort;
   solModel: string;
   solReasoningEffort: DrawingImportReasoningEffort;
+  verbosity: DrawingImportVerbosity;
+  reasoningSummary?: DrawingImportReasoningSummary;
+  reasoningMode?: DrawingImportReasoningMode;
   maxOutputTokens: number;
   estimatedOutputTokens: number;
   fallbackEstimatedCostPerRequestUsd: number;
@@ -16,10 +22,23 @@ export type DrawingImportAiSettings = {
 const reasoningEfforts = new Set<DrawingImportReasoningEffort>([
   'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max',
 ]);
+const verbosityLevels = new Set<DrawingImportVerbosity>(['low', 'medium', 'high']);
+const summaryLevels = new Set<DrawingImportReasoningSummary>(['auto', 'concise', 'detailed']);
+const reasoningModes = new Set<DrawingImportReasoningMode>(['standard', 'pro']);
+
+function optionalSetting<T extends string>(value: string | undefined, supported: ReadonlySet<T>): T | undefined {
+  const normalized = value?.trim().toLowerCase() as T | undefined;
+  return normalized && supported.has(normalized) ? normalized : undefined;
+}
 
 function effort(value: string | undefined, fallback: DrawingImportReasoningEffort) {
   const normalized = value?.trim().toLowerCase() as DrawingImportReasoningEffort | undefined;
   return normalized && reasoningEfforts.has(normalized) ? normalized : fallback;
+}
+
+function responseVerbosity(value: string | undefined, fallback: DrawingImportVerbosity) {
+  const normalized = value?.trim().toLowerCase() as DrawingImportVerbosity | undefined;
+  return normalized && verbosityLevels.has(normalized) ? normalized : fallback;
 }
 
 function integer(value: string | undefined, fallback: number, minimum: number, maximum: number) {
@@ -40,6 +59,8 @@ export function getDrawingImportAiSettings(
   );
 
   return {
+    reasoningSummary: optionalSetting(environment.DRAWING_IMPORT_V2_REASONING_SUMMARY, summaryLevels),
+    reasoningMode: optionalSetting(environment.DRAWING_IMPORT_V2_REASONING_MODE, reasoningModes),
     terraModel:
       environment.DRAWING_IMPORT_V2_TERRA_MODEL?.trim() ||
       'gpt-5.4-mini',
@@ -63,6 +84,11 @@ export function getDrawingImportAiSettings(
       environment.DRAWING_IMPORT_V2_LUNA_REASONING ??
         environment.DRAWING_IMPORT_V2_SOL_REASONING,
       'high',
+    ),
+
+    verbosity: responseVerbosity(
+      environment.DRAWING_IMPORT_V2_VERBOSITY,
+      'low',
     ),
 
     maxOutputTokens: integer(

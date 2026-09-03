@@ -6,6 +6,7 @@ import { readFile, stat } from 'node:fs/promises';
 
 import JSZip from 'jszip';
 import OpenAI, { toFile } from 'openai';
+import { DrawingImportResponseError, getCurrentDrawingImportAiOptions, requireDrawingImportOutput } from './drawing-import-ai-request';
 
 import { getAppSettings } from '@/lib/app-settings';
 import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
@@ -22,7 +23,6 @@ const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
 const MAX_COMPRESSION_RATIO = 200;
 const EXTRACTION_CONCURRENCY = 4;
-const EXTRACTION_MODEL = 'gpt-4.1-mini';
 export const PDF_TEXT_PAGE_LIMIT = 20;
 export const PDF_TEXT_CHARACTER_LIMIT = 80_000;
 export const PDF_PACKET_PAGE_LIMIT = 100;
@@ -382,7 +382,7 @@ function fallbackResult(filename: string): DrawingTitleBlockResult {
   };
 }
 
-async function extractTitleBlock(
+export async function extractTitleBlock(
   file: ImportFile,
   preparedPdf?: { text: string; pageCount: number } | null,
   bomContext?: string,
@@ -417,11 +417,10 @@ async function extractTitleBlock(
     }
 
     const response = await openai.responses.create({
-      model: EXTRACTION_MODEL,
+      ...getCurrentDrawingImportAiOptions(),
       input: [{ role: 'user', content }],
-      text: { format: { type: 'json_object' } },
     });
-    const parsed = JSON.parse(response.output_text || '{}');
+    const parsed = JSON.parse(requireDrawingImportOutput(response));
     const validated = DrawingTitleBlockResult.safeParse(parsed);
     if (!validated.success) {
       const fallback = fallbackResult(file.filename);
@@ -429,8 +428,10 @@ async function extractTitleBlock(
       return { result: fallback, pageCount };
     }
     return { result: validated.data, pageCount };
-  } catch {
-    return { result: fallbackResult(file.filename), pageCount: null };
+  } catch (error) {
+    const fallback = fallbackResult(file.filename);
+    if (error instanceof DrawingImportResponseError) fallback.warnings.push(error.message);
+    return { result: fallback, pageCount: null };
   } finally {
     if (uploadedFileId) await openai.files.delete(uploadedFileId).catch(() => undefined);
   }

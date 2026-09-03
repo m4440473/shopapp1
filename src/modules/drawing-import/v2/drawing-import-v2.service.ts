@@ -26,12 +26,10 @@ import { reconstructBomTable } from './bom/bom-table';
 import { calculateAssemblyQuantities } from './bom/quantity-graph';
 import type { AssemblyGraphEdge, AssemblyGraphNode, DrawingBomRow } from './bom/bom.types';
 import {
-  createOcrEngine,
   cropPreview,
   differenceHash,
   extractCoordinateAwarePdfText,
   extractDrawingArchive,
-  reconstructTextLines,
   renderPdfPreview,
   sha256Hex,
   splitPdfToCanonicalPages,
@@ -72,9 +70,8 @@ import {
   recordHumanDrawingImportCorrection,
   replaceDrawingImportBomEdges,
   markDrawingImportPageFailed,
-  queueDrawingImportJob,
+  queueDrawingImportPageReprocess,
   requestDrawingImportCancellation,
-  resetDrawingImportPageForReprocess,
   setDrawingImportJobState,
   toDrawingImportJobProgress,
   touchDrawingImportJob,
@@ -408,29 +405,6 @@ function emptyCoordinateText(pageWidth: number, pageHeight: number): CoordinateA
   };
 }
 
-async function applyOcrIfNeeded(text: CoordinateAwarePageText, preview: PreviewArtifact) {
-  const config = getDrawingImportV2Config();
-  const lowDensity = text.rawText.trim().length < 24 || text.spans.length < 3;
-  if (!config.ocrEnabled || !lowDensity) return text;
-  const engine = createOcrEngine({ enabled: true });
-  try {
-    const result = await engine.recognize(preview.bytes);
-    if (!result.spans.length) return text;
-    return {
-      pageNumber: 1,
-      pageWidth: preview.width,
-      pageHeight: preview.height,
-      pageRotation: 0,
-      rawText: result.rawText,
-      spans: result.spans,
-      lines: reconstructTextLines(result.spans),
-      extractionMethod: 'ocr' as const,
-    };
-  } finally {
-    await engine.close();
-  }
-}
-
 async function retainArchiveChildren(input: {
   job: NonNullable<Awaited<ReturnType<typeof findDrawingImportJobById>>>;
   archiveBytes: Buffer;
@@ -566,8 +540,7 @@ async function analyzePage(input: {
   rootDir: string;
 }): Promise<ProcessedPage> {
   const pageRecord = await createOrLoadPage(input);
-  const embeddedText = await extractCoordinateAwarePdfText(input.canonicalPdf).catch(() => emptyCoordinateText(input.width, input.height));
-  const text = await applyOcrIfNeeded(embeddedText, input.preview);
+  const text = await extractCoordinateAwarePdfText(input.canonicalPdf).catch(() => emptyCoordinateText(input.width, input.height));
   const local = extractLocalDrawingFields({ pageId: pageRecord.id, filename: input.drawing.filename, page: text });
   const config = getDrawingImportV2Config();
   local.extraction.autoAcceptedFields = locallyAcceptableFields(local.extraction, {
@@ -632,11 +605,9 @@ async function analyzeDrawingSource(input: {
         height: previewMeta.height ?? Math.max(1, Math.round(page.height)),
         hash: sha256Hex(previewBytes),
       };
-      const text = await applyOcrIfNeeded(await extractCoordinateAwarePdfText(canonicalPdf), preview);
-      const localExtraction = normalizeDrawingImportPageExtraction(parseJson<DrawingImportPageExtraction>(
-        page.localExtractionJson,
-        extractLocalDrawingFields({ pageId: page.id, filename: page.sourceFilename, page: text }).extraction,
-      ));
+      const text = await extractCoordinateAwarePdfText(canonicalPdf).catch(() => emptyCoordinateText(page.width, page.height));
+      // Rebuild local evidence from the source, never reuse historical OCR guesses.
+      const localExtraction = extractLocalDrawingFields({ pageId: page.id, filename: page.sourceFilename, page: text }).extraction;
       pages.push({
         id: page.id,
         sourceId: source.id,
@@ -788,7 +759,8 @@ async function resolvePageWithAi(input: {
   };
 }) {
   const config = input.config;
-  const duplicate = await findDuplicateDrawingImportPage(input.job.id, input.page.id, sha256Hex(input.page.canonicalPdf));
+  const forceFresh = parseJson<{ reprocessPageId?: string }>(input.job.configJson, {}).reprocessPageId === input.page.id;
+  const duplicate = forceFresh ? null : await findDuplicateDrawingImportPage(input.job.id, input.page.id, sha256Hex(input.page.canonicalPdf));
   if (duplicate) {
     const extraction: DrawingImportPageExtraction = {
       ...input.page.localExtraction,
@@ -806,7 +778,7 @@ async function resolvePageWithAi(input: {
     return extraction;
   }
 
-  if (['bom', 'cover_sheet', 'reference'].includes(input.page.localExtraction.classification)) {
+  if (!forceFresh && ['bom', 'cover_sheet', 'reference'].includes(input.page.localExtraction.classification)) {
     await updateDrawingImportPageResult({
       pageId: input.page.id,
       extraction: input.page.localExtraction,
@@ -817,7 +789,7 @@ async function resolvePageWithAi(input: {
   }
 
   const criticalFields: DrawingImportFieldName[] = ['partNumber', 'drawingQuantity', 'material', 'revision'];
-  const canBypassAi = !config.directPdfV3Enabled
+  const canBypassAi = !forceFresh && !config.directPdfV3Enabled
     && input.page.localExtraction.classification !== 'uncertain'
     && criticalFields.every((field) => input.page.localExtraction.autoAcceptedFields.includes(field) || field === 'revision');
   if (canBypassAi || !input.adapter) {
@@ -837,9 +809,9 @@ async function resolvePageWithAi(input: {
     sourceFilename: input.page.sourceFilename,
     sourcePageNumber: input.page.sourcePageNumber,
     unresolvedFields: DRAWING_IMPORT_FIELD_NAMES.filter((name) => !input.page.localExtraction.autoAcceptedFields.includes(name)),
-    coordinateAwareText: coordinateTextForModel(input.page),
-    localCandidates: localCandidates(input.page.localExtraction),
-    bomCandidates: bomCandidatesForPage(input.page, input.rows),
+    coordinateAwareText: config.directPdfV3Enabled ? '' : coordinateTextForModel(input.page),
+    localCandidates: config.directPdfV3Enabled ? [] : localCandidates(input.page.localExtraction),
+    bomCandidates: config.directPdfV3Enabled ? [] : bomCandidatesForPage(input.page, input.rows),
     fullPageImageDataUrl: input.page.sourceImage
       ? `data:${input.page.sourceImage.mimeType};base64,${input.page.sourceImage.bytes.toString('base64')}`
       : undefined,
@@ -859,7 +831,7 @@ async function resolvePageWithAi(input: {
       bytes: crop.bytes,
       rootDir: input.rootDir,
     });
-    const cached = await completedAiAttempt(input.page.id, 'terra_targeted');
+    const cached = forceFresh ? null : await completedAiAttempt(input.page.id, 'terra_targeted');
     const sequence = await nextAttemptSequence(input.page.id, 'terra_targeted');
     const result = cached ? null : await input.stageGates.targeted.run(() => input.adapter!.runTerraTargeted({
       ...baseContext,
@@ -890,7 +862,7 @@ async function resolvePageWithAi(input: {
   }
 
   if (config.directPdfV3Enabled || !latestAi || current.classification === 'uncertain' || drawingImportExtractionNeedsHumanReview(current)) {
-    const cached = await completedAiAttempt(input.page.id, 'terra_full_page');
+    const cached = forceFresh ? null : await completedAiAttempt(input.page.id, 'terra_full_page');
     const sequence = await nextAttemptSequence(input.page.id, 'terra_full_page');
     const result = cached ? null : await input.stageGates.fullPage.run(() => input.adapter!.runTerraFullPage({
       ...baseContext,
@@ -898,6 +870,7 @@ async function resolvePageWithAi(input: {
       knownRegionIds: [],
       canonicalPagePdf: input.page.canonicalPdf,
     }));
+    if (forceFresh && !result?.extraction) throw new Error(`The selected page could not be reprocessed (${result?.errorCode ?? 'no result'}); the previous review has been kept.`);
     latestAi = cached ?? result?.extraction ?? latestAi;
     if (result) {
       await createDrawingExtractionAttempt({
@@ -933,66 +906,18 @@ async function resolvePageWithAi(input: {
     }
   }
 
-  const dimensionFields = ['finalLength', 'partWidth', 'partThickness'] as const;
-  const unresolvedDimensions = config.directPdfV3Enabled
-    && latestAi
-    && !input.page.sourceImage
-    && current.classification === 'part_drawing'
-    ? dimensionFields.filter((field) => current[field].value === null || ['unreadable', 'conflicting'].includes(current[field].status))
-    : [];
-  if (unresolvedDimensions.length) {
-    const cached = await completedAiAttempt(input.page.id, 'terra_refinement');
-    const sequence = await nextAttemptSequence(input.page.id, 'terra_refinement');
-    const result = cached ? null : await input.stageGates.fullPage.run(() => input.adapter!.runTerraDimensionRefinement({
-      ...baseContext,
-      attemptId: `terra-refinement-${sequence}`,
-      unresolvedFields: unresolvedDimensions,
-      knownRegionIds: [],
-      canonicalPagePdf: input.page.canonicalPdf,
-      escalationReasons: [`manufacturing_dimensions_unresolved:${unresolvedDimensions.join(',')}`],
-    }));
-    const refinement = cached ?? result?.extraction ?? null;
-    if (result) {
-      await createDrawingExtractionAttempt({
-        pageId: input.page.id,
-        stage: 'ai_resolution',
-        sourceType: 'model',
-        routeTier: 'terra_refinement',
-        idempotencyKey: `${input.job.id}:${input.page.id}:terra_refinement:${sequence}`,
-        promptVersion: DRAWING_IMPORT_AI_PROMPT_VERSION,
-        usage: result.usage,
-        result: result.extraction,
-        warnings: [
-          `manufacturing_dimensions_unresolved:${unresolvedDimensions.join(',')}`,
-          ...(result.errorCode ? [result.errorCode] : []),
-        ],
-        errorSummary: result.errorCode === 'request_failed' ? 'Terra dimension refinement request failed.' : null,
-      });
-    }
-    if (refinement) {
-      current = mergeDrawingImportAiExtraction({
-        local: current,
-        ai: refinement,
-        page: input.page.text,
-        route: 'terra_refinement',
-        preferModel: true,
-        fieldsToReplace: unresolvedDimensions,
-      });
-      latestAi = refinement;
-      latestRoute = 'terra_refinement';
-    }
-  }
+  // V3 deliberately leaves unresolved dimensions for review: one extraction per page.
 
   if (latestAi) {
     const escalation = decideDrawingImportSolEscalation({
       terraResult: latestAi,
-      solEscalationEnabled: config.solEscalationEnabled,
+      solEscalationEnabled: !config.directPdfV3Enabled && config.solEscalationEnabled,
       contradictsStrongLocalEvidence: hasStrongLocalContradiction(input.page.localExtraction, latestAi),
       ambiguousBomMatches: current.warnings.some((warning) => warning.toLowerCase().includes('ambiguous')),
       poorOrUnusualPage: input.page.text.rawText.trim().length < 24,
     });
     if (escalation.escalate) {
-      const cached = await completedAiAttempt(input.page.id, 'sol_escalation');
+      const cached = forceFresh ? null : await completedAiAttempt(input.page.id, 'sol_escalation');
       const sequence = await nextAttemptSequence(input.page.id, 'sol_escalation');
       const result = cached ? null : await input.stageGates.sol.run(() => input.adapter!.runSolEscalation({
         ...baseContext,
@@ -1029,6 +954,7 @@ async function resolvePageWithAi(input: {
     }
   }
 
+  if (forceFresh) return current;
   const reviewStatus = canDrawingImportPageCreatePart(current)
     ? drawingImportExtractionNeedsHumanReview(current) ? 'MANUAL_REVIEW' : 'ACCEPTED'
     : current.classification === 'uncertain' ? 'MANUAL_REVIEW' : 'ACCEPTED';
@@ -1204,6 +1130,76 @@ async function currentJobCounts(jobId: string) {
   };
 }
 
+
+/** A durable manual retry never inventories the archive or writes sibling pages/BOM quantities. */
+async function processSelectedDrawingPage(
+  job: NonNullable<Awaited<ReturnType<typeof findDrawingImportJobById>>>,
+  pageId: string,
+  rootDir: string,
+) {
+  const selected = job.pages.find((page) => page.id === pageId);
+  if (!selected?.canonicalPdfStoragePath || !selected.previewStoragePath) throw new Error('Drawing page PDF not found.');
+  const config = { ...getDrawingImportV2Config(), directPdfV3Enabled: true, retryLimit: 0, solEscalationEnabled: false };
+  const budget = new DrawingImportAiBudgetController(job.softBudgetUsd, job.hardBudgetUsd, job.actualCostUsd);
+  const startedAt = Date.now();
+  try {
+    if (await isDrawingImportCancellationRequested(job.id)) return;
+    await touchDrawingImportJob(job.id, 'ai_resolution');
+    const canonicalPdf = await readStoredFile(selected.canonicalPdfStoragePath, rootDir);
+    const previewBytes = await readStoredFile(selected.previewStoragePath, rootDir);
+    const text = await extractCoordinateAwarePdfText(canonicalPdf).catch(() => emptyCoordinateText(selected.width, selected.height));
+    const previewMeta = await sharp(previewBytes).metadata();
+    const local = extractLocalDrawingFields({ pageId, filename: selected.sourceFilename, page: text }).extraction;
+    const page: ProcessedPage = {
+      id: pageId, sourceId: selected.sourceId, sourceFilename: selected.sourceFilename,
+      sourcePageNumber: selected.sourcePageNumber,
+      sourcePageCount: job.sources.find((source) => source.id === selected.sourceId)?.pageCount ?? 1,
+      canonicalPdfStoragePath: selected.canonicalPdfStoragePath, previewStoragePath: selected.previewStoragePath,
+      canonicalPdf, sourceImage: null, text, localExtraction: local,
+      preview: { mimeType: 'image/png', bytes: previewBytes, width: previewMeta.width ?? selected.width, height: previewMeta.height ?? selected.height, hash: sha256Hex(previewBytes) },
+    };
+    if (!process.env.OPENAI_API_KEY?.trim()) throw new Error('AI is not configured; the previous review has been kept.');
+    const adapter = createDrawingImportAiAdapter({
+      responses: createOpenAiDrawingImportResponsesPort(new OpenAI({ apiKey: process.env.OPENAI_API_KEY })),
+      settings: getDrawingImportAiSettings(), runtime: config, pricing: DEFAULT_DRAWING_IMPORT_PRICING_CATALOG, budget,
+    });
+    const extraction = await resolvePageWithAi({
+      job, page, rows: [], rootDir, adapter, config, budget,
+      stageGates: { targeted: createDrawingImportConcurrencyGate(1), fullPage: createDrawingImportConcurrencyGate(1), sol: createDrawingImportConcurrencyGate(1) },
+    });
+    const latestReview = await findDrawingImportPageForJob(job.id, pageId);
+    const previous = parseJson<DrawingImportPageExtraction | null>(latestReview?.finalExtractionJson ?? selected.finalExtractionJson, null);
+    // Explicit confirmations survive a reread. Never propagate assembly changes to other pages.
+    if (previous) {
+      for (const field of DRAWING_IMPORT_FIELD_NAMES) {
+        if (previous[field]?.status === 'human_corrected') extraction[field] = previous[field] as never;
+      }
+    }
+    if (job.intakeMode === 'ASSEMBLY' && extraction.drawingQuantity.status !== 'human_corrected') {
+      if (previous?.drawingQuantity.value != null) {
+        extraction.drawingQuantity = { ...previous.drawingQuantity, warnings: [...previous.drawingQuantity.warnings, 'Assembly quantity retained during page-only reprocessing; confirm it if the drawing identity changed.'] };
+      } else {
+        extraction.drawingQuantity = multipliedDrawingQuantityField({ pageId, base: extraction.drawingQuantity, multiplier: job.assemblyMultiplier });
+        extraction.drawingQuantity.warnings.push('Confirm this quantity against the assembly; only this page was reprocessed.');
+      }
+    }
+    await updateDrawingImportPageResult({
+      pageId, extraction, reviewStatus: drawingImportExtractionNeedsHumanReview(extraction) ? 'MANUAL_REVIEW' : 'ACCEPTED', routeTier: extraction.route,
+    });
+  } catch (error) {
+    await markDrawingImportPageFailed(pageId, error instanceof Error ? error.message : 'Page reprocessing failed.');
+  } finally {
+    const counts = await currentJobCounts(job.id);
+    const cancelled = await isDrawingImportCancellationRequested(job.id);
+    await setDrawingImportJobState({
+      jobId: job.id, status: cancelled ? 'CANCELLED' : counts.failedPages ? 'PARTIAL_FAILURE' : 'READY_FOR_REVIEW',
+      stage: cancelled ? 'complete' : 'ready_for_review', counts, actualCostUsd: budget.snapshot().actualCostUsd,
+      timing: { ...parseJson<Record<string, unknown>>(job.timingJson, {}), lastPageReprocessMs: Date.now() - startedAt },
+      completed: true,
+    });
+  }
+}
+
 async function processQuoteDrawingImportV2Job(jobId: string) {
   let claimed = await claimQueuedDrawingImportJob(jobId);
   if (!claimed) claimed = await claimStaleDrawingImportJob(jobId, new Date(Date.now() - STALE_JOB_MS));
@@ -1215,6 +1211,12 @@ async function processQuoteDrawingImportV2Job(jobId: string) {
     if (!job) throw new Error('Drawing import job not found.');
     if (!['quote', 'order'].includes(job.destination)) throw new Error('Unsupported drawing import destination.');
     const settings = await getAppSettings();
+    const retryScope = parseJson<{ reprocessPageId?: unknown }>(job.configJson, {});
+    if (retryScope.reprocessPageId !== undefined) {
+      if (typeof retryScope.reprocessPageId !== 'string' || !retryScope.reprocessPageId) throw new Error('Invalid page reprocess scope.');
+      await processSelectedDrawingPage(job, retryScope.reprocessPageId, settings.attachmentsDir);
+      return;
+    }
     await touchDrawingImportJob(jobId, 'inventory');
     const drawings = await inventoryJobSources(job, settings.attachmentsDir);
     if (!drawings.length) throw new Error('No supported drawing files were found.');
@@ -1227,7 +1229,7 @@ async function processQuoteDrawingImportV2Job(jobId: string) {
     if (!job) throw new Error('Drawing import job disappeared.');
     await touchDrawingImportJob(jobId, 'document_analysis');
     const config = getDrawingImportV2Config();
-    config.solEscalationEnabled = settings.drawingImportLunaFallbackEnabled;
+    config.solEscalationEnabled = !config.directPdfV3Enabled && settings.drawingImportLunaFallbackEnabled;
     const sourceResults = await mapWithConcurrency(drawings, config.pdfWorkerConcurrency, async (drawing) => {
       try {
         return await analyzeDrawingSource({ job: job!, drawing, rootDir: settings.attachmentsDir });
@@ -1386,8 +1388,8 @@ export async function cancelQuoteDrawingImportV2Job(jobId: string) {
 export async function reprocessQuoteDrawingImportV2Page(jobId: string, pageId: string) {
   const page = await findDrawingImportPageForJob(jobId, pageId);
   if (!page) throw new Error('Drawing page not found.');
-  await resetDrawingImportPageForReprocess(pageId);
-  await queueDrawingImportJob(jobId);
+  await queueDrawingImportPageReprocess(jobId, pageId);
+  startDrawingImportRecoveryLoop();
   ensureQuoteDrawingImportV2JobProcessing(jobId);
   return getQuoteDrawingImportV2JobSnapshot(jobId);
 }

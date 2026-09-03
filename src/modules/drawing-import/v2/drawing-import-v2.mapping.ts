@@ -22,6 +22,33 @@ function normalized(value: string | null | undefined) {
   return value?.normalize('NFKC').replace(/\s+/g, ' ').trim().toUpperCase() ?? '';
 }
 
+function normalizeFinish(field: DrawingImportFieldValue<string>): DrawingImportFieldValue<string> {
+  const value = normalized(field.value);
+  const explicitNa = ['NA', 'N/A', 'NONE', 'NO FINISH', 'NOT APPLICABLE'].includes(value);
+  if (!explicitNa && !(field.value === null && field.status === 'not_present')) return field;
+  return {
+    ...field,
+    value: 'NA',
+    rawText: explicitNa ? field.rawText ?? field.value : null,
+    status: explicitNa ? 'read' : 'derived_locally',
+    candidates: explicitNa ? field.candidates.map((candidate) => ({ ...candidate, value: 'NA' })) : [],
+  };
+}
+
+function normalizePartNumber(field: DrawingImportFieldValue<string>): DrawingImportFieldValue<string> {
+  const value = normalized(field.value).replace(/[.:#]+$/, '').trim();
+  const fieldLabels = new Set(['REV', 'REVISION', 'DRAWING NUMBER', 'DRAWING NO', 'DWG NO', 'PART NUMBER', 'PART NO']);
+  if (!fieldLabels.has(value)) return field;
+  return {
+    ...field,
+    value: null,
+    rawText: field.rawText,
+    status: 'unreadable',
+    candidates: [],
+    warnings: [...field.warnings, 'Rejected a title-block field label that was returned without its identifier value.'],
+  };
+}
+
 function matchingLocalRegion(page: CoordinateAwarePageText, evidenceText: string | null) {
   const needle = normalized(evidenceText);
   if (!needle) return null;
@@ -203,6 +230,8 @@ export function mergeDrawingImportAiExtraction(input: {
       input.preferModel ?? false,
     );
   }
+  if (!input.fieldsToReplace || input.fieldsToReplace.includes('partNumber')) output.partNumber = normalizePartNumber(output.partNumber);
+  if (!input.fieldsToReplace || input.fieldsToReplace.includes('finish')) output.finish = normalizeFinish(output.finish);
   if (!input.fieldsToReplace) {
     output.manufacturingNotes = mergeManufacturingNotes(
       input.local.manufacturingNotes ?? [],

@@ -63,7 +63,9 @@ export function mergeDrawingImportJobSnapshot(
   // page's position so saving one field cannot move that drawing to the top.
   pages.push(...incoming.pages.filter((page) => !currentIds.has(page.pageId)));
   const terminal = ['READY_FOR_REVIEW', 'PARTIAL_FAILURE', 'FAILED', 'CANCELLED', 'COMPLETE'].includes(incoming.progress.status);
-  const progress = !terminal && incoming.progress.completedPages < current.progress.completedPages
+  const pageRetryStarted = ['READY_FOR_REVIEW', 'PARTIAL_FAILURE', 'FAILED', 'CANCELLED', 'COMPLETE'].includes(current.progress.status)
+    && incoming.pages.some((page) => page.processingStatus === 'queued' || page.processingStatus === 'processing');
+  const progress = !terminal && !pageRetryStarted && incoming.progress.completedPages < current.progress.completedPages
     ? current.progress
     : incoming.progress;
   return {

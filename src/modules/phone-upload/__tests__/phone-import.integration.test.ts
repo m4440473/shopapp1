@@ -14,10 +14,10 @@ vi.mock('openai', () => ({ default: class {
     inputTokens: { count: async () => ({ input_tokens: 1000 }) },
     parse: async (body: any) => {
       holder.calls.push(body);
+      const field = (value: string | number | boolean | null) => ({ value, rawText: value === null ? null : String(value), status: value === null ? 'not_present' : 'read', evidenceText: value === null ? null : String(value), sourceRegionIdentity: null, warnings: [], diagnosticConfidence: value === null ? null : 0.9 });
       return { id: 'synthetic-response', model: 'gpt-5.6-terra', status: 'completed', service_tier: 'default', output: [], output_parsed: {
-        partNumber: 'PHONE-101', description: 'Spacer', drawingQuantity: 2,
-        material: '1018 Steel', finish: 'None', finalLength: 4,
-        partWidth: 2, partThickness: 0.25, revision: null,
+        classification: 'part_drawing', classificationEvidenceText: 'DRAWING NO', partNumber: field('PHONE-101'), partName: field('Spacer'), drawingQuantity: field(2), material: field('1018 Steel'), finish: field('None'), stockSize: field(null), cutLength: field(null), finalLength: field('4'), partWidth: field('2'), partThickness: field('0.25'), revision: field(null), assemblyStatus: field(false),
+        manufacturingNotes: [{ text: 'PREHEAT TO 600-700F', category: 'preheat_heat_treat', evidenceText: 'PREHEAT TO 600-700F', sourceRegionIdentity: null, warnings: [], diagnosticConfidence: 0.95 }], contradictions: [], warnings: [],
       }, usage: { input_tokens: 1000, output_tokens: 200 } };
     },
   };
@@ -72,5 +72,6 @@ it.each(['quote','order'] as const)('imports phone photos through real %s routes
   const review = buildReviewedQuoteDrawingImport(snapshot.pages,[{id:'steel',name:'1018 Steel'}],snapshot.supportingFiles);
   expect(review.blockingMessages).toEqual([]);
   expect(review.parts[0]).toMatchObject({partNumber:'PHONE-101',quantity:2,cutLength:'4.125',finalPartLength:'4',materialId:'steel'});
+  expect(review.parts[0].noteSuggestions).toEqual([expect.objectContaining({ destination:'workInstructions', text:'PREHEAT TO 600-700F' })]);
   expect(OrderPartCreate.parse(review.parts[0])).toMatchObject({finalPartLength:'4',drawingMaterialText:'1018 Steel'});
 },60000);

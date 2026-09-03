@@ -22,11 +22,17 @@ describe('CustomerPartPicker', () => {
   it('adds a reviewed suggestion once and wires reuse into both intake editors', () => {
     expect(appendSuggestedNote('Existing note', 'PREHEAT TO 600F')).toBe('Existing note\nPREHEAT TO 600F');
     expect(appendSuggestedNote('PREHEAT   TO 600F', 'preheat to 600f')).toBe('PREHEAT   TO 600F');
-    for (const file of ['src/app/admin/quotes/QuoteEditor.tsx', 'src/app/orders/new/page.tsx']) {
-      const source = readFileSync(path.resolve(file), 'utf8');
-      expect(source).toContain('<CustomerPartPicker');
-      expect(source).toContain('<CustomerPartNoteSuggestions');
-      expect(source).toContain("setPartEntryMode('existing')");
-    }
+    const quoteEditor = readFileSync(path.resolve('src/app/admin/quotes/QuoteEditor.tsx'), 'utf8');
+    const orderEditor = readFileSync(path.resolve('src/app/orders/new/page.tsx'), 'utf8');
+    const orderPartsEditor = readFileSync(path.resolve('src/app/orders/new/NewOrderPartsEditor.tsx'), 'utf8');
+    expect(quoteEditor).toContain('<CustomerPartPicker');
+    expect(quoteEditor).toContain('<CustomerPartNoteSuggestions');
+    expect(quoteEditor).toContain('<QuotePartEntryChooser');
+    expect(orderEditor).toContain('<CustomerPartPicker');
+    expect(orderEditor).toContain('<NewOrderPartEntryChooser');
+    expect(orderEditor).toContain('<NewOrderPartsEditor');
+    expect(orderPartsEditor).toContain('<CustomerPartNoteSuggestions');
+    expect(readFileSync(path.resolve('src/app/admin/quotes/QuotePartEntryChooser.tsx'), 'utf8')).toContain("onChange('existing')");
+    expect(readFileSync(path.resolve('src/app/orders/new/NewOrderPartEntryChooser.tsx'), 'utf8')).toContain("onChoose('existing')");
   });
 });

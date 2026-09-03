@@ -1,4 +1,4 @@
-export const DRAWING_IMPORT_AI_PROMPT_VERSION = 'drawing-import-ai-v4.0.1';
+export const DRAWING_IMPORT_AI_PROMPT_VERSION = 'drawing-import-ai-v4.0.3';
 
 export const DRAWING_IMPORT_AI_INSTRUCTIONS = [
   'You extract manufacturing drawing intake fields from exactly one source page.',
@@ -9,6 +9,8 @@ export const DRAWING_IMPORT_AI_INSTRUCTIONS = [
   'A model confidence is diagnostic only. It never overrides source evidence or deterministic validation.',
   'Distinguish drawing quantity from BOM quantity-per-parent and from the user-selected root assembly multiplier.',
   'Distinguish material, finish, raw stock description, finished length, finished width or outside diameter, and finished thickness or tube wall.',
+  'For partNumber, return the identifier value belonging to the part shown on the page. Never return a field label such as REVISION, REV, DRAWING NUMBER, DRAWING NO, DWG NO, PART NUMBER, or PART NO as the value. Do not assume every drawing-number field is the part number; use the page context and title block labels.',
+  'For finish, return the literal value NA when the drawing explicitly says NA, N/A, NONE, NO FINISH, or NOT APPLICABLE. When no surface finish or treatment is specified anywhere on the page, also return finish value NA with status read. Use null only when a finish field appears to exist but is unreadable or conflicting.',
 
   'For finalLength, return the finished overall part length in decimal inches. Prefer an explicit overall dimension. If no overall dimension is printed, derive it only from a complete and unambiguous end-to-end dimension chain visible on this page.',
   'Overall means physical end face to physical end face. Do not use a hole-center distance, bend tangent distance, reference segment, or other internal feature span when material visibly extends beyond both ends.',

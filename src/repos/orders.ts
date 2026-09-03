@@ -8,6 +8,7 @@ export const listOrders = repo.listOrders;
 export const findActiveOrderCustomFields = repo.findActiveOrderCustomFields;
 export const createOrderWithCustomFields = repo.createOrderWithCustomFields;
 export const findOrderById = repo.findOrderById;
+export const findOrderCustomerIdentity = repo.findOrderCustomerIdentity;
 export const findOrderHeader = repo.findOrderHeader;
 export const findOrderWithDetails = repo.findOrderWithDetails;
 export const updateOrder = repo.updateOrder;

@@ -50,6 +50,14 @@ import type {
 } from '@/modules/shop-floor/shop-floor.schema';
 import type { ShopFloorSummary } from '@/modules/shop-floor/shop-floor.service';
 
+const PART_MATERIAL_STATUS_OPTIONS = [
+  ['UNREVIEWED', 'Not reviewed'],
+  ['NEED_TO_ORDER', 'Needs ordering'],
+  ['WAITING_ON_STOCK', 'Waiting on stock to arrive'],
+  ['IN_STOCK', 'Material arrived / on hand'],
+  ['NOT_REQUIRED', 'No stock required'],
+] as const;
+
 type LayoutOption = 'grid' | 'machinist' | 'workQueue';
 
 type Props = {
@@ -160,6 +168,7 @@ export function ShopFloorLayouts({
     priority: 'NORMAL',
     status: 'RECEIVED',
     machinistId: '',
+    partMaterialStatuses: {} as Record<string, string>,
     reason: '',
     saving: false,
     error: null as string | null,
@@ -500,6 +509,11 @@ export function ShopFloorLayouts({
       priority: order.priority ?? 'NORMAL',
       status: order.status ?? 'RECEIVED',
       machinistId: order.assignedMachinist?.id ?? '',
+      partMaterialStatuses: Object.fromEntries(
+        (order.parts ?? [])
+          .filter((part) => Boolean(part.id))
+          .map((part) => [part.id as string, part.materialStatus ?? 'UNREVIEWED']),
+      ),
       reason: '',
       saving: false,
       error: null,
@@ -533,6 +547,21 @@ export function ShopFloorLayouts({
           body: JSON.stringify({ machinistId: tileEditor.machinistId }),
         });
         if (!response.ok) throw new Error('Could not update assigned machinist.');
+      }
+      for (const part of original.parts ?? []) {
+        if (!part.id) continue;
+        const nextMaterialStatus = tileEditor.partMaterialStatuses[part.id] ?? 'UNREVIEWED';
+        if (nextMaterialStatus === (part.materialStatus ?? 'UNREVIEWED')) continue;
+        const response = await fetch(`/api/orders/${original.id}/parts/${part.id}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ materialStatus: nextMaterialStatus }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          throw new Error(typeof body?.error === 'string' ? body.error : `Could not update material status for ${part.partNumber ?? 'part'}.`);
+        }
       }
       if (statusChanged) {
         const response = await fetch(`/api/orders/${original.id}/status`, {
@@ -682,6 +711,8 @@ export function ShopFloorLayouts({
     </div>
   );
 
+  const tileEditorOrder = orders.find((order) => order.id === tileEditor.orderId);
+
   return (
     <div className="space-y-4">
       {quickViewControls}
@@ -690,11 +721,11 @@ export function ShopFloorLayouts({
         open={tileEditor.open}
         onOpenChange={(open) => setTileEditor((current) => ({ ...current, open, error: null }))}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Manage order</DialogTitle>
             <DialogDescription>
-              Admin tile actions update priority, workflow status, and the order coordinator.
+              Update priority, workflow status, part material status, and the order coordinator.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -725,6 +756,37 @@ export function ShopFloorLayouts({
               </div>
             </div>
             <div className="grid gap-2">
+              <Label>Part material status</Label>
+              <div className="space-y-2">
+                {(tileEditorOrder?.parts ?? []).map((part, index) => (
+                  <div key={part.id ?? index} className="grid gap-2 rounded-md border border-white/10 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,1fr)] sm:items-center">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{part.partNumber || `Part ${index + 1}`}</p>
+                      {part.partName ? <p className="truncate text-xs text-muted-foreground">{part.partName}</p> : null}
+                    </div>
+                    {part.id ? (
+                      <Select
+                        value={tileEditor.partMaterialStatuses[part.id] ?? 'UNREVIEWED'}
+                        onValueChange={(materialStatus) => setTileEditor((current) => ({
+                          ...current,
+                          partMaterialStatuses: { ...current.partMaterialStatuses, [part.id as string]: materialStatus },
+                          error: null,
+                        }))}
+                      >
+                        <SelectTrigger aria-label={`Material status for ${part.partNumber || `part ${index + 1}`}`}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {PART_MATERIAL_STATUS_OPTIONS.map(([value, label]) => (
+                            <SelectItem key={value} value={value}>{label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : null}
+                  </div>
+                ))}
+                {!tileEditorOrder?.parts?.length ? <p className="text-sm text-muted-foreground">This order has no parts.</p> : null}
+              </div>
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="tile-order-machinist">Assigned machinist</Label>
               <Select value={tileEditor.machinistId || '__none__'} onValueChange={(machinistId) => setTileEditor((current) => ({ ...current, machinistId: machinistId === '__none__' ? '' : machinistId, error: null }))}>
                 <SelectTrigger id="tile-order-machinist"><SelectValue /></SelectTrigger>
@@ -738,7 +800,7 @@ export function ShopFloorLayouts({
                 </SelectContent>
               </Select>
             </div>
-            {orders.find((order) => order.id === tileEditor.orderId)?.status !== tileEditor.status ? (
+            {tileEditorOrder?.status !== tileEditor.status ? (
               <div className="grid gap-2">
                 <Label htmlFor="tile-order-status-reason">Reason for status change</Label>
                 <Input
@@ -760,7 +822,7 @@ export function ShopFloorLayouts({
               onClick={() => void saveTileEditor()}
               disabled={
                 tileEditor.saving ||
-                (orders.find((order) => order.id === tileEditor.orderId)?.status !== tileEditor.status && !tileEditor.reason.trim())
+                (tileEditorOrder?.status !== tileEditor.status && !tileEditor.reason.trim())
               }
             >
               {tileEditor.saving ? 'Saving…' : 'Save changes'}

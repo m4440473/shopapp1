@@ -10,10 +10,12 @@ export type OrderListItem = {
   customer?: { name?: string | null } | null;
   assignedMachinist?: { id?: string; name?: string | null; email?: string | null } | null;
   parts?: Array<{
+    id?: string;
     quantity: number | null;
     currentDepartmentId?: string | null;
     partNumber?: string | null;
     partName?: string | null;
+    materialStatus?: string | null;
     assignments?: Array<{
       user?: { id?: string; name?: string | null; email?: string | null; active?: boolean } | null;
     }>;

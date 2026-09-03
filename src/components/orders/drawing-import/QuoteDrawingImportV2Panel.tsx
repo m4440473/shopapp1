@@ -170,6 +170,7 @@ export function QuoteDrawingImportV2Panel({
 
   async function reprocess(pageId: string) {
     if (!state || reprocessingPageIds.includes(pageId)) return;
+    if (!TERMINAL_STATUSES.has(state.progress.status)) { setError('Wait for the current page request to finish before reprocessing another page.'); return; }
     setReprocessingPageIds((current) => [...current, pageId]);
     setError('');
     try { applySnapshot(await api.reprocessPage(state.progress.jobId, pageId)); }
@@ -259,13 +260,14 @@ export function QuoteDrawingImportV2Panel({
   const visiblePages = (state?.pages ?? []).filter((page) => pageMatchesDrawingImportFilter(page, filter));
   const partPages = visiblePages.filter((page) => PART_CLASSIFICATIONS.has(page.classification));
   const supportingPages = visiblePages.filter((page) => !PART_CLASSIFICATIONS.has(page.classification));
+  const activeReprocessPageIds = [...new Set([...reprocessingPageIds, ...(state?.pages ?? []).filter((page) => page.processingStatus === 'queued' || page.processingStatus === 'processing').map((page) => page.pageId)])];
   const shadowMode = feature.mode === 'shadow';
   const reviewReady = state ? ['READY_FOR_REVIEW', 'PARTIAL_FAILURE', 'COMPLETE'].includes(state.progress.status) : false;
   const materialChoices = availableMaterials.map((material) => ({ value: material.name, label: material.name }));
 
   return (
     <Card>
-      <CardHeader className="p-4 pb-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle>Import drawings</CardTitle><CardDescription>Upload a ZIP or PDF. Multi-page PDFs are split, then each drawing is read separately.</CardDescription></div><Button type="button" variant="ghost" onClick={onSwitchToLegacy}>Use current importer</Button></div></CardHeader>
+      <CardHeader className="p-4 pb-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle>Import drawings</CardTitle><CardDescription>Upload a ZIP of PDF, PNG, or JPG drawings, or a multi-page assembly PDF. PDFs are split locally without OCR into individual pages; each page is read in its own AI request.</CardDescription></div><Button type="button" variant="ghost" onClick={onSwitchToLegacy}>Use current importer</Button></div></CardHeader>
       <CardContent className="space-y-3 p-4 pt-0">
         {shadowMode ? <p className="rounded-lg border border-amber-400/60 bg-amber-50 p-3 text-sm text-amber-950">Shadow mode compares {feature.version} without allowing its results to change the quote.</p> : null}
         {!state ? (
@@ -282,14 +284,14 @@ export function QuoteDrawingImportV2Panel({
             <DrawingImportJobProgress progress={state.progress} showAdminMetrics={showAdminMetrics} cancelling={cancelling} onCancel={() => void cancel()} />
             <DrawingImportReviewFilters value={filter} counts={counts} onChange={setFilter} />
             <div className="[overflow-anchor:none]">
-              <div>{partPages.map((page) => <DrawingImportPageCard key={page.pageId} page={page} dirtyFields={state.dirtyFieldsByPage[page.pageId]} reprocessing={reprocessingPageIds.includes(page.pageId)} resolveEvidenceUrls={resolveEvidenceUrls} fieldChoices={{ material: materialChoices }} creatingFields={creatingFields.includes(`${page.pageId}:material`) ? ['material'] : []} onCreateFieldValue={onCreateMaterial ? (pageId, field, value) => { if (field === 'material') void createMaterial(pageId, value); } : undefined} onFieldChange={changeField} onFieldCommit={(pageId, field, valueOverride) => void commitField(pageId, field, valueOverride)} onChooseCandidate={(pageId, field, value) => void chooseCandidate(pageId, field, value)} onReprocess={(pageId) => void reprocess(pageId)} onKeepFileOnly={(pageId) => void classifyPage(pageId, 'reference')} />)}</div>
-              <DrawingImportSupportingPages pages={supportingPages} reprocessingPageIds={reprocessingPageIds} onReprocess={(pageId) => void reprocess(pageId)} onClassifyAsPart={(pageId) => void classifyPage(pageId, 'part_drawing')} />
+              <div>{partPages.map((page) => <DrawingImportPageCard key={page.pageId} page={page} dirtyFields={state.dirtyFieldsByPage[page.pageId]} reprocessing={activeReprocessPageIds.includes(page.pageId)} resolveEvidenceUrls={resolveEvidenceUrls} fieldChoices={{ material: materialChoices }} creatingFields={creatingFields.includes(`${page.pageId}:material`) ? ['material'] : []} onCreateFieldValue={onCreateMaterial ? (pageId, field, value) => { if (field === 'material') void createMaterial(pageId, value); } : undefined} onFieldChange={changeField} onFieldCommit={(pageId, field, valueOverride) => void commitField(pageId, field, valueOverride)} onChooseCandidate={(pageId, field, value) => void chooseCandidate(pageId, field, value)} onReprocess={(pageId) => void reprocess(pageId)} onKeepFileOnly={(pageId) => void classifyPage(pageId, 'reference')} />)}</div>
+              <DrawingImportSupportingPages pages={supportingPages} reprocessingPageIds={activeReprocessPageIds} onReprocess={(pageId) => void reprocess(pageId)} onClassifyAsPart={(pageId) => void classifyPage(pageId, 'part_drawing')} />
             </div>
           </>
         )}
         {error ? <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" role="alert">{error}</p> : null}
       </CardContent>
-      {state ? <CardFooter className="justify-end p-4 pt-0"><Button type="button" onClick={continueToQuote} disabled={shadowMode || !reviewReady || savingFields.length > 0}>Continue to {destination}</Button></CardFooter> : null}
+      {state ? <CardFooter className="justify-end p-4 pt-0"><Button type="button" onClick={continueToQuote} disabled={shadowMode || !reviewReady || savingFields.length > 0 || activeReprocessPageIds.length > 0}>Continue to {destination}</Button></CardFooter> : null}
     </Card>
   );
 }

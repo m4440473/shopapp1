@@ -300,22 +300,39 @@ export async function updateDrawingImportPageLocalAnalysis(input: {
   });
 }
 
-export async function resetDrawingImportPageForReprocess(pageId: string) {
+/** Atomically persist a page-only retry; recovery must never widen it to the packet. */
+export async function queueDrawingImportPageReprocess(jobId: string, pageId: string) {
   return prisma.$transaction(async (tx) => {
-    await tx.drawingExtractionAttempt.updateMany({
-      where: { pageId, status: 'completed' },
-      data: { status: 'superseded' },
-    });
-    return tx.drawingImportPage.update({
-      where: { id: pageId },
+    const job = await tx.drawingImportJob.findUnique({ where: { id: jobId } });
+    const page = await tx.drawingImportPage.findFirst({ where: { id: pageId, jobId } });
+    if (!job || !page) throw new Error('Drawing page not found.');
+    if (!page.canonicalPdfStoragePath || !page.previewStoragePath) {
+      throw new Error('This page has no prepared PDF. Upload the drawing again.');
+    }
+    const config = parseJson<Record<string, unknown>>(job.configJson, {});
+    if (['QUEUED', 'PROCESSING', 'CANCEL_REQUESTED'].includes(job.status)) {
+      if (config.reprocessPageId === pageId && job.status !== 'CANCEL_REQUESTED') return false;
+      throw new Error('Wait for the current drawing request to finish before reprocessing another page.');
+    }
+    const queued = await tx.drawingImportJob.updateMany({
+      where: { id: jobId, status: job.status },
       data: {
-        reviewStatus: 'PENDING',
-        routeTier: 'local',
-        finalExtractionJson: null,
-        warningsJson: json(['Reprocessing requested by an administrator.']),
-        duplicateOfPageId: null,
+        status: 'QUEUED', stage: 'queued', completedAt: null, countsJson: null,
+        cancelRequestedAt: null, lastHeartbeatAt: null,
+        configJson: json({ ...config, reprocessPageId: pageId }),
       },
     });
+    if (queued.count !== 1) throw new Error('This import is already processing. Try again when it finishes.');
+    await tx.drawingExtractionAttempt.updateMany({
+      where: { pageId, status: 'completed', sourceType: 'model' },
+      data: { status: 'superseded' },
+    });
+    await tx.drawingImportPage.update({
+      where: { id: pageId },
+      // Keep the last review visible while the fresh result is pending.
+      data: { reviewStatus: 'PENDING', duplicateOfPageId: null },
+    });
+    return true;
   });
 }
 

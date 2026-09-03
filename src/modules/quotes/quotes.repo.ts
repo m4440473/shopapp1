@@ -1028,8 +1028,8 @@ export async function convertQuoteToOrder({
       },
     });
 
-    const quotePartSelections = quote.parts.flatMap((part: any, index: number) => {
-      const orderPartId = orderParts[index]?.id;
+    const quotePartSelections = quote.parts.flatMap((part: any) => {
+      const orderPartId = orderPartIdByQuotePartId.get(part.id);
       if (!orderPartId) return [];
       return (part.addonSelections ?? []).map((selection: any) => ({
         selection: {

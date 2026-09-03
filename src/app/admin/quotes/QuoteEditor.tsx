@@ -3,6 +3,20 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
+import { QuoteWizardProgress } from './QuoteWizardProgress';
+import { QuotePartEntryChooser } from './QuotePartEntryChooser';
+import { QuoteManualPartsPanel } from './QuoteManualPartsPanel';
+import type { NewQuoteCustomerInput } from './NewQuoteCustomerDialog';
+import { QuoteCustomIntakeFieldsCard } from './QuoteCustomIntakeFieldsCard';
+import { QuoteGeneralInformationCard } from './QuoteGeneralInformationCard';
+import { QuoteAttachmentsCard, type QuoteAttachmentItem } from './QuoteAttachmentsCard';
+import { QuoteBuildDetailsCards } from './QuoteBuildDetailsCards';
+import { QuoteCustomAmountsCard } from './QuoteCustomAmountsCard';
+import { QuoteDrawingEntryPanel } from './QuoteDrawingEntryPanel';
+import { QuoteMaterialCheckPanel } from './QuoteMaterialCheckPanel';
+import { QuoteRoutingCard } from './QuoteRoutingCard';
+import { QuoteTotalsSummaryCard } from './QuoteTotalsSummaryCard';
+import { QuotePurchasedItemsCard } from './QuotePurchasedItemsCard';
 
 import { useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';
@@ -18,19 +32,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/Card';
@@ -43,7 +47,7 @@ import {
   type BusinessCode,
   type BusinessName,
 } from '@/lib/businesses';
-import { CustomFieldInputs, type CustomFieldDefinition } from '@/components/CustomFieldInputs';
+import type { CustomFieldDefinition } from '@/components/CustomFieldInputs';
 import { hasCustomFieldValue } from '@/lib/custom-field-values';
 import { AvailableItemsLibrary } from '@/components/AvailableItemsLibrary';
 import { AssignedItemsPanel } from '@/components/AssignedItemsPanel';
@@ -76,41 +80,27 @@ import {
   getNewQuoteOriginDepartmentId,
 } from '@/modules/quotes/quote-departments';
 import { sumQuoteCustomAmountsCents, type QuoteCustomAmountEntry } from '@/lib/quote-metadata';
-import { DrawingImportPanel, type ReviewedDrawingPart } from '@/components/orders/DrawingImportPanel';
+import type { ReviewedDrawingPart } from '@/components/orders/DrawingImportPanel';
 import {
-  QuoteDrawingImportV2Panel,
   createQuoteDrawingImportV2ApiClient,
   type DrawingImportReviewFile,
   type ResolveDrawingImportEvidenceUrls,
   type ReviewedQuoteDrawingPartV2,
 } from '@/components/orders/drawing-import';
 import { clearDrawingImportDraft } from '@/modules/drawing-import/drawing-import.draft';
-import { AddCustomerContactDialog } from '@/components/customers/AddCustomerContactDialog';
 import { clearIntakeDraft, intakeDraftKey, readIntakeDraft, writeIntakeDraft } from '@/modules/intake-drafts/intake-draft';
 import { CustomerPartPicker } from '@/components/customer-parts/CustomerPartPicker';
 import { CustomerPartNoteSuggestions, appendSuggestedNote } from '@/components/customer-parts/CustomerPartNoteSuggestions';
 import type { CustomerPartNoteSuggestion, CustomerPartReusableDraft } from '@/modules/customer-parts/customer-parts.types';
 
 import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
+import {
+  createIntakeKey as createKey,
+  numberFromIntakeDraft as numberFromString,
+  type IntakeCustomerOption,
+} from '@/modules/order-intake/order-intake.client';
 
-const NO_MATERIAL_VALUE = '__no_material__';
-
-type Option = {
-  id: string;
-  name: string;
-  contact?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  address?: string | null;
-  contacts?: Array<{
-    id: string;
-    name: string;
-    title?: string | null;
-    phone?: string | null;
-    email?: string | null;
-    isPrimary?: boolean;
-  }>;
-};
+type Option = IntakeCustomerOption;
 
 type AddonOption = {
   id: string;
@@ -209,16 +199,7 @@ type PartPricingState = {
   suggestedUnitPriceCents: number;
 };
 
-type AttachmentState = {
-  key: string;
-  persistedId?: string;
-  url: string;
-  storagePath: string;
-  label: string;
-  mimeType: string;
-  isPrintForBom: boolean;
-  uploading?: boolean;
-};
+type AttachmentState = QuoteAttachmentItem;
 
 type QuoteDetail = {
   id: string;
@@ -348,8 +329,6 @@ interface QuoteEditorProps {
   initialQuote?: QuoteDetail;
 }
 
-const MARKUP_SUGGESTIONS = [10, 15, 20];
-
 const formatCurrency = (cents: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format((cents || 0) / 100);
 
@@ -358,17 +337,6 @@ const centsFromString = (value: string) => {
   if (Number.isNaN(parsed) || parsed < 0) return 0;
   return Math.round(parsed * 100);
 };
-
-const numberFromString = (value: string) => {
-  const parsed = Number.parseFloat(value || '0');
-  if (Number.isNaN(parsed)) return 0;
-  return parsed;
-};
-
-const createKey = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : Math.random().toString(36).slice(2);
 
 export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const router = useRouter();
@@ -385,16 +353,6 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   const [customers, setCustomers] = useState<Option[]>([]);
   const [materials, setMaterials] = useState<Option[]>([]);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
-  const [newCustomerName, setNewCustomerName] = useState('');
-  const [newCustomerContact, setNewCustomerContact] = useState('');
-  const [newCustomerPhone, setNewCustomerPhone] = useState('');
-  const [newCustomerEmail, setNewCustomerEmail] = useState('');
-  const [newCustomerAddressLine1, setNewCustomerAddressLine1] = useState('');
-  const [newCustomerAddressLine2, setNewCustomerAddressLine2] = useState('');
-  const [newCustomerCity, setNewCustomerCity] = useState('');
-  const [newCustomerState, setNewCustomerState] = useState('');
-  const [newCustomerPostalCode, setNewCustomerPostalCode] = useState('');
-  const [newCustomerCountry, setNewCustomerCountry] = useState('United States');
 
   const initialBusinessCode = (initialQuote?.business ?? BUSINESS_OPTIONS[0]?.code ?? 'STD') as BusinessCode;
 
@@ -916,20 +874,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     }));
   };
 
-  async function createCustomer() {
-    if (!newCustomerName.trim()) return;
-    const payload = {
-      name: newCustomerName,
-      contact: newCustomerContact || undefined,
-      phone: newCustomerPhone || undefined,
-      email: newCustomerEmail || undefined,
-      addressLine1: newCustomerAddressLine1 || undefined,
-      addressLine2: newCustomerAddressLine2 || undefined,
-      city: newCustomerCity || undefined,
-      stateProvince: newCustomerState || undefined,
-      postalCode: newCustomerPostalCode || undefined,
-      country: newCustomerCountry || undefined,
-    };
+  async function createCustomer(payload: NewQuoteCustomerInput) {
     const res = await fetch('/api/admin/customers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -958,18 +903,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         contactEmail: primaryContact?.email ?? newCustomer.email ?? '',
         contactPhone: primaryContact?.phone ?? newCustomer.phone ?? '',
       }));
-      setCustomerDialogOpen(false);
-      setNewCustomerName('');
-      setNewCustomerContact('');
-      setNewCustomerPhone('');
-      setNewCustomerEmail('');
-      setNewCustomerAddressLine1('');
-      setNewCustomerAddressLine2('');
-      setNewCustomerCity('');
-      setNewCustomerState('');
-      setNewCustomerPostalCode('');
-      setNewCustomerCountry('United States');
+      return true;
     }
+    return false;
   }
 
   function addPart() {
@@ -1857,261 +1793,44 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         </div>
       )}
 
-      <div className="rounded border border-border/60 bg-card/60 p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-semibold">Quote progress</p>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span>{savedAt ? `Saved ${new Date(savedAt).toLocaleString()}` : quoteDraftSavedAt ? `Autosaved ${new Date(quoteDraftSavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Not saved yet'}</span>
-            {mode === 'create' && quoteDraftSavedAt ? <Button type="button" size="sm" variant="ghost" onClick={() => { clearIntakeDraft(window.localStorage, quoteDraftStorageKey); window.location.reload(); }}>Discard autosaved draft</Button> : null}
-            <Button type="button" size="sm" variant="outline" onClick={() => void saveQuote()} disabled={loading || !form.companyName.trim() || !form.customerId}>
-              {loading ? 'Saving…' : 'Save progress'}
-            </Button>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {steps.map((step, index) => (
-            <Button
-              key={step.key}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => { if (index <= furthestStep) setCurrentStep(index); }}
-              disabled={index > furthestStep || loading}
-              className={`rounded-full border px-4 py-2 text-sm ${
-                index === currentStep
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : index < furthestStep
-                    ? 'border-[#0b1f3a] bg-[#0b1f3a] text-white'
-                  : 'border-border/60 text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span className="mr-2 text-xs">{index < furthestStep ? '✓' : index + 1}</span>
-              {step.label}
-            </Button>
-          ))}
-        </div>
-        <div className="mt-3 h-1 w-full rounded-full bg-muted">
-          <div
-            className="h-1 rounded-full bg-primary transition-all"
-            style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
-          />
-        </div>
-      </div>
+      <QuoteWizardProgress
+        steps={steps}
+        currentStep={currentStep}
+        furthestStep={furthestStep}
+        loading={loading}
+        savedAt={savedAt}
+        autosavedAt={quoteDraftSavedAt}
+        canDiscardAutosave={mode === 'create' && Boolean(quoteDraftSavedAt)}
+        canSave={Boolean(form.companyName.trim() && form.customerId)}
+        onSelectStep={(index) => { if (index <= furthestStep) setCurrentStep(index); }}
+        onSave={() => void saveQuote()}
+        onDiscardAutosave={() => { clearIntakeDraft(window.localStorage, quoteDraftStorageKey); window.location.reload(); }}
+      />
 
       {currentStep === 0 && (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle>General information</CardTitle>
-              <CardDescription>Who is requesting the work and how we can reach them.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="grid gap-2">
-            <Label htmlFor="quoteBusiness">Business *</Label>
-            <Select
-              value={form.business}
-              onValueChange={(value) => setForm((prev) => ({ ...prev, business: value as BusinessCode }))}
-            >
-              <SelectTrigger id="quoteBusiness" className="border border-border bg-background px-3 py-2 text-sm">
-                <SelectValue placeholder="Select a business" />
-              </SelectTrigger>
-              <SelectContent>
-                {BUSINESS_OPTIONS.map((option) => (
-                  <SelectItem key={option.code} value={option.code}>
-                    {option.prefix} — {option.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="quoteCompanyName">Company *</Label>
-            <Select value={form.customerId} onValueChange={handleCustomerSelect}>
-              <SelectTrigger id="quoteCompanySelect" className="border border-border bg-background px-3 py-2 text-sm">
-                <SelectValue placeholder="Select a company" />
-              </SelectTrigger>
-              <SelectContent>
-                {form.customerId && !customers.some((customer) => customer.id === form.customerId) ? (
-                  <SelectItem value={form.customerId}>{form.companyName || 'Saved customer'}</SelectItem>
-                ) : null}
-                {customers.map((customer) => (
-                  <SelectItem key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
-              <DialogTrigger asChild>
-                <Button type="button" variant="ghost" size="sm" className="justify-start px-0 text-sm text-primary">
-                  + Add customer
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>New customer</DialogTitle>
-                  <DialogDescription>Quickly capture a new customer record.</DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="newCustomerName">Name</Label>
-                    <Input
-                      id="newCustomerName"
-                      value={newCustomerName}
-                      onChange={(e) => setNewCustomerName(e.target.value)}
-                      placeholder="Customer name"
-                      required
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="newCustomerContact">Contact</Label>
-                    <Input
-                      id="newCustomerContact"
-                      value={newCustomerContact}
-                      onChange={(e) => setNewCustomerContact(e.target.value)}
-                      placeholder="Contact name (optional)"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="newCustomerPhone">Phone</Label>
-                    <Input
-                      id="newCustomerPhone"
-                      value={newCustomerPhone}
-                      onChange={(e) => setNewCustomerPhone(e.target.value)}
-                      placeholder="(555) 123-4567"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="newCustomerEmail">Email</Label>
-                    <Input
-                      id="newCustomerEmail"
-                      type="email"
-                      value={newCustomerEmail}
-                      onChange={(e) => setNewCustomerEmail(e.target.value)}
-                      placeholder="contact@example.com"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="newCustomerAddressLine1">Shipping address line 1</Label>
-                    <Input id="newCustomerAddressLine1" value={newCustomerAddressLine1} onChange={(e) => setNewCustomerAddressLine1(e.target.value)} placeholder="Street address" />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="newCustomerAddressLine2">Address line 2</Label>
-                    <Input id="newCustomerAddressLine2" value={newCustomerAddressLine2} onChange={(e) => setNewCustomerAddressLine2(e.target.value)} placeholder="Suite, building, attention" />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="grid gap-2"><Label htmlFor="newCustomerCity">City</Label><Input id="newCustomerCity" value={newCustomerCity} onChange={(e) => setNewCustomerCity(e.target.value)} /></div>
-                    <div className="grid gap-2"><Label htmlFor="newCustomerState">State / province</Label><Input id="newCustomerState" value={newCustomerState} onChange={(e) => setNewCustomerState(e.target.value)} /></div>
-                    <div className="grid gap-2"><Label htmlFor="newCustomerPostalCode">Postal code</Label><Input id="newCustomerPostalCode" value={newCustomerPostalCode} onChange={(e) => setNewCustomerPostalCode(e.target.value)} /></div>
-                    <div className="grid gap-2"><Label htmlFor="newCustomerCountry">Country</Label><Input id="newCustomerCountry" value={newCustomerCountry} onChange={(e) => setNewCustomerCountry(e.target.value)} /></div>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button type="button" variant="ghost" onClick={() => setCustomerDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="button" onClick={createCustomer}>
-                    Save customer
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <div className="rounded-lg border border-border/60 bg-background/60 p-3 text-sm">
-              {form.customerId ? (
-                <>
-                  <p className="font-semibold text-foreground">{form.companyName}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Customer record selected. Contact details below apply only to this quote.</p>
-                </>
-              ) : (
-                <p className="text-muted-foreground">Choose a customer above to continue.</p>
-              )}
-            </div>
-          </div>
-          <div className="grid gap-2">
-            <Label>Quote number</Label>
-            <div className="rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-muted-foreground">
-              {form.quoteNumber || 'Assigned automatically when this draft is saved'}
-            </div>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="quoteCustomerContact">Customer contact</Label>
-            <Select
-              value={form.customerContactId || '__no_contact__'}
-              onValueChange={(value) => handleCustomerContactSelect(value === '__no_contact__' ? '' : value)}
-              disabled={!form.customerId}
-            >
-              <SelectTrigger id="quoteCustomerContact" className="border border-border bg-background px-3 py-2 text-sm">
-                <SelectValue placeholder="Select the contact for this quote" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__no_contact__">No contact selected</SelectItem>
-                {(customers.find((customer) => customer.id === form.customerId)?.contacts ?? []).map((contact) => (
-                  <SelectItem key={contact.id} value={contact.id}>
-                    {contact.name}{contact.title ? ` — ${contact.title}` : ''}{contact.isPrimary ? ' (Primary)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Choose the Toyota contact for this specific quote. The details below are saved as a historical snapshot.
-            </p>
-            {customers.some((customer) => customer.id === form.customerId) ? (
-              <AddCustomerContactDialog
-                customer={customers.find((customer) => customer.id === form.customerId)!}
-                onSaved={(updatedCustomer, newContactId) => {
-                  setCustomers((current) => current.map((customer) => (
-                    customer.id === updatedCustomer.id ? { ...customer, ...updatedCustomer } : customer
-                  )));
-                  handleCustomerContactSelect(newContactId);
-                }}
-              />
-            ) : null}
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="quoteContact">Contact / Engineer</Label>
-            <Input
-              id="quoteContact"
-              value={form.contactName}
-              onChange={(event) => setForm((prev) => ({ ...prev, contactName: event.target.value }))}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="quoteEmail">Contact email</Label>
-            <Input
-              id="quoteEmail"
-              type="email"
-              value={form.contactEmail}
-              onChange={(event) => setForm((prev) => ({ ...prev, contactEmail: event.target.value }))}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="quotePhone">Contact phone</Label>
-            <Input
-              id="quotePhone"
-              value={form.contactPhone}
-              onChange={(event) => setForm((prev) => ({ ...prev, contactPhone: event.target.value }))}
-            />
-          </div>
-        </CardContent>
-        <CardContent className="grid gap-4">
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Custom intake fields</CardTitle>
-              <CardDescription>Additional fields configured for this business.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <CustomFieldInputs
-                fields={intakeCustomFields}
-                values={customFieldValues}
-                onChange={(fieldId, value) =>
-                  setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
-                }
-              />
-            </CardContent>
-          </Card>
+          <QuoteGeneralInformationCard
+            value={form}
+            customers={customers}
+            customerDialogOpen={customerDialogOpen}
+            onBusinessChange={(business) => setForm((prev) => ({ ...prev, business }))}
+            onCustomerSelect={handleCustomerSelect}
+            onCustomerDialogOpenChange={setCustomerDialogOpen}
+            onCreateCustomer={createCustomer}
+            onCustomerContactSelect={handleCustomerContactSelect}
+            onCustomerSaved={(updatedCustomer, newContactId) => {
+              setCustomers((current) => current.map((customer) => (
+                customer.id === updatedCustomer.id ? { ...customer, ...updatedCustomer } : customer
+              )));
+              handleCustomerContactSelect(newContactId);
+            }}
+            onContactChange={(patch) => setForm((previous) => ({ ...previous, ...patch }))}
+          />
+          <QuoteCustomIntakeFieldsCard
+            fields={intakeCustomFields}
+            values={customFieldValues}
+            onChange={(fieldId, value) => setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))}
+          />
         </>
       )}
 
@@ -2122,55 +1841,25 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               <CardTitle>How would you like to add the parts?</CardTitle>
             <CardDescription>Read new drawings, reuse a proven customer part, or enter the list yourself.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => { setUseLegacyDrawingImporter(false); setPartEntryMode('drawing'); }}
-                className={`rounded-xl border-2 p-5 text-left transition ${partEntryMode === 'drawing' ? 'border-[#ff5a00] bg-[#ff5a00]/10' : 'border-border/60 hover:border-[#ff5a00]/70'}`}
-              >
-                <span className="block text-lg font-semibold">Read drawings for me</span>
-                <span className="mt-1 block text-sm text-muted-foreground">Upload one drawing or a ZIP and confirm only highlighted details.</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPartEntryMode('manual')}
-                className={`rounded-xl border-2 p-5 text-left transition ${partEntryMode === 'manual' ? 'border-[#0b1f3a] bg-[#0b1f3a] text-white' : 'border-border/60 hover:border-[#0b1f3a]'}`}
-              >
-                <span className="block text-lg font-semibold">Type parts myself</span>
-                <span className={`mt-1 block text-sm ${partEntryMode === 'manual' ? 'text-white/75' : 'text-muted-foreground'}`}>Use the familiar manual part form.</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPartEntryMode('existing')}
-                className={`rounded-xl border-2 p-5 text-left transition ${partEntryMode === 'existing' ? 'border-sky-400 bg-sky-400/10' : 'border-border/60 hover:border-sky-400/70'}`}
-              >
-                <span className="block text-lg font-semibold">Choose a preexisting part</span>
-                <span className="mt-1 block text-sm text-muted-foreground">Search every saved part, regardless of customer or business.</span>
-              </button>
+            <CardContent>
+              <QuotePartEntryChooser value={partEntryMode} existingDescription="Search every saved part, regardless of customer or business." onChange={(nextMode) => { if (nextMode === 'drawing') setUseLegacyDrawingImporter(false); setPartEntryMode(nextMode); }} />
             </CardContent>
           </Card>
 
-          {partEntryMode === 'drawing' && !useLegacyDrawingImporter ? (
-            <QuoteDrawingImportV2Panel
+          {partEntryMode === 'drawing' ? (
+            <QuoteDrawingEntryPanel
+              useLegacyImporter={useLegacyDrawingImporter}
               api={drawingImportV2Api}
               business={getBusinessOptionByCode(form.business)?.name ?? BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die'}
               customerName={form.companyName}
               draftReference={form.quoteNumber || initialQuote?.quoteNumber || draftReference}
               materials={materials}
-              onContinue={(importedParts, quoteFiles) => applyImportedDrawingsV2(importedParts, quoteFiles)}
+              onContinueV2={(importedParts, quoteFiles) => applyImportedDrawingsV2(importedParts, quoteFiles)}
+              onContinueLegacy={useImportedDrawings}
               onSwitchToLegacy={() => setUseLegacyDrawingImporter(true)}
+              onSwitchToManual={() => setPartEntryMode('manual')}
               onCreateMaterial={createDetectedMaterial}
               resolveEvidenceUrls={resolveDrawingImportEvidenceUrls}
-            />
-          ) : partEntryMode === 'drawing' ? (
-            <DrawingImportPanel
-              business={getBusinessOptionByCode(form.business)?.name ?? BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die'}
-              customerName={form.companyName}
-              draftReference={form.quoteNumber || initialQuote?.quoteNumber || draftReference}
-              materials={materials}
-              destinationLabel="quote"
-              onContinue={useImportedDrawings}
-              onSwitchToManual={() => setPartEntryMode('manual')}
             />
           ) : partEntryMode === 'existing' ? (
             <CustomerPartPicker
@@ -2179,204 +1868,19 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
               onAddParts={addPreexistingQuoteParts}
             />
           ) : partEntryMode === 'manual' ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Parts</CardTitle>
-            <CardDescription>Define the core part list before you add labor or files.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 lg:grid-cols-[minmax(320px,360px)_minmax(0,1fr)]">
-            <div className="min-w-0 space-y-3 rounded border border-border/60 bg-muted/10 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Parts list</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const nextPart = buildEmptyPart();
-                    setParts((prev) => [...prev, nextPart]);
-                    setActivePartKey(nextPart.key);
-                  }}
-                >
-                  Add part
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {parts.map((part, index) => (
-                  <Button
-                    key={part.key}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setActivePartKey(part.key)}
-                    className={`h-auto min-w-0 w-full max-w-full flex-col items-stretch justify-start gap-1 whitespace-normal rounded border px-3 py-2 text-left text-sm ${
-                      part.key === activePartKey
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border/60 text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <div className="min-w-0 break-words font-medium leading-snug [overflow-wrap:anywhere]">
-                      {part.name || `Part ${index + 1}`}
-                    </div>
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-1 text-xs leading-snug text-muted-foreground">
-                      <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-                        {part.partNumber || 'No part number'}
-                      </span>
-                      <span aria-hidden="true">•</span>
-                      <span className="shrink-0">Qty {part.quantity || '1'}</span>
-                    </div>
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div className="min-w-0 space-y-4">
-              {activePart ? (
-                <div className="rounded border border-border/60 bg-card/60 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-muted-foreground">Selected part</p>
-                      <h3 className="text-lg font-semibold">{activePart.name || 'New part'}</h3>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => removePart(activePart.key)}
-                      disabled={parts.length === 1}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                  {activePart.attachments.length ? (
-                    <div className="mt-3 flex flex-wrap gap-3 rounded-lg border border-border/60 bg-background/60 p-3 text-sm">
-                      {activePart.attachments.map((attachment, index) => (
-                        <a
-                          key={`${attachment.storagePath}-${index}`}
-                          href={`/api/orders/drawing-import/preview?path=${encodeURIComponent(attachment.storagePath)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-primary underline"
-                        >
-                          Open drawing{activePart.attachments.length > 1 ? ` ${index + 1}` : ''}
-                        </a>
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label>Part name *</Label>
-                      <Input
-                        value={activePart.name}
-                        onChange={(event) => updatePart(activePart.key, { name: event.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Part number</Label>
-                      <Input
-                        value={activePart.partNumber}
-                        onChange={(event) => updatePart(activePart.key, { partNumber: event.target.value })}
-                        placeholder="Optional part #"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Quantity</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={activePart.quantity}
-                        onFocus={(event) => event.currentTarget.select()}
-                        onChange={(event) => updatePart(activePart.key, { quantity: event.target.value })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Piece count</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={activePart.pieceCount}
-                        onFocus={(event) => event.currentTarget.select()}
-                        onChange={(event) => updatePart(activePart.key, { pieceCount: event.target.value })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Material</Label>
-                      <Select
-                        value={activePart.materialId || NO_MATERIAL_VALUE}
-                        onValueChange={(value) =>
-                          updatePart(activePart.key, {
-                            materialId: value === NO_MATERIAL_VALUE ? '' : value,
-                          })
-                        }
-                      >
-                        <SelectTrigger className="border border-border bg-background px-3 py-2 text-sm text-left">
-                          <SelectValue placeholder="Select material (optional)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NO_MATERIAL_VALUE}>No material (optional)</SelectItem>
-                          {materials.map((material) => (
-                            <SelectItem key={material.id} value={material.id}>
-                              {material.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Total stock dimensions</Label>
-                      <Input
-                        value={activePart.stockSize}
-                        onChange={(event) => updatePart(activePart.key, { stockSize: event.target.value })}
-                        placeholder='Thickness × width × total length'
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Finished part thickness</Label>
-                      <Input value={activePart.partThickness} onChange={(event) => updatePart(activePart.key, { partThickness: event.target.value })} placeholder='e.g. .25 in' />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Finished part width</Label>
-                      <Input value={activePart.partWidth} onChange={(event) => updatePart(activePart.key, { partWidth: event.target.value })} placeholder='e.g. 2.5 in' />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Cut length</Label>
-                      <Input
-                        value={activePart.cutLength}
-                        onChange={(event) => updatePart(activePart.key, { cutLength: event.target.value })}
-                        placeholder='e.g. "6.5 in"'
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Finish</Label>
-                      <Input
-                        value={activePart.finish}
-                        onChange={(event) => updatePart(activePart.key, { finish: event.target.value })}
-                        placeholder="e.g. zinc plate, anodize, paint"
-                      />
-                      {activePart.drawingFinishText ? <span className="text-xs text-muted-foreground">Drawing says: {activePart.drawingFinishText}</span> : null}
-                    </div>
-                    {activePart.drawingMaterialText ? (
-                      <div className="grid gap-2 rounded-lg border border-[#ff5a00]/50 bg-[#ff5a00]/5 p-3">
-                        <Label>Exact material text from drawing</Label>
-                        <p className="text-sm font-semibold">{activePart.drawingMaterialText}</p>
-                        <p className="text-xs text-muted-foreground">The match can be corrected without losing the print wording.</p>
-                      </div>
-                    ) : null}
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Description</Label>
-                      <Textarea
-                        value={activePart.description}
-                        onChange={(event) => updatePart(activePart.key, { description: event.target.value })}
-                        placeholder="What needs to happen for this part or assembly?"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Select a part to edit its details.</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+            <QuoteManualPartsPanel
+              parts={parts}
+              activePartKey={activePartKey}
+              materials={materials}
+              onAddPart={() => {
+                const nextPart = buildEmptyPart();
+                setParts((previous) => [...previous, nextPart]);
+                setActivePartKey(nextPart.key);
+              }}
+              onSelectPart={setActivePartKey}
+              onRemovePart={removePart}
+              onUpdatePart={updatePart}
+            />
           ) : (
             <Card className="border-dashed">
               <CardContent className="p-6 text-center text-sm text-muted-foreground">Choose one of the two large options above to continue.</CardContent>
@@ -2386,111 +1890,15 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       )}
 
       {currentStep === 2 && (
-        <div className="space-y-5">
-          <Card className="border-[#ff5a00]/40">
-            <CardHeader>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <CardTitle>Material check</CardTitle>
-                  <CardDescription>Review this list on screen, print it for the shop walk, then enter what you found.</CardDescription>
-                </div>
-                <Button type="button" variant="outline" onClick={() => void printMaterialWalkdown()} disabled={loading || !initialQuote?.id}>
-                  Print shop walkdown sheet
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-lg border border-[#0b1f3a]/25 bg-white p-4 text-sm text-[#0b1f3a] dark:bg-[#0b1f3a] dark:text-white">
-                Use the large choices on every part. <strong>Need to order</strong> will require a vendor before you can continue. An in-stock location is helpful but will not block you.
-              </div>
-            </CardContent>
-          </Card>
-
-          {parts.filter((part) => part.name.trim()).map((part, index) => {
-            const materialName = materials.find((material) => material.id === part.materialId)?.name || 'Not matched';
-            const materialResolved = part.materialStatus !== 'UNREVIEWED'
-              && (part.materialStatus !== 'NEED_TO_ORDER' || Boolean(part.procurementVendorId));
-            return (
-              <Card key={part.key} className={!materialResolved ? 'border-2 border-[#ff5a00] shadow-[0_0_0_3px_rgba(255,90,0,0.12)]' : 'border-[#0b1f3a]/25'}>
-                <CardHeader>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Part {index + 1}</p>
-                      <CardTitle>{part.partNumber || 'No part number'} — {part.name}</CardTitle>
-                      <CardDescription>Qty {part.quantity || '1'} · {materialName} · Total stock {part.stockSize || 'not shown'} · Cut {part.cutLength || 'not shown'}</CardDescription>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${materialResolved ? 'border-[#0b1f3a] bg-[#0b1f3a] text-white' : 'border-[#ff5a00] bg-[#ff5a00]/10 text-[#ff5a00]'}`}>
-                        {materialResolved ? '✓ Material decision resolved' : 'Needs confirmation'}
-                      </span>
-                      {part.attachments.map((attachment, attachmentIndex) => (
-                        <a key={`${attachment.storagePath}-${attachmentIndex}`} href={`/api/orders/drawing-import/preview?path=${encodeURIComponent(attachment.storagePath)}`} target="_blank" rel="noopener noreferrer" className="rounded-md border border-border px-3 py-2 text-sm font-semibold text-primary hover:bg-muted">
-                          Open drawing{part.attachments.length > 1 ? ` ${attachmentIndex + 1}` : ''}
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Drawing says</p>
-                      <p className="mt-1 font-medium">Material: {part.drawingMaterialText || 'Not shown'}</p>
-                      <p className="mt-1 font-medium">Finish: {part.drawingFinishText || part.finish || 'Not shown'}</p>
-                      <p className="mt-1 font-medium">Finished thickness: {part.partThickness || 'Not shown'}</p>
-                      <p className="mt-1 font-medium">Finished width: {part.partWidth || 'Not shown'}</p>
-                      <p className="mt-1 font-medium">Total stock dimensions: {part.stockSize || 'Not shown'}</p>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Stock check / purchasing note</Label>
-                      <Textarea value={part.materialNotes} onChange={(event) => updatePart(part.key, { materialNotes: event.target.value })} placeholder="Where to look, supplier details, lead time, or anything the stock checker should know" />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {([
-                      ['IN_STOCK', '✓ In stock', 'Material is already in the shop'],
-                      ['NEED_TO_ORDER', 'Order material', 'Choose a vendor below'],
-                      ['NOT_REQUIRED', 'Not required', 'No material purchase or stock check'],
-                    ] as const).map(([value, label, description]) => (
-                      <button key={value} type="button" onClick={() => updatePart(part.key, { materialStatus: value })} className={`rounded-xl border-2 p-4 text-left transition ${part.materialStatus === value ? value === 'NEED_TO_ORDER' ? 'border-[#ff5a00] bg-[#ff5a00] text-white' : 'border-[#0b1f3a] bg-[#0b1f3a] text-white' : 'border-border/60 bg-background hover:border-[#ff5a00]'}`}>
-                        <span className="block text-base font-semibold">{label}</span>
-                        <span className={`mt-1 block text-xs ${part.materialStatus === value ? 'text-white/80' : 'text-muted-foreground'}`}>{description}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {part.materialStatus === 'IN_STOCK' ? (
-                    <div className="grid gap-2 md:max-w-xl">
-                      <Label>Where did you find it?</Label>
-                      <Input value={part.inventoryLocation} onChange={(event) => updatePart(part.key, { inventoryLocation: event.target.value })} placeholder="Rack, shelf, bin, or area" />
-                    </div>
-                  ) : null}
-
-                  {part.materialStatus === 'NEED_TO_ORDER' ? (
-                    <div className={`grid gap-4 rounded-xl border-2 p-4 md:max-w-xl ${part.procurementVendorId ? 'border-[#0b1f3a]/60 bg-[#0b1f3a]/10' : 'border-[#ff5a00] bg-[#ff5a00]/5'}`}>
-                      <div className="grid gap-2">
-                        <Label>Order from *</Label>
-                        <Select value={part.procurementVendorId || '__choose_vendor__'} onValueChange={(value) => updatePart(part.key, { procurementVendorId: value === '__choose_vendor__' ? '' : value })}>
-                          <SelectTrigger className="border border-border bg-background px-3 py-2 text-sm"><SelectValue placeholder="Choose vendor" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__choose_vendor__">Choose a vendor</SelectItem>
-                            {vendors.map((vendor) => <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                        {part.procurementVendorId ? (
-                          <p className="text-xs font-semibold text-[#0b1f3a] dark:text-white">✓ Vendor selected. Material decision resolved.</p>
-                        ) : (
-                          <p className="text-xs text-[#ff5a00]">Choose a vendor to resolve this part.</p>
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <QuoteMaterialCheckPanel
+          parts={parts}
+          materials={materials}
+          vendors={vendors}
+          loading={loading}
+          canPrint={Boolean(initialQuote?.id)}
+          onPrint={() => void printMaterialWalkdown()}
+          onUpdate={(partKey, patch) => updatePart(partKey, patch)}
+        />
       )}
 
       {currentStep === 3 && (
@@ -2774,503 +2182,49 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             </CardContent>
           </Card>
 
-          {buildCustomFields.length ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Part build fields</CardTitle>
-                <CardDescription>Finish requirements and other build-stage details.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <CustomFieldInputs
-                  fields={buildCustomFields}
-                  values={customFieldValues}
-                  onChange={(fieldId, value) =>
-                    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
-                  }
-                />
-              </CardContent>
-            </Card>
-          ) : null}
+          <QuoteBuildDetailsCards
+            fields={buildCustomFields}
+            customFieldValues={customFieldValues}
+            notes={form}
+            onCustomFieldChange={(fieldId, value) => setCustomFieldValues((current) => ({ ...current, [fieldId]: value }))}
+            onNotesChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+          />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Assembly-level notes</CardTitle>
-              <CardDescription>Notes and files that apply to the entire quote.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="quoteMaterials">Materials / stock summary</Label>
-                <Textarea
-                  id="quoteMaterials"
-                  value={form.materialSummary}
-                  onChange={(event) => setForm((prev) => ({ ...prev, materialSummary: event.target.value }))}
-                  placeholder="Material specs, thickness, and finish requirements"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="quotePurchaseItems">Purchased items (hardware, kits, etc.)</Label>
-                <Textarea
-                  id="quotePurchaseItems"
-                  value={form.purchaseItems}
-                  onChange={(event) => setForm((prev) => ({ ...prev, purchaseItems: event.target.value }))}
-                  placeholder="List of hardware or kits that need to be procured"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="quoteRequirements">Assembly requirements / process notes</Label>
-                <p className="text-xs text-muted-foreground">
-                  These apply across the quote and are included in each converted part&apos;s required reading. Use the per-part Read Me First field above for part-specific instructions.
-                </p>
-                <Textarea
-                  id="quoteRequirements"
-                  value={form.requirements}
-                  onChange={(event) => setForm((prev) => ({ ...prev, requirements: event.target.value }))}
-                  placeholder="Welding, finishing, or inspection instructions"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="quoteNotes">Internal notes</Label>
-                <Textarea
-                  id="quoteNotes"
-                  value={form.notes}
-                  onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
-                  placeholder="Internal notes for the estimating team"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Attachments</CardTitle>
-              <CardDescription>Upload assembly drawings or general quote files. Mark print images so BOM analyzer workflows can prioritize them after conversion.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-2 md:w-1/2">
-                <Label htmlFor="quoteAttachmentBusiness">Business folder</Label>
-                <Select value={attachmentBusiness} onValueChange={(value) => setAttachmentBusiness(value as BusinessName)}>
-                  <SelectTrigger id="quoteAttachmentBusiness" className="border border-border bg-background px-3 py-2 text-sm">
-                    <SelectValue placeholder="Select a business" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BUSINESS_OPTIONS.map((option) => (
-                      <SelectItem key={option.slug} value={option.name}>
-                        {option.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Files upload under <code className="font-mono text-xs">{attachmentPathPreview}</code> inside the storage root.
-                </p>
-              </div>
-              {attachments.map((attachment) => {
-                const storedUrl = attachment.storagePath ? `/attachments/${attachment.storagePath}` : '';
-                return (
-                  <div
-                    key={attachment.key}
-                    className="grid gap-4 rounded border border-border/50 bg-card/40 p-4 md:grid-cols-2"
-                  >
-                    <div className="grid gap-2">
-                      <Label>Label</Label>
-                      <Input
-                        value={attachment.label}
-                        onChange={(event) =>
-                          setAttachments((prev) =>
-                            prev.map((row) =>
-                              row.key === attachment.key ? { ...row, label: event.target.value } : row
-                            )
-                          )
-                        }
-                        placeholder="Customer print"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>MIME type</Label>
-                      <Input
-                        value={attachment.mimeType}
-                        onChange={(event) =>
-                          setAttachments((prev) =>
-                            prev.map((row) =>
-                              row.key === attachment.key ? { ...row, mimeType: event.target.value } : row
-                            )
-                          )
-                        }
-                        placeholder="application/pdf"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">Analyzer role</Label>
-                      <label className="flex items-center gap-2 rounded border border-border/50 bg-muted/20 px-3 py-2 text-sm">
-                        <Checkbox
-                          checked={attachment.isPrintForBom}
-                          onCheckedChange={(checked) =>
-                            setAttachments((prev) =>
-                              prev.map((row) =>
-                                row.key === attachment.key ? { ...row, isPrintForBom: checked === true } : row
-                              )
-                            )
-                          }
-                        />
-                        <span>Use as print image for BOM analyzer (adds <code className="font-mono">[PRINT]</code> tag).</span>
-                      </label>
-                    </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Link URL</Label>
-                      <Input
-                        value={attachment.url}
-                        onChange={(event) =>
-                          setAttachments((prev) =>
-                            prev.map((row) =>
-                              row.key === attachment.key ? { ...row, url: event.target.value } : row
-                            )
-                          )
-                        }
-                        placeholder="https://"
-                      />
-                      {attachment.storagePath ? (
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>Stored file ready to open.</span>
-                          <Link
-                            href={storedUrl}
-                            className="underline"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            Open stored file
-                          </Link>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          Provide an external link or upload a file below.
-                        </p>
-                      )}
-                    </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Upload file</Label>
-                      <input
-                        type="file"
-                        onChange={async (event) => {
-                          await handleAttachmentUpload(attachment.key, event.target.files);
-                          event.target.value = '';
-                        }}
-                        disabled={attachment.uploading}
-                        className="block w-full text-sm text-foreground"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {attachment.uploading ? 'Uploading…' : 'Uploads replace the link above with a secure download URL.'}
-                      </p>
-                    </div>
-                    <div className="flex items-end justify-end md:col-span-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => setAttachments((prev) => prev.filter((row) => row.key !== attachment.key))}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-              <Button type="button" variant="outline" onClick={addAttachment}>
-                Add attachment
-              </Button>
-            </CardContent>
-          </Card>
+          <QuoteAttachmentsCard
+            business={attachmentBusiness}
+            pathPreview={attachmentPathPreview}
+            attachments={attachments}
+            onBusinessChange={setAttachmentBusiness}
+            onChange={(key, patch) => setAttachments((current) => current.map((item) => (
+              item.key === key ? { ...item, ...patch } : item
+            )))}
+            onUpload={handleAttachmentUpload}
+            onRemove={(key) => setAttachments((current) => current.filter((item) => item.key !== key))}
+            onAdd={addAttachment}
+          />
         </>
       )}
 
       {currentStep === 4 && (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle>Quote routing</CardTitle>
-              <CardDescription>
-                Choose the department this quote should start from when it converts to an order.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-[minmax(0,320px)_1fr] md:items-start">
-              <div className="grid gap-2">
-                <Label>Origin / default department</Label>
-                <Select value={originDepartmentId || undefined} onValueChange={setOriginDepartmentId}>
-                  <SelectTrigger className="border border-border bg-background px-3 py-2 text-sm">
-                    <SelectValue
-                      placeholder={
-                        departmentsLoaded
-                          ? departmentsLoadFailed
-                            ? 'Departments unavailable'
-                            : 'No active departments'
-                          : 'Loading departments…'
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activeDepartments.map((department) => (
-                      <SelectItem key={department.id} value={department.id}>
-                        {department.name}
-                      </SelectItem>
-                    ))}
-                    {selectedOriginDepartment && !selectedOriginDepartment.isActive ? (
-                      <SelectItem value={selectedOriginDepartment.id} disabled>
-                        {selectedOriginDepartment.name} (inactive — saved)
-                      </SelectItem>
-                    ) : null}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="rounded border border-border/60 bg-background/60 p-3 text-sm text-muted-foreground">
-                {selectedOriginDepartment ? (
-                  <p>
-                    Converted orders from this quote will start in <span className="font-medium text-foreground">{selectedOriginDepartment.name}</span> unless a later workflow move changes them.
-                  </p>
-                ) : departmentsLoadFailed ? (
-                  <p>Departments could not be loaded. Refresh the page before saving this quote.</p>
-                ) : (
-                  <p>
-                    The first active department will be selected and saved as soon as departments finish loading.
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <QuoteRoutingCard
+            value={originDepartmentId}
+            activeDepartments={activeDepartments}
+            selectedDepartment={selectedOriginDepartment}
+            loaded={departmentsLoaded}
+            loadFailed={departmentsLoadFailed}
+            onChange={setOriginDepartmentId}
+          />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Purchased items</CardTitle>
-              <CardDescription>
-                Costs stay attached to the part that needs them. Vendors selected during material check are carried forward automatically.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {parts.filter((part) => part.name.trim() && part.materialStatus === 'NEED_TO_ORDER').map((part) => {
-                const vendorName = vendors.find((vendor) => vendor.id === part.procurementVendorId)?.name || 'Vendor not selected';
-                const baseCents = centsFromString(part.procurementCost);
-                const markup = Number.parseFloat(part.procurementMarkupPercent || '0') || 0;
-                const totalCents = calculateProcurementTotalCents({ baseCostCents: baseCents, markupPercent: markup });
-                const hasEnteredCost = part.procurementCost.trim().length > 0;
-                const isResolved = Boolean(part.procurementVendorId) && hasEnteredCost;
-                return (
-                  <div
-                    key={part.key}
-                    className={`rounded border p-4 ${
-                      isResolved
-                        ? 'border-[#0b1f3a] bg-[#0b1f3a]/20'
-                        : 'border-[#ff5a00]/60 bg-[#ff5a00]/5'
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold">{part.partNumber || part.name}</p>
-                        <p className="text-xs text-muted-foreground">{part.name} · Vendor: {vendorName}</p>
-                      </div>
-                      <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${
-                        isResolved
-                          ? 'border-primary/50 bg-primary/15 text-primary'
-                          : 'border-[#ff5a00]/60 bg-[#ff5a00]/10 text-[#ff8a4c]'
-                      }`}>
-                        {isResolved ? 'Cost captured' : 'Enter cost'}
-                      </span>
-                    </div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_140px_auto] sm:items-end">
-                      <div className="grid gap-2">
-                        <Label>Material cost (USD)</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={part.procurementCost}
-                          onChange={(event) => updatePart(part.key, { procurementCost: event.target.value })}
-                          placeholder="0.00"
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Markup %</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={part.procurementMarkupPercent}
-                          onChange={(event) => updatePart(part.key, { procurementMarkupPercent: event.target.value })}
-                        />
-                      </div>
-                      <div className="rounded border border-border/60 bg-card p-3 text-sm">
-                        <span className="text-muted-foreground">Quoted total</span>
-                        <p className="font-semibold text-primary">{formatCurrency(totalCents)}</p>
-                      </div>
-                    </div>
-                    <p className={`mt-3 text-xs ${isResolved ? 'text-muted-foreground' : 'text-[#ff8a4c]'}`}>
-                      {isResolved
-                        ? 'This purchase is included in this part\'s calculated price below.'
-                        : 'Enter the material cost to finish pricing this part.'}
-                    </p>
-                  </div>
-                );
-              })}
-              {!parts.some((part) => part.name.trim() && part.materialStatus === 'NEED_TO_ORDER') ? (
-                <div className="rounded border border-dashed border-border/60 bg-background/40 p-3 text-sm text-muted-foreground">
-                  No part-specific purchased material has been marked for ordering.
-                </div>
-              ) : null}
-              {vendorItems.map((item) => {
-                const markupValue = Number.parseFloat(item.markupPercent || '0') || 0;
-                const finalCents = Math.round(centsFromString(item.basePrice) * (1 + markupValue / 100));
-                return (
-                  <div key={item.key} className="rounded border border-border/50 bg-card/40 p-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="grid gap-2">
-                        <Label>Vendor</Label>
-                        <Select
-                          value={item.vendorId}
-                          onValueChange={(value) => {
-                            const selected = vendors.find((option) => option.id === value);
-                            setVendorItems((prev) =>
-                              prev.map((row) =>
-                                row.key === item.key
-                                  ? { ...row, vendorId: value, vendorName: selected?.name ?? '' }
-                                  : row
-                              )
-                            );
-                          }}
-                        >
-                          <SelectTrigger className="border border-border bg-background px-3 py-2 text-sm">
-                            <SelectValue placeholder="Select vendor" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {vendors.map((option) => (
-                              <SelectItem key={option.id} value={option.id}>
-                                {option.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Override vendor name</Label>
-                        <Input
-                          value={item.vendorName}
-                          onChange={(event) =>
-                            setVendorItems((prev) =>
-                              prev.map((row) =>
-                                row.key === item.key ? { ...row, vendorName: event.target.value } : row
-                              )
-                            )
-                          }
-                          placeholder={vendors.find((option) => option.id === item.vendorId)?.name}
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Part number</Label>
-                        <Input
-                          value={item.partNumber}
-                          onChange={(event) =>
-                            setVendorItems((prev) =>
-                              prev.map((row) => (row.key === item.key ? { ...row, partNumber: event.target.value } : row))
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Link</Label>
-                        <Input
-                          value={item.partUrl}
-                          onChange={(event) =>
-                            setVendorItems((prev) =>
-                              prev.map((row) => (row.key === item.key ? { ...row, partUrl: event.target.value } : row))
-                            )
-                          }
-                          placeholder="https://"
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Base cost (USD)</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={item.basePrice}
-                          onChange={(event) =>
-                            setVendorItems((prev) =>
-                              prev.map((row) => (row.key === item.key ? { ...row, basePrice: event.target.value } : row))
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Markup %</Label>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            step="1"
-                            value={item.markupPercent}
-                            onChange={(event) =>
-                              setVendorItems((prev) =>
-                                prev.map((row) =>
-                                  row.key === item.key ? { ...row, markupPercent: event.target.value } : row
-                                )
-                              )
-                            }
-                            className="w-24"
-                          />
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            Suggestions:
-                            {MARKUP_SUGGESTIONS.map((suggestion) => (
-                              <Button
-                                key={suggestion}
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 px-2 text-xs"
-                                onClick={() =>
-                                  setVendorItems((prev) =>
-                                    prev.map((row) =>
-                                      row.key === item.key
-                                        ? { ...row, markupPercent: suggestion.toString() }
-                                        : row
-                                    )
-                                  )
-                                }
-                              >
-                                {suggestion}%
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex items-center justify-between">
-                      <div className="text-sm text-muted-foreground">
-                        Estimated total: <span className="font-medium text-primary">{formatCurrency(finalCents)}</span>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => setVendorItems((prev) => prev.filter((row) => row.key !== item.key))}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                    <div className="grid gap-2 mt-4">
-                      <Label>Notes</Label>
-                      <Textarea
-                        value={item.notes}
-                        onChange={(event) =>
-                          setVendorItems((prev) =>
-                            prev.map((row) => (row.key === item.key ? { ...row, notes: event.target.value } : row))
-                          )
-                        }
-                        placeholder="Why is this item required?"
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              <Button type="button" variant="outline" onClick={addVendorItem}>
-                Add purchased item
-              </Button>
-            </CardContent>
-          </Card>
-
+          <QuotePurchasedItemsCard
+            parts={parts}
+            vendors={vendors}
+            items={vendorItems}
+            onPartChange={updatePart}
+            onItemChange={(key, patch) => setVendorItems((current) => current.map((item) => item.key === key ? { ...item, ...patch } : item))}
+            onRemoveItem={(key) => setVendorItems((current) => current.filter((item) => item.key !== key))}
+            onAddItem={addVendorItem}
+          />
 
           <Card>
             <CardHeader>
@@ -3487,97 +2441,22 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Custom amounts</CardTitle>
-              <CardDescription>
-                Add manual one-off quote amounts with a title. These flow into the final estimate and convert into order charges using the quote origin department.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {customAmounts.length ? (
-                customAmounts.map((item) => (
-                  <div key={item.key} className="grid gap-3 rounded border border-border/60 bg-background/60 p-3 md:grid-cols-[1.4fr_180px_auto] md:items-end">
-                    <div className="grid gap-2">
-                      <Label>Title</Label>
-                      <Input
-                        value={item.title}
-                        onChange={(event) => updateCustomAmount(item.key, { title: event.target.value })}
-                        placeholder="Rush setup"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Amount (USD)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={item.amount}
-                        onChange={(event) => updateCustomAmount(item.key, { amount: event.target.value })}
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <Button type="button" variant="ghost" onClick={() => removeCustomAmount(item.key)}>
-                      Remove
-                    </Button>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded border border-dashed border-border/60 bg-background/40 p-3 text-sm text-muted-foreground">
-                  No manual custom amounts added.
-                </div>
-              )}
-              <Button type="button" variant="outline" onClick={addCustomAmount}>
-                Add custom amount
-              </Button>
-            </CardContent>
-          </Card>
+          <QuoteCustomAmountsCard
+            items={customAmounts}
+            onChange={updateCustomAmount}
+            onRemove={removeCustomAmount}
+            onAdd={addCustomAmount}
+          />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Summary</CardTitle>
-              <CardDescription>Totals update automatically as you edit the quote.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              {basePriceCents > 0 ? (
-                <div className="flex items-center justify-between text-sm">
-                  <span>Legacy quote-level fabrication fee</span>
-                  <span className="font-medium">{formatCurrency(basePriceCents)}</span>
-                </div>
-              ) : null}
-              <div className="flex items-center justify-between text-sm">
-                <span>Other purchased items / outside services</span>
-                <span className="font-medium">{formatCurrency(vendorTotalsCents)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span>Final part prices (includes part material)</span>
-                <span className="font-medium">{formatCurrency(partPricingTotalCents)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span>Custom amounts</span>
-                <span className="font-medium">{formatCurrency(customAmountsTotalCents)}</span>
-              </div>
-              <div className="border-t border-border/60 pt-3 text-sm font-semibold">
-                <div className="flex items-center justify-between">
-                  <span>Total estimate</span>
-                  <span className="text-lg text-primary">{formatCurrency(totalCents)}</span>
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
-                Work-step rates and internal costs remain visible only to admins.
-              </p>
-              <div className="flex gap-3">
-                <Button type="button" variant="outline" onClick={() => router.back()} disabled={loading}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={loading}>
-                  {loading ? 'Saving…' : 'Save quote and review'}
-                </Button>
-              </div>
-            </CardFooter>
-          </Card>
+          <QuoteTotalsSummaryCard
+            basePriceCents={basePriceCents}
+            vendorTotalsCents={vendorTotalsCents}
+            partPricingTotalCents={partPricingTotalCents}
+            customAmountsTotalCents={customAmountsTotalCents}
+            totalCents={totalCents}
+            loading={loading}
+            onCancel={() => router.back()}
+          />
         </>
       )}
 

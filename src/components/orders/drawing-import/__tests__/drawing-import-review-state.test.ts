@@ -94,6 +94,21 @@ function progress(completedPages = 1): DrawingImportJobProgress {
 }
 
 describe('drawing import polling state', () => {
+  it('resumes polling for a page-only retry without clearing other pages or their unsaved edits', () => {
+    const other = page('page-2');
+    let state = createDrawingImportReviewState({ progress: { ...progress(2), status: 'READY_FOR_REVIEW' }, pages: [page(), other], supportingFiles: [] });
+    state = markDrawingImportFieldDirty(state, 'page-2', 'material');
+    state.pages[1].extraction!.material = field('Human material', 'human_corrected');
+    const queued = { ...page(), processingStatus: 'queued' as const };
+    const merged = mergeDrawingImportJobSnapshot(state, { progress: { ...progress(1), status: 'QUEUED' }, pages: [queued], supportingFiles: [] });
+    expect(merged.progress.status).toBe('QUEUED');
+    expect(merged.progress.completedPages).toBe(1);
+    expect(merged.pages.map((entry) => entry.pageId)).toEqual(['page-1', 'page-2']);
+    expect(merged.pages[1]).toBe(other);
+    expect(merged.pages[1].extraction!.material.value).toBe('Human material');
+    expect(merged.dirtyFieldsByPage['page-2']).toContain('material');
+  });
+
   it('merges newer polling data without overwriting a dirty human edit', () => {
     let state = createDrawingImportReviewState({ progress: progress(), pages: [page()], supportingFiles: [] });
     state.pages[0] = {

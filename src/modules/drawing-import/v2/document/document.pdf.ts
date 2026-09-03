@@ -94,18 +94,23 @@ async function loadPdfJsDocument(buffer: Buffer): Promise<PdfJsDocument> {
   }).promise) as PdfJsDocument;
 }
 
-export function resolvePdfJsStandardFontDataUrl() {
-  // Do not use require.resolve here. Next rewrites a static resolver to a
-  // numeric webpack id and rewrites a dynamic resolver to an empty context.
-  // The build copies pdfjs-dist into the standalone node_modules directory,
-  // so resolve only the verified source/standalone filesystem layouts.
+export function resolvePdfJsStandardFontDataUrl(
+  runtime: { cwd: string; entryPoint?: string } = { cwd: process.cwd(), entryPoint: process.argv[1] },
+) {
+  // Keep filesystem resolution: Next can rewrite require.resolve to webpack IDs.
+  // Downloaded child checkouts may use a parent's node_modules, just like Node.
   const candidates = [
-    path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'standard_fonts'),
-    path.join(process.cwd(), '.next', 'standalone', 'node_modules', 'pdfjs-dist', 'standard_fonts'),
-    process.argv[1]
-      ? path.join(path.dirname(path.resolve(process.argv[1])), 'node_modules', 'pdfjs-dist', 'standard_fonts')
-      : null,
-  ].filter((candidate): candidate is string => Boolean(candidate));
+    path.join(runtime.cwd, 'node_modules', 'pdfjs-dist', 'standard_fonts'),
+    path.join(runtime.cwd, '.next', 'standalone', 'node_modules', 'pdfjs-dist', 'standard_fonts'),
+    ...(runtime.entryPoint
+      ? [path.join(path.dirname(path.resolve(runtime.entryPoint)), 'node_modules', 'pdfjs-dist', 'standard_fonts')]
+      : []),
+  ];
+  let directory = path.resolve(runtime.cwd);
+  while (path.dirname(directory) !== directory) {
+    directory = path.dirname(directory);
+    candidates.push(path.join(directory, 'node_modules', 'pdfjs-dist', 'standard_fonts'));
+  }
   const standardFontsPath = candidates.find((candidate) => existsSync(candidate));
   if (!standardFontsPath) throw new Error('The PDF.js standard-font directory is missing from this runtime.');
   return `${standardFontsPath.replace(/\\/g, '/')}/`;

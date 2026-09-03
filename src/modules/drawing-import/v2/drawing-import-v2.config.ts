@@ -24,16 +24,18 @@ function modeValue(value: string | undefined): DrawingImportV2Mode {
 export function getDrawingImportV2Config(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): DrawingImportV2Config {
+  const directPdfV3Enabled = booleanValue(environment.DRAWING_IMPORT_V3_ENABLED, false);
   const softBudgetUsd = moneyValue(environment.DRAWING_IMPORT_V2_SOFT_BUDGET_USD, 6.4);
   const hardBudgetUsd = Math.max(softBudgetUsd, moneyValue(environment.DRAWING_IMPORT_V2_HARD_BUDGET_USD, 8));
   return {
     mode: modeValue(environment.DRAWING_IMPORT_V2_MODE),
     localAutoAcceptEnabled: booleanValue(environment.DRAWING_IMPORT_V2_LOCAL_AUTO_ACCEPT, false),
-    ocrEnabled: booleanValue(environment.DRAWING_IMPORT_V2_OCR, false),
+    // The newer importer reads original PDF pages directly; local OCR is retired.
+    ocrEnabled: false,
     customerProfilesEnabled: booleanValue(environment.DRAWING_IMPORT_V2_PROFILES, false),
-    solEscalationEnabled: booleanValue(environment.DRAWING_IMPORT_V2_SOL, false),
+    solEscalationEnabled: !directPdfV3Enabled && booleanValue(environment.DRAWING_IMPORT_V2_SOL, false),
     lunaExperimentalEnabled: booleanValue(environment.DRAWING_IMPORT_V2_LUNA, false),
-    directPdfV3Enabled: booleanValue(environment.DRAWING_IMPORT_V3_ENABLED, false),
+    directPdfV3Enabled,
     pdfWorkerConcurrency: integerValue(environment.DRAWING_IMPORT_V2_PDF_CONCURRENCY, 1, 1, 4),
     ocrWorkerConcurrency: integerValue(environment.DRAWING_IMPORT_V2_OCR_CONCURRENCY, 1, 1, 4),
     targetedAiConcurrency: integerValue(environment.DRAWING_IMPORT_V2_TARGETED_CONCURRENCY, 8, 1, 16),
@@ -42,7 +44,8 @@ export function getDrawingImportV2Config(
     softBudgetUsd,
     hardBudgetUsd,
     perRequestTimeoutMs: integerValue(environment.DRAWING_IMPORT_V2_TIMEOUT_MS, 90_000, 5_000, 300_000),
-    retryLimit: integerValue(environment.DRAWING_IMPORT_V2_RETRY_LIMIT, 3, 0, 5),
+    // V3 performs one extraction per page; failures remain visible for manual retry.
+    retryLimit: directPdfV3Enabled ? 0 : integerValue(environment.DRAWING_IMPORT_V2_RETRY_LIMIT, 3, 0, 5),
   };
 }
 

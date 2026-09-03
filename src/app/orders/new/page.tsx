@@ -1,40 +1,23 @@
 "use client";
 
 import React from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { PlusCircle, Upload, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import type { NewOrderCustomerInput } from './NewOrderCustomerDialog';
+import { NewOrderDrawingEntryPanel } from './NewOrderDrawingEntryPanel';
+import { NewOrderInfoCards } from './NewOrderInfoCards';
+import { NewOrderPartEntryChooser } from './NewOrderPartEntryChooser';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/Card';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Textarea } from '@/components/ui/Textarea';
-import { AvailableItemsLibrary } from '@/components/AvailableItemsLibrary';
-import { AssignedItemsPanel } from '@/components/AssignedItemsPanel';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+  NewOrderPartsEditor,
+  type NewOrderAddonOption as AddonOption,
+  type NewOrderPartAddonSelection as PartAddonSelection,
+  type NewOrderPartInput as PartInput,
+} from './NewOrderPartsEditor';
+import { NewOrderReviewSummaryCards } from './NewOrderReviewSummaryCards';
+import { NewOrderAttachmentsCard } from './NewOrderAttachmentsCard';
+import { NewOrderLaunchNotesCard } from './NewOrderLaunchNotesCard';
+import { NewOrderSubmitCard } from './NewOrderSubmitCard';
+import { NewOrderWizardNavigation, NewOrderWizardProgress } from './NewOrderWizardControls';
 import {
   BUSINESS_OPTIONS,
   getBusinessOptionByCode,
@@ -42,97 +25,36 @@ import {
   type BusinessCode,
   type BusinessName,
 } from '@/lib/businesses';
-import { CustomFieldInputs, type CustomFieldDefinition } from '@/components/CustomFieldInputs';
+import type { CustomFieldDefinition } from '@/components/CustomFieldInputs';
 import { hasCustomFieldValue } from '@/lib/custom-field-values';
-import {
-  calculateAssignmentTotalCents,
-  calculateWorkItemsSubtotalCents,
-  formatWorkItemRateLabel,
-  getWorkItemUnitsLabel,
-  getWorkItemPricingSemantic,
-  type WorkItemRateType,
-} from '@/modules/pricing/work-item-pricing';
+import { calculateWorkItemsSubtotalCents } from '@/modules/pricing/work-item-pricing';
 import { calculatePartLotTotal, type PartPricingMode } from '@/modules/pricing/part-pricing';
 import type { RepeatOrderTemplateDetail } from '@/modules/repeat-orders/repeat-orders.types';
 import { resolveRepeatOrderCustomer } from '@/modules/repeat-orders/repeat-order-customer';
-import { DrawingImportPanel, type ReviewedDrawingPart } from '@/components/orders/DrawingImportPanel';
-import { QuoteDrawingImportV2Panel } from '@/components/orders/drawing-import/QuoteDrawingImportV2Panel';
+import { loadRepeatOrderTemplate } from '@/modules/order-intake/order-prefill.client';
+import { loadQuoteForOrder, mapQuoteToOrderPrefill } from '@/modules/order-intake/order-quote-prefill.client';
+import type { ReviewedDrawingPart } from '@/components/orders/DrawingImportPanel';
 import { createQuoteDrawingImportV2ApiClient } from '@/components/orders/drawing-import/drawing-import-v2-api-client';
 import { buildFinishPartNotes } from '@/modules/drawing-import/drawing-import.materials';
 import { clearDrawingImportDraft } from '@/modules/drawing-import/drawing-import.draft';
 import { normalizeOrderQuantityInput } from '@/modules/orders/order-input';
-import { AddCustomerContactDialog } from '@/components/customers/AddCustomerContactDialog';
 import { clearIntakeDraft, intakeDraftKey, readIntakeDraft, writeIntakeDraft } from '@/modules/intake-drafts/intake-draft';
 import { CustomerPartPicker } from '@/components/customer-parts/CustomerPartPicker';
-import { CustomerPartNoteSuggestions, appendSuggestedNote } from '@/components/customer-parts/CustomerPartNoteSuggestions';
-import type { CustomerPartNoteSuggestion, CustomerPartReusableDraft } from '@/modules/customer-parts/customer-parts.types';
+import type { CustomerPartReusableDraft } from '@/modules/customer-parts/customer-parts.types';
+import {
+  createIntakeKey as createKey,
+  defaultIntakeDueDate as defaultDueDate,
+  numberFromIntakeDraft as numberFromString,
+  type IntakeCustomerOption,
+} from '@/modules/order-intake/order-intake.client';
+import { submitDirectOrder, submitQuoteConversion, submitRepeatOrder } from '@/modules/order-intake/order-submission.client';
 
 const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
-const OPTIONAL_VALUE = '__none__';
-
-const createKey = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : Math.random().toString(36).slice(2);
 
 const DEFAULT_BUSINESS_OPTION = BUSINESS_OPTIONS[0];
 const DEFAULT_BUSINESS_NAME = (DEFAULT_BUSINESS_OPTION?.name ?? 'Sterling Tool and Die') as BusinessName;
 const DEFAULT_BUSINESS_CODE = (DEFAULT_BUSINESS_OPTION?.code ?? 'STD') as BusinessCode;
-const formatCurrency = (cents: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format((cents || 0) / 100);
-
-type Option = {
-  id: string;
-  name: string;
-  contacts?: Array<{
-    id: string;
-    name: string;
-    title?: string | null;
-    phone?: string | null;
-    email?: string | null;
-    isPrimary?: boolean;
-  }>;
-};
-type AddonOption = {
-  id: string;
-  name: string;
-  description?: string | null;
-  rateType?: WorkItemRateType;
-  rateCents?: number;
-  active?: boolean;
-  affectsPrice?: boolean;
-  isChecklistItem?: boolean;
-  department?: { id: string; name: string } | null;
-};
-type PartAddonSelection = {
-  key: string;
-  addonId: string;
-  units: string;
-  notes: string;
-};
-type PartInput = {
-  key: string;
-  templatePartId?: string;
-  partNumber: string;
-  partName: string;
-  quantity: string;
-  materialId?: string;
-  stockSize?: string;
-  cutLength?: string;
-  finalPartLength?: string;
-  drawingMaterialText?: string;
-  drawingFinishText?: string;
-  finish?: string;
-  partWidth?: string;
-  partThickness?: string;
-  notes?: string;
-  workInstructions?: string;
-  noteSuggestions?: CustomerPartNoteSuggestion[];
-  addonSelections: PartAddonSelection[];
-  templateCharges?: RepeatOrderTemplateDetail['parts'][number]['charges'];
-  templateAttachments?: RepeatOrderTemplateDetail['parts'][number]['attachments'];
-  attachments: Array<{ kind: 'DWG' | 'STEP' | 'PRINT' | 'PDF' | 'IMAGE'; storagePath: string; label: string; mimeType: string }>;
-};
+type Option = IntakeCustomerOption;
 
 type PartPricingState = {
   partKey: string;
@@ -160,70 +82,6 @@ const emptyPart = (): PartInput => ({
   attachments: [],
 });
 const emptyAttachment = (): AttachmentInput => ({ url: '', storagePath: '', label: '', mimeType: '', uploading: false });
-
-const buildPartNotes = (part: {
-  description: string | null;
-  notes: string | null;
-  pieceCount: number;
-  stockSize?: string | null;
-  cutLength?: string | null;
-}) => {
-  const lines: string[] = [];
-  if (part.description) lines.push(part.description.trim());
-  if (part.pieceCount > 1) lines.push(`Pieces: ${part.pieceCount}`);
-  if (part.stockSize) lines.push(`Total stock dimensions: ${part.stockSize}`);
-  if (part.cutLength) lines.push(`Cut length: ${part.cutLength}`);
-  if (part.notes) lines.push(part.notes.trim());
-  const combined = lines.join('\n').trim();
-  return combined.length ? combined : '';
-};
-
-const buildConversionNote = (quote: any) => {
-  const now = new Date();
-  const sections: string[] = [`Converted from quote ${quote.quoteNumber} on ${now.toLocaleString()}.`];
-  if (quote.materialSummary) sections.push(`Materials:\n${quote.materialSummary}`);
-  if (quote.purchaseItems) sections.push(`Purchase items:\n${quote.purchaseItems}`);
-  if (quote.requirements) sections.push(`Requirements:\n${quote.requirements}`);
-  if (quote.notes) sections.push(`Quote notes:\n${quote.notes}`);
-  const content = sections.join('\n\n').trim();
-  return content.length ? content : '';
-};
-
-const buildConversionWorkInstructions = (quote: any, part: any) => {
-  const toBulletLines = (value: unknown) =>
-    String(value ?? '')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => `- ${line}`);
-  const buildSection = (heading: string, value: unknown) => {
-    const items = toBulletLines(value);
-    if (!items.length) return '';
-    return `${heading}:\n${items.join('\n')}`;
-  };
-
-  const sections = [
-    buildSection('Required reading', part?.workInstructions),
-    buildSection('Quote requirements', quote?.requirements),
-    buildSection('Quote notes', quote?.notes),
-    buildSection('Materials', quote?.materialSummary),
-    buildSection('Purchase items', quote?.purchaseItems),
-    buildSection('Part-specific notes', part?.notes),
-  ].filter(Boolean);
-  return sections.join('\n\n').trim();
-};
-
-const defaultDueDate = () => {
-  const base = new Date();
-  base.setDate(base.getDate() + 14);
-  return base.toISOString().slice(0, 10);
-};
-
-const numberFromString = (value: string) => {
-  const parsed = Number.parseFloat(value || '0');
-  if (!Number.isFinite(parsed)) return 0;
-  return parsed;
-};
 
 const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -271,16 +129,6 @@ function NewOrderForm() {
   const [customerContactId, setCustomerContactId] = React.useState('');
   const [customers, setCustomers] = React.useState<Option[]>([]);
   const [customerDialogOpen, setCustomerDialogOpen] = React.useState(false);
-  const [newCustomerName, setNewCustomerName] = React.useState('');
-  const [newCustomerContact, setNewCustomerContact] = React.useState('');
-  const [newCustomerPhone, setNewCustomerPhone] = React.useState('');
-  const [newCustomerEmail, setNewCustomerEmail] = React.useState('');
-  const [newCustomerAddressLine1, setNewCustomerAddressLine1] = React.useState('');
-  const [newCustomerAddressLine2, setNewCustomerAddressLine2] = React.useState('');
-  const [newCustomerCity, setNewCustomerCity] = React.useState('');
-  const [newCustomerState, setNewCustomerState] = React.useState('');
-  const [newCustomerPostalCode, setNewCustomerPostalCode] = React.useState('');
-  const [newCustomerCountry, setNewCustomerCountry] = React.useState('United States');
   const [vendors, setVendors] = React.useState<Option[]>([]);
   const [materials, setMaterials] = React.useState<Option[]>([]);
   const [machinists, setMachinists] = React.useState<Option[]>([]);
@@ -465,11 +313,8 @@ function NewOrderForm() {
     setRepeatTemplateLoading(true);
     setRepeatTemplateError(null);
     const controller = new AbortController();
-    fetch(`/api/repeat-order-templates/${templateId}`, { credentials: 'include', signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => {
-        const template = data?.template;
-        if (!template) throw new Error('Repeat-order template not found');
+    loadRepeatOrderTemplate(templateId, controller.signal)
+      .then((template) => {
         setRepeatTemplate(template);
         setBusiness(template.business as BusinessCode);
         setCustomerId(template.customerId ?? '');
@@ -522,145 +367,24 @@ function NewOrderForm() {
     if (templateMode || !quoteId) return;
     setQuotePrefillLoading(true);
     setQuotePrefillError(null);
-    fetch(`/api/admin/quotes/${quoteId}`, { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => {
-        const quote = data?.item;
-        if (!quote) throw new Error('Quote not found');
-        setBusiness(quote.business);
-        setCustomerId(quote.customer?.id ?? '');
-        setCustomerContactId(quote.customerContactId ?? '');
-        setModelIncluded(Boolean(quote.multiPiece));
-        setParts(
-          (quote.parts ?? []).length
-            ? (() => {
-                const legacySelections = (quote.addonSelections ?? []).filter((selection: any) => !selection.quotePartId);
-                return quote.parts.map((part: any, index: number) => {
-                  const selections = part.addonSelections?.length
-                    ? part.addonSelections
-                    : index === 0
-                      ? legacySelections
-                      : [];
-                  return {
-                    key: createKey(),
-                    partNumber: part.partNumber ?? part.name ?? '',
-                    partName: part.name ?? '',
-                    quantity: String(part.quantity ?? 1),
-                    materialId: part.materialId ?? '',
-                    stockSize: part.stockSize ?? '',
-                    cutLength: part.cutLength ?? '',
-                    partWidth: part.partWidth ?? '',
-                    partThickness: part.partThickness ?? '',
-                    notes: buildPartNotes({
-                      description: part.description ?? null,
-                      notes: part.notes ?? null,
-                      pieceCount: part.pieceCount ?? 1,
-                      stockSize: part.stockSize ?? null,
-                      cutLength: part.cutLength ?? null,
-                    }),
-                    workInstructions: buildConversionWorkInstructions(quote, part),
-                    addonSelections: selections.map((selection: any) => ({
-                      key: createKey(),
-                      addonId: selection.addonId ?? selection.addon?.id ?? '',
-                      units: String(selection.units ?? 1),
-                      notes: selection.notes ?? '',
-                    })),
-                    attachments: [],
-                  };
-                });
-              })()
-            : [emptyPart()],
-        );
-        const quoteAddonIds = new Set<string>();
-        const quoteAddonSnapshots = new Map<string, AddonOption>();
-        (quote.parts ?? []).forEach((part: any) => {
-          (part.addonSelections ?? []).forEach((sel: any) => {
-            const addonId = sel.addon?.id ?? sel.addonId ?? null;
-            if (addonId) quoteAddonIds.add(addonId);
-            if (addonId && sel.addon) {
-              quoteAddonSnapshots.set(addonId, {
-                id: addonId,
-                name: sel.addon.name ?? 'Unnamed add-on',
-                description: sel.addon.description ?? null,
-                rateType: sel.addon.rateType ?? undefined,
-                rateCents:
-                  typeof sel.addon.rateCents === 'number'
-                    ? sel.addon.rateCents
-                    : typeof sel.rateCents === 'number'
-                    ? sel.rateCents
-                    : undefined,
-                active: true,
-                affectsPrice:
-                  typeof sel.addon.affectsPrice === 'boolean'
-                    ? sel.addon.affectsPrice
-                    : typeof sel.affectsPrice === 'boolean'
-                    ? sel.affectsPrice
-                    : true,
-                isChecklistItem:
-                  typeof sel.addon.isChecklistItem === 'boolean'
-                    ? sel.addon.isChecklistItem
-                    : typeof sel.isChecklistItem === 'boolean'
-                    ? sel.isChecklistItem
-                    : false,
-                department:
-                  sel.addon.department && sel.addon.department.id
-                    ? {
-                        id: sel.addon.department.id,
-                        name: sel.addon.department.name ?? 'Department',
-                      }
-                    : null,
-              });
-            }
-          });
-        });
-        (quote.addonSelections ?? []).forEach((sel: any) => {
-          const addonId = sel.addon?.id ?? sel.addonId ?? null;
-          if (addonId) quoteAddonIds.add(addonId);
-          if (addonId && sel.addon) {
-            quoteAddonSnapshots.set(addonId, {
-              id: addonId,
-              name: sel.addon.name ?? 'Unnamed add-on',
-              description: sel.addon.description ?? null,
-              rateType: sel.addon.rateType ?? undefined,
-              rateCents:
-                typeof sel.addon.rateCents === 'number'
-                  ? sel.addon.rateCents
-                  : typeof sel.rateCents === 'number'
-                  ? sel.rateCents
-                  : undefined,
-              active: true,
-              affectsPrice:
-                typeof sel.addon.affectsPrice === 'boolean'
-                  ? sel.addon.affectsPrice
-                  : typeof sel.affectsPrice === 'boolean'
-                  ? sel.affectsPrice
-                  : true,
-              isChecklistItem:
-                typeof sel.addon.isChecklistItem === 'boolean'
-                  ? sel.addon.isChecklistItem
-                  : typeof sel.isChecklistItem === 'boolean'
-                  ? sel.isChecklistItem
-                  : false,
-              department:
-                sel.addon.department && sel.addon.department.id
-                  ? {
-                      id: sel.addon.department.id,
-                      name: sel.addon.department.name ?? 'Department',
-                    }
-                  : null,
-            });
-          }
-        });
-        setSelectedAddonIds(Array.from(quoteAddonIds));
-        if (quoteAddonSnapshots.size > 0) {
+    loadQuoteForOrder(quoteId)
+      .then((quote) => {
+        const prefill = mapQuoteToOrderPrefill(quote, createKey);
+        setBusiness(prefill.business as BusinessCode);
+        setCustomerId(prefill.customerId);
+        setCustomerContactId(prefill.customerContactId);
+        setModelIncluded(prefill.modelIncluded);
+        setParts(prefill.parts.length ? prefill.parts : [emptyPart()]);
+        setSelectedAddonIds(prefill.selectedAddonIds);
+        if (prefill.addonSnapshots.length > 0) {
           setAddons((prev) => {
             const existingIds = new Set(prev.map((item) => item.id));
-            const missing = Array.from(quoteAddonSnapshots.values()).filter((item) => !existingIds.has(item.id));
+            const missing = prefill.addonSnapshots.filter((item) => !existingIds.has(item.id));
             return missing.length ? [...prev, ...missing] : prev;
           });
         }
-        setDueDate((quote.dueDate as string | null)?.slice(0, 10) || defaultDueDate());
-        setNotes((prev) => prev || buildConversionNote(quote));
+        setDueDate(prefill.dueDate || defaultDueDate());
+        setNotes((prev) => prev || prefill.note);
       })
       .catch(() => {
         setQuotePrefillError('Unable to prefill from quote. You can still create the order manually.');
@@ -711,10 +435,6 @@ function NewOrderForm() {
     return `${businessSlug}/${customerSlug || 'customer'}/${referenceSlug}`;
   }, [customerId, customers, draftAttachmentReference, poNumber, selectedBusinessOption]);
 
-  const activePart = React.useMemo(
-    () => parts.find((part) => part.key === activePartKey) ?? parts[0],
-    [activePartKey, parts],
-  );
   const templateOrderAttachments = React.useMemo(
     () => (Array.isArray(repeatTemplate?.attachments) ? repeatTemplate.attachments : []),
     [repeatTemplate?.attachments],
@@ -851,6 +571,19 @@ function NewOrderForm() {
     const nextPart = emptyPart();
     setParts((prev) => [...prev, nextPart]);
     setActivePartKey(nextPart.key);
+  }
+
+  async function createDrawingMaterial(name: string) {
+    const response = await fetch('/api/admin/materials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not add material.');
+    const material = data.item ?? data;
+    setMaterials((current) => [...current, material]);
+    return material;
   }
 
   function useImportedDrawingParts(importedParts: ReviewedDrawingPart[], orderFiles: ReviewedDrawingPart['source'][]) {
@@ -1055,6 +788,7 @@ function NewOrderForm() {
 
     const cleanedParts = parts
       .map((part) => ({
+        sourceQuotePartId: part.sourceQuotePartId,
         partNumber: part.partNumber.trim(),
         partName: part.partName.trim() || undefined,
         quantity: normalizeOrderQuantityInput(part.quantity),
@@ -1167,11 +901,7 @@ function NewOrderForm() {
     } as any;
 
     if (templateMode && templateId) {
-      const res = await fetch(`/api/repeat-order-templates/${templateId}/create-order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+      const result = await submitRepeatOrder(templateId, {
           customerId: resolvedCustomerId,
           dueDate: resolvedDueDate,
           priority,
@@ -1183,20 +913,16 @@ function NewOrderForm() {
           modelIncluded,
           notes: notes.trim() || undefined,
           parts: cleanedTemplateParts,
-        }),
       });
-
-      if (res.ok) {
-        const data = await res.json().catch(() => null);
-        const newId = typeof data?.id === 'string' ? data.id : null;
+      if (result.ok) {
+        const newId = result.orderId;
         setMessage('Repeat order created.');
         setCreatedOrderId(newId);
         if (newId) {
           router.push(`/orders/${newId}`);
         }
-      } else {
-        const errorMessage = await extractErrorMessage(res, 'Repeat-order creation failed. Please try again.');
-        setMessage(errorMessage);
+      } else if ('error' in result) {
+        setMessage(result.error);
         setCreatedOrderId(null);
       }
       setLoading(false);
@@ -1204,11 +930,7 @@ function NewOrderForm() {
     }
 
     if (conversionMode && quoteId) {
-      const res = await fetch(`/api/admin/quotes/${quoteId}/convert`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+      const result = await submitQuoteConversion(quoteId, {
           dueDate: resolvedDueDate,
           priority,
           vendorId: vendorId || undefined,
@@ -1223,36 +945,26 @@ function NewOrderForm() {
           customFieldValues: customFields
             .map((field) => ({ fieldId: field.id, value: customFieldValues[field.id] }))
             .filter((entry) => hasCustomFieldValue(entry.value)),
-        }),
       });
-
-      if (res.ok) {
-        const data = await res.json().catch(() => null);
-        const newId = typeof data?.orderId === 'string' ? data.orderId : null;
+      if (result.ok) {
+        const newId = result.orderId;
         setMessage('Order created from quote!');
         setCreatedOrderId(newId);
         if (newId) {
           router.push(`/orders/${newId}`);
         }
-      } else {
-        const errorMessage = await extractErrorMessage(res, 'Conversion failed. Please try again.');
-        setMessage(errorMessage);
+      } else if ('error' in result) {
+        setMessage(result.error);
         setCreatedOrderId(null);
       }
       setLoading(false);
       return;
     }
 
-    const res = await fetch('/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      credentials: 'include',
-    });
-    if (res.ok) {
-      const data = await res.json().catch(() => null);
-      const newId = typeof data?.id === 'string' ? data.id : null;
-      const createdParts = Array.isArray(data?.parts) ? data.parts : [];
+    const result = await submitDirectOrder(body);
+    if (result.ok) {
+      const newId = result.orderId;
+      const createdParts = result.parts;
       const importedCount = cleanedParts.filter((part) => part.attachments.length > 0).length;
       setMessage(importedCount ? `Order created. Starting BOM analysis for ${importedCount} drawing${importedCount === 1 ? '' : 's'}…` : 'Order created! Choose what to do next.');
       setCreatedOrderId(newId);
@@ -1289,28 +1001,14 @@ function NewOrderForm() {
       setModelIncluded(false);
       setNotes('');
       setCustomFieldValues({});
-    } else {
-      const errorMessage = await extractErrorMessage(res, 'Error creating order. Please try again.');
-      setMessage(errorMessage);
+    } else if ('error' in result) {
+      setMessage(result.error);
       setCreatedOrderId(null);
     }
     setLoading(false);
   }
 
-  async function createCustomer() {
-    if (!newCustomerName.trim()) return;
-    const payload = {
-      name: newCustomerName,
-      contact: newCustomerContact || undefined,
-      phone: newCustomerPhone || undefined,
-      email: newCustomerEmail || undefined,
-      addressLine1: newCustomerAddressLine1 || undefined,
-      addressLine2: newCustomerAddressLine2 || undefined,
-      city: newCustomerCity || undefined,
-      stateProvince: newCustomerState || undefined,
-      postalCode: newCustomerPostalCode || undefined,
-      country: newCustomerCountry || undefined,
-    };
+  async function createCustomer(payload: NewOrderCustomerInput) {
     const res = await fetch('/api/admin/customers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1322,18 +1020,9 @@ function NewOrderForm() {
       setCustomers((s) => [data.item, ...s]);
       setCustomerId(data.item.id);
       setCustomerContactId(data.item.contacts?.[0]?.id ?? '');
-      setCustomerDialogOpen(false);
-      setNewCustomerName('');
-      setNewCustomerContact('');
-      setNewCustomerPhone('');
-      setNewCustomerEmail('');
-      setNewCustomerAddressLine1('');
-      setNewCustomerAddressLine2('');
-      setNewCustomerCity('');
-      setNewCustomerState('');
-      setNewCustomerPostalCode('');
-      setNewCustomerCountry('United States');
+      return true;
     }
+    return false;
   }
 
   return (
@@ -1412,415 +1101,75 @@ function NewOrderForm() {
         {quotePrefillError && <p className="text-sm text-destructive">{quotePrefillError}</p>}
       </div>
 
-      <div className="rounded border border-border/60 bg-card/70 p-4 backdrop-blur">
-        <div className="flex flex-wrap gap-2">
-          {steps.map((step, index) => (
-            <Button
-              key={step.key}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentStep(index)}
-              disabled={templateMode && !repeatTemplate}
-              className={`rounded-full border px-4 py-2 text-sm ${
-                index === currentStep
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border/60 text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span className="mr-2 text-xs text-muted-foreground">{index + 1}</span>
-              {step.label}
-            </Button>
-          ))}
-        </div>
-        <div className="mt-3 h-1 w-full rounded-full bg-muted">
-          <div
-            className="h-1 rounded-full bg-primary transition-all"
-            style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
-          />
-        </div>
-      </div>
+      <NewOrderWizardProgress
+        steps={steps}
+        currentStep={currentStep}
+        disabled={templateMode && !repeatTemplate}
+        onSelect={setCurrentStep}
+      />
 
       <form className="flex flex-col gap-8" onSubmit={handleSubmit}>
         {currentStep === 0 && (
-          <>
-            <Card className="border-border/60 bg-card/70 backdrop-blur">
-              <CardHeader>
-                <CardTitle>Customer & schedule</CardTitle>
-                <CardDescription>Who is the work for and when do they need it?</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-6 md:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="business">Business</Label>
-              <Select
-                value={business}
-                disabled={conversionMode || templateMode}
-                onValueChange={(value) => setBusiness(value as BusinessCode)}
-              >
-                <SelectTrigger id="business" className="border-border/60 bg-background/80">
-                  <SelectValue placeholder="Select a business" />
-                </SelectTrigger>
-                <SelectContent>
-                  {BUSINESS_OPTIONS.map((option) => (
-                    <SelectItem key={option.code} value={option.code}>
-                      {option.prefix} — {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="customer">Customer</Label>
-              <Select
-                value={resolveRepeatOrderCustomer(customerId, templateMode ? repeatTemplate?.customerId : null)}
-                onValueChange={(value) => {
-                  if (!value) return;
-                  setCustomerId(value);
-                  setCustomerContactId('');
-                }}
-                disabled={conversionMode}
-              >
-                <SelectTrigger id="customer" className="border-border/60 bg-background/80">
-                  <SelectValue placeholder="Select a customer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {templateMode && repeatTemplate?.customerId && !customers.some((c) => c.id === repeatTemplate.customerId) ? (
-                    <SelectItem value={repeatTemplate.customerId}>{repeatTemplate.customerName || 'Template customer'}</SelectItem>
-                  ) : null}
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="justify-start px-0 text-sm text-primary"
-                    disabled={conversionMode}
-                  >
-                    + Add customer
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>New customer</DialogTitle>
-                    <DialogDescription>Quickly capture a new customer record.</DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="newCustomerName">Name</Label>
-                      <Input
-                        id="newCustomerName"
-                        value={newCustomerName}
-                        onChange={(e) => setNewCustomerName(e.target.value)}
-                        placeholder="Customer name"
-                        required
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="newCustomerContact">Contact</Label>
-                      <Input
-                        id="newCustomerContact"
-                        value={newCustomerContact}
-                        onChange={(e) => setNewCustomerContact(e.target.value)}
-                        placeholder="Contact name (optional)"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="newCustomerPhone">Phone</Label>
-                      <Input
-                        id="newCustomerPhone"
-                        value={newCustomerPhone}
-                        onChange={(e) => setNewCustomerPhone(e.target.value)}
-                        placeholder="(555) 123-4567"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="newCustomerEmail">Email</Label>
-                      <Input
-                        id="newCustomerEmail"
-                        type="email"
-                        value={newCustomerEmail}
-                        onChange={(e) => setNewCustomerEmail(e.target.value)}
-                        placeholder="contact@example.com"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="newCustomerAddressLine1">Shipping address line 1</Label>
-                      <Input id="newCustomerAddressLine1" value={newCustomerAddressLine1} onChange={(e) => setNewCustomerAddressLine1(e.target.value)} placeholder="Street address" />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="newCustomerAddressLine2">Address line 2</Label>
-                      <Input id="newCustomerAddressLine2" value={newCustomerAddressLine2} onChange={(e) => setNewCustomerAddressLine2(e.target.value)} placeholder="Suite, building, attention" />
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="grid gap-2"><Label htmlFor="newCustomerCity">City</Label><Input id="newCustomerCity" value={newCustomerCity} onChange={(e) => setNewCustomerCity(e.target.value)} /></div>
-                      <div className="grid gap-2"><Label htmlFor="newCustomerState">State / province</Label><Input id="newCustomerState" value={newCustomerState} onChange={(e) => setNewCustomerState(e.target.value)} /></div>
-                      <div className="grid gap-2"><Label htmlFor="newCustomerPostalCode">Postal code</Label><Input id="newCustomerPostalCode" value={newCustomerPostalCode} onChange={(e) => setNewCustomerPostalCode(e.target.value)} /></div>
-                      <div className="grid gap-2"><Label htmlFor="newCustomerCountry">Country</Label><Input id="newCustomerCountry" value={newCustomerCountry} onChange={(e) => setNewCustomerCountry(e.target.value)} /></div>
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button type="button" variant="ghost" onClick={() => setCustomerDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="button" onClick={createCustomer}>
-                      Save customer
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="dueDate">Due date</Label>
-              <Input
-                id="dueDate"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="priority">Priority</Label>
-              <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger id="priority" className="border-border/60 bg-background/80">
-                  <SelectValue placeholder="Select priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  {priorities.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="machinist">Coordinator (optional)</Label>
-              <Select
-                value={assignedMachinistId || OPTIONAL_VALUE}
-                onValueChange={(value) =>
-                  setAssignedMachinistId(value === OPTIONAL_VALUE ? '' : value)
-                }
-              >
-                <SelectTrigger id="machinist" className="border-border/60 bg-background/80">
-                  <SelectValue placeholder="Optional" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={OPTIONAL_VALUE}>No coordinator</SelectItem>
-                  {machinists.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="customerContact">Customer contact</Label>
-              <Select
-                value={customerContactId || OPTIONAL_VALUE}
-                onValueChange={(value) => setCustomerContactId(value === OPTIONAL_VALUE ? '' : value)}
-                disabled={!customerId || conversionMode || templateMode}
-              >
-                <SelectTrigger id="customerContact" className="border-border/60 bg-background/80">
-                  <SelectValue placeholder="Select the contact for this order" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={OPTIONAL_VALUE}>No contact selected</SelectItem>
-                  {(customers.find((customer) => customer.id === customerId)?.contacts ?? []).map((contact) => (
-                    <SelectItem key={contact.id} value={contact.id}>
-                      {contact.name}{contact.title ? ` — ${contact.title}` : ''}{contact.isPrimary ? ' (Primary)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                The selected contact is saved with this order and printed on its traveler.
-              </p>
-              {customers.some((customer) => customer.id === customerId) ? (
-                <AddCustomerContactDialog
-                  customer={customers.find((customer) => customer.id === customerId)!}
-                  onSaved={(updatedCustomer, newContactId) => {
-                    setCustomers((current) => current.map((customer) => (
-                      customer.id === updatedCustomer.id ? { ...customer, ...updatedCustomer } : customer
-                    )));
-                    setCustomerContactId(newContactId);
-                  }}
-                />
-              ) : null}
-            </div>
-            {!templateMode ? (
-              <div className="grid gap-2 md:col-span-2">
-                <Label>Assigned workers (optional)</Label>
-                <p className="text-xs text-muted-foreground">
-                  Select everyone starting on this job. They will be assigned to every part and can be adjusted per part later.
-                </p>
-                <div className="grid gap-2 rounded-lg border border-border/60 bg-background/60 p-3 sm:grid-cols-2">
-                  {machinists.length ? (
-                    machinists.map((machinist) => {
-                      const checked = assignedWorkerIds.includes(machinist.id);
-                      return (
-                        <label key={machinist.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50">
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(value) =>
-                              setAssignedWorkerIds((current) =>
-                                value === true
-                                  ? Array.from(new Set([...current, machinist.id]))
-                                  : current.filter((id) => id !== machinist.id),
-                              )
-                            }
-                          />
-                          <span className="text-sm text-foreground">{machinist.name}</span>
-                        </label>
-                      );
-                    })
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No active employees are available.</p>
-                  )}
-                </div>
-              </div>
-            ) : null}
-            <div className="grid gap-2">
-              <Label htmlFor="poNumber">PO number</Label>
-              <Input
-                id="poNumber"
-                value={poNumber}
-                onChange={(e) => setPoNumber(e.target.value)}
-                placeholder="Optional purchase order"
-              />
-            </div>
-              </CardContent>
-            </Card>
-
-            {!templateMode && (
-              <Card className="border-border/60 bg-card/70 backdrop-blur">
-                <CardHeader>
-                  <CardTitle>Custom intake fields</CardTitle>
-                  <CardDescription>Additional fields configured for this business.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <CustomFieldInputs
-                    fields={customFields}
-                    values={customFieldValues}
-                    onChange={(fieldId, value) =>
-                      setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
-                    }
-                  />
-                </CardContent>
-              </Card>
-            )}
-
-            <Card className="border-border/60 bg-card/70 backdrop-blur">
-              <CardHeader>
-                <CardTitle>Vendors & materials</CardTitle>
-                <CardDescription>Capture sourcing and prep requirements.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-6 md:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="vendor">Vendor</Label>
-              <Select
-                value={vendorId || OPTIONAL_VALUE}
-                onValueChange={(value) => setVendorId(value === OPTIONAL_VALUE ? '' : value)}
-              >
-                <SelectTrigger id="vendor" className="border-border/60 bg-background/80">
-                  <SelectValue placeholder="Optional" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={OPTIONAL_VALUE}>No vendor</SelectItem>
-                  {vendors.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-3 rounded-lg border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-              <label className="flex items-center gap-3 text-sm text-foreground">
-                <Checkbox checked={materialNeeded} onCheckedChange={(v) => setMaterialNeeded(v === true)} />
-                Material needed from purchasing
-              </label>
-              <label className="flex items-center gap-3 text-sm text-foreground">
-                <Checkbox
-                  checked={materialOrdered}
-                  onCheckedChange={(v) => setMaterialOrdered(v === true)}
-                />
-                Material ordered / on hand
-              </label>
-              <p className="pl-7 text-xs text-muted-foreground">
-                Select this whenever material is already available, even when no purchasing is required.
-              </p>
-              <label className="flex items-center gap-3 text-sm text-foreground">
-                <Checkbox checked={modelIncluded} onCheckedChange={(v) => setModelIncluded(v === true)} />
-                CAD model provided with job
-              </label>
-            </div>
-              </CardContent>
-            </Card>
-          </>
+          <NewOrderInfoCards
+            header={{ business, customerId, customerContactId, dueDate, priority, assignedMachinistId, assignedWorkerIds, poNumber }}
+            sourcing={{ vendorId, materialNeeded, materialOrdered, modelIncluded }}
+            customers={customers}
+            machinists={machinists}
+            vendors={vendors}
+            customFields={customFields}
+            customFieldValues={customFieldValues}
+            templateMode={templateMode}
+            conversionMode={conversionMode}
+            templateCustomer={templateMode && repeatTemplate?.customerId ? { id: repeatTemplate.customerId, name: repeatTemplate.customerName } : null}
+            customerDialogOpen={customerDialogOpen}
+            onCustomerDialogOpenChange={setCustomerDialogOpen}
+            onCreateCustomer={createCustomer}
+            onHeaderChange={(patch) => {
+              if (patch.business !== undefined) setBusiness(patch.business);
+              if (patch.customerId !== undefined) setCustomerId(patch.customerId);
+              if (patch.customerContactId !== undefined) setCustomerContactId(patch.customerContactId);
+              if (patch.dueDate !== undefined) setDueDate(patch.dueDate);
+              if (patch.priority !== undefined) setPriority(patch.priority);
+              if (patch.assignedMachinistId !== undefined) setAssignedMachinistId(patch.assignedMachinistId);
+              if (patch.assignedWorkerIds !== undefined) setAssignedWorkerIds(patch.assignedWorkerIds);
+              if (patch.poNumber !== undefined) setPoNumber(patch.poNumber);
+            }}
+            onSourcingChange={(patch) => {
+              if (patch.vendorId !== undefined) setVendorId(patch.vendorId);
+              if (patch.materialNeeded !== undefined) setMaterialNeeded(patch.materialNeeded);
+              if (patch.materialOrdered !== undefined) setMaterialOrdered(patch.materialOrdered);
+              if (patch.modelIncluded !== undefined) setModelIncluded(patch.modelIncluded);
+            }}
+            onCustomFieldChange={(fieldId, value) => setCustomFieldValues((current) => ({ ...current, [fieldId]: value }))}
+            onCustomerUpdated={(updatedCustomer, newContactId) => {
+              setCustomers((current) => current.map((customer) => customer.id === updatedCustomer.id ? { ...customer, ...updatedCustomer } : customer));
+              setCustomerContactId(newContactId);
+            }}
+          />
         )}
 
         {currentStep === 1 && !templateMode && !conversionMode && (
-          <Card className="border-border/60 bg-card/80">
-            <CardHeader>
-              <CardTitle>How would you like to add the parts?</CardTitle>
-              <CardDescription>Read new drawings, reuse a proven customer part, or type the details yourself.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-3">
-              <button type="button" onClick={() => setPartEntryMode('drawing')} className={`rounded-2xl border-2 p-6 text-left transition ${partEntryMode === 'drawing' ? 'border-primary bg-primary/10' : 'border-border bg-background/70 hover:border-primary/50'}`}>
-                <Upload className="mb-4 h-8 w-8 text-primary" />
-                <span className="block text-xl font-semibold text-foreground">Read drawings for me</span>
-                <span className="mt-2 block text-sm text-muted-foreground">Upload one drawing or a ZIP. We will fill in the parts and show you anything that needs checking.</span>
-                <span className="mt-4 inline-block rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">Recommended</span>
-              </button>
-              <button type="button" onClick={() => setPartEntryMode('manual')} className={`rounded-2xl border-2 p-6 text-left transition ${partEntryMode === 'manual' ? 'border-primary bg-primary/10' : 'border-border bg-background/70 hover:border-primary/50'}`}>
-                <PlusCircle className="mb-4 h-8 w-8 text-muted-foreground" />
-                <span className="block text-xl font-semibold text-foreground">Type parts myself</span>
-                <span className="mt-2 block text-sm text-muted-foreground">Continue with the familiar manual part-entry screen.</span>
-              </button>
-              <button type="button" onClick={() => setPartEntryMode('existing')} className={`rounded-2xl border-2 p-6 text-left transition ${partEntryMode === 'existing' ? 'border-sky-400 bg-sky-400/10' : 'border-border bg-background/70 hover:border-sky-400/70'}`}>
-                <PlusCircle className="mb-4 h-8 w-8 text-sky-300" />
-                <span className="block text-xl font-semibold text-foreground">Choose a preexisting part</span>
-                <span className="mt-2 block text-sm text-muted-foreground">Search every saved part, regardless of customer or business.</span>
-              </button>
-            </CardContent>
-          </Card>
+          <NewOrderPartEntryChooser
+            mode={partEntryMode}
+            persistentSelection
+            existingDescription="Search every saved part, regardless of customer or business."
+            onChoose={setPartEntryMode}
+          />
         )}
 
         {currentStep === 1 && !templateMode && !conversionMode && partEntryMode === 'drawing' && (
-          legacyDrawingReader ? <DrawingImportPanel
-            business={attachmentBusiness}
-            customerName={customers.find((customer) => customer.id === customerId)?.name ?? ''}
-            draftReference={draftAttachmentReference}
-            materials={materials}
-            onContinue={useImportedDrawingParts}
-            onSwitchToManual={() => setPartEntryMode('manual')}
-          />
-          : <QuoteDrawingImportV2Panel
+          <NewOrderDrawingEntryPanel
+            useLegacyReader={legacyDrawingReader}
             api={currentDrawingReader}
-            destination="order"
             business={attachmentBusiness}
             customerName={customers.find((customer) => customer.id === customerId)?.name ?? ''}
             draftReference={draftAttachmentReference}
             materials={materials}
-            onContinue={useImportedDrawingParts}
+            onContinueLegacy={useImportedDrawingParts}
+            onContinueV2={useImportedDrawingParts}
             onSwitchToLegacy={() => setLegacyDrawingReader(true)}
-            onCreateMaterial={async name => {
-              const response = await fetch('/api/admin/materials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
-              const data = await response.json();
-              if (!response.ok) throw new Error(data.error || 'Could not add material.');
-              const material = data.item ?? data;
-              setMaterials(current => [...current, material]);
-              return material;
-            }}
+            onSwitchToManual={() => setPartEntryMode('manual')}
+            onCreateMaterial={createDrawingMaterial}
           />
         )}
 
@@ -1833,775 +1182,81 @@ function NewOrderForm() {
         )}
 
         {currentStep === 1 && (templateMode || conversionMode || partEntryMode === 'manual') && (
-          <Card className="border-border/60 bg-card/70 backdrop-blur">
-            <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div>
-                <CardTitle>Parts in this order</CardTitle>
-                <CardDescription>
-                  {templateMode
-                    ? 'Review the saved part setup, then adjust only what this repeat run needs.'
-                    : 'Track every unique part, quantity, and preferred material.'}
-                </CardDescription>
-              </div>
-              {!templateMode && (
-                <div className="flex flex-wrap gap-2">
-                  {!conversionMode && <Button type="button" variant="ghost" onClick={() => setPartEntryMode('drawing')}>Import more drawings</Button>}
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="rounded-full border border-primary/40 bg-primary/10 text-primary"
-                    onClick={addPartRow}
-                  >
-                    <PlusCircle className="mr-2 h-4 w-4" /> Add part
-                  </Button>
-                </div>
-              )}
-            </CardHeader>
-            <CardContent className="grid gap-6 lg:grid-cols-[320px_1fr]">
-              <AvailableItemsLibrary
-                title="Available items library"
-                description={
-                  templateMode
-                    ? 'Charges and checklist structure come from the repeat template and are read-only here.'
-                    : conversionMode
-                    ? 'Add-ons come from the quote and are read-only here.'
-                    : 'Drag items onto the selected part or click Add.'
-                }
-                items={availableItems}
-                onAddItem={(item) => {
-                  if (!activePart || conversionMode || templateMode) return;
-                  addAddonSelection(activePart.key, item.id);
-                }}
-                disabled={conversionMode || templateMode}
-              />
-              <div className="space-y-4">
-                <div className="rounded-lg border border-border/60 bg-background/60 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Parts list</p>
-                      <p className="text-xs text-muted-foreground">
-                        {templateMode ? 'Select a part to review notes, work instructions, and saved files.' : 'Select a part to assign add-ons.'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {parts.map((part, index) => (
-                      <Button
-                        key={part.key}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setActivePartKey(part.key)}
-                        className={`justify-start ${
-                          part.key === activePartKey
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border/60 text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {part.partNumber || `Part ${index + 1}`}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-                {activePart ? (
-                  <>
-                    <div className="rounded-xl border border-border/60 bg-background/60 p-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                          Selected part
-                        </h3>
-                        {!templateMode && parts.length > 1 && (
-                          <Button type="button" variant="ghost" size="sm" onClick={() => removePart(activePart.key)}>
-                            Remove
-                          </Button>
-                        )}
-                      </div>
-                      <div className="mt-4 grid gap-4 md:grid-cols-2">
-                        <div className="grid gap-2">
-                          <Label>Part number</Label>
-                          <Input
-                            value={activePart.partNumber}
-                            onChange={(e) => updatePart(activePart.key, { partNumber: e.target.value })}
-                            placeholder="e.g. SP-1024"
-                            disabled={templateMode}
-                            required
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label>Part name</Label>
-                          <Input
-                            value={activePart.partName}
-                            onChange={(e) => updatePart(activePart.key, { partName: e.target.value })}
-                            placeholder="e.g. Vertical rail mount"
-                            disabled={templateMode}
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label>Quantity</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            value={activePart.quantity}
-                            onFocus={(e) => e.currentTarget.select()}
-                            onChange={(e) => updatePart(activePart.key, { quantity: e.target.value })}
-                            onBlur={() => {
-                              if (!activePart.quantity.trim()) updatePart(activePart.key, { quantity: '1' });
-                            }}
-                          />
-                        </div>
-                        {activePart.attachments.length ? (
-                          <div className="grid gap-2 md:col-span-2">
-                            <Label>Drawing attached to this part</Label>
-                            {activePart.attachments.map((attachment) => (
-                              <div key={attachment.storagePath} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/10 px-3 py-2 text-sm">
-                                <span>{attachment.label}</span>
-                                <a href={`/api/orders/drawing-import/preview?path=${encodeURIComponent(attachment.storagePath)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">Open drawing</a>
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-                        <div className="grid gap-2">
-                          <Label>Finished part thickness (optional)</Label>
-                          <Input value={activePart.partThickness || ''} onChange={(e) => updatePart(activePart.key, { partThickness: e.target.value })} placeholder="e.g. .25 in" disabled={templateMode} />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label>Finished part width (optional)</Label>
-                          <Input value={activePart.partWidth || ''} onChange={(e) => updatePart(activePart.key, { partWidth: e.target.value })} placeholder="e.g. 2.5 in" disabled={templateMode} />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label>Total stock dimensions (optional)</Label>
-                          <Input
-                            value={activePart.stockSize || ''}
-                            onChange={(e) => updatePart(activePart.key, { stockSize: e.target.value })}
-                            placeholder="Thickness × width × total length"
-                            disabled={templateMode}
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label>Cut length (optional)</Label>
-                          <Input
-                            value={activePart.cutLength || ''}
-                            onChange={(e) => updatePart(activePart.key, { cutLength: e.target.value })}
-                            placeholder="e.g. 6.5 in"
-                            disabled={templateMode}
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label>Preferred material</Label>
-                          <Select
-                            value={activePart.materialId || OPTIONAL_VALUE}
-                            onValueChange={(value) =>
-                              updatePart(activePart.key, { materialId: value === OPTIONAL_VALUE ? '' : value })
-                            }
-                            disabled={templateMode}
-                          >
-                            <SelectTrigger className="border-border/60 bg-background/80">
-                              <SelectValue placeholder="Optional" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={OPTIONAL_VALUE}>TBD</SelectItem>
-                              {materials.map((m) => (
-                                <SelectItem key={m.id} value={m.id}>
-                                  {m.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="grid gap-2 md:col-span-2">
-                          <Label>Notes</Label>
-                          <Textarea
-                            value={activePart.notes}
-                            onChange={(e) => updatePart(activePart.key, { notes: e.target.value })}
-                            placeholder="Surface finish, tolerances, tooling, etc."
-                            className="min-h-[100px]"
-                          />
-                        </div>
-                        <div className="grid gap-2 rounded-lg border border-amber-500/35 bg-amber-500/5 p-4 md:col-span-2">
-                          <div className="space-y-1">
-                            <Label className="text-amber-100">Required reading / Read Me First</Label>
-                            <p className="text-xs text-muted-foreground">
-                              If this has text, whichever employee is selected to start the timer must read and acknowledge it first. Acknowledgements are recorded per user, department, and version.
-                            </p>
-                          </div>
-                          <Textarea
-                            value={activePart.workInstructions || ''}
-                            onChange={(e) => updatePart(activePart.key, { workInstructions: e.target.value })}
-                            placeholder="Example: Review rev C print; use fixture 207-B; first piece inspection required before continuing."
-                            className="min-h-[140px] border-amber-500/25 bg-background/80"
-                          />
-                        </div>
-                        <div className="md:col-span-2">
-                          <CustomerPartNoteSuggestions
-                            suggestions={activePart.noteSuggestions ?? []}
-                            onApply={(suggestion) => updatePart(activePart.key, {
-                              [suggestion.destination]: appendSuggestedNote(activePart[suggestion.destination] || '', suggestion.text),
-                            })}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    {templateMode ? (
-                      <div className="grid gap-4 xl:grid-cols-2">
-                        <div className="rounded-xl border border-border/60 bg-background/60 p-4">
-                          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                            Saved process items
-                          </h3>
-                          <div className="mt-3 space-y-3">
-                            {(activePart.templateCharges ?? []).length ? (
-                              (activePart.templateCharges ?? []).map((charge, index) => (
-                                <div key={charge.id ?? `${charge.name}-${index}`} className="rounded-lg border border-border/60 bg-muted/10 px-3 py-3 text-sm">
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span className="font-medium text-foreground">{charge.name}</span>
-                                    <span className="text-xs uppercase tracking-wide text-muted-foreground">{charge.kind}</span>
-                                  </div>
-                                  <div className="mt-1 text-xs text-muted-foreground">
-                                    Qty {charge.quantity} at ${charge.unitPrice} each
-                                  </div>
-                                  {charge.description ? (
-                                    <p className="mt-2 text-sm text-muted-foreground">{charge.description}</p>
-                                  ) : null}
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-sm text-muted-foreground">No saved charges on this part.</p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-border/60 bg-background/60 p-4">
-                          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                            Saved part files
-                          </h3>
-                          <div className="mt-3 space-y-3">
-                            {(activePart.templateAttachments ?? []).length ? (
-                              (activePart.templateAttachments ?? []).map((attachment, index) => {
-                                const href = attachment.storagePath
-                                  ? `/attachments/${attachment.storagePath}`
-                                  : attachment.url;
-                                return (
-                                  <div key={attachment.id ?? `${attachment.label}-${index}`} className="rounded-lg border border-border/60 bg-muted/10 px-3 py-3 text-sm">
-                                    <div className="font-medium text-foreground">{attachment.label || 'Template attachment'}</div>
-                                    <div className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
-                                      {attachment.kind}
-                                    </div>
-                                    {href ? (
-                                      <a
-                                        href={href}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="mt-2 inline-flex font-medium text-primary hover:underline"
-                                      >
-                                        Open file
-                                      </a>
-                                    ) : null}
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              <p className="text-sm text-muted-foreground">No saved files on this part.</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <AssignedItemsPanel
-                        title="Assigned add-ons & labor"
-                        description={
-                          conversionMode
-                            ? 'Add-ons are read-only while converting from a quote.'
-                            : 'Drop items here or use Add from the library.'
-                        }
-                        assignments={activePart.addonSelections.map((selection) => ({
-                          key: selection.key,
-                          itemId: selection.addonId,
-                          units: selection.units,
-                          notes: selection.notes,
-                        }))}
-                        itemsById={availableItemsById}
-                        onAddItem={(itemId) => {
-                          if (conversionMode || templateMode) return;
-                          addAddonSelection(activePart.key, itemId);
-                        }}
-                        onUpdateAssignment={(key, patch) => {
-                          if (conversionMode || templateMode) return;
-                          const updates: Partial<PartAddonSelection> = {};
-                          if (patch.units !== undefined) updates.units = patch.units;
-                          if (patch.notes !== undefined) updates.notes = patch.notes;
-                          updateAddonSelection(activePart.key, key, updates);
-                        }}
-                        onRemoveAssignment={(key) => {
-                          if (conversionMode || templateMode) return;
-                          removeAddonSelection(activePart.key, key);
-                        }}
-                        onMoveAssignment={(key, direction) => {
-                          if (conversionMode || templateMode) return;
-                          moveAddonSelection(activePart.key, key, direction);
-                        }}
-                        renderMeta={(assignment, item) => {
-                          if (!item) return null;
-                          if (getWorkItemPricingSemantic(item) === 'CHECKLIST_ONLY') {
-                            return (
-                              <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                                No charge (checklist only).
-                              </div>
-                            );
-                          }
-                          if (typeof item.rateCents !== 'number') {
-                            return (
-                              <div className="rounded border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                                Price unavailable for this add-on.
-                              </div>
-                            );
-                          }
-                          const units = numberFromString(assignment.units);
-                          const totalCents = calculateAssignmentTotalCents({ item, units });
-                          return (
-                            <div className="rounded border border-border/60 bg-background px-3 py-2 text-sm">
-                              {formatWorkItemRateLabel(item)} x {units.toFixed(2)} {getWorkItemUnitsLabel(item.rateType, 'short')} ={' '}
-                              {formatCurrency(totalCents)}
-                            </div>
-                          );
-                        }}
-                        disabled={conversionMode || templateMode}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Select a part to edit details.</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <NewOrderPartsEditor
+            mode={templateMode ? 'template' : conversionMode ? 'conversion' : 'direct'}
+            parts={parts}
+            activePartKey={activePartKey}
+            materials={materials}
+            availableItems={availableItems}
+            availableItemsById={availableItemsById}
+            onSelectPart={setActivePartKey}
+            onAddPart={addPartRow}
+            onImportMore={() => setPartEntryMode('drawing')}
+            onRemovePart={removePart}
+            onUpdatePart={updatePart}
+            onAddAddon={addAddonSelection}
+            onUpdateAddon={updateAddonSelection}
+            onRemoveAddon={removeAddonSelection}
+            onMoveAddon={moveAddonSelection}
+          />
         )}
 
         {currentStep === 2 && (
           <>
 
-            <Card className="border-border/60 bg-card/70 backdrop-blur">
-              <CardHeader>
-                <CardTitle>Parts ready to create</CardTitle>
-                <CardDescription>One last, plain-language check before creating the order.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {parts.map((part, index) => (
-                  <div key={part.key} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 p-3">
-                    <div>
-                      <p className="font-semibold">{part.partNumber || `Part ${index + 1}`}{part.partName ? ` — ${part.partName}` : ''}</p>
-                      <p className="text-sm text-muted-foreground">Quantity {part.quantity || '1'}{part.attachments.length ? ` · ${part.attachments.length} drawing attached` : ''}</p>
-                    </div>
-                    {part.attachments.length ? <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-900">BOM will run automatically</span> : null}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+            <NewOrderReviewSummaryCards
+              parts={parts}
+              pricing={partPricing}
+              addonLaborSubtotalCents={addonLaborSubtotalCents}
+              partPricingTotalCents={partPricingTotalCents}
+              totalEstimateCents={totalEstimateCents}
+              onPricingChange={(partKey, patch) => setPartPricing((current) => current.map((entry) => entry.partKey === partKey ? { ...entry, ...patch } : entry))}
+            />
 
-            <Card className="border-border/60 bg-card/70 backdrop-blur">
-              <CardHeader>
-                <CardTitle>Per-part pricing basis</CardTitle>
-                <CardDescription>
-                  Review-only estimate controls. This basis is not persisted on order create.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {parts.map((part, index) => {
-                  const entry = partPricing.find((candidate) => candidate.partKey === part.key) ?? {
-                    partKey: part.key,
-                    price: '0.00',
-                    pricingMode: 'LOT_TOTAL' as PartPricingMode,
-                  };
-                  const quantity = normalizeOrderQuantityInput(part.quantity);
-                  const lotTotal = calculatePartLotTotal({
-                    enteredPriceCents: Math.round(numberFromString(entry.price) * 100),
-                    quantity,
-                    pricingMode: entry.pricingMode,
-                  });
-                  return (
-                    <div key={part.key} className="grid gap-3 rounded border border-border/60 bg-background/60 p-3 md:grid-cols-[1.5fr_100px_160px_140px_auto] md:items-center">
-                      <div className="text-sm font-medium">{part.partNumber || `Part ${index + 1}`}</div>
-                      <div className="text-sm text-muted-foreground">Qty: {quantity}</div>
-                      <Input
-                        inputMode="decimal"
-                        value={entry.price}
-                        onChange={(event) =>
-                          setPartPricing((prev) =>
-                            prev.map((row) => (row.partKey === part.key ? { ...row, price: event.target.value } : row)),
-                          )
-                        }
-                        placeholder="0.00"
-                      />
-                      <Label className="flex items-center gap-2 text-xs">
-                        <Checkbox
-                          checked={entry.pricingMode === 'PER_UNIT'}
-                          onCheckedChange={(checked) =>
-                            setPartPricing((prev) =>
-                              prev.map((row) =>
-                                row.partKey === part.key ? { ...row, pricingMode: checked ? 'PER_UNIT' : 'LOT_TOTAL' } : row,
-                              ),
-                            )
-                          }
-                        />
-                        PER_UNIT
-                      </Label>
-                      <div className="text-sm font-medium">{formatCurrency(lotTotal)}</div>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
+            <NewOrderAttachmentsCard
+              mode={templateMode ? 'template' : conversionMode ? 'conversion' : 'direct'}
+              templateOrderAttachments={templateOrderAttachments}
+              templatePartAttachmentEntries={templatePartAttachmentEntries}
+              attachments={attachments}
+              attachmentBusiness={attachmentBusiness}
+              attachmentPathPreview={attachmentPathPreview}
+              onAttachmentBusinessChange={setAttachmentBusiness}
+              onAdd={addAttachmentRow}
+              onRemove={removeAttachment}
+              onUpdate={updateAttachment}
+              onUrlChange={handleAttachmentUrlChange}
+              onFile={(index, files) => void handleAttachmentFile(index, files)}
+            />
 
-            <Card className="border-border/60 bg-card/70 backdrop-blur">
-              <CardHeader>
-                <CardTitle>Estimate summary</CardTitle>
-                <CardDescription>Pricing projection from assigned add-ons and labor.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div className="flex items-center justify-between rounded-md border border-border/60 bg-background/70 px-3 py-2">
-                  <span className="text-muted-foreground">Add-ons & labor subtotal</span>
-                  <span className="font-medium">{formatCurrency(addonLaborSubtotalCents)}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-md border border-border/60 bg-background/70 px-3 py-2">
-                  <span className="text-muted-foreground">Part pricing (basis-adjusted)</span>
-                  <span className="font-medium">{formatCurrency(partPricingTotalCents)}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-md border border-border/60 bg-background px-3 py-2 font-semibold">
-                  <span>Total estimate</span>
-                  <span>{formatCurrency(totalEstimateCents)}</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Checklist-only items are excluded from pricing totals.
-                </p>
-              </CardContent>
-            </Card>
+            <NewOrderLaunchNotesCard
+              templateMode={templateMode}
+              conversionMode={conversionMode}
+              checklistOptions={orderChecklistAddons}
+              selectedIds={selectedAddonIds}
+              notes={notes}
+              onSelectedIdsChange={setSelectedAddonIds}
+              onNotesChange={setNotes}
+            />
 
-            {templateMode ? (
-              <Card className="border-border/60 bg-card/70 backdrop-blur">
-                <CardHeader>
-                  <CardTitle>Template files</CardTitle>
-                  <CardDescription>Saved order files and part files will copy into the new order automatically.</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4">
-                  <div className="space-y-3">
-                    <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Order-level files</p>
-                    {templateOrderAttachments.length ? (
-                      templateOrderAttachments.map((attachment, index) => {
-                        const href = attachment.storagePath ? `/attachments/${attachment.storagePath}` : attachment.url;
-                        return (
-                          <div key={attachment.id ?? `${attachment.label}-${index}`} className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm">
-                            <div className="font-medium text-foreground">{attachment.label || 'Template attachment'}</div>
-                            <div className="mt-1 text-xs uppercase tracking-wide text-muted-foreground">
-                              {attachment.kind}
-                            </div>
-                            {href ? (
-                              <a href={href} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex font-medium text-primary hover:underline">
-                                Open file
-                              </a>
-                            ) : null}
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No order-level files saved on this template.</p>
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Part files</p>
-                    {templatePartAttachmentEntries.length ? (
-                      templatePartAttachmentEntries.map((entry) => {
-                        const href = entry.attachment.storagePath
-                          ? `/attachments/${entry.attachment.storagePath}`
-                          : entry.attachment.url;
-                        return (
-                          <div key={entry.key} className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm">
-                            <div className="font-medium text-foreground">{entry.attachment.label || 'Template attachment'}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {entry.partLabel} · {entry.attachment.kind}
-                            </div>
-                            {href ? (
-                              <a href={href} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex font-medium text-primary hover:underline">
-                                Open file
-                              </a>
-                            ) : null}
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No part files saved on this template.</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ) : conversionMode ? (
-              <Card className="border-border/60 bg-card/70 backdrop-blur">
-                <CardHeader>
-                  <CardTitle>Attachments</CardTitle>
-                  <CardDescription>Existing quote attachments will copy to the order automatically.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Uploads from this screen are disabled while converting a quote. Add attachments to the quote first to have them copied into the order folder.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="border-border/60 bg-card/70 backdrop-blur">
-                <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <CardTitle>Attachments</CardTitle>
-                    <CardDescription>Link drawings, STEP files, or upload lightweight references.</CardDescription>
-                  </div>
-                  <div className="flex flex-col gap-3 md:items-end">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
-                      <Label className="text-xs uppercase tracking-[0.3em] text-muted-foreground md:text-right">
-                        Storage business
-                      </Label>
-                      <Select value={attachmentBusiness} onValueChange={(value) => setAttachmentBusiness(value as BusinessName)}>
-                        <SelectTrigger className="w-[220px] border-border/60 bg-background/80">
-                          <SelectValue placeholder="Select a business" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {BUSINESS_OPTIONS.map((option) => (
-                            <SelectItem key={option.slug} value={option.name}>
-                              {option.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <p className="text-xs text-muted-foreground md:text-right">
-                      Files upload to{' '}
-                      <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{attachmentPathPreview}</code>
-                    </p>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="rounded-full border border-primary/40 bg-primary/10 text-primary"
-                      onClick={addAttachmentRow}
-                    >
-                      <PlusCircle className="mr-2 h-4 w-4" /> Add attachment
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="grid gap-4">
-                  {attachments.map((att, index) => (
-                    <div key={index} className="rounded-xl border border-border/60 bg-background/60 p-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                          Attachment {index + 1}
-                        </h3>
-                        {attachments.length > 1 && (
-                          <Button type="button" variant="ghost" size="sm" onClick={() => removeAttachment(index)}>
-                            Remove
-                          </Button>
-                        )}
-                      </div>
-                      <div className="mt-4 grid gap-3 md:grid-cols-2">
-                        <div className="grid gap-2">
-                          <Label>Label</Label>
-                          <Input
-                            value={att.label}
-                            onChange={(e) => updateAttachment(index, { label: e.target.value })}
-                            placeholder="e.g. REV B STEP"
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label>Mime type</Label>
-                          <Input
-                            value={att.mimeType}
-                            onChange={(e) => updateAttachment(index, { mimeType: e.target.value })}
-                            placeholder="application/step"
-                          />
-                        </div>
-                        <div className="grid gap-2 md:col-span-2">
-                          <Label>External link</Label>
-                          <Input
-                            value={att.url}
-                            onChange={(e) => handleAttachmentUrlChange(index, e.target.value)}
-                            placeholder="Paste Google Drive or SharePoint link"
-                            disabled={att.uploading}
-                          />
-                        </div>
-                        <div className="grid gap-2 md:col-span-2">
-                          <Label>Upload file</Label>
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                            <Input
-                              type="file"
-                              className="bg-background/80"
-                              onChange={(e) => void handleAttachmentFile(index, e.target.files)}
-                              disabled={att.uploading}
-                            />
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <Upload className="h-4 w-4 text-muted-foreground" />
-                              {att.uploading ? 'Uploading…' : 'Drop a file to upload'}
-                            </div>
-                          </div>
-                          <div className="space-y-1 text-xs text-muted-foreground">
-                            <p>Uploads are written to the shared storage above for easy access on the shop floor.</p>
-                            {att.storagePath ? (
-                              <p className="flex flex-wrap items-center gap-1">
-                                Stored file:
-                                <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{att.storagePath}</code>
-                                <a
-                                  href={`/api/orders/drawing-import/preview?path=${encodeURIComponent(att.storagePath)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="font-medium text-primary hover:underline"
-                                >
-                                  Open stored copy
-                                </a>
-                              </p>
-                            ) : (
-                              <p>Add a file to copy it into shared storage.</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            <Card className="border-border/60 bg-card/70 backdrop-blur">
-              <CardHeader>
-                <CardTitle>Checklist items & notes</CardTitle>
-                <CardDescription>
-                  {templateMode
-                    ? 'Charges, checklist structure, and saved notes are coming from the repeat template.'
-                    : conversionMode
-                    ? 'Checklist items will be pulled from the quote parts during conversion.'
-                    : 'Select checklist items that should be applied to every part.'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-6">
-                {!conversionMode && !templateMode && (
-                  <div className="grid gap-2">
-                    <Label>Checklist items (applied per part)</Label>
-                    <div className="grid gap-3 rounded-lg border border-border/60 bg-background/60 p-4 sm:grid-cols-2">
-                      {orderChecklistAddons.map((item) => {
-                        const checked = selectedAddonIds.includes(item.id);
-                        return (
-                          <label key={item.id} className="flex items-start justify-between gap-3 rounded-md border border-border/40 bg-muted/10 p-3 text-sm">
-                            <div className="flex items-start gap-3">
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={(value) => {
-                                  const isChecked = value === true;
-                                  setSelectedAddonIds((sel) =>
-                                    isChecked ? [...sel, item.id] : sel.filter((id) => id !== item.id)
-                                  );
-                                }}
-                              />
-                              <div className="space-y-1">
-                                <span className="font-medium text-foreground">{item.name}</span>
-                                {item.description && (
-                                  <span className="block text-xs text-muted-foreground">{item.description}</span>
-                                )}
-                              </div>
-                            </div>
-                            <span className="text-xs text-muted-foreground text-right">Checklist only</span>
-                          </label>
-                        );
-                      })}
-                      {orderChecklistAddons.length === 0 && (
-                        <p className="text-sm text-muted-foreground">
-                          No checklist-only items available yet. Create them from the admin dashboard.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {templateMode && (
-                  <div className="rounded-lg border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-                    Template charges and checklist structure will be recreated on the new order. Use the part editor above if you need to tweak per-part notes or work instructions before launch.
-                  </div>
-                )}
-                {conversionMode && (
-                  <div className="rounded-lg border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-                    Add-ons and labor will copy from the quote parts and become part-level charges and checklist items. Mission-brief instructions will seed from quote requirements plus each part&apos;s quote notes.
-                  </div>
-                )}
-                <div className="grid gap-2">
-                  <Label htmlFor="notes">Launch notes</Label>
-                  <Textarea
-                    id="notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Special instructions, fixtures, or inspection notes"
-                    className="min-h-[140px]"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/60 bg-card/70 backdrop-blur">
-              <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-muted-foreground">
-                  Orders auto-number starting at 1001
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Button type="submit" disabled={loading || repeatTemplateLoading || (templateMode && !repeatTemplate)} className="rounded-full bg-primary px-6 text-primary-foreground shadow-lg shadow-primary/30">
-                    {loading ? 'Submitting…' : 'Create order'}
-                  </Button>
-                  <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
-                    <Link href="/">Cancel</Link>
-                  </Button>
-                </div>
-              </CardFooter>
-              {(message || createdOrderId) && (
-                <div className="px-6 pb-6">
-                  {message && <p className={`text-sm ${createdOrderId ? 'text-primary' : 'text-destructive'}`}>{message}</p>}
-                  {createdOrderId && (
-                    <div className="mt-3 flex flex-wrap gap-3">
-                      <Button
-                        type="button"
-                        onClick={() => router.push(`/orders/${createdOrderId}`)}
-                        className="rounded-full px-6"
-                      >
-                        View order
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handlePrintNewOrder}
-                        className="rounded-full border-border/60 bg-background/80"
-                      >
-                        <Printer className="mr-2 h-4 w-4" /> Print order
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => router.push('/')}
-                        className="rounded-full border-border/60 bg-background/80"
-                      >
-                        Back to orders
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </Card>
+            <NewOrderSubmitCard
+              submitting={loading}
+              disabled={repeatTemplateLoading || (templateMode && !repeatTemplate)}
+              message={message}
+              createdOrderId={createdOrderId}
+              onViewOrder={() => createdOrderId && router.push(`/orders/${createdOrderId}`)}
+              onPrintOrder={handlePrintNewOrder}
+              onBackToOrders={() => router.push('/')}
+            />
           </>
         )}
 
-        {currentStep < steps.length - 1 && (
-          <div className="flex items-center justify-between">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setCurrentStep((prev) => Math.max(prev - 1, 0))}
-              disabled={currentStep === 0}
-            >
-              Back
-            </Button>
-            <Button
-              type="button"
-              disabled={(templateMode && !repeatTemplate) || (currentStep === 1 && !templateMode && !conversionMode && partEntryMode !== 'manual')}
-              onClick={() => setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1))}
-            >
-              Next
-            </Button>
-          </div>
-        )}
+        <NewOrderWizardNavigation
+          currentStep={currentStep}
+          stepCount={steps.length}
+          nextDisabled={(templateMode && !repeatTemplate) || (currentStep === 1 && !templateMode && !conversionMode && partEntryMode !== 'manual')}
+          onBack={() => setCurrentStep((previous) => Math.max(previous - 1, 0))}
+          onNext={() => setCurrentStep((previous) => Math.min(previous + 1, steps.length - 1))}
+        />
       </form>
     </div>
   );
@@ -2614,18 +1269,4 @@ export default function NewOrderPage() {
     </React.Suspense>
   );
 }
-const extractErrorMessage = async (res: Response, fallback: string) => {
-  try {
-    const payload = await res.json();
-    const direct = typeof payload?.error === 'string' ? payload.error : null;
-    if (direct) return direct;
-    const nested = typeof payload?.error?.message === 'string' ? payload.error.message : null;
-    if (nested) return nested;
-    if (payload?.error && typeof payload.error === 'object') return JSON.stringify(payload.error);
-    const message = typeof payload?.message === 'string' ? payload.message : null;
-    return message ?? fallback;
-  } catch {
-    return fallback;
-  }
-};
 

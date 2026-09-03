@@ -15,7 +15,7 @@ import {
 import { canAccessAdmin } from '@/lib/rbac';
 import { businessNameFromCode, type BusinessCode, type BusinessName } from '@/lib/businesses';
 import { ensureAttachmentRoot, storeAttachmentFile } from '@/lib/storage';
-import { PriorityEnum } from '@/modules/orders/orders.schema';
+import { OrderPartCreate, PriorityEnum } from '@/modules/orders/orders.schema';
 import { getAppSettings } from '@/lib/app-settings';
 import {
   ensureOrderFilesInCanonicalStorage,
@@ -55,6 +55,15 @@ const ConversionOverrides = z.object({
   poNumber: z.string().trim().optional(),
   assignedMachinistId: z.string().trim().optional(),
   assignedWorkerIds: z.array(z.string().trim().min(1)).max(200).default([]),
+  vendorId: z.string().trim().nullable().optional(),
+  materialNeeded: z.boolean().optional(),
+  materialOrdered: z.boolean().optional(),
+  modelIncluded: z.boolean().optional(),
+  parts: z
+    .array(OrderPartCreate.extend({ sourceQuotePartId: z.string().trim().min(1).optional() }))
+    .min(1)
+    .max(200)
+    .optional(),
   notes: z.string().trim().max(1000).optional(),
   customFieldValues: z
     .array(
@@ -257,6 +266,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Assign a customer before converting this quote.' }, { status: 400 });
   }
 
+  const quotePartById = new Map<string, (typeof quote.parts)[number]>(
+    quote.parts.map((part) => [part.id, part]),
+  );
+  if (overrides?.parts) {
+    const sourceIds = overrides.parts.flatMap((part) => part.sourceQuotePartId ? [part.sourceQuotePartId] : []);
+    if (new Set(sourceIds).size !== sourceIds.length || sourceIds.some((id) => !quotePartById.has(id))) {
+      return NextResponse.json({ error: 'One or more converted parts do not belong to this quote.' }, { status: 400 });
+    }
+  }
+
   const businessCode = quote.business as BusinessCode;
   const businessName = businessNameFromCode(quote.business) as BusinessName;
   const customerName = (quote.customer?.name || quote.companyName || 'Customer').trim();
@@ -281,7 +300,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       orderNumber: quote.quoteNumber,
       rootDir: settings.attachmentsDir,
     });
+    const selectedSourcePartIds = overrides?.parts
+      ? new Set(overrides.parts.flatMap((part) => part.sourceQuotePartId ? [part.sourceQuotePartId] : []))
+      : null;
     for (const quotePart of quote.parts) {
+      if (selectedSourcePartIds && !selectedSourcePartIds.has(quotePart.id)) continue;
       for (const attachment of quotePart.attachments ?? []) {
         const [prepared] = await prepareAttachments({
           attachments: [attachment],
@@ -304,7 +327,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  const partsData = quote.parts.map((part) => ({
+  const defaultPartsData = quote.parts.map((part) => ({
       partNumber: part.partNumber ?? part.name,
       partName: part.name ?? null,
       quantity: part.quantity ?? 1,
@@ -347,6 +370,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     workInstructions: part.workInstructions?.trim() ? part.workInstructions.trim() : null,
   });
   });
+  const partsData = overrides?.parts
+    ? overrides.parts.map((part) => {
+        const quotePart = part.sourceQuotePartId ? quotePartById.get(part.sourceQuotePartId) : null;
+        return {
+          sourceQuotePartId: part.sourceQuotePartId ?? null,
+          partNumber: part.partNumber,
+          partName: optionalId(part.partName),
+          quantity: part.quantity,
+          materialId: optionalId(part.materialId),
+          drawingMaterialText: part.drawingMaterialText !== undefined ? optionalId(part.drawingMaterialText) : quotePart?.drawingMaterialText ?? null,
+          drawingFinishText: part.drawingFinishText !== undefined ? optionalId(part.drawingFinishText) : quotePart?.drawingFinishText ?? null,
+          finish: part.finish !== undefined ? optionalId(part.finish) : quotePart?.finish ?? null,
+          materialStatus: quotePart?.materialStatus ?? 'UNREVIEWED',
+          inventoryLocation: quotePart?.inventoryLocation ?? null,
+          materialNotes: quotePart?.materialNotes ?? null,
+          procurementVendorId: optionalId(quotePart?.procurementVendorId),
+          stockSize: optionalId(part.stockSize),
+          cutLength: optionalId(part.cutLength),
+          finalPartLength: optionalId(part.finalPartLength),
+          partWidth: optionalId(part.partWidth),
+          partThickness: optionalId(part.partThickness),
+          drawingImportPageId: quotePart?.drawingImportPageId ?? null,
+          notes: optionalId(part.notes),
+          workInstructions: optionalId(part.workInstructions),
+        };
+      })
+    : defaultPartsData;
 
   if (partsData.length === 0) {
     return NextResponse.json({ error: 'Add at least one part before converting.' }, { status: 400 });
@@ -356,14 +406,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const userId = (guard.session.user as any)?.id as string | undefined;
 
   const priority = overrides?.priority ?? 'NORMAL';
-  const modelIncluded = quote.parts.some((part) =>
+  const derivedModelIncluded = quote.parts.some((part) =>
     (part.attachments ?? []).some((attachment) => {
       const label = (attachment.label ?? attachment.storagePath ?? attachment.url ?? '').toLowerCase();
       return attachment.kind === 'STEP' || label.endsWith('.step') || label.endsWith('.stp');
     }),
   );
-  const materialNeeded = quote.parts.some((part) => part.materialStatus === 'NEED_TO_ORDER');
-  const materialOrdered = false;
+  const derivedMaterialNeeded = quote.parts.some((part) => part.materialStatus === 'NEED_TO_ORDER');
   const procurementVendorIds: string[] = Array.from(
     new Set<string>(
       quote.parts
@@ -372,7 +421,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .filter((value): value is string => Boolean(value)),
     ),
   );
-  const vendorId = procurementVendorIds.length === 1 ? procurementVendorIds[0] : null;
+  const derivedVendorId = procurementVendorIds.length === 1 ? procurementVendorIds[0] : null;
+  const modelIncluded = overrides?.modelIncluded ?? derivedModelIncluded;
+  const materialNeeded = overrides?.materialNeeded ?? derivedMaterialNeeded;
+  const materialOrdered = overrides?.materialOrdered ?? false;
+  const vendorId = overrides?.vendorId !== undefined ? optionalId(overrides.vendorId) : derivedVendorId;
   const customFieldValues = overrides?.customFieldValues ?? [];
   const poNumber = overrides?.poNumber?.trim()
     ? overrides.poNumber.trim()
