@@ -444,3 +444,9 @@ Record lessons after user corrections or process failures.
 - Mistake pattern: Converting a common title-block convention into an unconditional identity rule without protecting against label-only extraction.
 - Preventive rule: Let page context and explicit labels determine the part identifier, reject known field-label tokens such as `REVISION` when they are returned without a value, and regression-test the exact observed false positive before release.
 - Applied in this session where: The drawing-number override was removed from prompt and merge logic, and label-only part numbers are now rejected for human review.
+
+# 2026-09-03 — Stop is not disable for recurring health monitors
+- Trigger: The current health-monitor run was stopped before a long production test/build window, but its still-enabled schedule fired again and relaunched the old runtime while the build was active.
+- Mistake pattern: Treating `Stop-ScheduledTask` as protection from future triggers during the same maintenance window.
+- Preventive rule: Disable the recurring monitor before stopping the application; stop the exact runtime; build and verify with no serving process; then enable/start the monitor only after the new runtime is healthy or rollback has fully restored the old build.
+- Applied in this session where: The relaunched runtime was detected and stopped before build completion; the final process started after the successful build and all health/hash/log gates passed.

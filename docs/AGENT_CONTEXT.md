@@ -40,7 +40,7 @@ Goal: a scalable foundation that can grow.
 ## Current Priorities
 
 ### Production access
-- Before any `.72` inspection or deployment, read `docs/PRODUCTION_ACCESS.md`. It contains the authorized non-secret SSH settings, production layout, and required rollback/verification sequence.
+- Before any `.72` inspection or deployment, read the local-only `docs/PRODUCTION_ACCESS.md` when present. It contains machine-specific SSH settings and must not be published to the public repository. If absent, obtain the approved access/runbook from the owner rather than guessing.
 
 ### P0 — Platform Stability
 - Ensure auth/session handling is consistent (single approach)
@@ -62,6 +62,9 @@ Goal: a scalable foundation that can grow.
 - All charge kinds are per-part: `partId` is required for every charge kind.
 
 ## Decision Log (append newest at top)
+
+### 2026-09-03 — Part identity is contextual; absent finish normalizes to NA
+Decision: Do not equate every drawing-number field with `partNumber`. Ask the model for the identifier belonging to the depicted part using title-block/page context, and reject label-only values such as `REVISION`, `REV`, `DRAWING NUMBER`, or `PART NUMBER` as unreadable human-review cases. Normalize explicit none aliases and genuinely absent finish/treatment to literal `NA`; preserve unreadable/conflicting finish as unresolved. This policy shipped with the server-derived workflow/importer release. Machine-specific production access documentation stays local-only because the configured GitHub repository is public.
 
 ### 2026-09-03 — Manual retry has durable page scope; newer importer has no local OCR
 Decision: Store reprocessPageId in existing job configJson atomically with selected-page pending state. The ordinary claimed-job/recovery entry point branches to a selected-page path before inventory; never replay siblings or packet quantity/BOM finalization for this action. Explicit retry bypasses local classification/duplicate and completed-model cache shortcuts, preserves saved confirmations and assembly quantities, and retains prior review on failure. Deduplicate same-page clicks and reject competing retries while busy. No schema/package addition. Remove the newer service's local OCR calls and ignore its former OCR flag; leave unrelated OCR consumers/dependencies alone. Direct-PDF V3 context contains no supplemental local text/candidate/BOM hints; locally copying PDF pages needs no OCR. PDF-native text/image content remains intact. Local only; models, schema, production and prompt instructions otherwise unchanged.
