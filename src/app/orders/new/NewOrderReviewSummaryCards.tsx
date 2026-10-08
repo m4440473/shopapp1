@@ -51,7 +51,7 @@ export function NewOrderReviewSummaryCards({
                 <p className="font-semibold">{part.partNumber || `Part ${index + 1}`}{part.partName ? ` — ${part.partName}` : ''}</p>
                 <p className="text-sm text-muted-foreground">Quantity {part.quantity || '1'}{part.attachments.length ? ` · ${part.attachments.length} drawing attached` : ''}</p>
               </div>
-              {part.attachments.length ? <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-900">BOM will run automatically</span> : null}
+              {part.attachments.length ? <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-900">Drawing attached for review</span> : null}
             </div>
           ))}
         </CardContent>

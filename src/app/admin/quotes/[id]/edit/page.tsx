@@ -44,7 +44,7 @@ export default async function EditQuotePage({ params }: { params: Promise<{ id: 
         </p>
       </div>
       <ToastProvider>
-        <QuoteEditor mode="edit" initialQuote={quote as any} />
+        <QuoteEditor key={quote.id} mode="edit" initialQuote={quote as any} />
       </ToastProvider>
     </div>
   );

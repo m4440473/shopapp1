@@ -9,15 +9,22 @@ import { emptyDrawingField } from '@/modules/drawing-import/v2/drawing-import-v2
 
 import {
   buildDrawingImportJobDraftKey,
+  acknowledgeDrawingImportFieldSave,
+  acknowledgeDrawingImportClassificationSave,
   clearDrawingImportFieldDirty,
   clearDrawingImportJobId,
   countDrawingImportFilters,
   createDrawingImportReviewState,
+  drawingImportCanReview,
+  drawingImportCanKeepFileOnly,
+  drawingImportCanTransferToDraft,
+  drawingImportHasUnsavedChanges,
   markDrawingImportFieldDirty,
   mergeDrawingImportJobSnapshot,
   pageMatchesDrawingImportFilter,
   readDrawingImportJobId,
   writeDrawingImportJobId,
+  updateDrawingImportField,
 } from '../drawing-import-review-state';
 import type { DrawingImportJobSnapshot, DrawingImportReviewPage } from '../drawing-import-ui.types';
 
@@ -44,8 +51,8 @@ function extraction(pageId: string, partNumber = 'OLD-100'): DrawingImportPageEx
     stockSize: field(null, 'not_present'),
     cutLength: field(null, 'not_present'),
     finalLength: field(null, 'unreadable'),
-    partWidth: field(null, 'unreadable'),
-    partThickness: field(null, 'unreadable'),
+    partWidth: field(null, 'not_present'),
+    partThickness: field(null, 'not_present'),
     revision: field('A'),
     assemblyStatus: { ...emptyDrawingField<boolean>(), value: false, status: 'read' },
     route: 'local',
@@ -94,6 +101,72 @@ function progress(completedPages = 1): DrawingImportJobProgress {
 }
 
 describe('drawing import polling state', () => {
+  it('allows explicit file-only recovery for stopped jobs while keeping editing and undecided transfer locked', () => {
+    const stopped = createDrawingImportReviewState({ progress: { ...progress(), status: 'FAILED' }, pages: [{ ...page(), classification: 'uncertain', processingStatus: 'failed', extraction: null }], supportingFiles: [] });
+    expect(drawingImportCanReview(stopped)).toBe(false);
+    expect(drawingImportCanKeepFileOnly(stopped)).toBe(true);
+    expect(drawingImportCanTransferToDraft(stopped)).toBe(false);
+    const kept = { ...stopped, pages: [{ ...stopped.pages[0], classification: 'reference' as const }] };
+    expect(drawingImportCanTransferToDraft(kept)).toBe(true);
+    expect(drawingImportCanReview(kept)).toBe(false);
+    expect(drawingImportCanKeepFileOnly({ ...kept, progress: { ...kept.progress, status: 'PROCESSING' } })).toBe(false);
+    expect(drawingImportCanTransferToDraft({ ...kept, progress: { ...kept.progress, status: 'CANCELLED' } })).toBe(true);
+  });
+
+  it('keeps the last saved confirmation when an older poll still has the AI result', () => {
+    const reviewed = page();
+    reviewed.extraction!.partNumber = field('CONFIRMED-42', 'human_corrected');
+    const state = createDrawingImportReviewState({ progress: progress(), pages: [reviewed], supportingFiles: [] });
+    const merged = mergeDrawingImportJobSnapshot(state, { progress: progress(), pages: [page()], supportingFiles: [] });
+    expect(merged.pages[0].extraction!.partNumber.value).toBe('CONFIRMED-42');
+    expect(merged.dirtyFieldsByPage).toEqual({});
+  });
+
+  it('does not clear newer typing when an earlier correction finishes saving', () => {
+    let state = createDrawingImportReviewState({ progress: progress(), pages: [page()], supportingFiles: [] });
+    state = updateDrawingImportField(state, 'page-1', 'partNumber', 'FIRST');
+    const input = { jobId: 'job-1', pageId: 'page-1', field: 'partNumber' as const, value: 'FIRST' };
+    state = updateDrawingImportField(state, 'page-1', 'partNumber', 'SECOND');
+    const saved = page();
+    saved.extraction!.partNumber = field('FIRST', 'human_corrected');
+    const merged = acknowledgeDrawingImportFieldSave(state, input, saved);
+    expect(merged.pages[0].extraction!.partNumber.value).toBe('SECOND');
+    expect(merged.dirtyFieldsByPage['page-1']).toContain('partNumber');
+  });
+
+  it('acknowledges only the submitted field when two different saves return stale page snapshots', () => {
+    let state = createDrawingImportReviewState({ progress: progress(), pages: [page()], supportingFiles: [] });
+    state = updateDrawingImportField(state, 'page-1', 'partNumber', 'HUMAN-42');
+    state = updateDrawingImportField(state, 'page-1', 'material', 'Stainless');
+    const partSaved = page();
+    partSaved.extraction!.partNumber = field('HUMAN-42', 'human_corrected');
+    const materialSaved = page();
+    materialSaved.extraction!.material = field('Stainless', 'human_corrected');
+    state = acknowledgeDrawingImportFieldSave(state, { jobId: 'job-1', pageId: 'page-1', field: 'partNumber', value: 'HUMAN-42' }, partSaved);
+    state = acknowledgeDrawingImportFieldSave(state, { jobId: 'job-1', pageId: 'page-1', field: 'material', value: 'Stainless' }, materialSaved);
+    expect(state.pages[0].extraction!.partNumber.value).toBe('HUMAN-42');
+    expect(state.pages[0].extraction!.material.value).toBe('Stainless');
+    expect(drawingImportHasUnsavedChanges(state)).toBe(false);
+  });
+
+  it('keeps the saved page-type decision through an older poll', () => {
+    const state = createDrawingImportReviewState({ progress: progress(), pages: [page()], supportingFiles: [] });
+    const saved = { ...page(), classification: 'reference' as const };
+    const acknowledged = acknowledgeDrawingImportClassificationSave(state, saved);
+    const merged = mergeDrawingImportJobSnapshot(acknowledged, { progress: progress(), pages: [page()], supportingFiles: [] });
+    expect(merged.pages[0].classification).toBe('reference');
+  });
+
+  it('holds review until finalization ends and also locks it for a page retry', () => {
+    const state = createDrawingImportReviewState({ progress: progress(2), pages: [page()], supportingFiles: [] });
+    expect(drawingImportCanReview(state)).toBe(false);
+    const ready = { ...state, progress: { ...state.progress, status: 'READY_FOR_REVIEW' as const } };
+    expect(drawingImportCanReview(ready)).toBe(true);
+    expect(drawingImportCanReview({ ...ready, pages: [{ ...page(), processingStatus: 'queued' }] })).toBe(false);
+    expect(drawingImportCanReview({ ...ready, progress: { ...ready.progress, status: 'CANCELLED' } })).toBe(false);
+    expect(drawingImportCanReview({ ...ready, progress: { ...ready.progress, status: 'PARTIAL_FAILURE' } })).toBe(true);
+  });
+
   it('resumes polling for a page-only retry without clearing other pages or their unsaved edits', () => {
     const other = page('page-2');
     let state = createDrawingImportReviewState({ progress: { ...progress(2), status: 'READY_FOR_REVIEW' }, pages: [page(), other], supportingFiles: [] });
@@ -158,6 +231,25 @@ describe('drawing import polling state', () => {
 
     expect(merged.pages.map((entry) => entry.pageId).sort()).toEqual(['page-1', 'page-2']);
     expect(merged.progress.completedPages).toBe(2);
+  });
+
+  it('keeps page order stable when a one-page correction snapshot arrives', () => {
+    const state = createDrawingImportReviewState({
+      progress: progress(2),
+      pages: [page('page-1'), page('page-2'), page('page-3')],
+      supportingFiles: [],
+    });
+    const corrected = page('page-3');
+    corrected.extraction = { ...corrected.extraction!, partNumber: field('CORRECTED-3', 'human_corrected') };
+
+    const merged = mergeDrawingImportJobSnapshot(state, {
+      progress: progress(2),
+      pages: [corrected],
+      supportingFiles: [],
+    });
+
+    expect(merged.pages.map((entry) => entry.pageId)).toEqual(['page-1', 'page-2', 'page-3']);
+    expect(merged.pages[2].extraction?.partNumber.value).toBe('CORRECTED-3');
   });
 });
 

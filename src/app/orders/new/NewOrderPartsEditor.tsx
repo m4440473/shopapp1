@@ -20,6 +20,7 @@ import {
   type WorkItemRateType,
 } from '@/modules/pricing/work-item-pricing';
 import type { RepeatOrderTemplateDetail } from '@/modules/repeat-orders/repeat-orders.types';
+import type { DrawingImportFieldName } from '@/modules/drawing-import/v2/drawing-import-v2.types';
 
 const OPTIONAL_VALUE = '__none__';
 const formatCurrency = (cents: number) =>
@@ -47,6 +48,9 @@ export type NewOrderPartInput = {
   key: string;
   templatePartId?: string;
   sourceQuotePartId?: string;
+  drawingImportPageId?: string;
+  unresolvedFields?: DrawingImportFieldName[];
+  reviewWarnings?: string[];
   partNumber: string;
   partName: string;
   quantity: string;
@@ -135,11 +139,12 @@ export function NewOrderPartsEditor({ mode, parts, activePartKey, materials, ava
                   {!templateMode && parts.length > 1 && <Button type="button" variant="ghost" size="sm" onClick={() => onRemovePart(activePart.key)}>Remove</Button>}
                 </div>
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  {Boolean(activePart.unresolvedFields?.length) && <div role="status" className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm md:col-span-2"><p>Drawing details still need review: {activePart.unresolvedFields?.join(', ')}.</p><p className="mt-1">Your draft and drawing files are saved. Enter the verified values below when available.</p></div>}
                   <div className="grid gap-2"><Label>Part number</Label><Input value={activePart.partNumber} onChange={(event) => onUpdatePart(activePart.key, { partNumber: event.target.value })} placeholder="e.g. SP-1024" disabled={templateMode} required /></div>
                   <div className="grid gap-2"><Label>Part name</Label><Input value={activePart.partName} onChange={(event) => onUpdatePart(activePart.key, { partName: event.target.value })} placeholder="e.g. Vertical rail mount" disabled={templateMode} /></div>
                   <div className="grid gap-2">
                     <Label>Quantity</Label>
-                    <Input type="number" min={1} value={activePart.quantity} onFocus={(event) => event.currentTarget.select()} onChange={(event) => onUpdatePart(activePart.key, { quantity: event.target.value })} onBlur={() => { if (!activePart.quantity.trim()) onUpdatePart(activePart.key, { quantity: '1' }); }} />
+                    <Input type="number" min={1} step={1} value={activePart.quantity} onFocus={(event) => event.currentTarget.select()} onChange={(event) => onUpdatePart(activePart.key, { quantity: event.target.value })} />
                   </div>
                   {activePart.attachments.length ? (
                     <div className="grid gap-2 md:col-span-2">
@@ -149,6 +154,7 @@ export function NewOrderPartsEditor({ mode, parts, activePartKey, materials, ava
                       ))}
                     </div>
                   ) : null}
+                  <div className="grid gap-2"><Label>Finished part length (optional)</Label><Input value={activePart.finalPartLength || ''} onChange={(event) => onUpdatePart(activePart.key, { finalPartLength: event.target.value })} placeholder="e.g. 6 in" disabled={templateMode} /></div>
                   <div className="grid gap-2"><Label>Finished part thickness (optional)</Label><Input value={activePart.partThickness || ''} onChange={(event) => onUpdatePart(activePart.key, { partThickness: event.target.value })} placeholder="e.g. .25 in" disabled={templateMode} /></div>
                   <div className="grid gap-2"><Label>Finished part width (optional)</Label><Input value={activePart.partWidth || ''} onChange={(event) => onUpdatePart(activePart.key, { partWidth: event.target.value })} placeholder="e.g. 2.5 in" disabled={templateMode} /></div>
                   <div className="grid gap-2"><Label>Total stock dimensions (optional)</Label><Input value={activePart.stockSize || ''} onChange={(event) => onUpdatePart(activePart.key, { stockSize: event.target.value })} placeholder="Thickness × width × total length" disabled={templateMode} /></div>

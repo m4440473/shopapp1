@@ -21,6 +21,7 @@ model User {
 
   orders               Order[]                  @relation("AssignedOrders")
   quotes               Quote[]
+  intakeDrafts         IntakeDraft[]
   notes                Note[]
   timeLogs             TimeLog[]
   timeEntries          TimeEntry[]
@@ -42,6 +43,22 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model IntakeDraft {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind           String
+  key            String
+  revision       Int      @default(1)
+  dataJson       String?
+  lastMutationId String
+  clearedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, kind, key])
 }
 
 model Customer {
@@ -132,6 +149,8 @@ model Vendor {
 
 model Order {
   id                   String                @id @default(cuid())
+  submissionKey        String?               @unique
+  submissionPayloadHash String?
   sourceQuoteId        String?               @unique
   sourceQuote          Quote?                @relation("ConvertedQuoteOrder", fields: [sourceQuoteId], references: [id], onDelete: SetNull)
   orderNumber          String                @unique
@@ -601,6 +620,8 @@ model RepeatOrderTemplateAttachment {
 
 model Quote {
   id                String           @id @default(cuid())
+  submissionKey     String?          @unique
+  submissionPayloadHash String?
   quoteNumber       String
   business          String           @default("STD")
   companyName       String

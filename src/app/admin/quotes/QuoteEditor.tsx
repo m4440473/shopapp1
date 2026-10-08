@@ -88,12 +88,17 @@ import {
   type ReviewedQuoteDrawingPartV2,
 } from '@/components/orders/drawing-import';
 import { clearDrawingImportDraft } from '@/modules/drawing-import/drawing-import.draft';
-import { clearIntakeDraft, intakeDraftKey, readIntakeDraft, writeIntakeDraft } from '@/modules/intake-drafts/intake-draft';
+import { clearIntakeDraft, intakeDraftKey } from '@/modules/intake-drafts/intake-draft';
+import { useDurableIntakeDraft } from '@/modules/intake-drafts/use-durable-intake-draft';
+import { IntakeDraftStatus } from '@/components/IntakeDraftStatus';
+import { PendingSubmissionRecovery } from '@/components/PendingSubmissionRecovery';
+import { createPendingCreationSubmission, submitPendingCreationSubmission, lookupPendingCreationSubmission, parsePendingCreationSubmission, type PendingCreationSubmission } from '@/modules/submissions/submissions.client';
 import { CustomerPartPicker } from '@/components/customer-parts/CustomerPartPicker';
 import { CustomerPartNoteSuggestions, appendSuggestedNote } from '@/components/customer-parts/CustomerPartNoteSuggestions';
 import type { CustomerPartNoteSuggestion, CustomerPartReusableDraft } from '@/modules/customer-parts/customer-parts.types';
 
 import type { QuoteCreateInput } from '@/modules/quotes/quotes.schema';
+import { persistCreatedQuoteDraft } from '@/modules/quotes/quote-draft-handoff.client';
 import {
   createIntakeKey as createKey,
   numberFromIntakeDraft as numberFromString,
@@ -136,6 +141,8 @@ type QuotePartState = {
   partWidth: string;
   partThickness: string;
   drawingImportPageId?: string;
+  unresolvedFields?: string[];
+  reviewWarnings?: string[];
   materialStatus: 'UNREVIEWED' | 'IN_STOCK' | 'NEED_TO_ORDER' | 'NOT_REQUIRED';
   inventoryLocation: string;
   materialNotes: string;
@@ -516,6 +523,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     }))
   );
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+  const [customFieldsReady, setCustomFieldsReady] = useState(false);
+  const [customFieldsError, setCustomFieldsError] = useState<string | null>(null);
+  const [customFieldsRetry, setCustomFieldsRetry] = useState(0);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>(() => {
     const map: Record<string, unknown> = {};
     initialQuote?.customFieldValues?.forEach((entry) => {
@@ -602,15 +612,19 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   }, [form.business, initialQuote?.attachments?.length, mode]);
 
   useEffect(() => {
+    let active = true;
+    setCustomFieldsReady(false); setCustomFieldsError(null);
     fetch(`/api/custom-fields?entityType=QUOTE&businessCode=${form.business}&isActive=true`, {
       credentials: 'include',
     })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
+        if (!active) return;
         const nextFields = data.items ?? [];
         setCustomFields(nextFields);
+        setCustomFieldsReady(true);
         setCustomFieldValues((prev) => {
-          const next: Record<string, unknown> = {};
+          const next: Record<string, unknown> = { ...prev };
           nextFields.forEach((field: CustomFieldDefinition) => {
             if (prev[field.id] !== undefined) next[field.id] = prev[field.id];
             else if (field.defaultValue !== undefined) next[field.id] = field.defaultValue;
@@ -618,8 +632,9 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           return next;
         });
       })
-      .catch(() => setCustomFields([]));
-  }, [form.business, initialQuote?.business]);
+      .catch(() => { if (active) setCustomFieldsError('Required quote fields could not be loaded. Retry the field list before saving the quote.'); });
+    return () => { active = false; };
+  }, [form.business, initialQuote?.business, customFieldsRetry]);
 
   useEffect(() => {
     if (!parts.length) return;
@@ -726,21 +741,31 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
 
   const [draftReference, setDraftReference] = useState(() => createKey());
   const quoteDraftStorageKey = useMemo(() => intakeDraftKey('quote'), []);
-  const [quoteDraftReady, setQuoteDraftReady] = useState(false);
-  const [quoteDraftSavedAt, setQuoteDraftSavedAt] = useState<number | null>(null);
   const suppressQuoteDraft = React.useRef(false);
-
-  useEffect(() => {
-    if (mode !== 'create') { setQuoteDraftReady(true); return; }
-    const saved = readIntakeDraft<any>(window.localStorage, quoteDraftStorageKey);
-    if (saved?.data && typeof saved.data === 'object') {
-      const draft = saved.data;
+  const submissionInFlight = React.useRef(false);
+  const [pendingSubmission, setPendingSubmission] = useState<PendingCreationSubmission | null>(null);
+  const [baseQuoteUpdatedAt, setBaseQuoteUpdatedAt] = useState(initialQuote?.updatedAt ?? null);
+  const [sourceSubmissionKey, setSourceSubmissionKey] = useState<string | null>(null);
+  const [quoteChanged, setQuoteChanged] = useState(false);
+  const quoteDraftSnapshot = useMemo(() => ({
+    draftReference, form, parts, activePartKey, vendorItems,
+    attachments: attachments.map((attachment): AttachmentState => ({ ...attachment, uploading: false })),
+    attachmentBusiness, customFieldValues, currentStep, furthestStep, partEntryMode, partPricing,
+    originDepartmentId, customAmounts, pendingSubmission, baseQuoteUpdatedAt, sourceSubmissionKey,
+  }), [draftReference, form, parts, activePartKey, vendorItems, attachments, attachmentBusiness, customFieldValues,
+    currentStep, furthestStep, partEntryMode, partPricing, originDepartmentId, customAmounts, pendingSubmission, baseQuoteUpdatedAt, sourceSubmissionKey]);
+  const quoteDraft = useDurableIntakeDraft<typeof quoteDraftSnapshot>({
+    kind: 'quote', key: mode === 'edit' && initialQuote ? `edit:${initialQuote.id}` : 'new',
+    legacyStorageKey: mode === 'create' ? quoteDraftStorageKey : undefined,
+    onRestore: (draft) => {
+      const restoredPending = parsePendingCreationSubmission(draft.pendingSubmission, 'quote:create', '/api/admin/quotes');
+      if (draft.pendingSubmission && !restoredPending) throw new Error('This draft contains an unrecognized saved submission. Keep it for recovery before creating another quote.');
       if (typeof draft.draftReference === 'string' && draft.draftReference) setDraftReference(draft.draftReference);
-      if (draft.form && typeof draft.form === 'object') setForm((current) => ({ ...current, ...draft.form, quoteNumber: '' }));
-      if (Array.isArray(draft.parts) && draft.parts.length) setParts(draft.parts);
+      if (draft.form && typeof draft.form === 'object') setForm((current) => ({ ...current, ...draft.form, quoteNumber: mode === 'create' ? '' : current.quoteNumber }));
+      if (Array.isArray(draft.parts)) setParts(draft.parts);
       if (typeof draft.activePartKey === 'string') setActivePartKey(draft.activePartKey);
       if (Array.isArray(draft.vendorItems)) setVendorItems(draft.vendorItems);
-      if (Array.isArray(draft.attachments)) setAttachments(draft.attachments.map((attachment: AttachmentState) => ({ ...attachment, uploading: false, persistedId: undefined })));
+      if (Array.isArray(draft.attachments)) setAttachments(draft.attachments.map((attachment: AttachmentState) => ({ ...attachment, uploading: false })));
       if (typeof draft.attachmentBusiness === 'string') setAttachmentBusiness(draft.attachmentBusiness);
       if (draft.customFieldValues && typeof draft.customFieldValues === 'object') setCustomFieldValues(draft.customFieldValues);
       if (Number.isInteger(draft.currentStep)) setCurrentStep(Math.max(0, Math.min(4, draft.currentStep)));
@@ -749,27 +774,18 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       if (Array.isArray(draft.partPricing)) setPartPricing(draft.partPricing);
       if (typeof draft.originDepartmentId === 'string') setOriginDepartmentId(draft.originDepartmentId);
       if (Array.isArray(draft.customAmounts)) setCustomAmounts(draft.customAmounts);
-      setQuoteDraftSavedAt(saved.updatedAt);
-    }
-    setQuoteDraftReady(true);
-  // Restore once before autosave begins.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, quoteDraftStorageKey]);
-
+      setPendingSubmission(restoredPending);
+      setSourceSubmissionKey(typeof draft.sourceSubmissionKey === 'string' ? draft.sourceSubmissionKey : null);
+      if (typeof draft.baseQuoteUpdatedAt === 'string') {
+        setBaseQuoteUpdatedAt(draft.baseQuoteUpdatedAt);
+        setQuoteChanged(mode === 'edit' && Boolean(initialQuote?.updatedAt && draft.baseQuoteUpdatedAt !== initialQuote.updatedAt));
+      }
+    },
+  });
+  const { ready: quoteDraftReady, schedule: scheduleQuoteDraft } = quoteDraft;
   useEffect(() => {
-    if (mode !== 'create' || !quoteDraftReady || suppressQuoteDraft.current) return;
-    const timer = window.setTimeout(() => {
-      try {
-        const savedAt = writeIntakeDraft(window.localStorage, quoteDraftStorageKey, {
-          draftReference, form: { ...form, quoteNumber: '' }, parts: parts.map((part) => ({ ...part, persistedId: undefined })),
-          activePartKey, vendorItems, attachments: attachments.map((attachment) => ({ ...attachment, uploading: false, persistedId: undefined })),
-          attachmentBusiness, customFieldValues, currentStep, furthestStep, partEntryMode, partPricing, originDepartmentId, customAmounts,
-        });
-        setQuoteDraftSavedAt(savedAt);
-      } catch { /* Browser storage can be unavailable; manual/server save still works. */ }
-    }, 800);
-    return () => window.clearTimeout(timer);
-  }, [activePartKey, attachmentBusiness, attachments, currentStep, customAmounts, customFieldValues, draftReference, form, furthestStep, mode, originDepartmentId, partEntryMode, partPricing, parts, quoteDraftReady, quoteDraftStorageKey, vendorItems]);
+    if (quoteDraftReady && !suppressQuoteDraft.current && !submissionInFlight.current) scheduleQuoteDraft(quoteDraftSnapshot);
+  }, [quoteDraftReady, scheduleQuoteDraft, quoteDraftSnapshot, loading]);
 
   const selectedBusinessOption = useMemo(() => {
     return BUSINESS_OPTIONS.find((option) => option.name === attachmentBusiness) ?? BUSINESS_OPTIONS[0];
@@ -912,7 +928,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
     setParts((prev) => [...prev, buildEmptyPart()]);
   }
 
-  function useImportedDrawings(importedParts: ReviewedDrawingPart[], quoteFiles: ReviewedDrawingPart['source'][]) {
+  async function useImportedDrawings(importedParts: ReviewedDrawingPart[], quoteFiles: ReviewedDrawingPart['source'][]) {
     const nextParts: QuotePartState[] = importedParts.map((part, index) => ({
       key: part.key,
       name: part.partName || part.partNumber || `Part ${index + 1}`,
@@ -947,28 +963,15 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         mimeType: part.source.mimeType,
       }],
     }));
-    setParts(nextParts);
-    setActivePartKey(nextParts[0]?.key ?? createKey());
-    setAttachments((current) => [
-      ...current,
-      ...quoteFiles.map((file) => ({
-        key: createKey(),
-        url: '',
-        storagePath: file.storagePath,
-        label: file.label,
-        mimeType: file.mimeType,
-        isPrintForBom: false,
-        uploading: false,
-      })),
-    ]);
-    setPartEntryMode('manual');
-    toast.push(`${nextParts.length} drawing part${nextParts.length === 1 ? '' : 's'} added to this quote.`, 'success');
+    await commitImportedQuoteParts(nextParts, quoteFiles);
   }
 
-  function applyImportedDrawingsV2(importedParts: ReviewedQuoteDrawingPartV2[], quoteFiles: DrawingImportReviewFile[]) {
+  async function applyImportedDrawingsV2(importedParts: ReviewedQuoteDrawingPartV2[], quoteFiles: DrawingImportReviewFile[]) {
     const nextParts: QuotePartState[] = importedParts.map((part, index) => ({
       key: part.key,
       drawingImportPageId: part.importPageId,
+      unresolvedFields: part.unresolvedFields,
+      reviewWarnings: part.reviewWarnings,
       name: part.partName || part.partNumber || `Part ${index + 1}`,
       partNumber: part.partNumber,
       materialId: part.materialId,
@@ -987,7 +990,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       procurementCost: '',
       procurementMarkupPercent: '20',
       description: '',
-      quantity: String(part.quantity || 1),
+      quantity: String(part.quantity),
       pieceCount: '1',
       notes: [part.finish ? `Finish: ${part.finish}` : '', part.revision ? `Revision: ${part.revision}` : ''].filter(Boolean).join('\n'),
       workInstructions: '',
@@ -1001,11 +1004,27 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         mimeType: part.source.mimeType,
       }],
     }));
-    setParts(nextParts);
-    setActivePartKey(nextParts[0]?.key ?? createKey());
-    setAttachments((current) => [
-      ...current,
-      ...quoteFiles.map((file) => ({
+    await commitImportedQuoteParts(nextParts, quoteFiles);
+  }
+
+  function hasEditedQuotePart(part: QuotePartState) {
+    const empty = buildEmptyPart();
+    return Boolean(part.persistedId || part.drawingImportPageId || Object.entries(empty).some(([field, initial]) =>
+      field !== 'key' && JSON.stringify(part[field as keyof QuotePartState]) !== JSON.stringify(initial)));
+  }
+
+  async function commitImportedQuoteParts(nextParts: QuotePartState[], quoteFiles: Array<{ storagePath: string; label: string; mimeType: string }>) {
+    if (submissionInFlight.current) throw new Error('Wait for the current save to finish.');
+    submissionInFlight.current = true; setLoading(true);
+    try {
+    const existingParts = parts.filter(hasEditedQuotePart);
+    const combinedParts = [...existingParts, ...nextParts.filter((part) => !existingParts.some((existing) =>
+      existing.key === part.key || Boolean(part.drawingImportPageId && existing.drawingImportPageId === part.drawingImportPageId)))];
+    const mergedParts = combinedParts.length ? combinedParts : parts;
+    const nextActivePartKey = nextParts[0]?.key ?? activePartKey;
+    const mergedAttachments = [
+      ...attachments,
+      ...quoteFiles.filter((file) => !attachments.some((attachment) => attachment.storagePath === file.storagePath)).map((file) => ({
         key: createKey(),
         url: '',
         storagePath: file.storagePath,
@@ -1014,9 +1033,17 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         isPrintForBom: false,
         uploading: false,
       })),
-    ]);
+    ];
+    if (!await quoteDraft.flush({ ...quoteDraftSnapshot, parts: mergedParts, attachments: mergedAttachments,
+      activePartKey: nextActivePartKey, partEntryMode: 'manual' })) {
+      throw new Error('The quote draft could not be saved. Your import is still here; retry the draft save and transfer again.');
+    }
+    setParts(mergedParts);
+    setActivePartKey(nextActivePartKey);
+    setAttachments(mergedAttachments);
     setPartEntryMode('manual');
-    toast.push(`${nextParts.length} evidence-backed drawing part${nextParts.length === 1 ? '' : 's'} added to this quote.`, 'success');
+    toast.push(`${nextParts.length} drawing part${nextParts.length === 1 ? '' : 's'} added to this quote. Draft saved.`, 'success');
+    } finally { submissionInFlight.current = false; setLoading(false); }
   }
 
   function addPreexistingQuoteParts(drafts: CustomerPartReusableDraft[]) {
@@ -1565,7 +1592,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           : undefined,
         sortOrder: index,
         description: part.description || undefined,
-        quantity: Number.parseInt(part.quantity || '1', 10) || 1,
+        quantity: Number(part.quantity),
         pieceCount: Number.parseInt(part.pieceCount || '1', 10) || 1,
         notes: part.notes || undefined,
         workInstructions: part.workInstructions || undefined,
@@ -1640,11 +1667,20 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
   });
 
   function validateCheckpoint(step: number) {
+    const requiredFields = step === 0 ? intakeCustomFields : step === 3 ? buildCustomFields : [];
+    const missingFields = requiredFields.filter((field) => field.isRequired && !hasCustomFieldValue(customFieldValues[field.id]));
+    if (missingFields.length) return `Fill in required fields: ${missingFields.map((field) => field.name).join(', ')}.`;
+    if (attachments.some((attachment) => attachment.uploading)) return 'Wait for the attachment upload to finish before continuing.';
     if (step === 0 && (!form.customerId || !form.companyName.trim())) {
       return 'Choose a customer before continuing.';
     }
     if (step === 1 && !parts.some((part) => part.name.trim() && part.partNumber.trim())) {
       return 'Add at least one part with a part name and part number before continuing.';
+    }
+    if (step === 1) {
+      const invalid = parts.find((part) => hasEditedQuotePart(part) &&
+        (!part.name.trim() || !part.partNumber.trim() || !/^\d+$/.test(part.quantity.trim()) || Number(part.quantity) < 1));
+      if (invalid) return `Complete the part name, part number, and positive whole quantity for ${invalid.partNumber || invalid.name || 'the unfinished part'}.`;
     }
     if (step === 2) {
       const realParts = parts.filter((part) => part.name.trim());
@@ -1660,26 +1696,61 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
 
   function applySavedIdentity(item: QuoteDetail) {
     const savedParts = [...(item.parts ?? [])];
-    setParts((current) => current.map((part) => {
+    const identifiedParts = parts.map((part) => {
       if (!part.name.trim()) return part;
       const matchIndex = savedParts.findIndex((saved) =>
         (part.persistedId && saved.id === part.persistedId) ||
-        (!part.persistedId && saved.partNumber === part.partNumber && saved.name === part.name),
+        (saved.partNumber === part.partNumber && saved.name === part.name),
       );
-      const match = matchIndex >= 0 ? savedParts.splice(matchIndex, 1)[0] : savedParts.shift();
-      return match ? { ...part, persistedId: match.id } : part;
-    }));
+      const match = matchIndex >= 0 ? savedParts.splice(matchIndex, 1)[0] : null;
+      return { ...part, persistedId: match?.id };
+    });
     const savedAttachments = [...(item.attachments ?? [])];
-    setAttachments((current) => current.map((attachment) => {
+    const identifiedAttachments = attachments.map((attachment) => {
       const match = savedAttachments.find((saved) =>
         (attachment.persistedId && saved.id === attachment.persistedId) ||
-        (!attachment.persistedId && Boolean(attachment.storagePath) && saved.storagePath === attachment.storagePath),
+        (Boolean(attachment.storagePath) && saved.storagePath === attachment.storagePath) ||
+        (Boolean(attachment.url) && saved.url === attachment.url),
       );
-      return match ? { ...attachment, persistedId: match.id } : attachment;
-    }));
+      return { ...attachment, persistedId: match?.id };
+    });
+    setParts(identifiedParts);
+    setAttachments(identifiedAttachments);
+    return { parts: identifiedParts, attachments: identifiedAttachments };
+  }
+
+  async function completeCreatedQuote(id: string, pending: PendingCreationSubmission, finish = false) {
+    const handoff = await persistCreatedQuoteDraft(id, quoteDraftSnapshot, pending.key);
+    suppressQuoteDraft.current = true;
+    if (!await quoteDraft.clear()) {
+      suppressQuoteDraft.current = false;
+      setError('The quote was created, but draft cleanup was not confirmed. Check the saved submission to open the existing quote.');
+      return false;
+    }
+    clearIntakeDraft(window.localStorage, quoteDraftStorageKey);
+    router.replace(`/admin/quotes/${id}${finish || handoff.state === 'cleared' ? '' : '/edit'}`);
+    return true;
+  }
+
+  async function recoverQuoteSubmission(checkOnly: boolean) {
+    if (!pendingSubmission || submissionInFlight.current) return;
+    submissionInFlight.current = true; setLoading(true); setError(null);
+    try {
+      if (!checkOnly && !await quoteDraft.flush(quoteDraftSnapshot)) throw new Error('Save the draft before retrying its submission.');
+      const result = await (checkOnly ? lookupPendingCreationSubmission(pendingSubmission) : submitPendingCreationSubmission(pendingSubmission));
+      if (result.state === 'created') await completeCreatedQuote(result.id, pendingSubmission);
+      else if (result.state === 'rejected') {
+        if (await quoteDraft.flush({ ...quoteDraftSnapshot, pendingSubmission: null })) setPendingSubmission(null);
+        setError(result.error);
+      } else setError(result.error);
+    } catch (problem) { setError(problem instanceof Error ? problem.message : 'Could not check the saved submission.'); }
+    finally { submissionInFlight.current = false; setLoading(false); }
   }
 
   const saveQuote = async ({ nextStep = currentStep, finish = false }: { nextStep?: number; finish?: boolean } = {}) => {
+    if (submissionInFlight.current || pendingSubmission || !quoteDraft.ready || quoteDraft.legacyAvailable) return false;
+    if (!customFieldsReady || customFieldsError) { setError(customFieldsError || 'Wait for the required quote fields to load.'); return false; }
+    if (quoteChanged) { setError('This quote changed after your draft was saved. Review the current quote before replacing it.'); return false; }
     if (mode === 'create' && !originDepartmentId) {
       setError(
         departmentsLoadFailed
@@ -1690,29 +1761,34 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       );
       return false;
     }
+    submissionInFlight.current = true;
     setLoading(true);
     setError(null);
     const payload = buildPayload(nextStep);
     try {
-      const response =
-        mode === 'edit' && initialQuote
-          ? await fetchJson<{ item: QuoteDetail }>(`/api/admin/quotes/${initialQuote.id}`, {
+      if (!await quoteDraft.flush(quoteDraftSnapshot)) throw new Error('The draft could not be saved. Retry the draft save before continuing.');
+      if (mode === 'create') {
+        const pending = createPendingCreationSubmission('quote:create', '/api/admin/quotes', payload);
+        setPendingSubmission(pending);
+        if (!await quoteDraft.flush({ ...quoteDraftSnapshot, pendingSubmission: pending })) {
+          throw new Error('Your submission has not been sent. Retry the draft save, then retry the saved submission.');
+        }
+        const result = await submitPendingCreationSubmission(pending);
+        if (result.state === 'created') return await completeCreatedQuote(result.id, pending, finish);
+        if (result.state === 'rejected' && await quoteDraft.flush({ ...quoteDraftSnapshot, pendingSubmission: null })) setPendingSubmission(null);
+        setError(result.error);
+        return false;
+      }
+      if (!initialQuote || !baseQuoteUpdatedAt) throw new Error('The current quote version is unavailable. Reload the saved quote before replacing it.');
+      const response = await fetchJson<{ item: QuoteDetail }>(`/api/admin/quotes/${initialQuote.id}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            })
-          : await fetchJson<{ item: QuoteDetail }>(`/api/admin/quotes`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
+              body: JSON.stringify({ ...payload, expectedUpdatedAt: baseQuoteUpdatedAt }),
+              signal: AbortSignal.timeout(120_000),
             });
-
-      applySavedIdentity(response.item);
-      if (mode === 'create') {
-        suppressQuoteDraft.current = true;
-        clearIntakeDraft(window.localStorage, quoteDraftStorageKey);
-        setQuoteDraftSavedAt(null);
-      }
+      const identity = applySavedIdentity(response.item);
+      const updatedAt = response.item.updatedAt ?? null;
+      setBaseQuoteUpdatedAt(updatedAt);
       clearDrawingImportDraft(window.localStorage, {
         destination: 'quote',
         business: getBusinessOptionByCode(form.business)?.name ?? BUSINESS_OPTIONS[0]?.name ?? 'Sterling Tool and Die',
@@ -1720,19 +1796,26 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
       });
       setSavedAt(response.item.updatedAt ?? new Date().toISOString());
       setFurthestStep((current) => Math.max(current, nextStep));
+      setCurrentStep(nextStep);
+      const draftSaved = await quoteDraft.flush({ ...quoteDraftSnapshot, ...identity, baseQuoteUpdatedAt: updatedAt,
+        currentStep: nextStep, furthestStep: Math.max(furthestStep, nextStep) });
+      if (!draftSaved) {
+        setError('The quote was saved, but draft recovery could not be updated. Retry the draft save before leaving this page.');
+        return false;
+      }
       toast.push(finish ? 'Quote saved' : 'Progress saved', 'success');
       if (finish) {
+        suppressQuoteDraft.current = true;
+        if (!await quoteDraft.clear()) { suppressQuoteDraft.current = false; return false; }
         router.push(`/admin/quotes/${response.item.id}`);
-      } else if (mode === 'create') {
-        router.replace(`/admin/quotes/${response.item.id}/edit`);
-      } else {
-        setCurrentStep(nextStep);
       }
       return true;
     } catch (err: any) {
+      if (err.status === 409) setQuoteChanged(true);
       setError(err?.body?.error || err.message || 'Failed to save quote');
       return false;
     } finally {
+      submissionInFlight.current = false;
       setLoading(false);
     }
   };
@@ -1787,11 +1870,40 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
 
   return (
     <form className="space-y-6" onSubmit={handleSubmit}>
+      <IntakeDraftStatus draft={quoteDraft} disabled={loading} onDiscard={pendingSubmission ? undefined : () => {
+        void quoteDraft.clear().then((cleared) => { if (cleared) { clearIntakeDraft(window.localStorage, quoteDraftStorageKey); window.location.reload(); } });
+      }} />
+      {pendingSubmission && <PendingSubmissionRecovery busy={loading} onCheck={() => void recoverQuoteSubmission(true)} onRetry={() => void recoverQuoteSubmission(false)} />}
+      {customFieldsError && <div role="alert" className="rounded border border-amber-500/50 p-3 text-sm">
+        <p>{customFieldsError}</p>
+        <Button type="button" disabled={loading} onClick={() => setCustomFieldsRetry((value) => value + 1)}>Retry required fields</Button>
+      </div>}
       {error && (
-        <div className="rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+        <div role="alert" className="rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
           {error}
         </div>
       )}
+      {quoteChanged && initialQuote && <div className="rounded border border-amber-500/50 p-4 text-sm">
+        <p>A newer quote save exists. Your draft is preserved. Review the saved quote before choosing which version to use.</p>
+        <Link href={`/admin/quotes/${initialQuote.id}`} target="_blank" className="underline">Review current quote</Link>
+        <div className="mt-2 flex gap-2">
+          <Button type="button" variant="outline" disabled={loading} onClick={() => {
+            void quoteDraft.clear().then((cleared) => { if (cleared) window.location.reload(); });
+          }}>Discard draft and load current quote</Button>
+          <Button type="button" variant="outline" disabled={loading} onClick={() => {
+            if (submissionInFlight.current) return;
+            submissionInFlight.current = true; setLoading(true);
+            void fetchJson<{ item: QuoteDetail }>(`/api/admin/quotes/${initialQuote.id}`, { signal: AbortSignal.timeout(15_000) }).then(({ item }) => {
+              if (!item.updatedAt) throw new Error('Could not load the current quote version.');
+              applySavedIdentity(item);
+              setBaseQuoteUpdatedAt(item.updatedAt); setQuoteChanged(false);
+              setError('Your draft is ready to replace the current quote. Review it, then Save progress.');
+            }).catch(() => setError('Could not load the current quote version. Your draft is preserved.'))
+              .finally(() => { submissionInFlight.current = false; setLoading(false); });
+          }}>Use this draft to replace current quote</Button>
+        </div>
+      </div>}
+      <fieldset disabled={loading || quoteDraft.editingBlocked || !quoteDraft.ready || quoteDraft.legacyAvailable || Boolean(pendingSubmission)} className="contents">
 
       <QuoteWizardProgress
         steps={steps}
@@ -1799,12 +1911,12 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
         furthestStep={furthestStep}
         loading={loading}
         savedAt={savedAt}
-        autosavedAt={quoteDraftSavedAt}
-        canDiscardAutosave={mode === 'create' && Boolean(quoteDraftSavedAt)}
+        autosavedAt={quoteDraft.savedAt}
+        canDiscardAutosave={false}
         canSave={Boolean(form.companyName.trim() && form.customerId)}
         onSelectStep={(index) => { if (index <= furthestStep) setCurrentStep(index); }}
         onSave={() => void saveQuote()}
-        onDiscardAutosave={() => { clearIntakeDraft(window.localStorage, quoteDraftStorageKey); window.location.reload(); }}
+        onDiscardAutosave={() => { void quoteDraft.clear().then((cleared) => { if (cleared) window.location.reload(); }); }}
       />
 
       {currentStep === 0 && (
@@ -2455,7 +2567,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
             customAmountsTotalCents={customAmountsTotalCents}
             totalCents={totalCents}
             loading={loading}
-            onCancel={() => router.back()}
+            onCancel={() => { void quoteDraft.flush(quoteDraftSnapshot).then((saved) => { if (saved) router.back(); }); }}
           />
         </>
       )}
@@ -2475,6 +2587,7 @@ export default function QuoteEditor({ mode, initialQuote }: QuoteEditorProps) {
           </Button>
         </div>
       )}
+      </fieldset>
     </form>
   );
 }

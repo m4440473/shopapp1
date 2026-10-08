@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { submissionFields } from '@/modules/submissions/submissions.shared';
+import type { CreationSubmissionIdentity } from '@/modules/submissions/submissions.types';
 
 export async function findRepeatOrderCustomer(customerId: string) {
   return prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
@@ -247,6 +249,7 @@ export async function findRepeatOrderTemplateById(templateId: string) {
 }
 
 export async function createOrderFromRepeatTemplate(data: {
+  submission?: CreationSubmissionIdentity | null;
   orderNumber: string;
   business: string;
   customerId: string;
@@ -303,6 +306,7 @@ export async function createOrderFromRepeatTemplate(data: {
   return prisma.$transaction(async (tx) => {
     const order = await tx.order.create({
       data: {
+        ...submissionFields(data.submission),
         orderNumber: data.orderNumber,
         business: data.business,
         customerId: data.customerId,

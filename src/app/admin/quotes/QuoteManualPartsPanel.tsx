@@ -33,6 +33,8 @@ export type QuoteManualPart = {
   finish: string;
   drawingFinishText: string;
   drawingMaterialText: string;
+  unresolvedFields?: string[];
+  reviewWarnings?: string[];
   description: string;
   attachments: ManualPartAttachment[];
 };
@@ -135,18 +137,22 @@ export function QuoteManualPartsPanel({
                 </div>
               ) : null}
 
+              {Boolean(activePart.unresolvedFields?.length || activePart.reviewWarnings?.length) && <div className="mt-3 rounded border border-amber-500/50 p-3 text-sm">
+                <p>The drawing reader left information for manual review. Check the current values against the attached drawing.</p>
+                {activePart.reviewWarnings?.map((warning, index) => <p key={index}>{warning}</p>)}
+              </div>}
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="grid gap-2">
-                  <Label>Part name *</Label>
-                  <Input value={activePart.name} onChange={(event) => onUpdatePart(activePart.key, { name: event.target.value })} required />
+                  <Label htmlFor="quote-part-name">Part name *</Label>
+                  <Input id="quote-part-name" value={activePart.name} onChange={(event) => onUpdatePart(activePart.key, { name: event.target.value })} required />
                 </div>
                 <div className="grid gap-2">
-                  <Label>Part number</Label>
-                  <Input value={activePart.partNumber} onChange={(event) => onUpdatePart(activePart.key, { partNumber: event.target.value })} placeholder="Optional part #" />
+                  <Label htmlFor="quote-part-number">Part number *</Label>
+                  <Input id="quote-part-number" value={activePart.partNumber} onChange={(event) => onUpdatePart(activePart.key, { partNumber: event.target.value })} placeholder="Part number" required />
                 </div>
                 <div className="grid gap-2">
-                  <Label>Quantity</Label>
-                  <Input type="number" min="1" value={activePart.quantity} onFocus={(event) => event.currentTarget.select()} onChange={(event) => onUpdatePart(activePart.key, { quantity: event.target.value })} />
+                  <Label htmlFor="quote-part-quantity">Quantity *</Label>
+                  <Input id="quote-part-quantity" type="number" min="1" step="1" value={activePart.quantity} onFocus={(event) => event.currentTarget.select()} onChange={(event) => onUpdatePart(activePart.key, { quantity: event.target.value })} required />
                 </div>
                 <div className="grid gap-2">
                   <Label>Piece count</Label>

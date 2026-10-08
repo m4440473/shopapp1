@@ -23,7 +23,6 @@ import {
   getWorkItemUnitsLabel,
 } from '@/modules/pricing/work-item-pricing';
 import QuoteWorkflowControls from '../QuoteWorkflowControls';
-import QuoteQuickConvertDialog from '@/components/Admin/QuoteQuickConvertDialog';
 import { canAccessAdmin } from '@/lib/rbac';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -237,17 +236,13 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             </Link>
           </Button>
           <div className="min-w-[240px] space-y-3">
-            <QuoteQuickConvertDialog
-              quoteId={quote.id}
-              disabled={!quickConvertEnabled}
-              disabledReason={quickConvertDisabledReason}
-              initialDueDate={quote.dueDate ? new Date(quote.dueDate).toISOString().slice(0, 10) : null}
-              initialPriority={quote.priority ?? 'NORMAL'}
-              initialPoNumber={quote.poNumber ?? ''}
-              initialMaterialNeeded={quote.materialNeeded ?? false}
-              initialMaterialOrdered={quote.materialOrdered ?? false}
-              initialModelIncluded={quote.modelIncluded ?? false}
-            />
+            {quickConvertEnabled ? (
+              <Button asChild title="Create an order from this quote">
+                <Link href={`/orders/new?quoteId=${encodeURIComponent(quote.id)}`}>Create Order</Link>
+              </Button>
+            ) : (
+              <Button disabled title={quickConvertDisabledReason}>Create Order</Button>
+            )}
             <QuoteWorkflowControls
               quoteId={quote.id}
               quoteNumber={quote.quoteNumber}

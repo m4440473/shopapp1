@@ -1,6 +1,8 @@
 import 'server-only';
 
 import { Prisma } from '@prisma/client';
+import { runCreationSubmission } from '@/modules/submissions/submissions.service';
+import type { CreationSubmissionIdentity } from '@/modules/submissions/submissions.types';
 import { BUSINESS_PREFIX_BY_CODE, type BusinessCode } from '@/lib/businesses';
 import {
   ensureOrderFilesInCanonicalStorage,
@@ -226,6 +228,16 @@ export async function createOrderFromRepeatOrderTemplate(
   templateId: string,
   payload: RepeatOrderTemplateCreateOrderInput,
   userId?: string | null,
+  submission?: CreationSubmissionIdentity | null,
+) {
+  return runCreationSubmission(submission ?? null, () => createRepeatOrder(templateId, payload, userId, submission), async (record) => ok({ id: record.id }));
+}
+
+async function createRepeatOrder(
+  templateId: string,
+  payload: RepeatOrderTemplateCreateOrderInput,
+  userId?: string | null,
+  submission?: CreationSubmissionIdentity | null,
 ) {
   const template = await findRepeatOrderTemplateById(templateId);
   if (!template) return fail(404, 'Repeat-order template not found');
@@ -306,6 +318,7 @@ export async function createOrderFromRepeatOrderTemplate(
     : await generateNextOrderNumber(template.business as BusinessCode);
 
   const result = await createOrderFromRepeatTemplate({
+    submission,
     orderNumber,
     business: template.business,
     customerId,

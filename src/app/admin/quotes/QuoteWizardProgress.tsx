@@ -35,9 +35,9 @@ export function QuoteWizardProgress({
   onDiscardAutosave,
 }: QuoteWizardProgressProps) {
   const savedLabel = savedAt
-    ? `Saved ${new Date(savedAt).toLocaleString()}`
+    ? `Last quote save: ${new Date(savedAt).toLocaleString()}`
     : autosavedAt
-      ? `Autosaved ${new Date(autosavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+      ? `Last draft save: ${new Date(autosavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
       : 'Not saved yet';
 
   return (

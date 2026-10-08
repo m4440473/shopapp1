@@ -200,15 +200,14 @@ describe('quote drawing V2 result mapping', () => {
     })]);
   });
 
-  it('blocks uncertain pages and unmatched materials instead of guessing', () => {
+  it('requires explicit page decisions while allowing unmatched material into an incomplete draft', () => {
     const uncertain = { ...page('uncertain'), classification: 'uncertain' as const };
     const unmatched = page('unmatched');
     const result = buildReviewedQuoteDrawingImport([uncertain, unmatched], []);
 
-    expect(result.blockingMessages).toEqual(expect.arrayContaining([
-      expect.stringContaining('page-type decision'),
-      expect.stringContaining('not matched to the catalog'),
-    ]));
+    expect(result.blockingMessages).toEqual([expect.stringContaining('Choose Treat as part drawing or Keep file only')]);
+    expect(result.parts[0]).toMatchObject({ materialId: '', unresolvedFields: ['material'] });
+    expect(result.parts[0].reviewWarnings).toEqual([expect.stringContaining('not matched to the catalog')]);
   });
 
   it('keeps a reference page file without creating a quote part', () => {
@@ -216,8 +215,8 @@ describe('quote drawing V2 result mapping', () => {
     const result = buildReviewedQuoteDrawingImport([fileOnly], [{ id: 'mat-a36', name: 'A36 Steel' }]);
 
     expect(result.parts).toEqual([]);
-    expect(result.files).toEqual([{ storagePath: 'quote/customer-packet.pdf', label: 'customer-packet.pdf', mimeType: 'application/pdf' }]);
-    expect(result.blockingMessages).toContain('No reviewed part drawings are ready to add to this quote.');
+    expect(result.files).toEqual([fileOnly.originalPacketSource, fileOnly.canonicalSource]);
+    expect(result.blockingMessages).toEqual([]);
   });
 
   it('does not require field approval after a page is explicitly kept as a file only', () => {
@@ -232,15 +231,54 @@ describe('quote drawing V2 result mapping', () => {
 
     expect(result.parts).toHaveLength(1);
     expect(result.blockingMessages).toEqual([]);
-    expect(result.files).toEqual([{ storagePath: 'quote/customer-packet.pdf', label: 'customer-packet.pdf', mimeType: 'application/pdf' }]);
+    expect(result.files).toEqual([fileOnly.originalPacketSource, fileOnly.canonicalSource]);
   });
 
-  it('does not silently save a detail drawing with missing manufacturing dimensions', () => {
+  it('retains missing dimensions as explicit unresolved draft fields instead of blocking the draft', () => {
     const missing = page('missing-dimensions');
     missing.extraction!.partThickness = textField(null, 'not_present');
     const result = buildReviewedQuoteDrawingImport([missing], [{ id: 'mat-a36', name: 'A36 Steel' }]);
 
-    expect(result.blockingMessages).toContain('customer-packet.pdf, page 2: partThickness requires confirmation.');
+    expect(result.blockingMessages).toEqual([]);
+    expect(result.parts[0]).toMatchObject({ partThickness: '', unresolvedFields: ['partThickness'] });
+    expect(result.parts[0].reviewWarnings).toEqual(['Thickness / wall thickness is unresolved; review the drawing before production.']);
+  });
+
+  it('does not turn a conflicting material into a selected catalog material or derive stock from unresolved dimensions', () => {
+    const incomplete = page('incomplete');
+    incomplete.extraction!.material = textField('A36 steel', 'conflicting');
+    incomplete.extraction!.finalLength = textField('999', 'unreadable');
+    incomplete.extraction!.stockSize = textField(null, 'not_present');
+    incomplete.extraction!.cutLength = textField(null, 'not_present');
+    const result = buildReviewedQuoteDrawingImport([incomplete], [{ id: 'mat-a36', name: 'A36 Steel' }]);
+    expect(result.blockingMessages).toEqual([]);
+    expect(result.parts[0]).toMatchObject({ materialId: '', drawingMaterialText: 'A36 steel', finalPartLength: '999', stockSize: '', cutLength: '', unresolvedFields: ['material', 'finalLength'] });
+  });
+
+  it('never substitutes quantity one when the drawing quantity is unknown or invalid', () => {
+    for (const quantity of [null, 0, -1, 1.5]) {
+      const incomplete = page('quantity');
+      incomplete.extraction!.drawingQuantity = { ...emptyDrawingField<number>(), value: quantity, status: quantity === null ? 'not_present' : 'read' };
+      const result = buildReviewedQuoteDrawingImport([incomplete], [{ id: 'mat-a36', name: 'A36 Steel' }]);
+      expect(result.parts).toEqual([]);
+      expect(result.blockingMessages).toContainEqual(expect.stringContaining('Quantity'));
+    }
+  });
+
+  it('preserves all originals and canonical files after uncertain and failed pages are explicitly kept as files', () => {
+    const uncertain = { ...page('uncertain-file'), classification: 'reference' as const };
+    const failed = { ...page('failed-file'), classification: 'reference' as const, processingStatus: 'failed' as const, extraction: null };
+    const result = buildReviewedQuoteDrawingImport([uncertain, failed], [], [uncertain.originalPacketSource!]);
+    expect(result.parts).toEqual([]);
+    expect(result.blockingMessages).toEqual([]);
+    expect(result.files).toEqual([uncertain.originalPacketSource, uncertain.canonicalSource, failed.canonicalSource]);
+  });
+
+  it('does not silently omit a file-only page whose saved source is missing', () => {
+    const missing = { ...page('missing-source'), classification: 'reference' as const, canonicalSource: null, originalPacketSource: null };
+    const result = buildReviewedQuoteDrawingImport([missing], []);
+    expect(result.files).toEqual([]);
+    expect(result.blockingMessages).toEqual([expect.stringContaining('saved source file is unavailable')]);
   });
 });
 

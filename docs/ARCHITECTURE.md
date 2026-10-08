@@ -231,3 +231,9 @@ Tests live primarily beside domains under `__tests__/`. Executable changes requi
 Always orient with `AGENTS.md`, `CANON.md`, `ROADMAP.md`, this file, and `tasks/lessons.md`. Then load only the nearest subsystem instructions/docs, targeted `AGENT_CONTEXT` decisions, recent relevant `PROGRESS_LOG` entries, and the relevant current handoff section.
 
 Do not read full chronological history by default. Search by subsystem, path, decision, or date.
+
+## Durable intake and creation recovery
+`src/modules/intake-drafts/` owns private user/kind/key draft persistence, revision conflict handling and local recovery. `/api/intake-drafts/[kind]/[key]` exposes authenticated reads/writes/clear operations. `src/modules/submissions/` owns stable creation identities and `/api/submissions/status`; nullable unique keys on orders/quotes prevent creating another record after an interrupted response. Drawing handoff is acknowledged only after the receiving durable draft saves.
+
+## Local assistant and procurement
+`src/modules/assistant/` provides admin-only shop lookup, document evidence, local-model chat and user-scoped conversation files. `/admin/assistant` and `/api/admin/assistant` are its guarded UI/API. `src/modules/procurement/` groups read-only material requirements and stock estimates from current part definitions. `scripts/assistant-index.cjs` builds an attachment text/OCR cache under the configured assistant data directory; generated index/conversations are runtime data and never source-control artifacts. Local model and cache locations are configured by environment variables. The index script accompanies standalone builds.

@@ -9,6 +9,7 @@ import type {
   DrawingImportReviewFilter,
   DrawingImportReviewPage,
   DrawingImportReviewState,
+  SaveDrawingImportCorrectionInput,
 } from './drawing-import-ui.types';
 
 const FIELD_NAMES: DrawingImportFieldName[] = [
@@ -27,7 +28,7 @@ const FIELD_NAMES: DrawingImportFieldName[] = [
 ];
 
 export function createDrawingImportReviewState(snapshot: DrawingImportJobSnapshot): DrawingImportReviewState {
-  return { ...snapshot, dirtyFieldsByPage: {} };
+  return { ...snapshot, dirtyFieldsByPage: {}, savedClassificationsByPage: {} };
 }
 
 function mergeExtractionPreservingDirtyFields(
@@ -35,10 +36,11 @@ function mergeExtractionPreservingDirtyFields(
   incoming: DrawingImportPageExtraction | null,
   dirtyFields: ReadonlySet<DrawingImportFieldName>,
 ) {
-  if (!incoming || !current || dirtyFields.size === 0) return incoming;
+  if (!current) return incoming;
+  if (!incoming) return dirtyFields.size || FIELD_NAMES.some((field) => current[field].status === 'human_corrected') ? current : incoming;
   const merged = { ...incoming };
   for (const field of FIELD_NAMES) {
-    if (dirtyFields.has(field)) merged[field] = current[field] as never;
+    if (dirtyFields.has(field) || current[field].status === 'human_corrected') merged[field] = current[field] as never;
   }
   return merged;
 }
@@ -56,6 +58,7 @@ export function mergeDrawingImportJobSnapshot(
     const dirty = new Set(current.dirtyFieldsByPage[page.pageId] ?? []);
     return {
       ...page,
+      classification: current.savedClassificationsByPage[page.pageId] ?? page.classification,
       extraction: mergeExtractionPreservingDirtyFields(existing.extraction, page.extraction, dirty),
     };
   });
@@ -73,7 +76,54 @@ export function mergeDrawingImportJobSnapshot(
     pages,
     supportingFiles: incoming.supportingFiles.length ? incoming.supportingFiles : current.supportingFiles,
     dirtyFieldsByPage: current.dirtyFieldsByPage,
+    savedClassificationsByPage: current.savedClassificationsByPage,
   };
+}
+
+/** A PATCH response acknowledges only its field; other fields may be newer locally. */
+export function acknowledgeDrawingImportFieldSave(
+  current: DrawingImportReviewState,
+  input: SaveDrawingImportCorrectionInput,
+  savedPage: DrawingImportReviewPage,
+): DrawingImportReviewState {
+  if (current.progress.jobId !== input.jobId) return current;
+  const page = current.pages.find((candidate) => candidate.pageId === input.pageId);
+  if (!page?.extraction || !savedPage.extraction || page.extraction[input.field].value !== input.value) return current;
+  const acknowledged = clearDrawingImportFieldDirty(current, input.pageId, input.field);
+  return {
+    ...acknowledged,
+    pages: acknowledged.pages.map((candidate) => candidate.pageId === input.pageId ? {
+      ...candidate,
+      extraction: { ...candidate.extraction!, [input.field]: savedPage.extraction![input.field] },
+    } : candidate),
+  };
+}
+
+export function acknowledgeDrawingImportClassificationSave(current: DrawingImportReviewState, savedPage: DrawingImportReviewPage) {
+  const updated = {
+    ...current,
+    savedClassificationsByPage: { ...current.savedClassificationsByPage, [savedPage.pageId]: savedPage.classification },
+  };
+  return mergeDrawingImportJobSnapshot(updated, { progress: current.progress, pages: [savedPage], supportingFiles: current.supportingFiles });
+}
+
+export function drawingImportCanReview(state: DrawingImportReviewState | null) {
+  return Boolean(state && ['READY_FOR_REVIEW', 'PARTIAL_FAILURE', 'COMPLETE'].includes(state.progress.status)
+    && !state.pages.some((page) => page.processingStatus === 'queued' || page.processingStatus === 'processing'));
+}
+
+export function drawingImportCanKeepFileOnly(state: DrawingImportReviewState | null) {
+  return drawingImportCanReview(state) || Boolean(state && ['FAILED', 'CANCELLED'].includes(state.progress.status));
+}
+
+export function drawingImportCanTransferToDraft(state: DrawingImportReviewState | null) {
+  if (drawingImportCanReview(state)) return true;
+  return Boolean(state && ['FAILED', 'CANCELLED'].includes(state.progress.status)
+    && state.pages.length > 0 && state.pages.every((page) => page.classification === 'reference' || page.classification === 'duplicate'));
+}
+
+export function drawingImportHasUnsavedChanges(state: DrawingImportReviewState | null) {
+  return Boolean(state && Object.values(state.dirtyFieldsByPage).some((fields) => fields.length));
 }
 
 export function markDrawingImportFieldDirty(

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import {
   ArrowRight,
+  Bot,
   Cog,
   FileText,
   Package,
@@ -80,6 +81,12 @@ export default function AdminIndexPage() {
           Start a quote, continue one you already saved, or update the shop setup.
         </p>
       </header>
+
+      <Link href="/admin/assistant" className="flex items-center gap-4 rounded-xl border border-primary/40 bg-primary/5 p-5 transition hover:bg-primary/10">
+        <Bot className="h-7 w-7 shrink-0 text-primary" />
+        <div className="flex-1"><p className="text-lg font-semibold">Talk to Shop Assistant</p><p className="text-sm text-muted-foreground">Ask about orders, customers and quotes, find drawings, or talk through your work. Runs locally on this PC.</p></div>
+        <ArrowRight className="h-5 w-5 shrink-0" />
+      </Link>
 
       <section className="grid gap-4 md:grid-cols-2">
         <Link

@@ -482,3 +482,6 @@ Reason: Temporary vision-file readiness and strict whole-object validation can t
 ### 2026-08-27 — Production rollback preserves operational data by default
 Decision: A timestamped source rollback restores only the source files captured in that snapshot unless the owner explicitly asks to restore database data too. Verify with an exact deployed-file hash and live health. Any temporary build compatibility setting must be removed before completion.
 Reason: Production orders and uploads continue independently of code releases, but owners need to test a known code point without losing current shop data.
+
+## Decision - 2026-10-08 source reconciliation
+Use production's existing lockfile to restore the already-declared Playwright 1.62.1 entries missing from GitHub main. No existing package version changes and no new dependency declaration. Reconciliation preserves production recovery behavior in an isolated branch; no production deployment or data changes.

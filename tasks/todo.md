@@ -5212,3 +5212,10 @@ Result: 13 part/assembly pages plus 4 supporting pages remain on the quote. Roll
 - [x] Reuse validated drawing AI settings in the active current-importer request and its root counterpart. Remove incompatible temperature override only on the active root request. Reject incomplete/empty output visibly rather than accepting partial JSON.
 - [x] Add request-profile and extraction compatibility regressions covering PDF/photo inputs, file cleanup, invalid/incomplete responses, and manual review. Preserve unrelated root/staged differences.
 - [ ] Verification blocked, not complete: both trees pass TypeScript and targeted ESLint; UI hashes unchanged; existing local profile verified. Focused Vitest launch hit sandbox spawn EPERM; escalation and Chrome navigation both rejected because the approval-review service returned HTTP 404. Do not bypass these restrictions. Rerun tests and browser/live-import check after approvals recover or owner explicitly approves the blocked action after disclosure. No deployment or real inference run.
+
+## 2026-10-08 - Production source reconciliation
+- Scope: isolated branch from GitHub main b738a2c; reconcile verified production application source and migrations only. Preserve GitHub-only documents and all dirty desktop/production work.
+- [x] Identify deployed build and compare source with current GitHub.
+- [x] Transfer allowlisted application source; verify hashes and review differences.
+- [x] Validate dependencies, Prisma generation, tests, typecheck, lint and build with synthetic local configuration.
+- [x] Audit publication content, commit and push approved feature branch only; do not merge or deploy.

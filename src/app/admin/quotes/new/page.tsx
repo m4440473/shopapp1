@@ -22,7 +22,7 @@ export default async function NewQuotePage() {
         </p>
       </div>
       <ToastProvider>
-        <QuoteEditor mode="create" />
+        <QuoteEditor key="new-quote" mode="create" />
       </ToastProvider>
     </div>
   );

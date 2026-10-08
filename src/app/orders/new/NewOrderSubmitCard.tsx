@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { Printer } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardFooter } from '@/components/ui/Card';
@@ -13,6 +12,7 @@ export function NewOrderSubmitCard({
   onViewOrder,
   onPrintOrder,
   onBackToOrders,
+  onCancel,
 }: {
   submitting: boolean;
   disabled: boolean;
@@ -21,6 +21,7 @@ export function NewOrderSubmitCard({
   onViewOrder: () => void;
   onPrintOrder: () => void;
   onBackToOrders: () => void;
+  onCancel: () => void;
 }) {
   return (
     <Card className="border-border/60 bg-card/70 backdrop-blur">
@@ -28,7 +29,7 @@ export function NewOrderSubmitCard({
         <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-muted-foreground">Orders auto-number starting at 1001</div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button type="submit" disabled={submitting || disabled} className="rounded-full bg-primary px-6 text-primary-foreground shadow-lg shadow-primary/30">{submitting ? 'Submitting…' : 'Create order'}</Button>
-          <Button asChild variant="ghost" size="sm" className="text-muted-foreground"><Link href="/">Cancel</Link></Button>
+          <Button type="button" disabled={submitting || disabled} variant="ghost" size="sm" className="text-muted-foreground" onClick={onCancel}>Cancel</Button>
         </div>
       </CardFooter>
       {message || createdOrderId ? (

@@ -6,6 +6,8 @@ import { readFile } from 'node:fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerAuthSession } from '@/lib/auth-session';
 import { z } from 'zod';
+import { runCreationSubmission, submissionIdentity, SubmissionError } from '@/modules/submissions/submissions.service';
+import type { CreationSubmissionIdentity } from '@/modules/submissions/submissions.types';
 
 import {
   DEFAULT_QUOTE_METADATA,
@@ -214,6 +216,25 @@ async function prepareAttachments({
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const guard = await requireAdmin();
+  if (guard instanceof NextResponse) return guard;
+  const { id } = await params;
+  const payload = await req.clone().json().catch(() => null);
+  try {
+    const submission = submissionIdentity({ actorId: (guard.session.user as { id?: string })?.id, scope: `quote:convert:${id}`, clientKey: req.headers.get('Idempotency-Key'), payload });
+    return await runCreationSubmission(submission, async () => {
+      const response = await convertQuoteRequest(req, { params: Promise.resolve({ id }) }, submission);
+      if (response.status >= 500) throw new SubmissionError('Unable to confirm quote conversion. Retry the saved submission.', 503, 'CONVERSION_UNCONFIRMED');
+      return response;
+    }, async (record) => NextResponse.json({ ok: true, orderId: record.id, orderNumber: record.orderNumber }));
+  } catch (error) {
+    if (error instanceof SubmissionError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    console.error('Quote conversion submission failed', error);
+    return NextResponse.json({ error: 'Unable to confirm quote conversion. Retry the saved submission.' }, { status: 503 });
+  }
+}
+
+async function convertQuoteRequest(req: NextRequest, { params }: { params: Promise<{ id: string }> }, submission: CreationSubmissionIdentity | null) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
@@ -447,6 +468,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   try {
     const result = await convertQuoteToOrder({
+      submission,
       quote,
       metadata,
       now,

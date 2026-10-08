@@ -36,6 +36,7 @@ replaceDirectory(
 const pdfWorkerSource = resolve(projectRoot, 'scripts', 'render-pdf-packet.mjs');
 const imageExtractionWorkerSource = resolve(projectRoot, 'scripts', 'extract-drawing-image.mjs');
 const drawingImportV2WorkerSource = resolve(projectRoot, 'scripts', 'drawing-import-v2-document-worker.mjs');
+const assistantIndexSource = resolve(projectRoot, 'scripts', 'assistant-index.cjs');
 const standaloneScripts = resolve(standaloneDirectory, 'scripts');
 if (existsSync(pdfWorkerSource)) {
   mkdirSync(standaloneScripts, { recursive: true });
@@ -48,6 +49,10 @@ if (existsSync(imageExtractionWorkerSource)) {
 if (existsSync(drawingImportV2WorkerSource)) {
   mkdirSync(standaloneScripts, { recursive: true });
   copyFileSync(drawingImportV2WorkerSource, resolve(standaloneScripts, 'drawing-import-v2-document-worker.mjs'));
+}
+if (existsSync(assistantIndexSource)) {
+  mkdirSync(standaloneScripts, { recursive: true });
+  copyFileSync(assistantIndexSource, resolve(standaloneScripts, 'assistant-index.cjs'));
 }
 
 // A static require.resolve('pdfjs-dist/package.json') is rewritten by Next to

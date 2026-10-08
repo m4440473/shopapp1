@@ -27,6 +27,7 @@ function normalizedHeader(value: string) {
     .trim()
     .replace(/\s+/g, ' ');
 }
+
 function centerX(span: BomTextSpan) {
   return (span.region[0] + span.region[2]) / 2;
 }
@@ -269,7 +270,7 @@ export function reconstructBomTable(
       [...cells.entries()].map(([name, cellSpans]) => [name, cellSpans.map((span) => span.text.trim()).filter(Boolean).join(' ')]),
     ) as Partial<Record<BomColumnName, string>>;
     rows.push({
-      id: `${sourcePageId}:bom-row:${rowIndex + 1}`,
+      id: `${sourcePageId}:bom-row:${rowIndex}`,
       sourcePageId,
       rowIndex,
       item,
