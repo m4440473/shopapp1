@@ -17,6 +17,8 @@ import {
   buildQuoteSelectionKey,
 } from './quote-work-items';
 import { getNewQuoteOriginDepartmentId } from './quote-departments';
+import { submissionFields } from '@/modules/submissions/submissions.shared';
+import type { CreationSubmissionIdentity } from '@/modules/submissions/submissions.types';
 
 export async function listQuotes({
   where,
@@ -104,16 +106,19 @@ export async function createQuoteWithDetails({
   prepared,
   normalizedCustomFieldValues,
   userId,
+  submission,
 }: {
   data: any;
   prepared: any;
   normalizedCustomFieldValues: { fieldId: string; value: string }[];
   userId: string;
+  submission?: CreationSubmissionIdentity | null;
 }) {
   return prisma.$transaction(async (tx) => {
     const originDepartmentId = await resolveQuoteOriginDepartmentId(tx, data.originDepartmentId);
     const quote = await tx.quote.create({
       data: {
+        ...submissionFields(submission),
         quoteNumber: prepared.quoteNumber,
         business: data.business,
         companyName: data.companyName,
@@ -407,7 +412,7 @@ export async function updateQuoteWithDetails({
 }) {
   return prisma.$transaction(async (tx) => {
     await tx.quote.update({
-      where: { id: quoteId },
+      where: { id: quoteId, ...(data.expectedUpdatedAt ? { updatedAt: new Date(data.expectedUpdatedAt) } : {}) },
       data: {
         quoteNumber: prepared.quoteNumber,
         business: data.business,
@@ -778,30 +783,23 @@ export async function findActiveOrderCustomFields({
   });
 }
 
-function parseOrderNumberNumericValue(orderNumber: string) {
-  const numeric = Number.parseInt(orderNumber.replace(/[^0-9]/g, ''), 10);
-  if (!Number.isFinite(numeric)) return null;
-  return numeric;
-}
-
 async function generateNextOrderNumberInTx(tx: any, business: BusinessCode) {
-  const recent = await tx.order.findMany({
-    where: { business },
+  const prefix = BUSINESS_PREFIX_BY_CODE[business] ?? business;
+  // Business can change without renumbering an order; numbers remain globally reserved.
+  const assigned = await tx.order.findMany({
+    where: { orderNumber: { startsWith: `${prefix}-` } },
     select: { orderNumber: true },
-    orderBy: { orderNumber: 'desc' },
-    take: 200,
   });
 
-  let maxValue = 1000;
-  for (const candidate of recent) {
-    const numeric = parseOrderNumberNumericValue(candidate.orderNumber);
-    if (typeof numeric === 'number') {
-      maxValue = Math.max(maxValue, numeric);
-    }
+  let maxValue = BigInt(1000);
+  for (const candidate of assigned) {
+    const suffix = candidate.orderNumber.slice(prefix.length + 1);
+    if (!candidate.orderNumber.startsWith(`${prefix}-`) || !/^\d+$/.test(suffix)) continue;
+    const numeric = BigInt(suffix);
+    if (numeric > maxValue) maxValue = numeric;
   }
 
-  const prefix = BUSINESS_PREFIX_BY_CODE[business] ?? business;
-  return `${prefix}-${maxValue + 1}`;
+  return `${prefix}-${maxValue + BigInt(1)}`;
 }
 
 async function resolveQuoteOriginDepartmentId(tx: any, preferredDepartmentId: string | null | undefined) {
@@ -832,6 +830,7 @@ export async function convertQuoteToOrder({
   noteContent,
   userId,
   normalizedCustomFieldValues,
+  submission,
 }: {
   quote: any;
   metadata: any;
@@ -884,6 +883,7 @@ export async function convertQuoteToOrder({
   noteContent: string | null;
   userId?: string;
   normalizedCustomFieldValues: { fieldId: string; value: string }[];
+  submission?: CreationSubmissionIdentity | null;
 }) {
   return prisma.$transaction(async (tx) => {
     const orderNumber = await generateNextOrderNumberInTx(tx, quote.business as BusinessCode);
@@ -894,6 +894,7 @@ export async function convertQuoteToOrder({
 
     const order = await tx.order.create({
       data: {
+        ...submissionFields(submission),
         sourceQuoteId: quote.id,
         orderNumber,
         business: quote.business,

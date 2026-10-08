@@ -1,6 +1,8 @@
 import 'server-only';
 
 import { prisma } from '@/lib/prisma';
+import { createFileOnlyDrawingExtraction, drawingReviewStatus, hasHumanDrawingClassification, preserveHumanDrawingReview } from './drawing-import-review';
+import { normalizeDrawingImportPageExtraction, type DrawingImportFieldName } from './drawing-import-v2.types';
 import type {
   DrawingImportJobProgress,
   DrawingImportJobStage,
@@ -20,6 +22,58 @@ function parseJson<T>(value: string | null | undefined, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+type StoredReviewPage = NonNullable<Awaited<ReturnType<typeof findDrawingImportPage>>>;
+type ReviewWrite = {
+  finalExtractionJson?: string;
+  localExtractionJson?: string;
+  reviewStatus?: string;
+  routeTier?: string;
+  classification?: string;
+  classificationConfidence?: number;
+  warningsJson?: string;
+  duplicateOfPageId?: string | null;
+};
+/** Guarded writes prevent stale JSON; native batch transactions avoid holding SQLite locks across JS awaits. */
+async function commitPageReview(
+  pageId: string,
+  change: (page: StoredReviewPage) => ReviewWrite,
+  idempotencyKey?: string,
+) {
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const current = await prisma.drawingImportPage.findUnique({ where: { id: pageId } });
+    if (!current) throw new Error('Drawing page not found.');
+    const data = change(current);
+    try {
+      const update = prisma.drawingImportPage.update({
+        where: {
+          id: pageId, finalExtractionJson: current.finalExtractionJson,
+          localExtractionJson: current.localExtractionJson, classification: current.classification,
+          reviewStatus: current.reviewStatus, routeTier: current.routeTier,
+        },
+        data,
+      });
+      if (!idempotencyKey) return await update;
+      const [page] = await prisma.$transaction([
+        update,
+        prisma.drawingExtractionAttempt.create({ data: {
+          pageId, stage: 'human_review', sourceType: 'human', routeTier: 'human',
+          idempotencyKey, status: 'completed', resultJson: data.finalExtractionJson,
+          warningsJson: data.warningsJson,
+        } }),
+      ]);
+      return page;
+    } catch (error) {
+      // A failed guarded update rolls back its audit; re-read before applying the patch again.
+      if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'P2025') throw error;
+    }
+  }
+  throw new Error('This drawing is being updated. Your change was not saved; please try again.');
+}
+
+function storedExtraction(page: StoredReviewPage) {
+  return parseJson<DrawingImportPageExtraction | null>(page.finalExtractionJson ?? page.localExtractionJson, null);
 }
 
 export type CreateDrawingImportJobInput = {
@@ -289,14 +343,14 @@ export async function updateDrawingImportPageLocalAnalysis(input: {
   extraction: DrawingImportPageExtraction;
   warnings?: string[];
 }) {
-  return prisma.drawingImportPage.update({
-    where: { id: input.pageId },
-    data: {
-      classification: input.classification,
+  return commitPageReview(input.pageId, (page) => {
+    const saved = storedExtraction(page);
+    return {
+      classification: saved && page.finalExtractionJson ? saved.classification : input.classification,
       classificationConfidence: input.classificationConfidence,
       localExtractionJson: json(input.extraction),
-      warningsJson: json(input.warnings ?? input.extraction.warnings),
-    },
+      warningsJson: page.finalExtractionJson ? page.warningsJson : json(input.warnings ?? input.extraction.warnings),
+    };
   });
 }
 
@@ -361,6 +415,13 @@ export async function markDrawingImportPageFailed(pageId: string, message: strin
   });
 }
 
+export async function markDrawingImportPageProcessing(pageId: string) {
+  return prisma.drawingImportPage.updateMany({
+    where: { id: pageId, reviewStatus: 'PENDING' },
+    data: { reviewStatus: 'PROCESSING' },
+  });
+}
+
 export async function queueDrawingImportJob(jobId: string) {
   return prisma.drawingImportJob.update({
     where: { id: jobId },
@@ -373,10 +434,6 @@ export async function queueDrawingImportJob(jobId: string) {
       lastHeartbeatAt: null,
     },
   });
-}
-
-export async function updateDrawingImportPageClassification(pageId: string, classification: string) {
-  return prisma.drawingImportPage.update({ where: { id: pageId }, data: { classification } });
 }
 
 export async function findDuplicateDrawingImportPage(jobId: string, pageId: string, contentSha256: string) {
@@ -406,17 +463,19 @@ export async function updateDrawingImportPageResult(input: {
   warnings?: string[];
   duplicateOfPageId?: string | null;
 }) {
-  return prisma.drawingImportPage.update({
-    where: { id: input.pageId },
-    data: {
-      finalExtractionJson: json(input.extraction),
-      reviewStatus: input.reviewStatus,
+  return commitPageReview(input.pageId, (page) => {
+    const extraction = preserveHumanDrawingReview(input.extraction, storedExtraction(page));
+    return {
+      finalExtractionJson: json(extraction),
+      reviewStatus: input.reviewStatus === 'FAILED' ? 'FAILED' : drawingReviewStatus(extraction),
       routeTier: input.routeTier,
-      classification: input.classification ?? input.extraction.classification,
-      ...(input.classificationConfidence !== undefined ? { classificationConfidence: input.classificationConfidence } : {}),
-      warningsJson: json(input.warnings ?? input.extraction.warnings),
-      ...(input.duplicateOfPageId !== undefined ? { duplicateOfPageId: input.duplicateOfPageId } : {}),
-    },
+      classification: extraction.classification,
+      ...(input.classificationConfidence !== undefined && !hasHumanDrawingClassification(extraction) ? { classificationConfidence: input.classificationConfidence } : {}),
+      warningsJson: json(input.warnings ?? extraction.warnings),
+      ...(hasHumanDrawingClassification(extraction) && extraction.classification !== 'duplicate'
+        ? { duplicateOfPageId: null }
+        : input.duplicateOfPageId !== undefined ? { duplicateOfPageId: input.duplicateOfPageId } : {}),
+    };
   });
 }
 
@@ -488,8 +547,11 @@ export async function createDrawingImportBomRows(jobId: string, rows: Array<{
   warnings: string[];
 }>) {
   if (!rows.length) return;
-  await prisma.drawingImportBomRow.createMany({
-    data: rows.map((row) => ({
+  // SQLite does not support createMany.skipDuplicates. Recovery must leave
+  // existing rows and their linked edges intact while adding any missing rows.
+  await prisma.$transaction(rows.map((row) => prisma.drawingImportBomRow.upsert({
+    where: { sourcePageId_rowIndex: { sourcePageId: row.sourcePageId, rowIndex: row.rowIndex } },
+    create: {
       id: `${row.sourcePageId}:bom-row:${row.rowIndex}`,
       jobId,
       sourcePageId: row.sourcePageId,
@@ -504,9 +566,9 @@ export async function createDrawingImportBomRows(jobId: string, rows: Array<{
       sourceRegionJson: json(row.sourceRegion),
       rawCellsJson: json(row.rawCells),
       warningsJson: json(row.warnings),
-    })),
-    skipDuplicates: true,
-  });
+    },
+    update: {},
+  })));
 }
 
 export async function listDrawingImportBomRows(jobId: string) {
@@ -545,32 +607,29 @@ export async function replaceDrawingImportBomEdges(edges: Array<{
 export async function recordHumanDrawingImportCorrection(input: {
   pageId: string;
   extraction: DrawingImportPageExtraction;
+  field: DrawingImportFieldName | 'classification';
   idempotencyKey: string;
 }) {
-  return prisma.$transaction(async (tx) => {
-    const page = await tx.drawingImportPage.update({
-      where: { id: input.pageId },
-      data: {
-        finalExtractionJson: json(input.extraction),
-        reviewStatus: 'ACCEPTED',
-        routeTier: 'human',
-        warningsJson: json(input.extraction.warnings),
-      },
-    });
-    await tx.drawingExtractionAttempt.create({
-      data: {
-        pageId: input.pageId,
-        stage: 'human_review',
-        sourceType: 'human',
-        routeTier: 'human',
-        idempotencyKey: input.idempotencyKey,
-        status: 'completed',
-        resultJson: json(input.extraction),
-        warningsJson: json(input.extraction.warnings),
-      },
-    });
-    return page;
-  });
+  return commitPageReview(input.pageId, (page) => {
+    const saved = storedExtraction(page);
+    const fileOnlyFallback = !saved && input.field === 'classification' && input.extraction.classification === 'reference'
+      && input.extraction.classificationEvidence.some((evidence) => evidence.sourceType === 'human' && evidence.sourcePageId === input.pageId);
+    if (!saved && !fileOnlyFallback) throw new Error('This page does not have a reviewable extraction yet.');
+    // Never use a stale caller's fact values as the initial extraction.
+    const extraction = saved ? normalizeDrawingImportPageExtraction(saved) : createFileOnlyDrawingExtraction(input.pageId);
+    if (input.field === 'classification') {
+      extraction.classification = input.extraction.classification;
+      extraction.classificationEvidence = input.extraction.classificationEvidence;
+      extraction.route = 'human';
+    } else extraction[input.field] = input.extraction[input.field] as never;
+    return {
+      finalExtractionJson: json(extraction), classification: extraction.classification,
+      ...(input.field === 'classification' && extraction.classification !== 'duplicate' ? { duplicateOfPageId: null } : {}),
+      // A confirmation never declares the still-running model request complete.
+      reviewStatus: ['PENDING', 'PROCESSING'].includes(page.reviewStatus) ? page.reviewStatus : drawingReviewStatus(extraction),
+      routeTier: page.routeTier, warningsJson: json(extraction.warnings),
+    };
+  }, input.idempotencyKey);
 }
 
 export async function listActiveDrawingImportJobs() {
@@ -589,12 +648,13 @@ export function toDrawingImportJobProgress(job: NonNullable<Awaited<ReturnType<t
     status: job.status as DrawingImportJobStatus,
     stage: job.stage as DrawingImportJobStage,
     totalPages: counts.totalPages ?? job.pages.length,
-    completedPages: counts.completedPages ?? job.pages.filter((page) => page.reviewStatus !== 'PENDING').length,
-    locallyAcceptedPages: counts.locallyAcceptedPages ?? job.pages.filter((page) => page.routeTier === 'local' && page.reviewStatus === 'ACCEPTED').length,
-    terraProcessedPages: counts.terraProcessedPages ?? job.pages.filter((page) => page.routeTier.startsWith('terra_')).length,
-    solEscalatedPages: counts.solEscalatedPages ?? job.pages.filter((page) => page.routeTier === 'sol_escalation').length,
-    manualReviewPages: counts.manualReviewPages ?? job.pages.filter((page) => page.reviewStatus === 'MANUAL_REVIEW').length,
-    failedPages: counts.failedPages ?? job.pages.filter((page) => page.reviewStatus === 'FAILED').length,
+    // Page rows are authoritative; cached totals can predate a human save or a model result.
+    completedPages: job.pages.filter((page) => !['PENDING', 'PROCESSING'].includes(page.reviewStatus)).length,
+    locallyAcceptedPages: job.pages.filter((page) => page.routeTier === 'local' && page.reviewStatus === 'ACCEPTED').length,
+    terraProcessedPages: job.pages.filter((page) => page.routeTier.startsWith('terra_')).length,
+    solEscalatedPages: job.pages.filter((page) => page.routeTier === 'sol_escalation').length,
+    manualReviewPages: job.pages.filter((page) => page.reviewStatus === 'MANUAL_REVIEW').length,
+    failedPages: job.pages.filter((page) => page.reviewStatus === 'FAILED').length,
     estimatedCostUsd: job.estimatedCostUsd,
     actualCostUsd: job.actualCostUsd,
     elapsedMs: Math.max(0, (job.completedAt?.getTime() ?? Date.now()) - startedAt),

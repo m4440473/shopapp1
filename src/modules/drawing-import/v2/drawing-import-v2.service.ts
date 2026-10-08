@@ -70,17 +70,18 @@ import {
   recordHumanDrawingImportCorrection,
   replaceDrawingImportBomEdges,
   markDrawingImportPageFailed,
+  markDrawingImportPageProcessing,
   queueDrawingImportPageReprocess,
   requestDrawingImportCancellation,
   setDrawingImportJobState,
   toDrawingImportJobProgress,
   touchDrawingImportJob,
   updateDrawingImportPageLocalAnalysis,
-  updateDrawingImportPageClassification,
   updateDrawingImportPageResult,
   updateDrawingImportSourcePageCount,
 } from './drawing-import-v2.repo';
 import { getDrawingImportV2Config } from './drawing-import-v2.config';
+import { createFileOnlyDrawingExtraction, preserveHumanDrawingReview } from './drawing-import-review';
 import {
   DRAWING_IMPORT_FIELD_NAMES,
   DRAWING_IMPORT_V2_PIPELINE_VERSION,
@@ -778,7 +779,7 @@ async function resolvePageWithAi(input: {
     return extraction;
   }
 
-  if (!forceFresh && ['bom', 'cover_sheet', 'reference'].includes(input.page.localExtraction.classification)) {
+  if (!forceFresh && !config.directPdfV3Enabled && ['bom', 'cover_sheet', 'reference'].includes(input.page.localExtraction.classification)) {
     await updateDrawingImportPageResult({
       pageId: input.page.id,
       extraction: input.page.localExtraction,
@@ -833,13 +834,16 @@ async function resolvePageWithAi(input: {
     });
     const cached = forceFresh ? null : await completedAiAttempt(input.page.id, 'terra_targeted');
     const sequence = await nextAttemptSequence(input.page.id, 'terra_targeted');
-    const result = cached ? null : await input.stageGates.targeted.run(() => input.adapter!.runTerraTargeted({
-      ...baseContext,
-      attemptId: `targeted-${sequence}`,
-      knownRegionIds: [storedCrop.storagePath],
-      titleCropDataUrl: `data:image/png;base64,${crop.bytes.toString('base64')}`,
-      titleCropId: storedCrop.storagePath,
-    }));
+    const result = cached ? null : await input.stageGates.targeted.run(async () => {
+      await markDrawingImportPageProcessing(input.page.id);
+      return input.adapter!.runTerraTargeted({
+        ...baseContext,
+        attemptId: `targeted-${sequence}`,
+        knownRegionIds: [storedCrop.storagePath],
+        titleCropDataUrl: `data:image/png;base64,${crop.bytes.toString('base64')}`,
+        titleCropId: storedCrop.storagePath,
+      });
+    });
     latestAi = cached ?? result?.extraction ?? null;
     if (result) {
       await createDrawingExtractionAttempt({
@@ -864,12 +868,15 @@ async function resolvePageWithAi(input: {
   if (config.directPdfV3Enabled || !latestAi || current.classification === 'uncertain' || drawingImportExtractionNeedsHumanReview(current)) {
     const cached = forceFresh ? null : await completedAiAttempt(input.page.id, 'terra_full_page');
     const sequence = await nextAttemptSequence(input.page.id, 'terra_full_page');
-    const result = cached ? null : await input.stageGates.fullPage.run(() => input.adapter!.runTerraFullPage({
-      ...baseContext,
-      attemptId: `full-${sequence}`,
-      knownRegionIds: [],
-      canonicalPagePdf: input.page.canonicalPdf,
-    }));
+    const result = cached ? null : await input.stageGates.fullPage.run(async () => {
+      await markDrawingImportPageProcessing(input.page.id);
+      return input.adapter!.runTerraFullPage({
+        ...baseContext,
+        attemptId: `full-${sequence}`,
+        knownRegionIds: [],
+        canonicalPagePdf: input.page.canonicalPdf,
+      });
+    });
     if (forceFresh && !result?.extraction) throw new Error(`The selected page could not be reprocessed (${result?.errorCode ?? 'no result'}); the previous review has been kept.`);
     latestAi = cached ?? result?.extraction ?? latestAi;
     if (result) {
@@ -955,7 +962,7 @@ async function resolvePageWithAi(input: {
   }
 
   if (forceFresh) return current;
-  const reviewStatus = canDrawingImportPageCreatePart(current)
+  const reviewStatus = !latestAi ? 'FAILED' : canDrawingImportPageCreatePart(current)
     ? drawingImportExtractionNeedsHumanReview(current) ? 'MANUAL_REVIEW' : 'ACCEPTED'
     : current.classification === 'uncertain' ? 'MANUAL_REVIEW' : 'ACCEPTED';
   await updateDrawingImportPageResult({ pageId: input.page.id, extraction: current, reviewStatus, routeTier: latestRoute });
@@ -1004,6 +1011,17 @@ async function applyFinalQuantities(input: {
   extractions: Map<string, DrawingImportPageExtraction>;
   rows: DrawingBomRow[];
 }) {
+  // Model results held in memory may predate a human save made on another page.
+  const savedJob = await findDrawingImportJobById(input.job.id);
+  for (const page of savedJob?.pages ?? []) {
+    if (page.reviewStatus === 'FAILED') {
+      input.extractions.delete(page.id);
+      continue;
+    }
+    const incoming = input.extractions.get(page.id);
+    if (incoming) input.extractions.set(page.id, preserveHumanDrawingReview(incoming,
+      parseJson<DrawingImportPageExtraction | null>(page.finalExtractionJson ?? page.localExtractionJson, null)));
+  }
   const partPages = input.pages.flatMap((page) => {
     const extraction = input.extractions.get(page.id);
     return extraction && canDrawingImportPageCreatePart(extraction) ? [{ page, extraction }] : [];
@@ -1121,7 +1139,7 @@ async function currentJobCounts(jobId: string) {
   const pages = await listDrawingImportPageStatuses(jobId);
   return {
     totalPages: pages.length,
-    completedPages: pages.filter((page) => page.reviewStatus !== 'PENDING').length,
+    completedPages: pages.filter((page) => !['PENDING', 'PROCESSING'].includes(page.reviewStatus)).length,
     locallyAcceptedPages: pages.filter((page) => page.routeTier === 'local' && page.reviewStatus === 'ACCEPTED').length,
     terraProcessedPages: pages.filter((page) => page.routeTier.startsWith('terra_')).length,
     solEscalatedPages: pages.filter((page) => page.routeTier === 'sol_escalation').length,
@@ -1229,7 +1247,8 @@ async function processQuoteDrawingImportV2Job(jobId: string) {
     if (!job) throw new Error('Drawing import job disappeared.');
     await touchDrawingImportJob(jobId, 'document_analysis');
     const config = getDrawingImportV2Config();
-    config.solEscalationEnabled = !config.directPdfV3Enabled && settings.drawingImportLunaFallbackEnabled;
+    config.solEscalationEnabled = !config.directPdfV3Enabled
+      && Boolean((settings as typeof settings & { drawingImportLunaFallbackEnabled?: boolean }).drawingImportLunaFallbackEnabled);
     const sourceResults = await mapWithConcurrency(drawings, config.pdfWorkerConcurrency, async (drawing) => {
       try {
         return await analyzeDrawingSource({ job: job!, drawing, rootDir: settings.attachmentsDir });
@@ -1342,8 +1361,8 @@ function serializeReviewPage(job: NonNullable<Awaited<ReturnType<typeof findDraw
   const sourcePageCount = job.sources.find((source) => source.id === page.sourceId)?.pageCount ?? 1;
   const processingStatus = page.reviewStatus === 'FAILED'
     ? 'failed'
-    : page.reviewStatus === 'PENDING'
-      ? job.status === 'PROCESSING' ? 'processing' : 'queued'
+    : page.reviewStatus === 'PROCESSING' ? 'processing'
+      : page.reviewStatus === 'PENDING' ? 'queued'
       : 'ready';
   return {
     pageId: page.id,
@@ -1450,6 +1469,7 @@ export async function saveQuoteDrawingImportV2FieldCorrection(input: {
   await recordHumanDrawingImportCorrection({
     pageId: input.pageId,
     extraction,
+    field: input.field,
     idempotencyKey: `${input.jobId}:${input.pageId}:human:${input.field}:${randomUUID()}`,
   });
   const snapshot = await getQuoteDrawingImportV2JobSnapshot(input.jobId);
@@ -1464,16 +1484,22 @@ export async function saveQuoteDrawingImportV2Classification(input: {
   const page = await findDrawingImportPageForJob(input.jobId, input.pageId);
   if (!page) throw new Error('Drawing page not found.');
   const parsedExtraction = parseJson<DrawingImportPageExtraction | null>(page.finalExtractionJson ?? page.localExtractionJson, null);
-  const extraction = parsedExtraction ? normalizeDrawingImportPageExtraction(parsedExtraction) : null;
+  const extraction = parsedExtraction ? normalizeDrawingImportPageExtraction(parsedExtraction)
+    : input.classification === 'reference' && (page.canonicalPdfStoragePath || page.source.storagePath)
+      ? createFileOnlyDrawingExtraction(input.pageId) : null;
   if (!extraction) throw new Error('This page does not have a reviewable extraction yet.');
   extraction.classification = input.classification;
   extraction.route = 'human';
+  extraction.classificationEvidence = [{
+    sourceType: 'human', sourcePageId: input.pageId, sourceRegion: null, sourceCropId: null,
+    rawText: input.classification, parser: 'quote_review_v2', agreementSignals: [], warnings: [],
+  }];
   await recordHumanDrawingImportCorrection({
     pageId: input.pageId,
     extraction,
+    field: 'classification',
     idempotencyKey: `${input.jobId}:${input.pageId}:human:classification:${randomUUID()}`,
   });
-  await updateDrawingImportPageClassification(input.pageId, input.classification);
   const snapshot = await getQuoteDrawingImportV2JobSnapshot(input.jobId);
   return snapshot.pages.find((candidate) => candidate.pageId === input.pageId)!;
 }

@@ -20,6 +20,7 @@ import {
   getDrawingConfirmationNeeds,
   type DrawingReviewField,
 } from '@/modules/drawing-import/drawing-import.review';
+import { createDrawingImportHandoff } from './drawing-import/drawing-import-handoff';
 
 type MaterialOption = { id: string; name: string };
 
@@ -53,7 +54,7 @@ export function DrawingImportPanel({
   customerName: string;
   draftReference: string;
   materials: MaterialOption[];
-  onContinue: (parts: ReviewedDrawingPart[], orderFiles: ReviewedDrawingPart['source'][]) => void;
+  onContinue: (parts: ReviewedDrawingPart[], orderFiles: ReviewedDrawingPart['source'][]) => void | Promise<void>;
   onSwitchToManual: () => void;
   destinationLabel?: 'order' | 'quote';
 }) {
@@ -73,6 +74,10 @@ export function DrawingImportPanel({
   const [materialConfirmationKey, setMaterialConfirmationKey] = React.useState<string | null>(null);
   const [creatingMaterialKey, setCreatingMaterialKey] = React.useState<string | null>(null);
   const [quantityDraftByPart, setQuantityDraftByPart] = React.useState<Record<string, string>>({});
+  const [transferring, setTransferring] = React.useState(false);
+  const [transferError, setTransferError] = React.useState('');
+  const transferInFlight = React.useRef(false);
+  const handoff = React.useMemo(() => createDrawingImportHandoff<ReviewedDrawingPart, ReviewedDrawingPart['source']>(), []);
 
   const draftContext = React.useMemo(
     () => ({ destination: destinationLabel, business, customerName }),
@@ -184,16 +189,12 @@ export function DrawingImportPanel({
       setSupportingFiles(nextSupportingFiles);
       const initialConfirmed: Record<string, DrawingReviewField[]> = {};
       setReviewed(nextProposals.map((proposal) => {
-        const dimensionProposal = proposal as DrawingImportProposal & {
-          partWidth?: typeof proposal.finalPartLength;
-          partThickness?: typeof proposal.finalPartLength;
-        };
         const materialId = bestMaterialMatch(proposal.material.value, availableMaterials);
         const baseQuantity = proposal.quantity.value || 1;
         const quantity = intakeMode === 'ASSEMBLY' ? baseQuantity * assemblyMultiplier : baseQuantity;
         const finalPartLength = proposal.finalPartLength?.value || '';
-        const partWidth = dimensionProposal.partWidth?.value || '';
-        const partThickness = dimensionProposal.partThickness?.value || '';
+        const partWidth = proposal.partWidth?.value || '';
+        const partThickness = proposal.partThickness?.value || '';
         const derived = deriveDrawingStockDimensions(partThickness, partWidth, finalPartLength, quantity);
         if (derived.cutLength) initialConfirmed[proposal.key] = ['stockSize', 'cutLength'];
         return {
@@ -350,8 +351,25 @@ export function DrawingImportPanel({
     return [...new Map(files.map((file) => [file.storagePath, file])).values()];
   }, [supportingFiles, uploadOnly]);
 
+  async function continueReviewedParts() {
+    if (transferInFlight.current || loading || creatingMaterialKey || incompleteCount > 0 || reviewed.length === 0) return;
+    transferInFlight.current = true;
+    setTransferring(true);
+    setTransferError('');
+    try {
+      // Legacy review stays recoverable even after transfer; the receiving draft owns its saved copy.
+      await handoff.transfer(reviewed, destinationFiles, draftReference, onContinue, () => undefined);
+    } catch (problem) {
+      setTransferError(problem instanceof Error ? problem.message : 'The draft was not saved. Your drawing review is still here; retry Continue.');
+    } finally {
+      transferInFlight.current = false;
+      setTransferring(false);
+    }
+  }
+
   return (
     <Card className="border-primary/30 bg-card/80">
+      <fieldset className="contents" disabled={transferring} aria-busy={transferring}>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -417,6 +435,7 @@ export function DrawingImportPanel({
           <Input type="file" className="sr-only" accept=".pdf,.png,.jpg,.jpeg,.zip" disabled={loading || !intakeMode} onChange={(event) => void handleUpload(event.target.files)} />
         </label>
         {error ? <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p> : null}
+        {transferError ? <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{transferError}</p> : null}
 
         {reviewed.length || uploadOnly.length || supportingFiles.length ? (
           <div className="space-y-4">
@@ -548,9 +567,10 @@ export function DrawingImportPanel({
       </CardContent>
       {reviewed.length || destinationFiles.length ? (
         <CardFooter className="justify-end">
-          <Button type="button" onClick={() => onContinue(reviewed, destinationFiles)} disabled={incompleteCount > 0 || reviewed.length === 0}>Continue with {reviewed.length} part{reviewed.length === 1 ? '' : 's'}{destinationFiles.length ? ` + ${destinationFiles.length} ${destinationLabel} file${destinationFiles.length === 1 ? '' : 's'}` : ''}</Button>
+          <Button type="button" onClick={() => void continueReviewedParts()} disabled={transferring || loading || Boolean(creatingMaterialKey) || incompleteCount > 0 || reviewed.length === 0}>{transferring ? `Saving to ${destinationLabel} draft…` : `Continue with ${reviewed.length} part${reviewed.length === 1 ? '' : 's'}${destinationFiles.length ? ` + ${destinationFiles.length} ${destinationLabel} file${destinationFiles.length === 1 ? '' : 's'}` : ''}`}</Button>
         </CardFooter>
       ) : null}
+      </fieldset>
     </Card>
   );
 }

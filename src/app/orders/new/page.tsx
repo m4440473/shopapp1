@@ -38,7 +38,13 @@ import { createQuoteDrawingImportV2ApiClient } from '@/components/orders/drawing
 import { buildFinishPartNotes } from '@/modules/drawing-import/drawing-import.materials';
 import { clearDrawingImportDraft } from '@/modules/drawing-import/drawing-import.draft';
 import { normalizeOrderQuantityInput } from '@/modules/orders/order-input';
-import { clearIntakeDraft, intakeDraftKey, readIntakeDraft, writeIntakeDraft } from '@/modules/intake-drafts/intake-draft';
+import { intakeDraftKey } from '@/modules/intake-drafts/intake-draft';
+import { useDurableIntakeDraft } from '@/modules/intake-drafts/use-durable-intake-draft';
+import { IntakeDraftStatus } from '@/components/IntakeDraftStatus';
+import { PendingSubmissionRecovery } from '@/components/PendingSubmissionRecovery';
+import { createPendingCreationSubmission, parsePendingCreationSubmission, lookupPendingCreationSubmission, submitPendingCreationSubmission, type PendingCreationSubmission } from '@/modules/submissions/submissions.client';
+import { orderDraftTarget, mergeImportedOrderParts, mergeOrderDraftFiles, orderPartReadiness, orderPartHasInput } from '@/modules/order-intake/order-draft.client';
+import type { ReviewedQuoteDrawingPartV2 } from '@/components/orders/drawing-import/drawing-import-ui.types';
 import { CustomerPartPicker } from '@/components/customer-parts/CustomerPartPicker';
 import type { CustomerPartReusableDraft } from '@/modules/customer-parts/customer-parts.types';
 import {
@@ -47,7 +53,6 @@ import {
   numberFromIntakeDraft as numberFromString,
   type IntakeCustomerOption,
 } from '@/modules/order-intake/order-intake.client';
-import { submitDirectOrder, submitQuoteConversion, submitRepeatOrder } from '@/modules/order-intake/order-submission.client';
 
 const priorities = ['LOW', 'NORMAL', 'RUSH', 'HOT'];
 
@@ -83,46 +88,6 @@ const emptyPart = (): PartInput => ({
 });
 const emptyAttachment = (): AttachmentInput => ({ url: '', storagePath: '', label: '', mimeType: '', uploading: false });
 
-const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result ?? ''));
-  reader.onerror = () => reject(reader.error ?? new Error('Could not read drawing file.'));
-  reader.readAsDataURL(blob);
-});
-
-async function runImportedBomAnalyses({
-  orderId,
-  createdParts,
-  parts,
-}: {
-  orderId: string;
-  createdParts: Array<{ id?: string }>;
-  parts: Array<{ attachments?: Array<{ storagePath?: string; label?: string }> }>;
-}) {
-  const jobs = parts.flatMap((part, index) => {
-    const source = part.attachments?.[0];
-    const partId = createdParts[index]?.id;
-    return source?.storagePath && partId ? [{ source, partId }] : [];
-  });
-  let cursor = 0;
-  async function worker() {
-    while (cursor < jobs.length) {
-      const job = jobs[cursor++];
-      const drawingResponse = await fetch(`/attachments/${job.source.storagePath}`, { credentials: 'include' });
-      if (!drawingResponse.ok) continue;
-      const dataUrl = await blobToDataUrl(await drawingResponse.blob());
-      await fetch('/api/print-analyzer/analyze', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, partId: job.partId, sourceLabel: job.source.label || 'drawing import', dataUrl }),
-      });
-    }
-  }
-  await Promise.all([worker(), worker()]);
-  return jobs.length;
-}
-
 function NewOrderForm() {
   const searchParams = useSearchParams();
   const [customerId, setCustomerId] = React.useState('');
@@ -154,6 +119,7 @@ function NewOrderForm() {
   const [customFields, setCustomFields] = React.useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
   const [loading, setLoading] = React.useState(false);
+  const submissionInFlight = React.useRef(false);
   const [message, setMessage] = React.useState('');
   const [createdOrderId, setCreatedOrderId] = React.useState<string | null>(null);
   const [quotePrefillError, setQuotePrefillError] = React.useState<string | null>(null);
@@ -162,6 +128,13 @@ function NewOrderForm() {
   const [repeatTemplateError, setRepeatTemplateError] = React.useState<string | null>(null);
   const [repeatTemplateLoading, setRepeatTemplateLoading] = React.useState(false);
   const [repeatTemplateRetry, setRepeatTemplateRetry] = React.useState(0);
+  const [quotePrefillRetry, setQuotePrefillRetry] = React.useState(0);
+  const [sourceReadyKey, setSourceReadyKey] = React.useState<string | null>(null);
+  const [pendingSubmission, setPendingSubmission] = React.useState<PendingCreationSubmission | null>(null);
+  const pendingSubmissionRef = React.useRef<PendingCreationSubmission | null>(null);
+  const restoredDraftKey = React.useRef<string | null>(null);
+  const [customFieldsReady, setCustomFieldsReady] = React.useState(false);
+  const [customFieldsError, setCustomFieldsError] = React.useState('');
   const [currentStep, setCurrentStep] = React.useState(0);
   const [partEntryMode, setPartEntryMode] = React.useState<'manual' | 'drawing' | 'existing' | null>(null);
   const [legacyDrawingReader, setLegacyDrawingReader] = React.useState(false);
@@ -171,9 +144,7 @@ function NewOrderForm() {
   const templateMode = Boolean(templateId);
   const conversionMode = !templateMode && Boolean(quoteId);
   const freshOrderMode = !templateMode && !conversionMode;
-  const orderDraftStorageKey = React.useMemo(() => intakeDraftKey('order'), []);
-  const [orderDraftReady, setOrderDraftReady] = React.useState(false);
-  const [orderDraftSavedAt, setOrderDraftSavedAt] = React.useState<number | null>(null);
+  const draftTarget = React.useMemo(() => orderDraftTarget(templateId, conversionMode ? quoteId : null), [templateId, conversionMode, quoteId]);
   const suppressOrderDraft = React.useRef(false);
   const steps = [
     { key: 'info', label: 'Order info' },
@@ -226,11 +197,16 @@ function NewOrderForm() {
       .catch(() => setAddons([]));
   }, []);
 
-  React.useEffect(() => {
-    if (!freshOrderMode) { setOrderDraftReady(true); return; }
-    const saved = readIntakeDraft<any>(window.localStorage, orderDraftStorageKey);
-    if (saved?.data && typeof saved.data === 'object') {
-      const draft = saved.data;
+  const durableDraft = useDurableIntakeDraft<Record<string, unknown>>({
+    kind: 'order', key: draftTarget.key, legacyStorageKey: freshOrderMode ? intakeDraftKey('order') : undefined,
+    onRestore(data) {
+      const draft = data as Record<string, any>;
+      const pending = parsePendingCreationSubmission(draft.pendingSubmission, draftTarget.scope, draftTarget.url);
+      if (draft.pendingSubmission && !pending) throw new Error('The saved submission could not be verified. Keep this draft and request help before creating another order.');
+      restoredDraftKey.current = draftTarget.key;
+      suppressOrderDraft.current = false;
+      pendingSubmissionRef.current = pending;
+      setPendingSubmission(pending);
       if (typeof draft.draftAttachmentReference === 'string' && draft.draftAttachmentReference) setDraftAttachmentReference(draft.draftAttachmentReference);
       if (typeof draft.customerId === 'string') setCustomerId(draft.customerId);
       if (typeof draft.customerContactId === 'string') setCustomerContactId(draft.customerContactId);
@@ -242,39 +218,33 @@ function NewOrderForm() {
       if (typeof draft.dueDate === 'string') setDueDate(draft.dueDate);
       if (priorities.includes(draft.priority)) setPriority(draft.priority);
       if (BUSINESS_OPTIONS.some((option) => option.code === draft.business)) setBusiness(draft.business);
-      if (Array.isArray(draft.parts) && draft.parts.length) setParts(draft.parts);
+      if (Array.isArray(draft.parts)) setParts(draft.parts);
       if (Array.isArray(draft.partPricing)) setPartPricing(draft.partPricing);
       if (typeof draft.activePartKey === 'string') setActivePartKey(draft.activePartKey);
       if (Array.isArray(draft.attachments)) setAttachments(draft.attachments.map((attachment: AttachmentInput) => ({ ...attachment, uploading: false })));
-      if (typeof draft.attachmentBusiness === 'string') setAttachmentBusiness(draft.attachmentBusiness);
+      if (BUSINESS_OPTIONS.some((option) => option.name === draft.attachmentBusiness)) setAttachmentBusiness(draft.attachmentBusiness as BusinessName);
       setMaterialNeeded(Boolean(draft.materialNeeded)); setMaterialOrdered(Boolean(draft.materialOrdered)); setModelIncluded(Boolean(draft.modelIncluded));
       if (typeof draft.notes === 'string') setNotes(draft.notes);
       if (draft.customFieldValues && typeof draft.customFieldValues === 'object') setCustomFieldValues(draft.customFieldValues);
       if (Number.isInteger(draft.currentStep)) setCurrentStep(Math.max(0, Math.min(2, draft.currentStep)));
       if (draft.partEntryMode === 'manual' || draft.partEntryMode === 'drawing' || draft.partEntryMode === 'existing') setPartEntryMode(draft.partEntryMode);
-      setOrderDraftSavedAt(saved.updatedAt);
-      setMessage('Recovered your autosaved order draft.');
-    }
-    setOrderDraftReady(true);
-  // Restore once before autosave begins.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [freshOrderMode, orderDraftStorageKey]);
+      setMessage(pending ? 'Recovered your saved submission. Check its result before making changes.' : 'Recovered your saved order draft.');
+    },
+  });
 
+  const prefillReady = freshOrderMode || sourceReadyKey === draftTarget.key;
+  const draftData = React.useMemo(() => ({
+    draftAttachmentReference, customerId, customerContactId, vendorId, poNumber, assignedMachinistId, assignedWorkerIds,
+    selectedAddonIds, dueDate, priority, business, parts, partPricing, activePartKey,
+    attachments: attachments.map((attachment) => ({ ...attachment, uploading: false })), attachmentBusiness,
+    materialNeeded, materialOrdered, modelIncluded, notes, customFieldValues, currentStep, partEntryMode, pendingSubmission,
+  }), [activePartKey, assignedMachinistId, assignedWorkerIds, attachmentBusiness, attachments, business, currentStep, customFieldValues, customerContactId, customerId, draftAttachmentReference, dueDate, materialNeeded, materialOrdered, modelIncluded, notes, partEntryMode, partPricing, parts, pendingSubmission, poNumber, priority, selectedAddonIds, vendorId]);
+
+  const { ready: draftReady, legacyAvailable, schedule: scheduleDraft } = durableDraft;
   React.useEffect(() => {
-    if (!freshOrderMode || !orderDraftReady || suppressOrderDraft.current) return;
-    const timer = window.setTimeout(() => {
-      try {
-        const savedAt = writeIntakeDraft(window.localStorage, orderDraftStorageKey, {
-          draftAttachmentReference, customerId, customerContactId, vendorId, poNumber, assignedMachinistId, assignedWorkerIds,
-          selectedAddonIds, dueDate, priority, business, parts, partPricing, activePartKey,
-          attachments: attachments.map((attachment) => ({ ...attachment, uploading: false })), attachmentBusiness,
-          materialNeeded, materialOrdered, modelIncluded, notes, customFieldValues, currentStep, partEntryMode,
-        });
-        setOrderDraftSavedAt(savedAt);
-      } catch { /* Browser storage can be unavailable; server submission remains authoritative. */ }
-    }, 800);
-    return () => window.clearTimeout(timer);
-  }, [activePartKey, assignedMachinistId, assignedWorkerIds, attachmentBusiness, attachments, business, currentStep, customFieldValues, customerContactId, customerId, draftAttachmentReference, dueDate, freshOrderMode, materialNeeded, materialOrdered, modelIncluded, notes, orderDraftReady, orderDraftStorageKey, partEntryMode, partPricing, parts, poNumber, priority, selectedAddonIds, vendorId]);
+    if (!draftReady || legacyAvailable || !prefillReady || suppressOrderDraft.current || submissionInFlight.current || pendingSubmissionRef.current) return;
+    scheduleDraft(draftData);
+  }, [draftData, draftReady, legacyAvailable, scheduleDraft, prefillReady]);
 
   React.useEffect(() => {
     const option = getBusinessOptionByCode(business);
@@ -284,15 +254,19 @@ function NewOrderForm() {
   }, [business]);
 
   React.useEffect(() => {
+    let active = true;
+    setCustomFieldsReady(false);
+    setCustomFieldsError('');
     fetch(`/api/custom-fields?entityType=ORDER&businessCode=${business}&isActive=true`, {
       credentials: 'include',
     })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
+        if (!active) return;
         const nextFields = data.items ?? [];
         setCustomFields(nextFields);
         setCustomFieldValues((prev) => {
-          const next: Record<string, unknown> = {};
+          const next: Record<string, unknown> = { ...prev };
           nextFields.forEach((field: CustomFieldDefinition) => {
             if (prev[field.id] !== undefined) next[field.id] = prev[field.id];
             else if (field.defaultValue !== undefined) next[field.id] = field.defaultValue;
@@ -300,7 +274,9 @@ function NewOrderForm() {
           return next;
         });
       })
-      .catch(() => setCustomFields([]));
+      .catch(() => { if (active) setCustomFieldsError('Required order fields could not load. Refresh to retry; your saved draft will be kept.'); })
+      .finally(() => { if (active) setCustomFieldsReady(true); });
+    return () => { active = false; };
   }, [business]);
 
   React.useEffect(() => {
@@ -310,12 +286,16 @@ function NewOrderForm() {
       setRepeatTemplateLoading(false);
       return;
     }
+    if (!durableDraft.ready || durableDraft.legacyAvailable) return;
     setRepeatTemplateLoading(true);
     setRepeatTemplateError(null);
     const controller = new AbortController();
     loadRepeatOrderTemplate(templateId, controller.signal)
       .then((template) => {
+        if (controller.signal.aborted) return;
         setRepeatTemplate(template);
+        setSourceReadyKey(draftTarget.key);
+        if (restoredDraftKey.current === draftTarget.key) return;
         setBusiness(template.business as BusinessCode);
         setCustomerId(template.customerId ?? '');
         setVendorId(template.vendorId ?? '');
@@ -361,14 +341,18 @@ function NewOrderForm() {
       })
       .finally(() => { if (!controller.signal.aborted) setRepeatTemplateLoading(false); });
     return () => controller.abort();
-  }, [templateId, repeatTemplateRetry]);
+  }, [templateId, repeatTemplateRetry, durableDraft.ready, durableDraft.legacyAvailable, draftTarget.key]);
 
   React.useEffect(() => {
-    if (templateMode || !quoteId) return;
+    if (templateMode || !quoteId || !durableDraft.ready || durableDraft.legacyAvailable) return;
+    let active = true;
     setQuotePrefillLoading(true);
     setQuotePrefillError(null);
     loadQuoteForOrder(quoteId)
       .then((quote) => {
+        if (!active) return;
+        setSourceReadyKey(draftTarget.key);
+        if (restoredDraftKey.current === draftTarget.key) return;
         const prefill = mapQuoteToOrderPrefill(quote, createKey);
         setBusiness(prefill.business as BusinessCode);
         setCustomerId(prefill.customerId);
@@ -387,10 +371,11 @@ function NewOrderForm() {
         setNotes((prev) => prev || prefill.note);
       })
       .catch(() => {
-        setQuotePrefillError('Unable to prefill from quote. You can still create the order manually.');
+        if (active) setQuotePrefillError('The quote could not load. Retry the quote before creating this order; your saved entries are kept.');
       })
-      .finally(() => setQuotePrefillLoading(false));
-  }, [quoteId, templateMode]);
+      .finally(() => { if (active) setQuotePrefillLoading(false); });
+    return () => { active = false; };
+  }, [quoteId, templateMode, quotePrefillRetry, durableDraft.ready, durableDraft.legacyAvailable, draftTarget.key]);
 
   React.useEffect(() => {
     if (!parts.length) return;
@@ -399,7 +384,7 @@ function NewOrderForm() {
   }, [activePartKey, parts]);
 
   React.useEffect(() => {
-    if (!conversionMode || !quoteId) return;
+    if (!conversionMode || !quoteId || !prefillReady || restoredDraftKey.current === draftTarget.key || pendingSubmissionRef.current) return;
     let active = true;
     fetch(`/api/admin/quotes/${quoteId}/detect-po`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
@@ -412,7 +397,7 @@ function NewOrderForm() {
     return () => {
       active = false;
     };
-  }, [conversionMode, quoteId]);
+  }, [conversionMode, quoteId, prefillReady, draftTarget.key]);
 
   React.useEffect(() => {
     setPartPricing((prev) => {
@@ -507,7 +492,16 @@ function NewOrderForm() {
   const totalEstimateCents = addonLaborSubtotalCents + partPricingTotalCents;
 
   function updatePart(key: string, patch: Partial<PartInput>) {
-    setParts((prev) => prev.map((part) => (part.key === key ? { ...part, ...patch } : part)));
+    setParts((prev) => prev.map((part) => {
+      if (part.key !== key) return part;
+      const resolved = new Set([
+        ...(patch.materialId?.trim() ? ['material'] : []),
+        ...(patch.finalPartLength?.trim() ? ['finalLength'] : []),
+        ...(patch.partWidth?.trim() ? ['partWidth'] : []),
+        ...(patch.partThickness?.trim() ? ['partThickness'] : []),
+      ]);
+      return { ...part, ...patch, unresolvedFields: part.unresolvedFields?.filter((field) => !resolved.has(field)) };
+    }));
   }
 
   function addAddonSelection(partKey: string, addonId: string) {
@@ -586,10 +580,14 @@ function NewOrderForm() {
     return material;
   }
 
-  function useImportedDrawingParts(importedParts: ReviewedDrawingPart[], orderFiles: ReviewedDrawingPart['source'][]) {
+  async function applyImportedDrawingParts(importedParts: (ReviewedDrawingPart | ReviewedQuoteDrawingPartV2)[], orderFiles: ReviewedDrawingPart['source'][]) {
+    if (!durableDraft.ready || durableDraft.editingBlocked || pendingSubmissionRef.current || submissionInFlight.current) throw new Error('Wait for the saved draft before transferring these drawings.');
     const nextParts: PartInput[] = importedParts.map((part) => ({
       ...emptyPart(),
       key: part.key,
+      drawingImportPageId: 'importPageId' in part ? part.importPageId : undefined,
+      unresolvedFields: 'unresolvedFields' in part ? part.unresolvedFields : undefined,
+      reviewWarnings: 'reviewWarnings' in part ? part.reviewWarnings : undefined,
       partNumber: part.partNumber,
       partName: part.partName,
       quantity: String(part.quantity),
@@ -611,25 +609,31 @@ function NewOrderForm() {
         mimeType: part.source.mimeType,
       }],
     }));
-    const existingParts = parts.filter((part) => part.partNumber.trim() || part.attachments.length > 0);
-    const combinedParts = [...existingParts, ...nextParts];
-    setParts(combinedParts.length ? combinedParts : [emptyPart()]);
-    if (orderFiles.length) {
-      setAttachments((current) => {
-        const existing = current.filter((attachment) => attachment.url.trim() || attachment.storagePath.trim());
-        const imported = orderFiles.map((source) => ({
+    const existingParts = parts.filter(orderPartHasInput);
+    const combinedParts = nextParts.length ? mergeImportedOrderParts(existingParts, nextParts) : parts;
+    const combinedFiles = mergeOrderDraftFiles(attachments, orderFiles.map((source) => ({
           url: '',
           storagePath: source.storagePath,
           label: source.label,
           mimeType: source.mimeType,
           uploading: false,
-        }));
-        return [...existing, ...imported];
-      });
+    })));
+    const nextActive = nextParts[0]?.key ?? activePartKey;
+    const candidate = { ...draftData, parts: combinedParts, attachments: combinedFiles, activePartKey: nextActive, partEntryMode: 'manual' };
+    submissionInFlight.current = true;
+    setLoading(true);
+    try {
+      // Suppress parent autosave and edits until the acknowledged snapshot becomes visible.
+      if (!await durableDraft.flush(candidate)) throw new Error('The order draft could not be saved. Your drawing review is kept here; retry the transfer.');
+      setParts(combinedParts);
+      setAttachments(combinedFiles);
+      setActivePartKey(nextActive);
+      setPartEntryMode('manual');
+      setMessage(`${nextParts.length} part drawing${nextParts.length === 1 ? '' : 's'} saved to the draft${orderFiles.length ? `; ${orderFiles.length} supporting file${orderFiles.length === 1 ? '' : 's'} kept with the order` : ''}. Review the parts below, then continue.`);
+    } finally {
+      submissionInFlight.current = false;
+      setLoading(false);
     }
-    setActivePartKey(nextParts[0]?.key ?? '');
-    setPartEntryMode('manual');
-    setMessage(`${nextParts.length} part drawing${nextParts.length === 1 ? '' : 's'} added${orderFiles.length ? `; ${orderFiles.length} assembly drawing${orderFiles.length === 1 ? '' : 's'} kept with the order files` : ''}. Review the parts below, then continue.`);
   }
 
   function addPreexistingOrderParts(drafts: CustomerPartReusableDraft[]) {
@@ -662,7 +666,7 @@ function NewOrderForm() {
     }));
     if (!nextParts.length) return;
     setParts((current) => {
-      const retained = current.filter((part) => part.partNumber.trim() || part.attachments.length);
+      const retained = current.filter(orderPartHasInput);
       return [...retained, ...nextParts];
     });
     setActivePartKey(nextParts[0].key);
@@ -776,15 +780,25 @@ function NewOrderForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submissionInFlight.current) return;
+    submissionInFlight.current = true;
     setLoading(true);
+    try {
+      await submitOrder();
+    } catch {
+      setMessage('ShopApp could not confirm whether the order was created. Check Orders before trying again. Your entries have been kept.');
+    } finally {
+      submissionInFlight.current = false;
+      setLoading(false);
+    }
+  }
+
+  async function submitOrder() {
     setMessage('');
     setCreatedOrderId(null);
-    if (templateMode && !repeatTemplate) {
-      setMessage('Retry the repeat template before creating this order.');
-      setCurrentStep(0);
-      setLoading(false);
-      return;
-    }
+    if (pendingSubmissionRef.current) { setMessage('Check or retry your saved submission below.'); return; }
+    if (!durableDraft.ready || durableDraft.legacyAvailable || !prefillReady || suppressOrderDraft.current) { setMessage('Wait for the saved draft and order source to load, or finish discarding this draft.'); return; }
+    if (!validateStep(2)) return;
 
     const cleanedParts = parts
       .map((part) => ({
@@ -900,112 +914,116 @@ function NewOrderForm() {
         .filter((entry) => hasCustomFieldValue(entry.value)),
     } as any;
 
-    if (templateMode && templateId) {
-      const result = await submitRepeatOrder(templateId, {
-          customerId: resolvedCustomerId,
-          dueDate: resolvedDueDate,
-          priority,
-          vendorId: vendorId || undefined,
-          poNumber: poNumber || undefined,
-          assignedMachinistId: assignedMachinistId || undefined,
-          materialNeeded,
-          materialOrdered,
-          modelIncluded,
-          notes: notes.trim() || undefined,
-          parts: cleanedTemplateParts,
-      });
-      if (result.ok) {
-        const newId = result.orderId;
-        setMessage('Repeat order created.');
-        setCreatedOrderId(newId);
-        if (newId) {
-          router.push(`/orders/${newId}`);
-        }
-      } else if ('error' in result) {
-        setMessage(result.error);
-        setCreatedOrderId(null);
-      }
-      setLoading(false);
+    const payload = templateMode ? {
+      customerId: resolvedCustomerId, dueDate: resolvedDueDate, priority,
+      vendorId: vendorId || undefined, poNumber: poNumber || undefined,
+      assignedMachinistId: assignedMachinistId || undefined, materialNeeded, materialOrdered, modelIncluded,
+      notes: notes.trim() || undefined, parts: cleanedTemplateParts,
+    } : conversionMode ? {
+      dueDate: resolvedDueDate, priority, vendorId: vendorId || undefined, poNumber: poNumber || undefined,
+      assignedMachinistId: assignedMachinistId || undefined, assignedWorkerIds, materialNeeded, materialOrdered,
+      modelIncluded, parts: cleanedParts, notes: notes.trim() || undefined, customFieldValues: body.customFieldValues,
+    } : body;
+    const pending = createPendingCreationSubmission(draftTarget.scope, draftTarget.url, payload);
+    pendingSubmissionRef.current = pending;
+    setPendingSubmission(pending);
+    if (!await durableDraft.flush({ ...draftData, pendingSubmission: pending })) {
+      setMessage('Your submission has not been sent because the draft could not be saved. Retry the saved submission after the save issue is resolved.');
       return;
     }
+    await completeSavedSubmission(pending, false);
+  }
 
-    if (conversionMode && quoteId) {
-      const result = await submitQuoteConversion(quoteId, {
-          dueDate: resolvedDueDate,
-          priority,
-          vendorId: vendorId || undefined,
-          poNumber: poNumber || undefined,
-          assignedMachinistId: assignedMachinistId || undefined,
-          assignedWorkerIds,
-          materialNeeded,
-          materialOrdered,
-          modelIncluded,
-          parts: cleanedParts,
-          notes: notes.trim() || undefined,
-          customFieldValues: customFields
-            .map((field) => ({ fieldId: field.id, value: customFieldValues[field.id] }))
-            .filter((entry) => hasCustomFieldValue(entry.value)),
-      });
-      if (result.ok) {
-        const newId = result.orderId;
-        setMessage('Order created from quote!');
-        setCreatedOrderId(newId);
-        if (newId) {
-          router.push(`/orders/${newId}`);
-        }
-      } else if ('error' in result) {
-        setMessage(result.error);
-        setCreatedOrderId(null);
-      }
-      setLoading(false);
-      return;
-    }
-
-    const result = await submitDirectOrder(body);
-    if (result.ok) {
-      const newId = result.orderId;
-      const createdParts = result.parts;
-      const importedCount = cleanedParts.filter((part) => part.attachments.length > 0).length;
-      setMessage(importedCount ? `Order created. Starting BOM analysis for ${importedCount} drawing${importedCount === 1 ? '' : 's'}…` : 'Order created! Choose what to do next.');
-      setCreatedOrderId(newId);
-      if (!newId) {
-        router.push('/');
-      } else if (importedCount) {
-        void runImportedBomAnalyses({ orderId: newId, createdParts, parts: cleanedParts })
-          .then((count) => setMessage(`Order created. BOM analysis finished for ${count} drawing${count === 1 ? '' : 's'}.`))
-          .catch(() => setMessage('Order created. One or more BOM analyses need to be retried from the order page.'));
-      }
-      clearDrawingImportDraft(window.localStorage, {
-        destination: 'order',
-        business: attachmentBusiness,
-        customerName: customers.find((customer) => customer.id === customerId)?.name ?? '',
-      });
+  async function completeSavedSubmission(pending: PendingCreationSubmission, checkOnly: boolean) {
+    const result = checkOnly ? await lookupPendingCreationSubmission(pending) : await submitPendingCreationSubmission(pending);
+    if (result.state === 'created') {
       suppressOrderDraft.current = true;
-      clearIntakeDraft(window.localStorage, orderDraftStorageKey);
-      setOrderDraftSavedAt(null);
-      setCustomerId('');
-      setCustomerContactId('');
-      setVendorId('');
-      setPoNumber('');
-      setDueDate('');
-      setPriority('NORMAL');
-      setBusiness(DEFAULT_BUSINESS_CODE);
-      setAssignedMachinistId('');
-      setAssignedWorkerIds([]);
-      setParts([emptyPart()]);
-      setAttachments([emptyAttachment()]);
-      setAttachmentBusiness(DEFAULT_BUSINESS_NAME);
-      setSelectedAddonIds([]);
-      setMaterialNeeded(false);
-      setMaterialOrdered(false);
-      setModelIncluded(false);
-      setNotes('');
-      setCustomFieldValues({});
-    } else if ('error' in result) {
-      setMessage(result.error);
-      setCreatedOrderId(null);
+      setCreatedOrderId(result.id);
+      if (!await durableDraft.clear()) {
+        setMessage('Order created, but its draft cleanup could not be confirmed. Check the saved submission again to finish safely.');
+        return;
+      }
+      try {
+        clearDrawingImportDraft(window.localStorage, {
+          destination: 'order', business: attachmentBusiness,
+          customerName: customers.find((customer) => customer.id === customerId)?.name ?? '',
+        });
+      } catch { /* The server acknowledgment is authoritative even if browser storage is unavailable. */ }
+      setMessage('Order created. Opening the order…');
+      router.push(`/orders/${result.id}`);
+      return;
     }
-    setLoading(false);
+    if (result.state === 'rejected') {
+      if (!await durableDraft.flush({ ...draftData, pendingSubmission: null })) {
+        setMessage(`${result.error} The pending request could not be cleared from the saved draft. Keep this page and retry after the save issue is resolved.`);
+        return;
+      }
+      pendingSubmissionRef.current = null;
+      setPendingSubmission(null);
+    }
+    setMessage(result.error);
+  }
+
+  async function recoverSubmission(checkOnly: boolean) {
+    const pending = pendingSubmissionRef.current;
+    if (!pending || submissionInFlight.current) return;
+    submissionInFlight.current = true;
+    setLoading(true);
+    try {
+      // A result lookup is always allowed, including after successful creation with failed draft cleanup.
+      if (!checkOnly && !await durableDraft.flush({ ...draftData, pendingSubmission: pending })) {
+        setMessage('The saved request could not be persisted. Check its result, or resolve the draft save issue before retrying.');
+        return;
+      }
+      await completeSavedSubmission(pending, checkOnly);
+    } catch {
+      setMessage('The result could not be confirmed. Your exact saved submission is kept; use Check saved submission or Retry saved submission.');
+    } finally {
+      submissionInFlight.current = false;
+      setLoading(false);
+    }
+  }
+
+  function validateStep(throughStep: number) {
+    if (templateMode && !repeatTemplate) { setMessage('Retry the repeat template before continuing.'); setCurrentStep(0); return false; }
+    if (quotePrefillError || repeatTemplateError || !prefillReady) { setMessage('Wait for the source to load, or retry it above. Your draft is kept.'); setCurrentStep(0); return false; }
+    if (!resolveRepeatOrderCustomer(customerId, templateMode ? repeatTemplate?.customerId : null)) { setMessage('Choose a customer before continuing.'); setCurrentStep(0); return false; }
+    if (!templateMode && (!customFieldsReady || customFieldsError)) { setMessage(customFieldsError || 'Wait for the required order fields to load.'); setCurrentStep(0); return false; }
+    const missing = templateMode ? [] : customFields.filter((field) => field.isRequired && !hasCustomFieldValue(customFieldValues[field.id]));
+    if (missing.length) { setMessage(`Fill in required custom fields: ${missing.map((field) => field.name).join(', ')}.`); setCurrentStep(0); return false; }
+    if (throughStep >= 1) {
+      const problem = orderPartReadiness(parts);
+      if (problem) { setMessage(problem.message); setCurrentStep(1); if (problem.partKey) setActivePartKey(problem.partKey); return false; }
+    }
+    if (attachments.some((attachment) => attachment.uploading)) { setMessage('Wait for attachment uploads to finish before continuing.'); return false; }
+    return true;
+  }
+
+  function selectStep(next: number) {
+    if (loading || durableDraft.editingBlocked || pendingSubmissionRef.current || !durableDraft.ready || durableDraft.legacyAvailable || !prefillReady) return;
+    if (next > currentStep && !validateStep(next - 1)) return;
+    setMessage('');
+    setCurrentStep(next);
+  }
+
+  async function discardDraft() {
+    if (pendingSubmissionRef.current || submissionInFlight.current) return;
+    suppressOrderDraft.current = true;
+    if (await durableDraft.clear()) window.location.reload();
+    else setMessage('The draft was kept because the server could not confirm deletion. Retry discarding when connected.');
+  }
+
+  async function cancelOrderEntry() {
+    if (submissionInFlight.current || pendingSubmissionRef.current) return;
+    submissionInFlight.current = true;
+    setLoading(true);
+    try {
+      if (await durableDraft.flush(draftData)) router.push('/');
+      else setMessage('Your draft could not be saved. Stay here and retry saving before leaving.');
+    } finally {
+      submissionInFlight.current = false;
+      setLoading(false);
+    }
   }
 
   async function createCustomer(payload: NewOrderCustomerInput) {
@@ -1039,12 +1057,9 @@ function NewOrderForm() {
             ? 'We prefill everything we can from the quote. Review the details and supply the missing order info before creating it.'
             : 'Order numbers are generated for you, starting at 1001. Gather every part, attachment, and add-on service before the job hits the floor.'}
         </p>
-        {freshOrderMode && orderDraftSavedAt ? (
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-            <span>Autosaved {new Date(orderDraftSavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
-            <Button type="button" size="sm" variant="ghost" onClick={() => { clearIntakeDraft(window.localStorage, orderDraftStorageKey); window.location.reload(); }}>Discard autosaved draft</Button>
-          </div>
-        ) : null}
+        <IntakeDraftStatus draft={durableDraft} disabled={loading} onDiscard={!pendingSubmission && !createdOrderId ? () => void discardDraft() : undefined} />
+        {pendingSubmission && <PendingSubmissionRecovery busy={loading} onCheck={() => void recoverSubmission(true)} onRetry={() => void recoverSubmission(false)} />}
+        {message && <p role="alert" className="text-sm text-foreground">{message}</p>}
         {templateMode && repeatTemplate && (
           <p className="text-sm text-muted-foreground">
             Template: <code className="rounded bg-muted px-1 py-0.5 text-xs">{repeatTemplate.name}</code>
@@ -1098,17 +1113,18 @@ function NewOrderForm() {
         {quotePrefillLoading && conversionMode && (
           <p className="text-sm text-muted-foreground">Prefilling from quote…</p>
         )}
-        {quotePrefillError && <p className="text-sm text-destructive">{quotePrefillError}</p>}
+        {quotePrefillError && <div className="flex items-center gap-3"><p className="text-sm text-destructive">{quotePrefillError}</p><Button type="button" size="sm" variant="outline" onClick={() => setQuotePrefillRetry((value) => value + 1)}>Retry quote</Button></div>}
       </div>
 
       <NewOrderWizardProgress
         steps={steps}
         currentStep={currentStep}
-        disabled={templateMode && !repeatTemplate}
-        onSelect={setCurrentStep}
+        disabled={loading || durableDraft.editingBlocked || Boolean(pendingSubmission) || !durableDraft.ready || !prefillReady || durableDraft.legacyAvailable}
+        onSelect={selectStep}
       />
 
       <form className="flex flex-col gap-8" onSubmit={handleSubmit}>
+        <fieldset className="contents" disabled={loading || durableDraft.editingBlocked || Boolean(pendingSubmission) || !durableDraft.ready || durableDraft.legacyAvailable || !prefillReady}>
         {currentStep === 0 && (
           <NewOrderInfoCards
             header={{ business, customerId, customerContactId, dueDate, priority, assignedMachinistId, assignedWorkerIds, poNumber }}
@@ -1165,8 +1181,8 @@ function NewOrderForm() {
             customerName={customers.find((customer) => customer.id === customerId)?.name ?? ''}
             draftReference={draftAttachmentReference}
             materials={materials}
-            onContinueLegacy={useImportedDrawingParts}
-            onContinueV2={useImportedDrawingParts}
+            onContinueLegacy={applyImportedDrawingParts}
+            onContinueV2={applyImportedDrawingParts}
             onSwitchToLegacy={() => setLegacyDrawingReader(true)}
             onSwitchToManual={() => setPartEntryMode('manual')}
             onCreateMaterial={createDrawingMaterial}
@@ -1246,6 +1262,7 @@ function NewOrderForm() {
               onViewOrder={() => createdOrderId && router.push(`/orders/${createdOrderId}`)}
               onPrintOrder={handlePrintNewOrder}
               onBackToOrders={() => router.push('/')}
+              onCancel={() => void cancelOrderEntry()}
             />
           </>
         )}
@@ -1254,9 +1271,10 @@ function NewOrderForm() {
           currentStep={currentStep}
           stepCount={steps.length}
           nextDisabled={(templateMode && !repeatTemplate) || (currentStep === 1 && !templateMode && !conversionMode && partEntryMode !== 'manual')}
-          onBack={() => setCurrentStep((previous) => Math.max(previous - 1, 0))}
-          onNext={() => setCurrentStep((previous) => Math.min(previous + 1, steps.length - 1))}
+          onBack={() => selectStep(Math.max(currentStep - 1, 0))}
+          onNext={() => selectStep(Math.min(currentStep + 1, steps.length - 1))}
         />
+        </fieldset>
       </form>
     </div>
   );
@@ -1265,8 +1283,13 @@ function NewOrderForm() {
 export default function NewOrderPage() {
   return (
     <React.Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading order form…</div>}>
-      <NewOrderForm />
+      <NewOrderRoute />
     </React.Suspense>
   );
+}
+
+function NewOrderRoute() {
+  const params = useSearchParams();
+  return <NewOrderForm key={orderDraftTarget(params.get('templateId'), params.get('quoteId')).key} />;
 }
 

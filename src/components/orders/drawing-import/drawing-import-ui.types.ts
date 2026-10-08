@@ -44,6 +44,7 @@ export type DrawingImportJobSnapshot = {
 
 export type DrawingImportReviewState = DrawingImportJobSnapshot & {
   dirtyFieldsByPage: Record<string, DrawingImportFieldName[]>;
+  savedClassificationsByPage: Record<string, DrawingImportPageClassification>;
 };
 
 export type DrawingImportReviewFilter =
@@ -123,5 +124,12 @@ export type ReviewedQuoteDrawingPartV2 = {
   drawingMaterialText: string;
   drawingFinishText: string;
   noteSuggestions: CustomerPartNoteSuggestion[];
+  /** Unresolved drawing facts are retained with an incomplete draft, never auto-confirmed. */
+  unresolvedFields?: DrawingImportFieldName[];
+  reviewWarnings?: string[];
   source: DrawingImportReviewFile;
 };
+
+export type ContinueDrawingImport = (
+  parts: ReviewedQuoteDrawingPartV2[], files: DrawingImportReviewFile[], jobId: string,
+) => void | Promise<void>;

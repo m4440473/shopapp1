@@ -79,7 +79,7 @@ export function DrawingImportFieldEditor({
     <div className="space-y-1.5">
       <div className="flex min-h-5 flex-wrap items-center justify-between gap-2">
         <Label htmlFor={inputId} className="text-sm font-medium">{label}{dimensionUnit ? ` (${dimensionUnit})` : ''}</Label>
-        {dirty ? <span className="text-xs text-muted-foreground">Saving…</span> : null}
+        {dirty ? <span className="text-xs text-muted-foreground">Unsaved change</span> : null}
       </div>
       {typeof value.value === 'boolean' || field === 'assemblyStatus' ? (
         <div className="flex flex-wrap gap-2" role="group" aria-label={label}>
@@ -129,7 +129,7 @@ export function DrawingImportFieldEditor({
           }}
           onFocus={(event) => { if (field === 'drawingQuantity') event.currentTarget.select(); }}
           onBlur={() => {
-            if (shouldCommitDrawingImportFieldOnBlur(dirty)) onCommit();
+            if (shouldCommitDrawingImportFieldOnBlur(dirty) && !invalidDimension) onCommit();
             if (!invalidDimension) setDimensionDraft(null);
           }}
           aria-invalid={needsAttention || invalidDimension}

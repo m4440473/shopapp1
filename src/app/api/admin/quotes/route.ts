@@ -9,14 +9,9 @@ import { canAccessAdmin } from '@/lib/rbac';
 import { ListQuery } from '@/lib/zod';
 import { QuoteCreate } from '@/modules/quotes/quotes.schema';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
-import { hasCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
-import { resolveCustomerContactSnapshot } from '@/modules/customers/customers.service';
-import {
-  createQuoteWithDetails,
-  findActiveQuoteCustomFields,
-  listQuotes,
-  prepareQuoteComponents,
-} from '@/modules/quotes/quotes.service';
+import { createQuoteFromPayload } from '@/modules/quotes/quotes.create.service';
+import { listQuotes } from '@/modules/quotes/quotes.service';
+import { submissionIdentity, SubmissionError } from '@/modules/submissions/submissions.service';
 
 async function getSessionWithRole() {
   const session = await getServerAuthSession();
@@ -95,73 +90,18 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
-  const session = guard.session;
-
-  const body = await req.json();
-  const parsed = QuoteCreate.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
-  }
-
-  let data = parsed.data;
-  if (data.customerContactId) {
-    if (!data.customerId) {
-      return NextResponse.json({ error: 'Select a customer before selecting a contact.' }, { status: 400 });
-    }
-    try {
-      const snapshot = await resolveCustomerContactSnapshot(data.customerId, data.customerContactId);
-      data = { ...data, ...snapshot };
-    } catch (error) {
-      return NextResponse.json(
-        { error: error instanceof Error ? error.message : 'Invalid customer contact.' },
-        { status: 400 },
-      );
-    }
-  }
-  const userId = (session.user as any)?.id;
-  if (!userId) {
-    return NextResponse.json({ error: 'Unable to determine current user' }, { status: 400 });
-  }
-
-  let prepared;
+  const userId = (guard.session.user as { id?: string })?.id;
+  if (!userId) return NextResponse.json({ error: 'Unable to determine current user' }, { status: 401 });
+  const parsed = QuoteCreate.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   try {
-    prepared = await prepareQuoteComponents(data);
-  } catch (error: any) {
-    const message = typeof error?.message === 'string' ? error.message : 'Failed to prepare quote';
-    return NextResponse.json({ error: message }, { status: 400 });
+    const submission = submissionIdentity({ actorId: userId, scope: 'quote:create', clientKey: req.headers.get('Idempotency-Key'), payload: parsed.data });
+    const created = await createQuoteFromPayload(parsed.data, userId, submission);
+    if (!created) throw new Error('Unable to create quote.');
+    return NextResponse.json({ ok: true, item: { ...created, metadata: parseQuoteMetadata(created.metadata) ?? null } });
+  } catch (error) {
+    if (error instanceof SubmissionError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    console.error('Quote submission failed', error);
+    return NextResponse.json({ error: 'Unable to confirm quote creation. Retry the saved submission.' }, { status: 503 });
   }
-
-  const customFieldValues = data.customFieldValues ?? [];
-  const validCustomFieldValues = customFieldValues.length
-    ? await findActiveQuoteCustomFields({
-        fieldIds: customFieldValues.map((value) => value.fieldId),
-        business: data.business,
-      })
-    : [];
-  const allowedFieldIds = new Set(validCustomFieldValues.map((field) => field.id));
-  const normalizedCustomFieldValues = customFieldValues
-    .filter((value) => allowedFieldIds.has(value.fieldId) && hasCustomFieldValue(value.value))
-    .map((value) => ({
-      fieldId: value.fieldId,
-      value: serializeCustomFieldValue(value.value),
-    }))
-    .filter((value) => value.value !== null);
-
-  const created = await createQuoteWithDetails({
-    data,
-    prepared,
-    normalizedCustomFieldValues,
-    userId,
-  });
-
-  if (!created) {
-    return NextResponse.json({ error: 'Unable to create quote' }, { status: 500 });
-  }
-
-  const normalized = {
-    ...created,
-    metadata: parseQuoteMetadata(created.metadata) ?? null,
-  };
-
-  return NextResponse.json({ ok: true, item: normalized });
 }

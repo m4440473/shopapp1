@@ -17,8 +17,8 @@ type NewOrderDrawingEntryPanelProps = {
   customerName: string;
   draftReference: string;
   materials: MaterialOption[];
-  onContinueLegacy: (parts: ReviewedDrawingPart[], files: ReviewedDrawingPart['source'][]) => void;
-  onContinueV2: (parts: ReviewedQuoteDrawingPartV2[], files: DrawingImportReviewFile[]) => void;
+  onContinueLegacy: (parts: ReviewedDrawingPart[], files: ReviewedDrawingPart['source'][]) => void | Promise<void>;
+  onContinueV2: (parts: ReviewedQuoteDrawingPartV2[], files: DrawingImportReviewFile[], jobId: string) => void | Promise<void>;
   onSwitchToLegacy: () => void;
   onSwitchToManual: () => void;
   onCreateMaterial: (name: string) => Promise<MaterialOption>;

@@ -132,7 +132,7 @@ export const QuoteCreate = z.object({
     .optional(),
 });
 
-export const QuoteUpdate = QuoteCreate;
+export const QuoteUpdate = QuoteCreate.extend({ expectedUpdatedAt: z.string().datetime().optional() });
 
 export type QuoteCreateInput = z.infer<typeof QuoteCreate>;
 export type QuoteUpdateInput = z.infer<typeof QuoteUpdate>;

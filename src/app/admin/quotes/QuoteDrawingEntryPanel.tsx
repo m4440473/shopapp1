@@ -18,8 +18,8 @@ type QuoteDrawingEntryPanelProps = {
   customerName: string;
   draftReference: string;
   materials: MaterialOption[];
-  onContinueV2: (parts: ReviewedQuoteDrawingPartV2[], files: DrawingImportReviewFile[]) => void;
-  onContinueLegacy: (parts: ReviewedDrawingPart[], files: ReviewedDrawingPart['source'][]) => void;
+  onContinueV2: (parts: ReviewedQuoteDrawingPartV2[], files: DrawingImportReviewFile[], jobId: string) => void | Promise<void>;
+  onContinueLegacy: (parts: ReviewedDrawingPart[], files: ReviewedDrawingPart['source'][]) => void | Promise<void>;
   onSwitchToLegacy: () => void;
   onSwitchToManual: () => void;
   onCreateMaterial: (detectedName: string) => Promise<MaterialOption>;

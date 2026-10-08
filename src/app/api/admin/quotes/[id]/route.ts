@@ -5,7 +5,7 @@ import { getServerAuthSession } from '@/lib/auth-session';
 
 import { DEFAULT_QUOTE_METADATA, parseQuoteMetadata } from '@/lib/quote-metadata';
 import { canAccessAdmin } from '@/lib/rbac';
-import { QuoteCreate } from '@/modules/quotes/quotes.schema';
+import { QuoteUpdate } from '@/modules/quotes/quotes.schema';
 import { sanitizePricingForNonAdmin } from '@/lib/quote-visibility';
 import { hasCustomFieldValue, parseCustomFieldValue, serializeCustomFieldValue } from '@/lib/custom-field-values';
 import { resolveCustomerContactSnapshot } from '@/modules/customers/customers.service';
@@ -78,8 +78,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (guard instanceof NextResponse) return guard;
 
   const { id } = await params;
-  const body = await req.json();
-  const parsed = QuoteCreate.safeParse(body);
+  const body = await req.json().catch(() => null);
+  const parsed = QuoteUpdate.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }
@@ -145,13 +145,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }))
     .filter((value) => value.value !== null);
 
-  const updated = await updateQuoteWithDetails({
-    quoteId: id,
-    data,
-    prepared,
-    normalizedCustomFieldValues,
-    nextMetadata,
-  });
+  let updated;
+  try {
+    updated = await updateQuoteWithDetails({
+      quoteId: id,
+      data,
+      prepared,
+      normalizedCustomFieldValues,
+      nextMetadata,
+    });
+  } catch (error) {
+    if (data.expectedUpdatedAt && (error as { code?: string })?.code === 'P2025') {
+      return NextResponse.json({ error: 'This quote changed after you opened it, or your previous save completed. Your local draft is retained; reload the saved quote before applying more changes.', code: 'QUOTE_CHANGED' }, { status: 409 });
+    }
+    console.error('Quote update failed', error);
+    return NextResponse.json({ error: 'Unable to confirm quote changes. Keep your draft and reload the saved quote to check.' }, { status: 503 });
+  }
 
   if (!updated) {
     return new NextResponse('Not found', { status: 404 });

@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ClipboardList, FileText, Home, Package, Settings, Shapes, Users, Wrench } from 'lucide-react';
+import { Bot, ClipboardList, FileText, Home, Package, Settings, Shapes, Users, Wrench } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
 const tabs = [
   { href: '/admin', label: 'Admin Home', icon: Home, exact: true },
+  { href: '/admin/assistant', label: 'Shop Assistant', icon: Bot },
   { href: '/admin/quotes', label: 'Quotes', icon: FileText },
   { href: '/admin/orders', label: 'Orders', icon: ClipboardList },
   { href: '/admin/materials', label: 'Materials', icon: Package },

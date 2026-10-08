@@ -15,6 +15,16 @@ function formatStage(stage: JobProgress['stage']) {
   return stage.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+export function drawingImportProgressLabel(progress: JobProgress) {
+  if (progress.status === 'READY_FOR_REVIEW' || progress.status === 'COMPLETE') return 'Ready for review';
+  if (progress.status === 'PARTIAL_FAILURE') return 'Review available — some pages need attention';
+  if (progress.status === 'FAILED') return 'Import needs attention';
+  if (progress.status === 'CANCELLED') return 'Import cancelled';
+  if (progress.stage === 'ai_resolution') return 'AI review running automatically';
+  if (progress.totalPages > 0 && progress.completedPages >= progress.totalPages) return 'Finalizing import — please wait';
+  return `${formatStage(progress.stage)} — preparing drawing review`;
+}
+
 export function DrawingImportJobProgress({
   progress,
   showAdminMetrics = false,
@@ -35,8 +45,8 @@ export function DrawingImportJobProgress({
     <section className="space-y-2 border-b border-border/60 pb-3" aria-labelledby={`drawing-job-${progress.jobId}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 id={`drawing-job-${progress.jobId}`} className="font-semibold">Drawing import progress</h3>
-          <p className="text-sm text-muted-foreground" aria-live="polite">{formatStage(progress.stage)} · {progress.completedPages} of {progress.totalPages} pages</p>
+          <h3 id={`drawing-job-${progress.jobId}`} className="font-semibold" aria-live="polite">{drawingImportProgressLabel(progress)}</h3>
+          <p className="text-sm text-muted-foreground">{progress.completedPages} of {progress.totalPages} pages processed · {formatStage(progress.stage)}</p>
         </div>
         {canCancel ? <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={cancelling}>{cancelling ? 'Cancelling…' : 'Cancel import'}</Button> : null}
       </div>
