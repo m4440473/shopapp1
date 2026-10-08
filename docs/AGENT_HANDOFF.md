@@ -5973,3 +5973,5 @@ Goal: Repair the owner's first real V2 quote import immediately and prove the ex
 - Separate finding from existing runtime log: V3 import PJ-10904-W5500.pdf failed missing PDF.js standard-font directory. Logged in progress; investigate separately, do not conflate with legacy model settings.
 
 2026-10-08 final local checks: standalone loopback health/sign-in 200; protected assistant/quote routes redirect to sign-in; new-order page 200; packaged assistant index hash equals source. Synthetic local smoke process stopped. Staged source audit: 122 allowlisted files, no credential/data/build/archive paths; detected email literals are fixture@example.invalid/a@example.invalid/b@example.invalid only. Normalized four imported EOF blank lines. Feature publication approved; no main merge or production deployment.
+
+Publication verified: application source commit 05ba202 pushed successfully to codex/server-reconciliation-20261008 in the approved repository. No pull request, main merge or production deployment performed.
